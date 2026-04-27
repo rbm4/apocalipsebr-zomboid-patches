@@ -77,13 +77,13 @@ cd "C:\path\to\apocalipsebr-zomboid-patches"
 The launcher will ask you a series of questions:
 
 1. **Select a version** - choose the number matching your server's game build (e.g. `42.17.0`)
-2. **Path to your Project Zomboid installation** - paste either the folder path or the full path to `projectzomboid.jar`. Both work:
+2. **Path to your Project Zomboid installation** - paste the path to the folder that contains `ProjectZomboid64.json`. On a default Steam install that is:
    ```
    Z:\SteamLibrary\steamapps\common\ProjectZomboid
    ```
-   or
+   You can also paste the full path to the JSON file itself and the script will use its parent folder:
    ```
-   Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar
+   Z:\SteamLibrary\steamapps\common\ProjectZomboid\ProjectZomboid64.json
    ```
    The script will tell you if the path is wrong so you can try again.
 3. **Which patch to apply** - type `0` to apply all patches, or a number to apply just one.
@@ -143,14 +143,15 @@ chmod +x patch.sh
 The launcher will ask:
 
 1. **Select a version** - type the number matching your server's game build.
-2. **Path to your Project Zomboid installation** - paste either the folder path or the full path to `projectzomboid.jar`. Both work:
+2. **Path to your Project Zomboid installation** - paste the path to the folder that contains `ProjectZomboid64.json`. On a default Linux server install that is:
    ```
-   /opt/pzserver/java
+   /opt/pzserver
    ```
-   or
+   You can also paste the full path to the JSON file itself and the script will use its parent folder:
    ```
-   /opt/pzserver/java/projectzomboid.jar
+   /opt/pzserver/ProjectZomboid64.json
    ```
+   > **Note:** Do **not** point to the `java/` subfolder. The launcher needs the parent directory where `ProjectZomboid64.json` lives.
 3. **Which patch to apply** - type `0` for all patches, or a number for one.
 
 The script compiles and deploys automatically. When done you will see:
@@ -176,25 +177,21 @@ The patch takes effect on the next server start.
 
 Both launchers accept optional flags if you want to skip the interactive prompts:
 
-| Flag (Windows)                                                             | Flag (Linux)                                                                 | Description                                                      |
-| -------------------------------------------------------------------------- | ---------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| `-PZJar "path\to\ProjectZomboid"` or `-PZJar "path\to\projectzomboid.jar"` | `--pz-jar /path/to/ProjectZomboid` or `--pz-jar /path/to/projectzomboid.jar` | Skip the path prompt — accepts a folder or the JAR file directly |
-| `-Version 42.17.0`                                                         | `--version 42.17.0`                                                          | Skip the version prompt                                          |
-| `-DryRun`                                                                  | `--dry-run`                                                                  | Show what would happen without writing any files                 |
-| `-Revert`                                                                  | `--revert`                                                                   | Remove deployed patches and restore original behavior            |
+| Flag (Windows)              | Flag (Linux)              | Description                                                   |
+| --------------------------- | ------------------------- | ------------------------------------------------------------- |
+| `-PZDir "path\to\PZFolder"` | `--pz-dir /path/to/pzdir` | Skip the path prompt — must be the folder with `ProjectZomboid64.json` |
+| `-Version 42.17.0`          | `--version 42.17.0`       | Skip the version prompt                                       |
+| `-DryRun`                   | `--dry-run`               | Show what would happen without writing any files              |
+| `-Revert`                   | `--revert`                | Remove deployed patches and restore original behavior         |
 
 Example (Windows, non-interactive):
 ```powershell
-.\patch.ps1 -PZJar "Z:\Steam\ProjectZomboid" -Version 42.17.0
-# or with the full JAR path:
-.\patch.ps1 -PZJar "Z:\Steam\ProjectZomboid\projectzomboid.jar" -Version 42.17.0
+.\patch.ps1 -PZDir "Z:\Steam\ProjectZomboid" -Version 42.17.0
 ```
 
 Example (Linux, non-interactive):
 ```bash
-./patch.sh --pz-jar /opt/pzserver/java --version 42.17.0
-# or with the full JAR path:
-./patch.sh --pz-jar /opt/pzserver/java/projectzomboid.jar --version 42.17.0
+./patch.sh --pz-dir /opt/pzserver --version 42.17.0
 ```
 
 ---
@@ -212,10 +209,10 @@ Because of this order, placing a patched `.class` file at the right path means t
 
 ## Troubleshooting
 
-**"Path not found" or "projectzomboid.jar not found in folder"**  
-You can pass either the folder containing `projectzomboid.jar` or the full path to the file itself. On a default Steam install the folder is usually:
+**"Directory not found"**  
+The launcher expects the folder that contains `ProjectZomboid64.json` (the game install root), not the `java/` subfolder. On a default install that is:
 - Windows: `C:\Program Files (x86)\Steam\steamapps\common\ProjectZomboid`
-- Linux: `/opt/pzserver/java` (may vary by hosting provider)
+- Linux: `/opt/pzserver` (may vary by hosting provider — check for `ProjectZomboid64.json` there)
 
 **"Compilation failed"**  
 This usually means the patch was written for a different game build. Check that the version folder matches your server build number. If your build is newer than the latest version folder, the patch may not have been updated yet - open an issue on this repository.
