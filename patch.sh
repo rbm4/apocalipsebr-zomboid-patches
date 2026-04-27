@@ -3,7 +3,7 @@
 #
 # Interactive launcher for PZ class patches.
 #   - Discovers available version folders in this repository
-#   - Prompts for the path to projectzomboid.jar
+#   - Prompts for the PZ install directory (where ProjectZomboid64.json lives)
 #   - Detects 32 vs 64-bit layout from ProjectZomboid64.json / 32.json
 #   - Parses the classpath field to determine the deploy base directory
 #   - Verifies (or installs) Java 25+, shared across all patches this session
@@ -12,7 +12,7 @@
 #
 # Usage:
 #   ./patch.sh
-#   ./patch.sh --pz-jar /opt/pzserver/java/projectzomboid.jar
+#   ./patch.sh --pz-dir /opt/pzserver
 #   ./patch.sh --version 42.17.0 --dry-run
 #   ./patch.sh --revert
 
@@ -32,20 +32,20 @@ GRAY='\033[0;90m'
 RESET='\033[0m'
 
 # -- Argument parsing -----------------------------------------------------------
-PZ_JAR_ARG=""
+PZ_DIR_ARG=""
 VERSION_ARG=""
 DRY_RUN=false
 REVERT=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --pz-jar|-j|--pz-dir|-d)  PZ_JAR_ARG="$2"; shift 2 ;;
+        --pz-dir|-d)  PZ_DIR_ARG="$2"; shift 2 ;;
         --version|-v) VERSION_ARG="$2"; shift 2 ;;
         --dry-run)    DRY_RUN=true; shift ;;
         --revert)     REVERT=true; shift ;;
         *)
             echo -e "${RED}Unknown option: $1${RESET}" >&2
-            echo "Usage: $0 [--pz-jar FILE|DIR] [--version X.Y.Z] [--dry-run] [--revert]" >&2
+            echo "Usage: $0 [--pz-dir DIR] [--version X.Y.Z] [--dry-run] [--revert]" >&2
             exit 1
             ;;
     esac
@@ -301,49 +301,39 @@ VERSION_DIR="$SCRIPT_DIR/$SEL_VERSION"
 echo ""
 echo -e "${GRAY}Version directory: $VERSION_DIR${RESET}"
 
-# -- 3. projectzomboid.jar path ------------------------------------------------
+# -- 3. PZ install directory --------------------------------------------------
 
 echo ""
-PZ_JAR=""
+PZ_DIR=""
 
-while [[ -z "$PZ_JAR" ]]; do
-    if [[ -n "$PZ_JAR_ARG" ]]; then
-        PZ_JAR="$PZ_JAR_ARG"
-        PZ_JAR_ARG=""   # clear so we re-prompt on invalid path
+while [[ -z "$PZ_DIR" ]]; do
+    if [[ -n "$PZ_DIR_ARG" ]]; then
+        raw="$PZ_DIR_ARG"
+        PZ_DIR_ARG=""   # clear so we re-prompt on invalid path
     else
-        read -rp "Enter path to projectzomboid.jar: " PZ_JAR
+        read -rp "Enter path to PZ install directory (containing ProjectZomboid64.json): " raw
     fi
 
     # Strip surrounding quotes the user may have typed
-    PZ_JAR="${PZ_JAR%\"}"
-    PZ_JAR="${PZ_JAR#\"}"
-    PZ_JAR="${PZ_JAR%\'}"
-    PZ_JAR="${PZ_JAR#\'}"
+    raw="${raw%\"}"
+    raw="${raw#\"}"
+    raw="${raw%\'}"
+    raw="${raw#\'}"
 
-    # Accept a folder path — look for projectzomboid.jar inside it
-    if [[ -d "$PZ_JAR" ]]; then
-        candidate="$PZ_JAR/projectzomboid.jar"
-        if [[ -f "$candidate" ]]; then
-            PZ_JAR="$candidate"
-        else
-            echo -e "${YELLOW}    projectzomboid.jar not found in folder: $PZ_JAR${RESET}"
-            PZ_JAR=""
-            continue
-        fi
+    # Accept a direct path to the JSON file — use its parent directory
+    raw_base="$(basename "$raw")"
+    if [[ -f "$raw" && ("$raw_base" == "ProjectZomboid64.json" || "$raw_base" == "ProjectZomboid32.json") ]]; then
+        raw="$(dirname "$(realpath "$raw")")"
     fi
 
-    if [[ ! -f "$PZ_JAR" ]]; then
-        echo -e "${YELLOW}    Path not found: $PZ_JAR${RESET}"
-        PZ_JAR=""
+    if [[ ! -d "$raw" ]]; then
+        echo -e "${YELLOW}    Directory not found: $raw${RESET}"
+        continue
     fi
+
+    PZ_DIR="$(realpath "$raw")"
 done
 
-PZ_DIR="$(dirname "$(realpath "$PZ_JAR")")"
-# On Linux the JAR lives inside a 'java/' subfolder; child scripts expect the
-# install root (one level up), not the 'java/' dir itself.
-if [[ "$(basename "$PZ_DIR")" == "java" ]]; then
-    PZ_DIR="$(dirname "$PZ_DIR")"
-fi
 echo -e "${GREEN}PZ directory: $PZ_DIR${RESET}"
 
 # -- 4. Read JSON config (arch + classpath) ------------------------------------

@@ -5,15 +5,16 @@
 .DESCRIPTION
     Interactive launcher for PZ class patches.
     - Discovers available version folders in this repository
-    - Prompts for the path to projectzomboid.jar
+    - Prompts for the PZ install directory (where ProjectZomboid64.json lives)
     - Detects 32 vs 64-bit layout from ProjectZomboid64.json / ProjectZomboid32.json
     - Parses the classpath field to determine the deploy base directory
     - Verifies (or installs) Java $RequiredMajor+, shared across all patches
     - Lists available patch scripts in the chosen version folder
     - Runs all patches or a single selected patch
 
-.PARAMETER PZJar
-    Path to projectzomboid.jar, or to the folder that contains it.
+.PARAMETER PZDir
+    Path to the PZ install directory (the folder containing ProjectZomboid64.json).
+    Also accepts a direct path to ProjectZomboid64.json / ProjectZomboid32.json.
     Prompted interactively if omitted.
 
 .PARAMETER Version
@@ -28,13 +29,12 @@
 
 .EXAMPLE
     .\patch.ps1
-    .\patch.ps1 -PZJar "Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar"
-    .\patch.ps1 -PZJar "Z:\SteamLibrary\steamapps\common\ProjectZomboid"
+    .\patch.ps1 -PZDir "Z:\SteamLibrary\steamapps\common\ProjectZomboid"
     .\patch.ps1 -Version 42.17.0 -DryRun
     .\patch.ps1 -Revert
 #>
 param(
-    [string]$PZJar   = "",
+    [string]$PZDir   = "",
     [string]$Version = "",
     [switch]$DryRun,
     [switch]$Revert
@@ -245,40 +245,34 @@ $VersionDir = Join-Path $RootDir $selVersion
 Write-Host ""
 Write-Host "Version directory: $VersionDir" -ForegroundColor Gray
 
-# -- 3. projectzomboid.jar path ------------------------------------------------
+# -- 3. PZ install directory --------------------------------------------------
 
 Write-Host ""
-$jarValid = $false
+$dirValid = $false
 
-while (-not $jarValid) {
-    if (-not $PZJar) {
-        $PZJar = Read-Host "Enter path to projectzomboid.jar"
+while (-not $dirValid) {
+    if (-not $PZDir) {
+        $PZDir = Read-Host "Enter path to PZ install directory (containing ProjectZomboid64.json)"
     }
 
     # Strip surrounding quotes the user may have included
-    $PZJar = $PZJar.Trim('"').Trim("'").Trim()
+    $PZDir = $PZDir.Trim('"').Trim("'").Trim()
 
-    # Accept a folder path — look for projectzomboid.jar inside it
-    if (Test-Path $PZJar -PathType Container) {
-        $candidate = Join-Path $PZJar "projectzomboid.jar"
-        if (Test-Path $candidate -PathType Leaf) {
-            $PZJar = $candidate
-        } else {
-            Write-Host "    projectzomboid.jar not found in folder: $PZJar" -ForegroundColor Yellow
-            $PZJar = ""
-            continue
-        }
+    # Accept a direct path to the JSON file — use its parent directory
+    $rawLeaf = Split-Path $PZDir -Leaf -ErrorAction SilentlyContinue
+    if ((Test-Path $PZDir -PathType Leaf) -and ($rawLeaf -in @('ProjectZomboid64.json','ProjectZomboid32.json'))) {
+        $PZDir = Split-Path (Resolve-Path $PZDir).Path -Parent
     }
 
-    if (Test-Path $PZJar -PathType Leaf) {
-        $jarValid = $true
+    if (Test-Path $PZDir -PathType Container) {
+        $PZDir = (Resolve-Path $PZDir).Path
+        $dirValid = $true
     } else {
-        Write-Host "    Path not found: $PZJar" -ForegroundColor Yellow
-        $PZJar = ""
+        Write-Host "    Directory not found: $PZDir" -ForegroundColor Yellow
+        $PZDir = ""
     }
 }
 
-$PZDir = Split-Path (Resolve-Path $PZJar).Path -Parent
 Write-Host "PZ directory: $PZDir" -ForegroundColor Green
 
 # -- 4. Read JSON config (arch + classpath) ------------------------------------
