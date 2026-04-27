@@ -339,6 +339,11 @@ while [[ -z "$PZ_JAR" ]]; do
 done
 
 PZ_DIR="$(dirname "$(realpath "$PZ_JAR")")"
+# On Linux the JAR lives inside a 'java/' subfolder; child scripts expect the
+# install root (one level up), not the 'java/' dir itself.
+if [[ "$(basename "$PZ_DIR")" == "java" ]]; then
+    PZ_DIR="$(dirname "$PZ_DIR")"
+fi
 echo -e "${GREEN}PZ directory: $PZ_DIR${RESET}"
 
 # -- 4. Read JSON config (arch + classpath) ------------------------------------
