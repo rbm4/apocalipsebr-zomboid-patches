@@ -151,7 +151,7 @@ The launcher will ask:
    ```
    /opt/pzserver/ProjectZomboid64.json
    ```
-   > **Note:** Do **not** point to the `java/` subfolder. The launcher needs the parent directory where `ProjectZomboid64.json` lives.
+   > **Note:** The launcher needs the parent directory where `ProjectZomboid64.json` lives. Since it is the file where the configuration of the classpath is located, the script uses ProjectZomboid64.json by default, if your system is 32 bits then point to the ProjectZomboid32.json
 3. **Which patch to apply** - type `0` for all patches, or a number for one.
 
 The script compiles and deploys automatically. When done you will see:
@@ -210,7 +210,7 @@ Because of this order, placing a patched `.class` file at the right path means t
 ## Troubleshooting
 
 **"Directory not found"**  
-The launcher expects the folder that contains `ProjectZomboid64.json` (the game install root), not the `java/` subfolder. On a default install that is:
+The launcher expects the folder that contains `ProjectZomboid64.json` (the game install root). On a default install that is:
 - Windows: `C:\Program Files (x86)\Steam\steamapps\common\ProjectZomboid`
 - Linux: `/opt/pzserver` (may vary by hosting provider — check for `ProjectZomboid64.json` there)
 
@@ -223,8 +223,10 @@ Verify the `.class` file was actually deployed to the right location. Run the la
 **The script downloaded a JDK but it takes up disk space**  
 The downloaded JDK is stored in a `jdk/` folder inside this repository. You can delete it at any time; the next run will find your system Java or download it again.
 
+**How to keep up-to-date with the repository**  
+You can clone the repository and "git reset --HARD" to clear any temporary files from the folder, then run "git pull", that way you'll pull the most recent changes.
 ---
 
 ## About Apocalipse [BR]
 
-**[Apocalipse \[BR\]](https://apocalipse.cloud)** is a Brazilian Project Zomboid multiplayer community. These patches are maintained by the server team to improve the gameplay experience for all players. If you run your own server and find them useful, you are welcome to use them.
+**[Apocalipse \[BR\]](https://apocalipse.cloud)** is a Brazilian Project Zomboid multiplayer community. These patches are maintained by myself to improve the gameplay experience for all players. If you run your own server and find them useful, you are welcome to use them.
