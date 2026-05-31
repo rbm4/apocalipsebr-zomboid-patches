@@ -177,12 +177,12 @@ The patch takes effect on the next server start.
 
 Both launchers accept optional flags if you want to skip the interactive prompts:
 
-| Flag (Windows)              | Flag (Linux)              | Description                                                   |
-| --------------------------- | ------------------------- | ------------------------------------------------------------- |
+| Flag (Windows)              | Flag (Linux)              | Description                                                            |
+| --------------------------- | ------------------------- | ---------------------------------------------------------------------- |
 | `-PZDir "path\to\PZFolder"` | `--pz-dir /path/to/pzdir` | Skip the path prompt — must be the folder with `ProjectZomboid64.json` |
-| `-Version 42.17.0`          | `--version 42.17.0`       | Skip the version prompt                                       |
-| `-DryRun`                   | `--dry-run`               | Show what would happen without writing any files              |
-| `-Revert`                   | `--revert`                | Remove deployed patches and restore original behavior         |
+| `-Version 42.17.0`          | `--version 42.17.0`       | Skip the version prompt                                                |
+| `-DryRun`                   | `--dry-run`               | Show what would happen without writing any files                       |
+| `-Revert`                   | `--revert`                | Remove deployed patches and restore original behavior                  |
 
 Example (Windows, non-interactive):
 ```powershell
