@@ -60,8 +60,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 PATCH_NAME="Pathfind Safety - Stale-Chunk Guard"
-JAR_FILE="$PZ_DIR/projectzomboid.jar"
-DEPLOY_DIR="$PZ_DIR/zombie/pathfind/nativeCode"
+# Auto-detect JAR location (Linux server: java/ subdir; Windows: PZ root)
+if [[ -f "$PZ_DIR/java/projectzomboid.jar" ]]; then
+    JAR_FILE="$PZ_DIR/java/projectzomboid.jar"
+    DEPLOY_BASE="$PZ_DIR/java"
+else
+    JAR_FILE="$PZ_DIR/projectzomboid.jar"
+    DEPLOY_BASE="$PZ_DIR"
+fi
+DEPLOY_DIR="$DEPLOY_BASE/zombie/pathfind/nativeCode"
 BACKUP_DIR="$SCRIPT_DIR/backups/PathfindSafety"
 WORK_DIR="/tmp/pzpatch_pathfindsafety"
 OUTPUT_DIR="$WORK_DIR/classes"

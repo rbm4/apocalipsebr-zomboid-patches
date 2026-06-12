@@ -47,9 +47,16 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-JAR_FILE="$PZ_DIR/projectzomboid.jar"
-DEPLOY_NET="$PZ_DIR/zombie/network"
-DEPLOY_ISO="$PZ_DIR/zombie/iso"
+# Auto-detect JAR location (Linux server: java/ subdir; Windows: PZ root)
+if [[ -f "$PZ_DIR/java/projectzomboid.jar" ]]; then
+    JAR_FILE="$PZ_DIR/java/projectzomboid.jar"
+    DEPLOY_BASE="$PZ_DIR/java"
+else
+    JAR_FILE="$PZ_DIR/projectzomboid.jar"
+    DEPLOY_BASE="$PZ_DIR"
+fi
+DEPLOY_NET="$DEPLOY_BASE/zombie/network"
+DEPLOY_ISO="$DEPLOY_BASE/zombie/iso"
 BACKUP_DIR="$SCRIPT_DIR/backups/ServerMemory"
 WORK_DIR="/tmp/pzpatch_servermemory"
 OUTPUT_DIR="$WORK_DIR/classes"
