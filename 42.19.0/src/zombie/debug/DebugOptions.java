@@ -23,7 +23,6 @@ import zombie.core.logger.ExceptionLogger;
 import zombie.core.opengl.RenderThread;
 import zombie.debug.options.Animation;
 import zombie.debug.options.Asset;
-import zombie.debug.options.Character;
 import zombie.debug.options.Cheat;
 import zombie.debug.options.CollideWithObstacles;
 import zombie.debug.options.DeadBodyAtlas;
@@ -197,7 +196,9 @@ public final class DebugOptions implements IDebugOptionGroup {
     public final BooleanDebugOption threadGridStacks = this.newOption("Threading.RecalculateGridStacks", false);
     public final BooleanDebugOption threadSound = this.newOption("Threading.Sound", false);
     // ApocBR patch: was false — offloads updateBuildings, static render effects, DB updates to ForkJoinPool
-    public final BooleanDebugOption threadWorld = this.newOption("Threading.World", true);
+    // DISABLED: updateDBs() inside updateThread() calls BaseVehicle.callLuaVoid() during vehicle chunk loading,
+    // which throws "Lua code called from the wrong thread" (Kahlua is not thread-safe).
+    public final BooleanDebugOption threadWorld = this.newOption("Threading.World", false);
     public final BooleanDebugOption threadModelSlotInit = this.newOption("Threading.ModelSlotInit", true);
     // ApocBR patch: was false — offloads all AnimationPlayer.Update() calls to ForkJoinPool
     // This is the primary fix for CPU-bound lag with 30+ vehicles or many NPCs active.
@@ -409,8 +410,8 @@ public final class DebugOptions implements IDebugOptionGroup {
 
         // ApocBR patch: force-enable threading after loading so a cached ini
         // with old false values cannot re-disable these options.
+        // threadWorld intentionally left false — calls Lua from ForkJoinPool (unsafe).
         this.threadAnimation.setValue(true);
-        this.threadWorld.setValue(true);
         this.threadAmbient.setValue(true);
         this.threadModelSlotInit.setValue(true);
     }

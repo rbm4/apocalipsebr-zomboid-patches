@@ -213,7 +213,7 @@ else
     echo ""
     echo "Enabled threading options (Build 42.19):"
     echo "  Threading.Animation = true  (AnimationPlayer.Update on ForkJoinPool)"
-    echo "  Threading.World     = true  (buildings/static/DB/animals concurrent)"
+    echo "  Threading.World     = false (UNSAFE: updateDBs calls Lua from worker thread)"
     echo "  Threading.Ambient   = true  (FMOD ambient emitters concurrent)"
     echo ""
     echo "Restart the server for changes to take effect."

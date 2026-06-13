@@ -213,7 +213,7 @@ if ($DryRun) {
     Write-Host ""
     Write-Host "Enabled threading options (Build 42.19):"
     Write-Host "  Threading.Animation = true  (AnimationPlayer.Update on ForkJoinPool)"
-    Write-Host "  Threading.World     = true  (buildings/static/DB/animals concurrent)"
+    Write-Host "  Threading.World     = false (UNSAFE: updateDBs calls Lua from worker thread)"
     Write-Host "  Threading.Ambient   = true  (FMOD ambient emitters concurrent)"
     Write-Host ""
     Write-Host "Restart the game/server for changes to take effect."
