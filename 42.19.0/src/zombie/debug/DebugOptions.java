@@ -8,6 +8,7 @@ package zombie.debug;
 
 import java.io.File;
 import java.util.ArrayList;
+
 import zombie.DebugFileWatcher;
 import zombie.GameWindow;
 import zombie.PredicatedFileWatcher;
@@ -22,7 +23,6 @@ import zombie.core.logger.ExceptionLogger;
 import zombie.core.opengl.RenderThread;
 import zombie.debug.options.Animation;
 import zombie.debug.options.Asset;
-import zombie.debug.options.Character;
 import zombie.debug.options.Cheat;
 import zombie.debug.options.CollideWithObstacles;
 import zombie.debug.options.DeadBodyAtlas;

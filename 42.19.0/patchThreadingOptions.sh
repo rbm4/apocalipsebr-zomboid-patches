@@ -148,7 +148,8 @@ find_javac() {
               /usr/lib/jvm/zulu${REQUIRED_MAJOR}*/bin/javac; do
         candidates+=("$jh")
     done
-    which javac 2>/dev/null && candidates+=("$(which javac)")
+    local wjavac; wjavac=$(which javac 2>/dev/null || true)
+    [[ -n "$wjavac" ]] && candidates+=("$wjavac")
     for c in "${candidates[@]}"; do
         if [[ -x "$c" ]]; then
             local ver; ver=$("$c" -version 2>&1 | grep -oP '(?<=javac )\d+' | head -1)
