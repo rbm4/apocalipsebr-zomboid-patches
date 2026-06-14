@@ -7,9 +7,7 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
-import zombie.core.PZForkJoinPool;
 import zombie.GameTime;
 import zombie.MapCollisionData;
 import zombie.ReanimatedPlayers;
@@ -649,11 +647,7 @@ public class ServerMap {
     }
 
     public void postupdate() {
-        boolean pathfindPaused = true; // PATCH-D: suspend LOS at method start for thread safety
-        ServerLOS.instance.suspend();
-
-        // PATCH-F: collect loaded cells to tick in parallel; unload/cancel logic stays serial
-        ArrayList<ServerMap.ServerCell> toUpdate = new ArrayList<>();
+        boolean pathfindPaused = false;
 
         try {
             for (int n = 0; n < this.loadedCells.size(); n++) {
@@ -676,34 +670,17 @@ public class ServerMap {
                 } else if (!shouldBeLoaded) {
                     int x = cell.wx - this.getMinX();
                     int y = cell.wy - this.getMinY();
-                    // PATCH-D: LOS already suspended at method entry
+                    if (!pathfindPaused) {
+                        ServerLOS.instance.suspend();
+                        pathfindPaused = true;
+                    }
+
                     this.cellMap[y * this.width + x].Unload();
                     this.cellMap[y * this.width + x] = null;
                     this.loadedCells.remove(cell);
                     n--;
                 } else {
-                    // PATCH-F: defer update; will run in parallel below
-                    toUpdate.add(cell);
-                }
-            }
-
-            // PATCH-F: parallel cell tick - LOS is still suspended throughout
-            if (toUpdate.size() > 1) {
-                CompletableFuture<?>[] futures = new CompletableFuture[toUpdate.size()];
-                for (int i = 0; i < toUpdate.size(); i++) {
-                    final ServerMap.ServerCell c = toUpdate.get(i);
-                    futures[i] = CompletableFuture.runAsync(() -> {
-                        try {
-                            c.update();
-                        } catch (Exception ex) {
-                            DebugType.General.printException(ex, LogSeverity.Error);
-                        }
-                    }, PZForkJoinPool.commonPool());
-                }
-                CompletableFuture.allOf(futures).join();
-            } else {
-                for (int i = 0; i < toUpdate.size(); i++) {
-                    toUpdate.get(i).update();
+                    cell.update();
                 }
             }
         } catch (Exception var10) {
@@ -1246,6 +1223,7 @@ public class ServerMap {
         final LinkedBlockingQueue<ServerMap.WorkerThreadCommand> commandQ;
 
         public WorkerThread() {
+            Objects.requireNonNull(ServerMap.this);
             super();
             this.commandQ = new LinkedBlockingQueue<>();
         }

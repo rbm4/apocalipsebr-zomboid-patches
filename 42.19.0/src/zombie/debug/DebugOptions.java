@@ -23,6 +23,7 @@ import zombie.core.logger.ExceptionLogger;
 import zombie.core.opengl.RenderThread;
 import zombie.debug.options.Animation;
 import zombie.debug.options.Asset;
+import zombie.debug.options.Character;
 import zombie.debug.options.Cheat;
 import zombie.debug.options.CollideWithObstacles;
 import zombie.debug.options.DeadBodyAtlas;
