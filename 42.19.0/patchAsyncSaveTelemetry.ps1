@@ -10,7 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$PatchName = "Async Save + Server Telemetry"
+$PatchName = "Async Save + Server Telemetry Core Breakdown"
 
 if ([string]::IsNullOrWhiteSpace($ToolsDir)) {
     if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {

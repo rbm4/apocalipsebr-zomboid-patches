@@ -1017,10 +1017,21 @@ public class GameServer {
 
                             apocBrTelemetryStart = System.nanoTime();
                             try {
+                                long apocBrCoreSectionStart = System.nanoTime();
                                 MapCollisionData.instance.updateGameState();
+                                ApocBRServerTelemetry.recordCoreWorldSection("mapCollision", System.nanoTime() - apocBrCoreSectionStart);
+
+                                apocBrCoreSectionStart = System.nanoTime();
                                 statex.update();
+                                ApocBRServerTelemetry.recordCoreWorldSection("stateUpdate", System.nanoTime() - apocBrCoreSectionStart);
+
+                                apocBrCoreSectionStart = System.nanoTime();
                                 VehicleManager.instance.serverUpdate();
+                                ApocBRServerTelemetry.recordCoreWorldSection("vehicleUpdate", System.nanoTime() - apocBrCoreSectionStart);
+
+                                apocBrCoreSectionStart = System.nanoTime();
                                 ObjectIDManager.getInstance().checkForSaveDataFile(false);
+                                ApocBRServerTelemetry.recordCoreWorldSection("objectId", System.nanoTime() - apocBrCoreSectionStart);
                             } catch (Exception var38) {
                                 DebugType.General.printException(var38, "", LogSeverity.Error);
                             }

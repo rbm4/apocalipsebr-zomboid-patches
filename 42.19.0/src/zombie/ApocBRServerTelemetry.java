@@ -28,6 +28,14 @@ public final class ApocBRServerTelemetry {
     private static long serverMapPreMaxNanos;
     private static long coreWorldNanos;
     private static long coreWorldMaxNanos;
+    private static long mapCollisionNanos;
+    private static long mapCollisionMaxNanos;
+    private static long stateUpdateNanos;
+    private static long stateUpdateMaxNanos;
+    private static long vehicleUpdateNanos;
+    private static long vehicleUpdateMaxNanos;
+    private static long objectIdNanos;
+    private static long objectIdMaxNanos;
     private static long connectionChunkNanos;
     private static long connectionChunkMaxNanos;
     private static long serverMapPostNanos;
@@ -91,6 +99,23 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static synchronized void recordCoreWorldSection(String section, long nanos) {
+        if (!ENABLED) return;
+        if ("mapCollision".equals(section)) {
+            mapCollisionNanos += nanos;
+            mapCollisionMaxNanos = Math.max(mapCollisionMaxNanos, nanos);
+        } else if ("stateUpdate".equals(section)) {
+            stateUpdateNanos += nanos;
+            stateUpdateMaxNanos = Math.max(stateUpdateMaxNanos, nanos);
+        } else if ("vehicleUpdate".equals(section)) {
+            vehicleUpdateNanos += nanos;
+            vehicleUpdateMaxNanos = Math.max(vehicleUpdateMaxNanos, nanos);
+        } else if ("objectId".equals(section)) {
+            objectIdNanos += nanos;
+            objectIdMaxNanos = Math.max(objectIdMaxNanos, nanos);
+        }
+    }
+
     public static synchronized void recordDownloadConnections(int count) {
         if (ENABLED) downloadConnections += count;
     }
@@ -129,6 +154,10 @@ public final class ApocBRServerTelemetry {
             + " world{ticks=" + worldTicks + ",avgMs=" + avgMs(worldNanos, worldTicks) + ",maxMs=" + ms(worldMaxNanos)
             + ",serverMapPreAvgMs=" + avgMs(serverMapPreNanos, worldTicks) + ",serverMapPreMaxMs=" + ms(serverMapPreMaxNanos)
             + ",coreAvgMs=" + avgMs(coreWorldNanos, worldTicks) + ",coreMaxMs=" + ms(coreWorldMaxNanos)
+            + ",mapCollisionAvgMs=" + avgMs(mapCollisionNanos, worldTicks) + ",mapCollisionMaxMs=" + ms(mapCollisionMaxNanos)
+            + ",stateUpdateAvgMs=" + avgMs(stateUpdateNanos, worldTicks) + ",stateUpdateMaxMs=" + ms(stateUpdateMaxNanos)
+            + ",vehicleAvgMs=" + avgMs(vehicleUpdateNanos, worldTicks) + ",vehicleMaxMs=" + ms(vehicleUpdateMaxNanos)
+            + ",objectIdAvgMs=" + avgMs(objectIdNanos, worldTicks) + ",objectIdMaxMs=" + ms(objectIdMaxNanos)
             + ",connChunkAvgMs=" + avgMs(connectionChunkNanos, worldTicks) + ",connChunkMaxMs=" + ms(connectionChunkMaxNanos)
             + ",serverMapPostAvgMs=" + avgMs(serverMapPostNanos, worldTicks) + ",serverMapPostMaxMs=" + ms(serverMapPostMaxNanos) + "}"
             + " packets{high=" + highPackets + "/" + ms(highNanos) + "ms max=" + ms(highMaxNanos)
@@ -150,6 +179,10 @@ public final class ApocBRServerTelemetry {
         worldTicks = worldNanos = worldMaxNanos = 0L;
         serverMapPreNanos = serverMapPreMaxNanos = 0L;
         coreWorldNanos = coreWorldMaxNanos = 0L;
+        mapCollisionNanos = mapCollisionMaxNanos = 0L;
+        stateUpdateNanos = stateUpdateMaxNanos = 0L;
+        vehicleUpdateNanos = vehicleUpdateMaxNanos = 0L;
+        objectIdNanos = objectIdMaxNanos = 0L;
         connectionChunkNanos = connectionChunkMaxNanos = 0L;
         serverMapPostNanos = serverMapPostMaxNanos = 0L;
         downloadConnections = 0L;

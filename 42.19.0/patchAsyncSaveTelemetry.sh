@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCH_NAME="Async Save + Server Telemetry"
+PATCH_NAME="Async Save + Server Telemetry Core Breakdown"
 PZ_DIR="/opt/pzserver"
 DRY_RUN=false
 REVERT=false
