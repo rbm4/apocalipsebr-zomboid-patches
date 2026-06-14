@@ -51,6 +51,13 @@ public final class ApocBRServerTelemetry {
     private static long chunkWorkerNanos;
     private static long chunkWorkerMaxNanos;
     private static long chunkWorkerChunks;
+    private static final String[] STATE_SECTION_KEYS = new String[] {
+        "evenPausedLua", "isoWorld", "gem", "animal", "radio", "updateStuff", "onTickLua", "ambient", "updateManagers",
+        "gameTime", "script", "worldSound", "fire", "rain", "meta", "virtualZombie", "mapCollisionMain",
+        "zombiePopulationMain", "pathfindCheck", "pathfindMain", "polygonalMap", "lootRespawn", "serverManagers"
+    };
+    private static final long[] stateSectionNanos = new long[STATE_SECTION_KEYS.length];
+    private static final long[] stateSectionMaxNanos = new long[STATE_SECTION_KEYS.length];
 
     private ApocBRServerTelemetry() {
     }
@@ -115,6 +122,16 @@ public final class ApocBRServerTelemetry {
             objectIdMaxNanos = Math.max(objectIdMaxNanos, nanos);
         }
     }
+    public static synchronized void recordStateUpdateSection(String section, long nanos) {
+        if (!ENABLED) return;
+        for (int i = 0; i < STATE_SECTION_KEYS.length; i++) {
+            if (STATE_SECTION_KEYS[i].equals(section)) {
+                stateSectionNanos[i] += nanos;
+                stateSectionMaxNanos[i] = Math.max(stateSectionMaxNanos[i], nanos);
+                return;
+            }
+        }
+    }
 
     public static synchronized void recordDownloadConnections(int count) {
         if (ENABLED) downloadConnections += count;
@@ -167,6 +184,7 @@ public final class ApocBRServerTelemetry {
             + ",requests=" + chunkMainRequests + ",prepared=" + chunkMainPrepared + ",maxWaiting=" + chunkMainMaxWaiting
             + ",workerCalls=" + chunkWorkerCalls + ",workerAvgMs=" + avgMs(chunkWorkerNanos, chunkWorkerCalls) + ",workerMaxMs=" + ms(chunkWorkerMaxNanos)
             + ",workerChunks=" + chunkWorkerChunks + ",downloadConnections=" + downloadConnections + "}"
+            + stateSectionsLog()
             + " state{connections=" + connectionsLast + ",players=" + playersLast + ",zombies=" + zombiesLast + "}");
         resetCounters();
         nextLogMs = now + INTERVAL_MS;
@@ -190,6 +208,21 @@ public final class ApocBRServerTelemetry {
         chunkMainRequests = chunkMainPrepared = 0L;
         chunkMainMaxWaiting = 0;
         chunkWorkerCalls = chunkWorkerNanos = chunkWorkerMaxNanos = chunkWorkerChunks = 0L;
+        for (int i = 0; i < STATE_SECTION_KEYS.length; i++) {
+            stateSectionNanos[i] = 0L;
+            stateSectionMaxNanos[i] = 0L;
+        }
+    }
+
+    private static String stateSectionsLog() {
+        StringBuilder builder = new StringBuilder(" stateUpdate{");
+        for (int i = 0; i < STATE_SECTION_KEYS.length; i++) {
+            if (i > 0) builder.append(",");
+            builder.append(STATE_SECTION_KEYS[i]).append("AvgMs=").append(avgMs(stateSectionNanos[i], worldTicks));
+            builder.append(",").append(STATE_SECTION_KEYS[i]).append("MaxMs=").append(ms(stateSectionMaxNanos[i]));
+        }
+        builder.append("}");
+        return builder.toString();
     }
 
     private static long ms(long nanos) { return nanos / 1000000L; }

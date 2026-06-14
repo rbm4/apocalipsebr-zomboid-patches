@@ -35,11 +35,13 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 OUTPUT_DIR="$WORK_DIR/classes"
 DEPLOY_ZOMBIE="$DEPLOY_BASE/zombie"
 DEPLOY_NET="$DEPLOY_BASE/zombie/network"
+DEPLOY_GAMESTATES="$DEPLOY_BASE/zombie/gameStates"
 REQUIRED_MAJOR=25
 
 SOURCES=(
     "$SRC_ROOT/zombie/ApocBRServerTelemetry.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
+    "$SRC_ROOT/zombie/gameStates/IngameState.java"
     "$SRC_ROOT/zombie/network/PlayerDownloadServer.java"
     "$SRC_ROOT/zombie/network/ServerMap.java"
 )
@@ -53,6 +55,9 @@ CLASSES=(
     'zombie/network/GameServer$DelayedConnection.class'
     'zombie/network/GameServer$MapRemotePlayerVisibility.class'
     'zombie/network/GameServer$s_performance.class'
+    "zombie/gameStates/IngameState.class"
+    'zombie/gameStates/IngameState$CountFileVisitor.class'
+    'zombie/gameStates/IngameState$s_performance.class'
     "zombie/network/PlayerDownloadServer.class"
     'zombie/network/PlayerDownloadServer$EThreadCommand.class'
     'zombie/network/PlayerDownloadServer$WorkerThread.class'
@@ -151,7 +156,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
     done
 else
     echo "[*] Deploying..."
-    mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_NET" "$BACKUP_DIR"
+    mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_NET" "$DEPLOY_GAMESTATES" "$BACKUP_DIR"
     ts=$(date +%Y%m%d_%H%M%S)
     for class_file in "${CLASSES[@]}"; do
         compiled="$OUTPUT_DIR/$class_file"
