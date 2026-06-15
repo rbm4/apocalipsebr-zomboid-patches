@@ -35,6 +35,7 @@ $RequiredMajor = 25
 
 $Sources = @(
     (Join-Path $SrcRoot "zombie\ApocBRServerTelemetry.java"),
+    (Join-Path $SrcRoot "zombie\MovingObjectUpdateScheduler.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
     (Join-Path $SrcRoot "zombie\network\GameServer.java"),
     (Join-Path $SrcRoot "zombie\gameStates\IngameState.java"),
@@ -45,6 +46,7 @@ $Sources = @(
 )
 $ClassFiles = @(
     "zombie\ApocBRServerTelemetry.class",
+    "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
     "zombie\network\GameServer.class",
     "zombie\network\GameServer`$1.class",
@@ -163,3 +165,4 @@ Write-Host ""
 Write-Host "=== Done ===" -ForegroundColor White
 Write-Host "Patch deployed: $PatchName" -ForegroundColor Green
 Write-Host "Config: -Dapocbr.telemetry.enabled=true -Dapocbr.telemetry.intervalMs=30000 -Dapocbr.parallel.isoWorldSafe=true -Dapocbr.parallel.skipIfBacklogged=true" -ForegroundColor Gray
+

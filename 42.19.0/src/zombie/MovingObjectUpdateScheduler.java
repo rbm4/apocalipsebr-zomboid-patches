@@ -36,6 +36,8 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void startFrame() {
+        long apocBrStartFrameNanos = System.nanoTime();
+        int apocBrObjectCount = 0;
         this.frameCounter++;
         this.fullSimulation.clear();
         this.halfSimulation.clear();
@@ -48,38 +50,52 @@ public final class MovingObjectUpdateScheduler {
         }
 
         for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
+            apocBrObjectCount++;
             if (GameServer.server && isoMovingObject instanceof IsoZombie isoZombie) {
+                long apocBrGuiNanos = 0L;
                 if (GameServer.guiCommandline) {
+                    long apocBrGuiStart = System.nanoTime();
                     isoZombie.updateForServerGui();
+                    apocBrGuiNanos = System.nanoTime() - apocBrGuiStart;
                 }
 
+                long apocBrOptimiserStart = System.nanoTime();
                 ZombieCountOptimiser.incrementZombie(isoZombie);
+                ApocBRServerTelemetry.recordMovingStartFrameServerZombie(apocBrGuiNanos, System.nanoTime() - apocBrOptimiserStart);
             } else {
                 if (isoMovingObject.getCurrentSquare() == null) {
+                    long apocBrSquareStart = System.nanoTime();
                     isoMovingObject.setCurrentSquareFromPosition();
+                    ApocBRServerTelemetry.recordMovingStartFrameSquareFix(System.nanoTime() - apocBrSquareStart);
                 }
 
+                String apocBrTypeName = isoMovingObject == null ? "null" : isoMovingObject.getClass().getSimpleName();
                 switch (this.getUpdateSchedulerSimulationLevelForObject(isoMovingObject, averageFps)) {
                     case FULL:
                         this.fullSimulation.add(isoMovingObject);
+                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "full");
                         break;
                     case HALF:
                         this.halfSimulation.add(isoMovingObject);
+                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "half");
                         break;
                     case QUARTER:
                         this.quarterSimulation.add(isoMovingObject);
+                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "quarter");
                         break;
                     case EIGHTH:
                         this.eighthSimulation.add(isoMovingObject);
+                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "eighth");
                         break;
                     case SIXTEENTH:
                         this.sixteenthSimulation.add(isoMovingObject);
+                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "sixteenth");
                     case null:
                 }
             }
         }
+        ApocBRServerTelemetry.recordMovingStartFrame(apocBrObjectCount, System.nanoTime() - apocBrStartFrameNanos);
     }
-
     private UpdateSchedulerSimulationLevel getUpdateSchedulerSimulationLevelForObject(IsoMovingObject isoMovingObject, float averageFps) {
         if (this.isEnabled && !GameServer.server) {
             UpdateSchedulerSimulationLevel minSim = isoMovingObject.getMinimumSimulationLevel();
@@ -215,3 +231,4 @@ public final class MovingObjectUpdateScheduler {
         return this.fullSimulation.getBucket((int)this.frameCounter);
     }
 }
+

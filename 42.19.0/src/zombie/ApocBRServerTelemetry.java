@@ -80,6 +80,33 @@ public final class ApocBRServerTelemetry {
     private static long movingBucketZombieUpdateMaxNanos;
     private static long movingBucketNonZombieUpdateNanos;
     private static long movingBucketNonZombieUpdateMaxNanos;
+    private static final int MOVING_TYPE_SLOTS = 6;
+    private static final String[] movingTypeNames = new String[MOVING_TYPE_SLOTS];
+    private static final long[] movingTypeCounts = new long[MOVING_TYPE_SLOTS];
+    private static final long[] movingTypeUpdateNanos = new long[MOVING_TYPE_SLOTS];
+    private static final long[] movingTypeUpdateMaxNanos = new long[MOVING_TYPE_SLOTS];
+    private static long movingStartFrameCalls;
+    private static long movingStartFrameObjects;
+    private static long movingStartFrameNanos;
+    private static long movingStartFrameMaxNanos;
+    private static long movingStartFrameServerZombies;
+    private static long movingStartFrameZombieGuiUpdates;
+    private static long movingStartFrameZombieGuiNanos;
+    private static long movingStartFrameZombieGuiMaxNanos;
+    private static long movingStartFrameZombieOptimiserNanos;
+    private static long movingStartFrameZombieOptimiserMaxNanos;
+    private static long movingStartFrameSquareFixes;
+    private static long movingStartFrameSquareFixNanos;
+    private static long movingStartFrameSquareFixMaxNanos;
+    private static long movingStartFrameBucketed;
+    private static long movingStartFrameFull;
+    private static long movingStartFrameHalf;
+    private static long movingStartFrameQuarter;
+    private static long movingStartFrameEighth;
+    private static long movingStartFrameSixteenth;
+    private static final int MOVING_START_TYPE_SLOTS = 6;
+    private static final String[] movingStartTypeNames = new String[MOVING_START_TYPE_SLOTS];
+    private static final long[] movingStartTypeCounts = new long[MOVING_START_TYPE_SLOTS];
     private static final String[] STATE_SECTION_KEYS = new String[] {
         "evenPausedLua", "isoWorld", "gem", "animal", "radio", "updateStuff", "onTickLua", "ambient", "updateManagers",
         "gameTime", "script", "worldSound", "fire", "rain", "meta", "virtualZombie", "mapCollisionMain",
@@ -238,6 +265,46 @@ public final class ApocBRServerTelemetry {
         if (ENABLED) parallelWorldErrors++;
     }
 
+    public static synchronized void recordMovingStartFrame(int objectCount, long nanos) {
+        if (!ENABLED) return;
+        movingStartFrameCalls++;
+        movingStartFrameObjects += objectCount;
+        movingStartFrameNanos += nanos;
+        movingStartFrameMaxNanos = Math.max(movingStartFrameMaxNanos, nanos);
+    }
+
+    public static synchronized void recordMovingStartFrameServerZombie(long guiNanos, long optimiserNanos) {
+        if (!ENABLED) return;
+        movingStartFrameServerZombies++;
+        if (guiNanos > 0L) {
+            movingStartFrameZombieGuiUpdates++;
+            movingStartFrameZombieGuiNanos += guiNanos;
+            movingStartFrameZombieGuiMaxNanos = Math.max(movingStartFrameZombieGuiMaxNanos, guiNanos);
+        }
+        movingStartFrameZombieOptimiserNanos += optimiserNanos;
+        movingStartFrameZombieOptimiserMaxNanos = Math.max(movingStartFrameZombieOptimiserMaxNanos, optimiserNanos);
+    }
+
+    public static synchronized void recordMovingStartFrameSquareFix(long nanos) {
+        if (!ENABLED) return;
+        movingStartFrameSquareFixes++;
+        movingStartFrameSquareFixNanos += nanos;
+        movingStartFrameSquareFixMaxNanos = Math.max(movingStartFrameSquareFixMaxNanos, nanos);
+    }
+
+    public static synchronized void recordMovingStartFrameBucket(String typeName, String bucketName) {
+        if (!ENABLED) return;
+        movingStartFrameBucketed++;
+        if ("full".equals(bucketName)) movingStartFrameFull++;
+        else if ("half".equals(bucketName)) movingStartFrameHalf++;
+        else if ("quarter".equals(bucketName)) movingStartFrameQuarter++;
+        else if ("eighth".equals(bucketName)) movingStartFrameEighth++;
+        else if ("sixteenth".equals(bucketName)) movingStartFrameSixteenth++;
+        if (typeName == null || typeName.length() == 0) typeName = "Unknown";
+        int slot = movingStartTypeSlot(typeName);
+        movingStartTypeCounts[slot]++;
+    }
+
     public static synchronized void recordMovingBucketStart(int objectCount) {
         if (!ENABLED) return;
         movingBucketCalls++;
@@ -262,6 +329,15 @@ public final class ApocBRServerTelemetry {
         if (!ENABLED) return;
         movingBucketFrameStepNanos += nanos;
         movingBucketFrameStepMaxNanos = Math.max(movingBucketFrameStepMaxNanos, nanos);
+    }
+
+    public static synchronized void recordMovingBucketType(String typeName, long updateNanos) {
+        if (!ENABLED) return;
+        if (typeName == null || typeName.length() == 0) typeName = "Unknown";
+        int slot = movingTypeSlot(typeName);
+        movingTypeCounts[slot]++;
+        movingTypeUpdateNanos[slot] += updateNanos;
+        movingTypeUpdateMaxNanos[slot] = Math.max(movingTypeUpdateMaxNanos[slot], updateNanos);
     }
 
     public static synchronized void recordMovingBucketUpdate(boolean zombie, long nanos) {
@@ -335,6 +411,9 @@ public final class ApocBRServerTelemetry {
             + isoCellSectionsLog()
             + parallelWorldLog()
             + movingBucketLog()
+            + movingTypeLog()
+            + movingStartFrameLog()
+            + movingStartTypeLog()
             + " state{connections=" + connectionsLast + ",players=" + playersLast + ",zombies=" + zombiesLast + "}");
         resetCounters();
         nextLogMs = now + INTERVAL_MS;
@@ -368,6 +447,22 @@ public final class ApocBRServerTelemetry {
         movingBucketUpdateNanos = movingBucketUpdateMaxNanos = 0L;
         movingBucketZombieUpdateNanos = movingBucketZombieUpdateMaxNanos = 0L;
         movingBucketNonZombieUpdateNanos = movingBucketNonZombieUpdateMaxNanos = 0L;
+        movingStartFrameCalls = movingStartFrameObjects = movingStartFrameNanos = movingStartFrameMaxNanos = 0L;
+        movingStartFrameServerZombies = movingStartFrameZombieGuiUpdates = 0L;
+        movingStartFrameZombieGuiNanos = movingStartFrameZombieGuiMaxNanos = 0L;
+        movingStartFrameZombieOptimiserNanos = movingStartFrameZombieOptimiserMaxNanos = 0L;
+        movingStartFrameSquareFixes = movingStartFrameSquareFixNanos = movingStartFrameSquareFixMaxNanos = 0L;
+        movingStartFrameBucketed = movingStartFrameFull = movingStartFrameHalf = movingStartFrameQuarter = movingStartFrameEighth = movingStartFrameSixteenth = 0L;
+        for (int i = 0; i < MOVING_START_TYPE_SLOTS; i++) {
+            movingStartTypeNames[i] = null;
+            movingStartTypeCounts[i] = 0L;
+        }
+        for (int i = 0; i < MOVING_TYPE_SLOTS; i++) {
+            movingTypeNames[i] = null;
+            movingTypeCounts[i] = 0L;
+            movingTypeUpdateNanos[i] = 0L;
+            movingTypeUpdateMaxNanos[i] = 0L;
+        }
         for (int i = 0; i < STATE_SECTION_KEYS.length; i++) {
             stateSectionNanos[i] = 0L;
             stateSectionMaxNanos[i] = 0L;
@@ -426,6 +521,109 @@ public final class ApocBRServerTelemetry {
             + ",taskAvgMs=" + avgMs(parallelWorldTaskNanos, parallelWorldTaskCalls)
             + ",taskMaxMs=" + ms(parallelWorldTaskMaxNanos)
             + ",errors=" + parallelWorldErrors + "}";
+    }
+
+    private static int movingTypeSlot(String typeName) {
+        int otherSlot = MOVING_TYPE_SLOTS - 1;
+        if ("Other".equals(typeName)) {
+            movingTypeNames[otherSlot] = "Other";
+            return otherSlot;
+        }
+
+        for (int i = 0; i < otherSlot; i++) {
+            if (typeName.equals(movingTypeNames[i])) return i;
+        }
+
+        for (int i = 0; i < otherSlot; i++) {
+            if (movingTypeNames[i] == null) {
+                movingTypeNames[i] = typeName;
+                return i;
+            }
+        }
+
+        movingTypeNames[otherSlot] = "Other";
+        return otherSlot;
+    }
+
+    private static int movingStartTypeSlot(String typeName) {
+        int otherSlot = MOVING_START_TYPE_SLOTS - 1;
+        if ("Other".equals(typeName)) {
+            movingStartTypeNames[otherSlot] = "Other";
+            return otherSlot;
+        }
+
+        for (int i = 0; i < otherSlot; i++) {
+            if (typeName.equals(movingStartTypeNames[i])) return i;
+        }
+
+        for (int i = 0; i < otherSlot; i++) {
+            if (movingStartTypeNames[i] == null) {
+                movingStartTypeNames[i] = typeName;
+                return i;
+            }
+        }
+
+        movingStartTypeNames[otherSlot] = "Other";
+        return otherSlot;
+    }
+
+    private static String movingStartFrameLog() {
+        return " movingStartFrame{calls=" + movingStartFrameCalls
+            + ",objects=" + movingStartFrameObjects
+            + ",avgObjects=" + avgCount(movingStartFrameObjects, movingStartFrameCalls)
+            + ",avgMs=" + avgMs(movingStartFrameNanos, movingStartFrameCalls)
+            + ",maxMs=" + ms(movingStartFrameMaxNanos)
+            + ",serverZombies=" + movingStartFrameServerZombies
+            + ",zombieGuiUpdates=" + movingStartFrameZombieGuiUpdates
+            + ",zombieGuiAvgMs=" + avgMs(movingStartFrameZombieGuiNanos, movingStartFrameZombieGuiUpdates)
+            + ",zombieGuiMaxMs=" + ms(movingStartFrameZombieGuiMaxNanos)
+            + ",zombieOptimiserAvgMs=" + avgMs(movingStartFrameZombieOptimiserNanos, movingStartFrameServerZombies)
+            + ",zombieOptimiserMaxMs=" + ms(movingStartFrameZombieOptimiserMaxNanos)
+            + ",squareFixes=" + movingStartFrameSquareFixes
+            + ",squareFixAvgMs=" + avgMs(movingStartFrameSquareFixNanos, movingStartFrameSquareFixes)
+            + ",squareFixMaxMs=" + ms(movingStartFrameSquareFixMaxNanos)
+            + ",bucketed=" + movingStartFrameBucketed
+            + ",full=" + movingStartFrameFull
+            + ",half=" + movingStartFrameHalf
+            + ",quarter=" + movingStartFrameQuarter
+            + ",eighth=" + movingStartFrameEighth
+            + ",sixteenth=" + movingStartFrameSixteenth + "}";
+    }
+
+    private static String movingStartTypeLog() {
+        StringBuilder builder = new StringBuilder(" movingStartTypes{");
+        for (int i = 0; i < MOVING_START_TYPE_SLOTS; i++) {
+            if (i > 0) builder.append(",");
+            String name = movingStartTypeNames[i] == null ? "none" : movingStartTypeNames[i];
+            builder.append("type").append(i).append("=").append(name);
+            builder.append(",count").append(i).append("=").append(movingStartTypeCounts[i]);
+        }
+        builder.append("}");
+        return builder.toString();
+    }
+
+    private static String movingTypeLog() {
+        StringBuilder builder = new StringBuilder(" movingTypes{");
+        movingStartFrameCalls = movingStartFrameObjects = movingStartFrameNanos = movingStartFrameMaxNanos = 0L;
+        movingStartFrameServerZombies = movingStartFrameZombieGuiUpdates = 0L;
+        movingStartFrameZombieGuiNanos = movingStartFrameZombieGuiMaxNanos = 0L;
+        movingStartFrameZombieOptimiserNanos = movingStartFrameZombieOptimiserMaxNanos = 0L;
+        movingStartFrameSquareFixes = movingStartFrameSquareFixNanos = movingStartFrameSquareFixMaxNanos = 0L;
+        movingStartFrameBucketed = movingStartFrameFull = movingStartFrameHalf = movingStartFrameQuarter = movingStartFrameEighth = movingStartFrameSixteenth = 0L;
+        for (int i = 0; i < MOVING_START_TYPE_SLOTS; i++) {
+            movingStartTypeNames[i] = null;
+            movingStartTypeCounts[i] = 0L;
+        }
+        for (int i = 0; i < MOVING_TYPE_SLOTS; i++) {
+            if (i > 0) builder.append(",");
+            String name = movingTypeNames[i] == null ? "none" : movingTypeNames[i];
+            builder.append("type").append(i).append("=").append(name);
+            builder.append(",count").append(i).append("=").append(movingTypeCounts[i]);
+            builder.append(",avgMs").append(i).append("=").append(avgMs(movingTypeUpdateNanos[i], movingTypeCounts[i]));
+            builder.append(",maxMs").append(i).append("=").append(ms(movingTypeUpdateMaxNanos[i]));
+        }
+        builder.append("}");
+        return builder.toString();
     }
 
     private static String movingBucketLog() {

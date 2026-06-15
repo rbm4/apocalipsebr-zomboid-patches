@@ -65,7 +65,9 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
 
                     apocBrMovingObjectStart = System.nanoTime();
                     isoMovingObject.update();
-                    ApocBRServerTelemetry.recordMovingBucketUpdate(zombie != null, System.nanoTime() - apocBrMovingObjectStart);
+                    long apocBrMovingObjectUpdateNanos = System.nanoTime() - apocBrMovingObjectStart;
+                    ApocBRServerTelemetry.recordMovingBucketUpdate(zombie != null, apocBrMovingObjectUpdateNanos);
+                    ApocBRServerTelemetry.recordMovingBucketType(isoMovingObject.getClass().getSimpleName(), apocBrMovingObjectUpdateNanos);
                 }
             }
         }

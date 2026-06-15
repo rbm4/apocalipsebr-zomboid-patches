@@ -41,6 +41,7 @@ REQUIRED_MAJOR=25
 
 SOURCES=(
     "$SRC_ROOT/zombie/ApocBRServerTelemetry.java"
+    "$SRC_ROOT/zombie/MovingObjectUpdateScheduler.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
     "$SRC_ROOT/zombie/gameStates/IngameState.java"
@@ -52,6 +53,7 @@ SOURCES=(
 
 CLASSES=(
     "zombie/ApocBRServerTelemetry.class"
+    "zombie/MovingObjectUpdateScheduler.class"
     "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
     "zombie/network/GameServer.class"
     'zombie/network/GameServer$1.class'
@@ -195,3 +197,4 @@ echo "=== Done ==="
 echo "Patch deployed: $PATCH_NAME"
 echo "Config: -Dapocbr.telemetry.enabled=true -Dapocbr.telemetry.intervalMs=30000 -Dapocbr.parallel.isoWorldSafe=true -Dapocbr.parallel.skipIfBacklogged=true"
 echo "To revert: ./patchAsyncSaveTelemetry.sh --revert"
+
