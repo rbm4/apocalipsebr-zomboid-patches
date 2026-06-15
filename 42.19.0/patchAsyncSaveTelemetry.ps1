@@ -37,6 +37,7 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\ApocBRServerTelemetry.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateScheduler.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
+    (Join-Path $SrcRoot "zombie\vehicles\BaseVehicle.java"),
     (Join-Path $SrcRoot "zombie\network\GameServer.java"),
     (Join-Path $SrcRoot "zombie\gameStates\IngameState.java"),
     (Join-Path $SrcRoot "zombie\iso\IsoWorld.java"),
@@ -48,6 +49,27 @@ $ClassFiles = @(
     "zombie\ApocBRServerTelemetry.class",
     "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
+    "zombie\vehicles\BaseVehicle.class",
+    "zombie\vehicles\BaseVehicle`$1.class",
+    "zombie\vehicles\BaseVehicle`$Authorization.class",
+    "zombie\vehicles\BaseVehicle`$engineStateTypes.class",
+    "zombie\vehicles\BaseVehicle`$HitVars.class",
+    "zombie\vehicles\BaseVehicle`$L_testCollisionWithVehicle.class",
+    "zombie\vehicles\BaseVehicle`$Matrix4fObjectPool.class",
+    "zombie\vehicles\BaseVehicle`$MinMaxPosition.class",
+    "zombie\vehicles\BaseVehicle`$ModelInfo.class",
+    "zombie\vehicles\BaseVehicle`$Passenger.class",
+    "zombie\vehicles\BaseVehicle`$QuaternionfObjectPool.class",
+    "zombie\vehicles\BaseVehicle`$ServerVehicleState.class",
+    "zombie\vehicles\BaseVehicle`$TransformPool.class",
+    "zombie\vehicles\BaseVehicle`$UpdateFlags.class",
+    "zombie\vehicles\BaseVehicle`$Vector2fObjectPool.class",
+    "zombie\vehicles\BaseVehicle`$Vector3fObjectPool.class",
+    "zombie\vehicles\BaseVehicle`$Vector3ObjectPool.class",
+    "zombie\vehicles\BaseVehicle`$Vector4fObjectPool.class",
+    "zombie\vehicles\BaseVehicle`$VehicleImpulse.class",
+    "zombie\vehicles\BaseVehicle`$WeightedVehiclePart.class",
+    "zombie\vehicles\BaseVehicle`$WheelInfo.class",
     "zombie\network\GameServer.class",
     "zombie\network\GameServer`$1.class",
     "zombie\network\GameServer`$2.class",
@@ -145,6 +167,7 @@ if ($DryRun) {
     New-Item -Path (Join-Path $DeployRoot "zombie\network") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\gameStates") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\iso") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $DeployRoot "zombie\vehicles") -ItemType Directory -Force | Out-Null
     New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
     $ts = Get-Date -Format "yyyyMMdd_HHmmss"
     foreach ($rel in $ClassFiles) {

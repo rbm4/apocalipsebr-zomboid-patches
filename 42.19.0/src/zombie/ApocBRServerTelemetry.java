@@ -107,6 +107,16 @@ public final class ApocBRServerTelemetry {
     private static final int MOVING_START_TYPE_SLOTS = 6;
     private static final String[] movingStartTypeNames = new String[MOVING_START_TYPE_SLOTS];
     private static final long[] movingStartTypeCounts = new long[MOVING_START_TYPE_SLOTS];
+    private static long vehiclePartsCalls;
+    private static long vehiclePartsNanos;
+    private static long vehiclePartsMaxNanos;
+    private static long vehiclePartCalls;
+    private static long vehiclePartNanos;
+    private static long vehiclePartMaxNanos;
+    private static long vehiclePartLuaCalls;
+    private static long vehiclePartLuaNanos;
+    private static long vehiclePartLuaMaxNanos;
+    private static long vehiclePartLuaSlowCalls;
     private static final String[] STATE_SECTION_KEYS = new String[] {
         "evenPausedLua", "isoWorld", "gem", "animal", "radio", "updateStuff", "onTickLua", "ambient", "updateManagers",
         "gameTime", "script", "worldSound", "fire", "rain", "meta", "virtualZombie", "mapCollisionMain",
@@ -355,6 +365,27 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static synchronized void recordVehicleParts(long nanos) {
+        if (!ENABLED) return;
+        vehiclePartsCalls++;
+        vehiclePartsNanos += nanos;
+        vehiclePartsMaxNanos = Math.max(vehiclePartsMaxNanos, nanos);
+    }
+
+    public static synchronized void recordVehiclePart(long nanos) {
+        if (!ENABLED) return;
+        vehiclePartCalls++;
+        vehiclePartNanos += nanos;
+        vehiclePartMaxNanos = Math.max(vehiclePartMaxNanos, nanos);
+    }
+
+    public static synchronized void recordVehiclePartLua(long nanos) {
+        if (!ENABLED) return;
+        vehiclePartLuaCalls++;
+        vehiclePartLuaNanos += nanos;
+        vehiclePartLuaMaxNanos = Math.max(vehiclePartLuaMaxNanos, nanos);
+        if (nanos >= 10000000L) vehiclePartLuaSlowCalls++;
+    }
     public static synchronized void recordDownloadConnections(int count) {
         if (ENABLED) downloadConnections += count;
     }
@@ -414,6 +445,7 @@ public final class ApocBRServerTelemetry {
             + movingTypeLog()
             + movingStartFrameLog()
             + movingStartTypeLog()
+            + vehicleLog()
             + " state{connections=" + connectionsLast + ",players=" + playersLast + ",zombies=" + zombiesLast + "}");
         resetCounters();
         nextLogMs = now + INTERVAL_MS;
@@ -453,6 +485,9 @@ public final class ApocBRServerTelemetry {
         movingStartFrameZombieOptimiserNanos = movingStartFrameZombieOptimiserMaxNanos = 0L;
         movingStartFrameSquareFixes = movingStartFrameSquareFixNanos = movingStartFrameSquareFixMaxNanos = 0L;
         movingStartFrameBucketed = movingStartFrameFull = movingStartFrameHalf = movingStartFrameQuarter = movingStartFrameEighth = movingStartFrameSixteenth = 0L;
+        vehiclePartsCalls = vehiclePartsNanos = vehiclePartsMaxNanos = 0L;
+        vehiclePartCalls = vehiclePartNanos = vehiclePartMaxNanos = 0L;
+        vehiclePartLuaCalls = vehiclePartLuaNanos = vehiclePartLuaMaxNanos = vehiclePartLuaSlowCalls = 0L;
         for (int i = 0; i < MOVING_START_TYPE_SLOTS; i++) {
             movingStartTypeNames[i] = null;
             movingStartTypeCounts[i] = 0L;
@@ -604,16 +639,6 @@ public final class ApocBRServerTelemetry {
 
     private static String movingTypeLog() {
         StringBuilder builder = new StringBuilder(" movingTypes{");
-        movingStartFrameCalls = movingStartFrameObjects = movingStartFrameNanos = movingStartFrameMaxNanos = 0L;
-        movingStartFrameServerZombies = movingStartFrameZombieGuiUpdates = 0L;
-        movingStartFrameZombieGuiNanos = movingStartFrameZombieGuiMaxNanos = 0L;
-        movingStartFrameZombieOptimiserNanos = movingStartFrameZombieOptimiserMaxNanos = 0L;
-        movingStartFrameSquareFixes = movingStartFrameSquareFixNanos = movingStartFrameSquareFixMaxNanos = 0L;
-        movingStartFrameBucketed = movingStartFrameFull = movingStartFrameHalf = movingStartFrameQuarter = movingStartFrameEighth = movingStartFrameSixteenth = 0L;
-        for (int i = 0; i < MOVING_START_TYPE_SLOTS; i++) {
-            movingStartTypeNames[i] = null;
-            movingStartTypeCounts[i] = 0L;
-        }
         for (int i = 0; i < MOVING_TYPE_SLOTS; i++) {
             if (i > 0) builder.append(",");
             String name = movingTypeNames[i] == null ? "none" : movingTypeNames[i];
@@ -626,6 +651,18 @@ public final class ApocBRServerTelemetry {
         return builder.toString();
     }
 
+    private static String vehicleLog() {
+        return " vehicle{partsCalls=" + vehiclePartsCalls
+            + ",partsAvgMs=" + avgMs(vehiclePartsNanos, vehiclePartsCalls)
+            + ",partsMaxMs=" + ms(vehiclePartsMaxNanos)
+            + ",partCalls=" + vehiclePartCalls
+            + ",partAvgMs=" + avgMs(vehiclePartNanos, vehiclePartCalls)
+            + ",partMaxMs=" + ms(vehiclePartMaxNanos)
+            + ",luaCalls=" + vehiclePartLuaCalls
+            + ",luaAvgMs=" + avgMs(vehiclePartLuaNanos, vehiclePartLuaCalls)
+            + ",luaMaxMs=" + ms(vehiclePartLuaMaxNanos)
+            + ",luaSlowCalls=" + vehiclePartLuaSlowCalls + "}";
+    }
     private static String movingBucketLog() {
         return " movingBucket{calls=" + movingBucketCalls
             + ",objects=" + movingBucketObjects

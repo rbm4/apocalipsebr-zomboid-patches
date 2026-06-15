@@ -37,12 +37,14 @@ DEPLOY_ZOMBIE="$DEPLOY_BASE/zombie"
 DEPLOY_NET="$DEPLOY_BASE/zombie/network"
 DEPLOY_GAMESTATES="$DEPLOY_BASE/zombie/gameStates"
 DEPLOY_ISO="$DEPLOY_BASE/zombie/iso"
+DEPLOY_VEHICLES="$DEPLOY_BASE/zombie/vehicles"
 REQUIRED_MAJOR=25
 
 SOURCES=(
     "$SRC_ROOT/zombie/ApocBRServerTelemetry.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateScheduler.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
+    "$SRC_ROOT/zombie/vehicles/BaseVehicle.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
     "$SRC_ROOT/zombie/gameStates/IngameState.java"
     "$SRC_ROOT/zombie/iso/IsoWorld.java"
@@ -55,6 +57,27 @@ CLASSES=(
     "zombie/ApocBRServerTelemetry.class"
     "zombie/MovingObjectUpdateScheduler.class"
     "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
+    "zombie/vehicles/BaseVehicle.class"
+    'zombie/vehicles/BaseVehicle$1.class'
+    'zombie/vehicles/BaseVehicle$Authorization.class'
+    'zombie/vehicles/BaseVehicle$engineStateTypes.class'
+    'zombie/vehicles/BaseVehicle$HitVars.class'
+    'zombie/vehicles/BaseVehicle$L_testCollisionWithVehicle.class'
+    'zombie/vehicles/BaseVehicle$Matrix4fObjectPool.class'
+    'zombie/vehicles/BaseVehicle$MinMaxPosition.class'
+    'zombie/vehicles/BaseVehicle$ModelInfo.class'
+    'zombie/vehicles/BaseVehicle$Passenger.class'
+    'zombie/vehicles/BaseVehicle$QuaternionfObjectPool.class'
+    'zombie/vehicles/BaseVehicle$ServerVehicleState.class'
+    'zombie/vehicles/BaseVehicle$TransformPool.class'
+    'zombie/vehicles/BaseVehicle$UpdateFlags.class'
+    'zombie/vehicles/BaseVehicle$Vector2fObjectPool.class'
+    'zombie/vehicles/BaseVehicle$Vector3fObjectPool.class'
+    'zombie/vehicles/BaseVehicle$Vector3ObjectPool.class'
+    'zombie/vehicles/BaseVehicle$Vector4fObjectPool.class'
+    'zombie/vehicles/BaseVehicle$VehicleImpulse.class'
+    'zombie/vehicles/BaseVehicle$WeightedVehiclePart.class'
+    'zombie/vehicles/BaseVehicle$WheelInfo.class'
     "zombie/network/GameServer.class"
     'zombie/network/GameServer$1.class'
     'zombie/network/GameServer$2.class'
@@ -177,7 +200,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
     done
 else
     echo "[*] Deploying..."
-    mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_NET" "$DEPLOY_GAMESTATES" "$DEPLOY_ISO" "$BACKUP_DIR"
+    mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_NET" "$DEPLOY_GAMESTATES" "$DEPLOY_ISO" "$DEPLOY_VEHICLES" "$BACKUP_DIR"
     ts=$(date +%Y%m%d_%H%M%S)
     for class_file in "${CLASSES[@]}"; do
         compiled="$OUTPUT_DIR/$class_file"
