@@ -5,6 +5,10 @@ import zombie.debug.DebugLog;
 public final class ApocBRServerTelemetry {
     private static final boolean ENABLED = getBoolean("apocbr.telemetry.enabled", true);
     private static final long INTERVAL_MS = clamp(getLong("apocbr.telemetry.intervalMs", 30000L), 5000L, 300000L);
+    private static final boolean PARALLEL_ISO_WORLD_SAFE = getBoolean("apocbr.parallel.isoWorldSafe", true);
+    private static final boolean PARALLEL_SKIP_IF_BACKLOGGED = getBoolean("apocbr.parallel.skipIfBacklogged", true);
+    private static final long PARALLEL_WARN_MS = clamp(getLong("apocbr.parallel.warnMs", 25L), 1L, 10000L);
+    private static final String PARALLEL_ISO_WORLD_WORKERS = getString("apocbr.parallel.isoWorldWorkers", "auto");
     private static long nextLogMs = System.currentTimeMillis() + INTERVAL_MS;
     private static int highQueueLast;
     private static int playerQueueLast;
@@ -51,6 +55,31 @@ public final class ApocBRServerTelemetry {
     private static long chunkWorkerNanos;
     private static long chunkWorkerMaxNanos;
     private static long chunkWorkerChunks;
+    private static long parallelWorldSubmitted;
+    private static long parallelWorldSkipped;
+    private static long parallelWorldWaitCalls;
+    private static long parallelWorldWaitNanos;
+    private static long parallelWorldWaitMaxNanos;
+    private static long parallelWorldTaskCalls;
+    private static long parallelWorldTaskNanos;
+    private static long parallelWorldTaskMaxNanos;
+    private static long parallelWorldErrors;
+    private static long movingBucketCalls;
+    private static long movingBucketObjects;
+    private static long movingBucketZombies;
+    private static long movingBucketNonZombies;
+    private static long movingBucketDeadBodies;
+    private static long movingBucketReusedZombies;
+    private static long movingBucketPreupdateNanos;
+    private static long movingBucketPreupdateMaxNanos;
+    private static long movingBucketFrameStepNanos;
+    private static long movingBucketFrameStepMaxNanos;
+    private static long movingBucketUpdateNanos;
+    private static long movingBucketUpdateMaxNanos;
+    private static long movingBucketZombieUpdateNanos;
+    private static long movingBucketZombieUpdateMaxNanos;
+    private static long movingBucketNonZombieUpdateNanos;
+    private static long movingBucketNonZombieUpdateMaxNanos;
     private static final String[] STATE_SECTION_KEYS = new String[] {
         "evenPausedLua", "isoWorld", "gem", "animal", "radio", "updateStuff", "onTickLua", "ambient", "updateManagers",
         "gameTime", "script", "worldSound", "fire", "rain", "meta", "virtualZombie", "mapCollisionMain",
@@ -66,6 +95,14 @@ public final class ApocBRServerTelemetry {
     };
     private static final long[] isoWorldSectionNanos = new long[ISO_WORLD_SECTION_KEYS.length];
     private static final long[] isoWorldSectionMaxNanos = new long[ISO_WORLD_SECTION_KEYS.length];
+    private static final String[] ISO_CELL_SECTION_KEYS = new String[] {
+        "startFrame", "spottedRooms", "chunkMap", "removeItemsPre", "items", "removeItemsPost", "isoObject",
+        "movingObjects", "animalSounds", "zombieVocals", "objects", "networkZombieSend", "itemsFutureJoin",
+        "staticUpdaters", "objectDeletionAddition", "deadBodies", "fish", "lightCounters", "serverLightClear",
+        "rainScroll", "weatherFx", "updateInternal"
+    };
+    private static final long[] isoCellSectionNanos = new long[ISO_CELL_SECTION_KEYS.length];
+    private static final long[] isoCellSectionMaxNanos = new long[ISO_CELL_SECTION_KEYS.length];
 
     private ApocBRServerTelemetry() {
     }
@@ -152,6 +189,96 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static synchronized void recordIsoCellSection(String section, long nanos) {
+        if (!ENABLED) return;
+        for (int i = 0; i < ISO_CELL_SECTION_KEYS.length; i++) {
+            if (ISO_CELL_SECTION_KEYS[i].equals(section)) {
+                isoCellSectionNanos[i] += nanos;
+                isoCellSectionMaxNanos[i] = Math.max(isoCellSectionMaxNanos[i], nanos);
+                return;
+            }
+        }
+    }
+
+    public static boolean isParallelIsoWorldSafeEnabled() {
+        return PARALLEL_ISO_WORLD_SAFE;
+    }
+
+    public static boolean shouldSkipParallelIsoWorldIfBacklogged() {
+        return PARALLEL_SKIP_IF_BACKLOGGED;
+    }
+
+    public static long parallelWarnNanos() {
+        return PARALLEL_WARN_MS * 1000000L;
+    }
+
+    public static synchronized void recordParallelWorldSubmitted() {
+        if (ENABLED) parallelWorldSubmitted++;
+    }
+
+    public static synchronized void recordParallelWorldSkipped() {
+        if (ENABLED) parallelWorldSkipped++;
+    }
+
+    public static synchronized void recordParallelWorldWait(long nanos) {
+        if (!ENABLED) return;
+        parallelWorldWaitCalls++;
+        parallelWorldWaitNanos += nanos;
+        parallelWorldWaitMaxNanos = Math.max(parallelWorldWaitMaxNanos, nanos);
+    }
+
+    public static synchronized void recordParallelWorldTask(long nanos) {
+        if (!ENABLED) return;
+        parallelWorldTaskCalls++;
+        parallelWorldTaskNanos += nanos;
+        parallelWorldTaskMaxNanos = Math.max(parallelWorldTaskMaxNanos, nanos);
+    }
+
+    public static synchronized void recordParallelWorldError() {
+        if (ENABLED) parallelWorldErrors++;
+    }
+
+    public static synchronized void recordMovingBucketStart(int objectCount) {
+        if (!ENABLED) return;
+        movingBucketCalls++;
+        movingBucketObjects += objectCount;
+    }
+
+    public static synchronized void recordMovingBucketDeadBody() {
+        if (ENABLED) movingBucketDeadBodies++;
+    }
+
+    public static synchronized void recordMovingBucketReusedZombie() {
+        if (ENABLED) movingBucketReusedZombies++;
+    }
+
+    public static synchronized void recordMovingBucketPreupdate(long nanos) {
+        if (!ENABLED) return;
+        movingBucketPreupdateNanos += nanos;
+        movingBucketPreupdateMaxNanos = Math.max(movingBucketPreupdateMaxNanos, nanos);
+    }
+
+    public static synchronized void recordMovingBucketFrameStep(long nanos) {
+        if (!ENABLED) return;
+        movingBucketFrameStepNanos += nanos;
+        movingBucketFrameStepMaxNanos = Math.max(movingBucketFrameStepMaxNanos, nanos);
+    }
+
+    public static synchronized void recordMovingBucketUpdate(boolean zombie, long nanos) {
+        if (!ENABLED) return;
+        movingBucketUpdateNanos += nanos;
+        movingBucketUpdateMaxNanos = Math.max(movingBucketUpdateMaxNanos, nanos);
+        if (zombie) {
+            movingBucketZombies++;
+            movingBucketZombieUpdateNanos += nanos;
+            movingBucketZombieUpdateMaxNanos = Math.max(movingBucketZombieUpdateMaxNanos, nanos);
+        } else {
+            movingBucketNonZombies++;
+            movingBucketNonZombieUpdateNanos += nanos;
+            movingBucketNonZombieUpdateMaxNanos = Math.max(movingBucketNonZombieUpdateMaxNanos, nanos);
+        }
+    }
+
     public static synchronized void recordDownloadConnections(int count) {
         if (ENABLED) downloadConnections += count;
     }
@@ -205,6 +332,9 @@ public final class ApocBRServerTelemetry {
             + ",workerChunks=" + chunkWorkerChunks + ",downloadConnections=" + downloadConnections + "}"
             + stateSectionsLog()
             + isoWorldSectionsLog()
+            + isoCellSectionsLog()
+            + parallelWorldLog()
+            + movingBucketLog()
             + " state{connections=" + connectionsLast + ",players=" + playersLast + ",zombies=" + zombiesLast + "}");
         resetCounters();
         nextLogMs = now + INTERVAL_MS;
@@ -228,6 +358,16 @@ public final class ApocBRServerTelemetry {
         chunkMainRequests = chunkMainPrepared = 0L;
         chunkMainMaxWaiting = 0;
         chunkWorkerCalls = chunkWorkerNanos = chunkWorkerMaxNanos = chunkWorkerChunks = 0L;
+        parallelWorldSubmitted = parallelWorldSkipped = parallelWorldErrors = 0L;
+        parallelWorldWaitCalls = parallelWorldWaitNanos = parallelWorldWaitMaxNanos = 0L;
+        parallelWorldTaskCalls = parallelWorldTaskNanos = parallelWorldTaskMaxNanos = 0L;
+        movingBucketCalls = movingBucketObjects = movingBucketZombies = movingBucketNonZombies = 0L;
+        movingBucketDeadBodies = movingBucketReusedZombies = 0L;
+        movingBucketPreupdateNanos = movingBucketPreupdateMaxNanos = 0L;
+        movingBucketFrameStepNanos = movingBucketFrameStepMaxNanos = 0L;
+        movingBucketUpdateNanos = movingBucketUpdateMaxNanos = 0L;
+        movingBucketZombieUpdateNanos = movingBucketZombieUpdateMaxNanos = 0L;
+        movingBucketNonZombieUpdateNanos = movingBucketNonZombieUpdateMaxNanos = 0L;
         for (int i = 0; i < STATE_SECTION_KEYS.length; i++) {
             stateSectionNanos[i] = 0L;
             stateSectionMaxNanos[i] = 0L;
@@ -235,6 +375,10 @@ public final class ApocBRServerTelemetry {
         for (int i = 0; i < ISO_WORLD_SECTION_KEYS.length; i++) {
             isoWorldSectionNanos[i] = 0L;
             isoWorldSectionMaxNanos[i] = 0L;
+        }
+        for (int i = 0; i < ISO_CELL_SECTION_KEYS.length; i++) {
+            isoCellSectionNanos[i] = 0L;
+            isoCellSectionMaxNanos[i] = 0L;
         }
     }
 
@@ -260,7 +404,52 @@ public final class ApocBRServerTelemetry {
         return builder.toString();
     }
 
+    private static String isoCellSectionsLog() {
+        StringBuilder builder = new StringBuilder(" isoCell{");
+        for (int i = 0; i < ISO_CELL_SECTION_KEYS.length; i++) {
+            if (i > 0) builder.append(",");
+            builder.append(ISO_CELL_SECTION_KEYS[i]).append("AvgMs=").append(avgMs(isoCellSectionNanos[i], worldTicks));
+            builder.append(",").append(ISO_CELL_SECTION_KEYS[i]).append("MaxMs=").append(ms(isoCellSectionMaxNanos[i]));
+        }
+        builder.append("}");
+        return builder.toString();
+    }
+
+    private static String parallelWorldLog() {
+        return " parallelWorld{enabled=" + PARALLEL_ISO_WORLD_SAFE
+            + ",skipIfBacklogged=" + PARALLEL_SKIP_IF_BACKLOGGED
+            + ",workers=" + PARALLEL_ISO_WORLD_WORKERS
+            + ",submitted=" + parallelWorldSubmitted
+            + ",skipped=" + parallelWorldSkipped
+            + ",waitAvgMs=" + avgMs(parallelWorldWaitNanos, parallelWorldWaitCalls)
+            + ",waitMaxMs=" + ms(parallelWorldWaitMaxNanos)
+            + ",taskAvgMs=" + avgMs(parallelWorldTaskNanos, parallelWorldTaskCalls)
+            + ",taskMaxMs=" + ms(parallelWorldTaskMaxNanos)
+            + ",errors=" + parallelWorldErrors + "}";
+    }
+
+    private static String movingBucketLog() {
+        return " movingBucket{calls=" + movingBucketCalls
+            + ",objects=" + movingBucketObjects
+            + ",avgObjects=" + avgCount(movingBucketObjects, movingBucketCalls)
+            + ",zombies=" + movingBucketZombies
+            + ",nonZombies=" + movingBucketNonZombies
+            + ",deadBodies=" + movingBucketDeadBodies
+            + ",reusedZombies=" + movingBucketReusedZombies
+            + ",preupdateAvgMs=" + avgMs(movingBucketPreupdateNanos, movingBucketObjects)
+            + ",preupdateMaxMs=" + ms(movingBucketPreupdateMaxNanos)
+            + ",frameStepAvgMs=" + avgMs(movingBucketFrameStepNanos, movingBucketObjects)
+            + ",frameStepMaxMs=" + ms(movingBucketFrameStepMaxNanos)
+            + ",updateAvgMs=" + avgMs(movingBucketUpdateNanos, movingBucketZombies + movingBucketNonZombies)
+            + ",updateMaxMs=" + ms(movingBucketUpdateMaxNanos)
+            + ",zombieUpdateAvgMs=" + avgMs(movingBucketZombieUpdateNanos, movingBucketZombies)
+            + ",zombieUpdateMaxMs=" + ms(movingBucketZombieUpdateMaxNanos)
+            + ",nonZombieUpdateAvgMs=" + avgMs(movingBucketNonZombieUpdateNanos, movingBucketNonZombies)
+            + ",nonZombieUpdateMaxMs=" + ms(movingBucketNonZombieUpdateMaxNanos) + "}";
+    }
+
     private static long ms(long nanos) { return nanos / 1000000L; }
+    private static long avgCount(long value, long count) { return count <= 0L ? 0L : value / count; }
     private static long avgMs(long nanos, long count) { return count <= 0L ? 0L : nanos / count / 1000000L; }
     private static long clamp(long value, long min, long max) { return Math.max(min, Math.min(max, value)); }
 
@@ -269,6 +458,12 @@ public final class ApocBRServerTelemetry {
         if (value == null || value.trim().isEmpty()) value = System.getenv(envKey(key));
         if (value == null || value.trim().isEmpty()) return defaultValue;
         try { return Long.parseLong(value.trim()); } catch (NumberFormatException ex) { return defaultValue; }
+    }
+
+    private static String getString(String key, String defaultValue) {
+        String value = System.getProperty(key);
+        if (value == null || value.trim().isEmpty()) value = System.getenv(envKey(key));
+        return value == null || value.trim().isEmpty() ? defaultValue : value.trim();
     }
 
     private static boolean getBoolean(String key, boolean defaultValue) {

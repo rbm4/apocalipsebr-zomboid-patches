@@ -6,7 +6,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCH_NAME="Async Save + Server Telemetry Core Breakdown"
+PATCH_NAME="Async Save + Server Telemetry + Guarded IsoWorld Parallelism"
 PZ_DIR="/opt/pzserver"
 DRY_RUN=false
 REVERT=false
@@ -41,15 +41,18 @@ REQUIRED_MAJOR=25
 
 SOURCES=(
     "$SRC_ROOT/zombie/ApocBRServerTelemetry.java"
+    "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
     "$SRC_ROOT/zombie/gameStates/IngameState.java"
     "$SRC_ROOT/zombie/iso/IsoWorld.java"
+    "$SRC_ROOT/zombie/iso/IsoCell.java"
     "$SRC_ROOT/zombie/network/PlayerDownloadServer.java"
     "$SRC_ROOT/zombie/network/ServerMap.java"
 )
 
 CLASSES=(
     "zombie/ApocBRServerTelemetry.class"
+    "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
     "zombie/network/GameServer.class"
     'zombie/network/GameServer$1.class'
     'zombie/network/GameServer$2.class'
@@ -66,6 +69,14 @@ CLASSES=(
     'zombie/iso/IsoWorld$Frame.class'
     'zombie/iso/IsoWorld$MetaCell.class'
     'zombie/iso/IsoWorld$s_performance.class'
+    "zombie/iso/IsoCell.class"
+    'zombie/iso/IsoCell$BuildingSearchCriteria.class'
+    'zombie/iso/IsoCell$PerPlayerRender.class'
+    'zombie/iso/IsoCell$SnowGrid.class'
+    'zombie/iso/IsoCell$SnowGridTiles.class'
+    'zombie/iso/IsoCell$s_performance.class'
+    'zombie/iso/IsoCell$s_performance$renderTiles.class'
+    'zombie/iso/IsoCell$s_performance$renderTiles$PerformRenderTilesLayer.class'
     "zombie/network/PlayerDownloadServer.class"
     'zombie/network/PlayerDownloadServer$EThreadCommand.class'
     'zombie/network/PlayerDownloadServer$WorkerThread.class'
@@ -182,5 +193,5 @@ fi
 echo ""
 echo "=== Done ==="
 echo "Patch deployed: $PATCH_NAME"
-echo "Config: -Dapocbr.telemetry.enabled=true -Dapocbr.telemetry.intervalMs=30000"
+echo "Config: -Dapocbr.telemetry.enabled=true -Dapocbr.telemetry.intervalMs=30000 -Dapocbr.parallel.isoWorldSafe=true -Dapocbr.parallel.skipIfBacklogged=true"
 echo "To revert: ./patchAsyncSaveTelemetry.sh --revert"

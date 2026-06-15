@@ -10,7 +10,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$PatchName = "Async Save + Server Telemetry Core Breakdown"
+$PatchName = "Async Save + Server Telemetry + Guarded IsoWorld Parallelism"
 
 if ([string]::IsNullOrWhiteSpace($ToolsDir)) {
     if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
@@ -35,14 +35,17 @@ $RequiredMajor = 25
 
 $Sources = @(
     (Join-Path $SrcRoot "zombie\ApocBRServerTelemetry.java"),
+    (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
     (Join-Path $SrcRoot "zombie\network\GameServer.java"),
     (Join-Path $SrcRoot "zombie\gameStates\IngameState.java"),
     (Join-Path $SrcRoot "zombie\iso\IsoWorld.java"),
+    (Join-Path $SrcRoot "zombie\iso\IsoCell.java"),
     (Join-Path $SrcRoot "zombie\network\PlayerDownloadServer.java"),
     (Join-Path $SrcRoot "zombie\network\ServerMap.java")
 )
 $ClassFiles = @(
     "zombie\ApocBRServerTelemetry.class",
+    "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
     "zombie\network\GameServer.class",
     "zombie\network\GameServer`$1.class",
     "zombie\network\GameServer`$2.class",
@@ -59,6 +62,14 @@ $ClassFiles = @(
     "zombie\iso\IsoWorld`$Frame.class",
     "zombie\iso\IsoWorld`$MetaCell.class",
     "zombie\iso\IsoWorld`$s_performance.class",
+    "zombie\iso\IsoCell.class",
+    "zombie\iso\IsoCell`$BuildingSearchCriteria.class",
+    "zombie\iso\IsoCell`$PerPlayerRender.class",
+    "zombie\iso\IsoCell`$SnowGrid.class",
+    "zombie\iso\IsoCell`$SnowGridTiles.class",
+    "zombie\iso\IsoCell`$s_performance.class",
+    "zombie\iso\IsoCell`$s_performance`$renderTiles.class",
+    "zombie\iso\IsoCell`$s_performance`$renderTiles`$PerformRenderTilesLayer.class",
     "zombie\network\PlayerDownloadServer.class",
     "zombie\network\PlayerDownloadServer`$EThreadCommand.class",
     "zombie\network\PlayerDownloadServer`$WorkerThread.class",
@@ -151,4 +162,4 @@ Remove-Item $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
 Write-Host ""
 Write-Host "=== Done ===" -ForegroundColor White
 Write-Host "Patch deployed: $PatchName" -ForegroundColor Green
-Write-Host "Config: -Dapocbr.telemetry.enabled=true -Dapocbr.telemetry.intervalMs=30000" -ForegroundColor Gray
+Write-Host "Config: -Dapocbr.telemetry.enabled=true -Dapocbr.telemetry.intervalMs=30000 -Dapocbr.parallel.isoWorldSafe=true -Dapocbr.parallel.skipIfBacklogged=true" -ForegroundColor Gray
