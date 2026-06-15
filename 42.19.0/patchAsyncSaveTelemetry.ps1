@@ -37,6 +37,7 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\ApocBRServerTelemetry.java"),
     (Join-Path $SrcRoot "zombie\network\GameServer.java"),
     (Join-Path $SrcRoot "zombie\gameStates\IngameState.java"),
+    (Join-Path $SrcRoot "zombie\iso\IsoWorld.java"),
     (Join-Path $SrcRoot "zombie\network\PlayerDownloadServer.java"),
     (Join-Path $SrcRoot "zombie\network\ServerMap.java")
 )
@@ -52,6 +53,12 @@ $ClassFiles = @(
     "zombie\gameStates\IngameState.class",
     "zombie\gameStates\IngameState`$CountFileVisitor.class",
     "zombie\gameStates\IngameState`$s_performance.class",
+    "zombie\iso\IsoWorld.class",
+    "zombie\iso\IsoWorld`$CompDistToPlayer.class",
+    "zombie\iso\IsoWorld`$CompScoreToPlayer.class",
+    "zombie\iso\IsoWorld`$Frame.class",
+    "zombie\iso\IsoWorld`$MetaCell.class",
+    "zombie\iso\IsoWorld`$s_performance.class",
     "zombie\network\PlayerDownloadServer.class",
     "zombie\network\PlayerDownloadServer`$EThreadCommand.class",
     "zombie\network\PlayerDownloadServer`$WorkerThread.class",
@@ -124,6 +131,7 @@ if ($DryRun) {
     New-Item -Path (Join-Path $DeployRoot "zombie") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\network") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\gameStates") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $DeployRoot "zombie\iso") -ItemType Directory -Force | Out-Null
     New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
     $ts = Get-Date -Format "yyyyMMdd_HHmmss"
     foreach ($rel in $ClassFiles) {

@@ -58,6 +58,14 @@ public final class ApocBRServerTelemetry {
     };
     private static final long[] stateSectionNanos = new long[STATE_SECTION_KEYS.length];
     private static final long[] stateSectionMaxNanos = new long[STATE_SECTION_KEYS.length];
+    private static final String[] ISO_WORLD_SECTION_KEYS = new String[] {
+        "vehicleServer", "worldSimulation", "hutch", "fog", "helicopter", "emitters", "worldSoundFrame",
+        "zombieGroupPre", "onceEvery", "collisionInit", "climate", "currentCell", "isoRegions", "haloText",
+        "collisionResolve", "animationPost", "updateWorld", "updateInternal", "updateThread", "waitThread", "postUpdateWorld", "designationZone",
+        "buildings", "staticEffects", "coopPlayers", "dbs", "safehouse", "virtualAnimals", "animalDefs"
+    };
+    private static final long[] isoWorldSectionNanos = new long[ISO_WORLD_SECTION_KEYS.length];
+    private static final long[] isoWorldSectionMaxNanos = new long[ISO_WORLD_SECTION_KEYS.length];
 
     private ApocBRServerTelemetry() {
     }
@@ -133,6 +141,17 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static synchronized void recordIsoWorldSection(String section, long nanos) {
+        if (!ENABLED) return;
+        for (int i = 0; i < ISO_WORLD_SECTION_KEYS.length; i++) {
+            if (ISO_WORLD_SECTION_KEYS[i].equals(section)) {
+                isoWorldSectionNanos[i] += nanos;
+                isoWorldSectionMaxNanos[i] = Math.max(isoWorldSectionMaxNanos[i], nanos);
+                return;
+            }
+        }
+    }
+
     public static synchronized void recordDownloadConnections(int count) {
         if (ENABLED) downloadConnections += count;
     }
@@ -185,6 +204,7 @@ public final class ApocBRServerTelemetry {
             + ",workerCalls=" + chunkWorkerCalls + ",workerAvgMs=" + avgMs(chunkWorkerNanos, chunkWorkerCalls) + ",workerMaxMs=" + ms(chunkWorkerMaxNanos)
             + ",workerChunks=" + chunkWorkerChunks + ",downloadConnections=" + downloadConnections + "}"
             + stateSectionsLog()
+            + isoWorldSectionsLog()
             + " state{connections=" + connectionsLast + ",players=" + playersLast + ",zombies=" + zombiesLast + "}");
         resetCounters();
         nextLogMs = now + INTERVAL_MS;
@@ -212,6 +232,10 @@ public final class ApocBRServerTelemetry {
             stateSectionNanos[i] = 0L;
             stateSectionMaxNanos[i] = 0L;
         }
+        for (int i = 0; i < ISO_WORLD_SECTION_KEYS.length; i++) {
+            isoWorldSectionNanos[i] = 0L;
+            isoWorldSectionMaxNanos[i] = 0L;
+        }
     }
 
     private static String stateSectionsLog() {
@@ -220,6 +244,17 @@ public final class ApocBRServerTelemetry {
             if (i > 0) builder.append(",");
             builder.append(STATE_SECTION_KEYS[i]).append("AvgMs=").append(avgMs(stateSectionNanos[i], worldTicks));
             builder.append(",").append(STATE_SECTION_KEYS[i]).append("MaxMs=").append(ms(stateSectionMaxNanos[i]));
+        }
+        builder.append("}");
+        return builder.toString();
+    }
+
+    private static String isoWorldSectionsLog() {
+        StringBuilder builder = new StringBuilder(" isoWorld{");
+        for (int i = 0; i < ISO_WORLD_SECTION_KEYS.length; i++) {
+            if (i > 0) builder.append(",");
+            builder.append(ISO_WORLD_SECTION_KEYS[i]).append("AvgMs=").append(avgMs(isoWorldSectionNanos[i], worldTicks));
+            builder.append(",").append(ISO_WORLD_SECTION_KEYS[i]).append("MaxMs=").append(ms(isoWorldSectionMaxNanos[i]));
         }
         builder.append("}");
         return builder.toString();
