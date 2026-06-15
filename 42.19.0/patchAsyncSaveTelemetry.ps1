@@ -69,6 +69,7 @@ $ClassFiles = @(
     "zombie\vehicles\BaseVehicle`$Vector4fObjectPool.class",
     "zombie\vehicles\BaseVehicle`$VehicleImpulse.class",
     "zombie\vehicles\BaseVehicle`$WeightedVehiclePart.class",
+    "zombie\vehicles\BaseVehicle`$ApocBRBreakingResult.class",
     "zombie\vehicles\BaseVehicle`$WheelInfo.class",
     "zombie\network\GameServer.class",
     "zombie\network\GameServer`$1.class",

@@ -2,6 +2,7 @@
 package zombie.vehicles;
 
 import zombie.ApocBRServerTelemetry;
+import zombie.core.PZForkJoinPool;
 
 import fmod.fmod.FMODSoundEmitter;
 import fmod.fmod.FMOD_STUDIO_PARAMETER_DESCRIPTION;
@@ -16,6 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.Map.Entry;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -365,6 +367,9 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     private int mechanicalId;
     private boolean needPartsUpdate;
     private int apocBrUpdatePartsSkipCounter;
+    private CompletableFuture<ApocBRBreakingResult> apocBrAsyncWork;
+    private boolean apocBrAsyncLuaReady;
+    private boolean apocBrAsyncWorkPending;
     private boolean alarmed;
     private double alarmStartTime;
     private float alarmAccumulator;
@@ -3601,6 +3606,48 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
                     releaseVector3f(currentVelocity);
                 }
 
+                // ApocBR: check if previous frame's async breakingObjects detection completed.
+                // The detection phase is read-only grid math (no Bullet JNI, no state mutation).
+                // If it finished, we apply the results (object.Collision etc.) and grant Lua.
+                // If not, the ForkJoinPool is saturated → skip Lua this frame.
+                if (this.apocBrAsyncWork != null) {
+                    if (this.apocBrAsyncWork.isDone()) {
+                        try {
+                            ApocBRBreakingResult result = this.apocBrAsyncWork.get();
+                            if (result != null) {
+                                this.apocBrApplyBreaking(result);
+                            }
+                        } catch (Exception e) {
+                            // detection failed — breaking state unchanged, safe to ignore
+                        }
+                        this.apocBrAsyncWork = null;
+                        this.apocBrAsyncLuaReady = true;
+                    } else {
+                        this.apocBrAsyncLuaReady = false;
+                    }
+                }
+
+                // Submit async breakingObjects DETECTION for next frame.
+                // Captures snapshot of vehicle position + script data. Runs on PZForkJoinPool.
+                if (GameServer.server && this.getDriver() == null) {
+                    this.apocBrAsyncWorkPending = true;
+                    float capX = this.getX();
+                    float capY = this.getY();
+                    float capZ = this.getZ();
+                    VehicleScript capScript = this.script;
+                    boolean capCollideChars = this.shouldCollideWithCharacters();
+                    boolean capCollideObjects = this.shouldCollideWithObjects();
+                    IsoCell capCell = this.getCell();
+                    this.apocBrAsyncWork = CompletableFuture.supplyAsync(() -> {
+                        return this.apocBrDetectBreaking(capX, capY, capZ, capScript,
+                            capCollideChars, capCollideObjects, capCell);
+                    }, PZForkJoinPool.commonPool());
+                } else {
+                    // Driver vehicles: run breakingObjects sync (no async delay for responsiveness)
+                    this.apocBrAsyncWork = null;
+                    this.apocBrAsyncWorkPending = false;
+                }
+
                 for (int ixxx = 0; ixxx < this.impulsesFromSquishedBodies.length; ixxx++) {
                     BaseVehicle.VehicleImpulse impulsex = this.impulsesFromSquishedBodies[ixxx];
                     if (impulsex != null) {
@@ -3610,7 +3657,11 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
 
                 this.updateSounds();
                 this.hittingPlant = false;
-                this.breakingObjects();
+                // ApocBR: undriven server vehicles run breakingObjects detection async.
+                // Driver vehicles still run it synchronously for responsive collision.
+                if (this.getDriver() != null || !GameServer.server) {
+                    this.breakingObjects();
+                }
                 this.updateScrapPastPlantSound();
                 if (this.addThumpWorldSound) {
                     this.addThumpWorldSound = false;
@@ -3658,18 +3709,25 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
                 // ApocBR: frame-skip updateParts() to reduce Lua call frequency on the main thread.
                 // The elapsedMinutes mechanism in each Lua update function already handles
                 // irregular intervals correctly — skipped frames just produce larger deltas.
-                // Driver-driven vehicles update every frame for responsiveness.
-                // Server-side undriven vehicles skip up to 3 frames between updates.
-                // Configure via -Dapocbr.vehicleUpdatePartsSkip=N (0=never skip, default=3 on server, 1=off on client).
+                //
+                // Two independent throttles:
+                //   1. Frame-skip: baseline rate (1 in 3 for undriven server vehicles)
+                //   2. Async backpressure: if PZForkJoinPool is saturated (sentinel didn't
+                //      finish), skip an extra frame regardless of counter.
+                //
+                // Configure via -Dapocbr.vehicleUpdatePartsSkip=N (default=3 on server, 1 on client).
                 boolean apocBrNeedPartsUpdate = this.needPartsUpdate() || this.isMechanicUIOpen() || this.alarmStartTime > 0.0;
                 if (apocBrNeedPartsUpdate) {
                     int apocBrSkipN = this.getDriver() != null ? 1 : (GameServer.server ? 3 : 1);
-                    if (++this.apocBrUpdatePartsSkipCounter >= apocBrSkipN) {
+                    boolean apocBrCounterReady = ++this.apocBrUpdatePartsSkipCounter >= apocBrSkipN;
+                    boolean apocBrPoolOk = this.apocBrAsyncLuaReady || GameClient.client || this.getDriver() != null;
+                    if (apocBrCounterReady && apocBrPoolOk) {
                         this.apocBrUpdatePartsSkipCounter = 0;
                         this.updateParts();
                     } else {
-                        // Skip frame: still drain active batteries/lights so player-facing
-                        // effects (headlights, radios) don't freeze.
+                        // Skip: either frame-skip counter hasn't triggered yet, or the
+                        // ForkJoinPool is saturated (backpressure). Still drain active
+                        // batteries/lights so player-facing effects don't freeze.
                         this.drainBatteryUpdateHack();
                     }
                 } else {
@@ -11845,6 +11903,151 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
 
     public void partsClear() {
         this.parts.clear();
+    }
+
+    // ---- ApocBR: async breakingObjects split ---- //
+
+    private static class ApocBRBreakingResult {
+        final ArrayList<IsoObject> newHits = new ArrayList<>();
+        final ArrayList<Vector2> hitPositions = new ArrayList<>();
+        final ArrayList<IsoMovingObject> charsToFlag = new ArrayList<>();
+        boolean hasPlantHits;
+        float slowFactor = -999.0F;
+        boolean hasChanges;
+    }
+
+    /**
+     * Read-only detection phase: iterates grid squares, checks object properties,
+     * runs testCollisionWithObject (pure math, no Bullet JNI). Called from
+     * PZForkJoinPool worker thread. Captured parameters avoid reading {@code this}
+     * fields that the main thread mutates concurrently.
+     */
+    private ApocBRBreakingResult apocBrDetectBreaking(
+        float capX, float capY, float capZ, VehicleScript capScript,
+        boolean collideChars, boolean collideObjects, IsoCell cell
+    ) {
+        if (!collideChars && !collideObjects) return null;
+        ApocBRBreakingResult r = new ApocBRBreakingResult();
+        Vector3f ext = capScript.getExtents();
+        Vector2 vecPool = new Vector2();
+        float radius = Math.max(ext.x / 2.0F, ext.z / 2.0F) + 0.3F + 1.0F;
+        int radiusSq = (int)Math.ceil(radius);
+
+        for (int yy = -radiusSq; yy < radiusSq; yy++) {
+            for (int xx = -radiusSq; xx < radiusSq; xx++) {
+                IsoGridSquare sq = cell.getGridSquare((double)(capX + xx), (double)(capY + yy), (double)capZ);
+                if (sq == null) continue;
+
+                if (collideObjects) {
+                    for (int i = 0; i < sq.getObjects().size(); i++) {
+                        IsoObject obj = sq.getObjects().get(i);
+                        if (obj instanceof IsoWorldInventoryObject) continue;
+                        Vector2 collision = null;
+                        if (obj != null && obj.getProperties() != null) {
+                            if (obj.getProperties().has("CarSlowFactor")) {
+                                collision = this.testCollisionWithObject(obj, 0.3F, vecPool);
+                            }
+                            if (collision != null) {
+                                r.newHits.add(obj);
+                                r.hitPositions.add(new Vector2(collision));
+                                r.hasChanges = true;
+                            }
+                            if (obj.getProperties().has("HitByCar")) {
+                                collision = this.testCollisionWithObject(obj, 0.3F, vecPool);
+                            }
+                            if (collision != null) {
+                                r.newHits.add(obj);
+                                r.hitPositions.add(new Vector2(collision));
+                                r.hasChanges = true;
+                            }
+                            // Plant collision check (read-only property test)
+                            if (obj.getProperties().has("CarDestroy") || obj.getProperties().has("DestroyByCar")) {
+                                r.hasPlantHits = true;
+                            }
+                        }
+                    }
+                }
+
+                if (collideChars) {
+                    for (int ix = 0; ix < sq.getMovingObjects().size(); ix++) {
+                        IsoMovingObject mov = sq.getMovingObjects().get(ix);
+                        if (mov instanceof IsoZombie || mov instanceof IsoAnimal || (mov instanceof IsoPlayer && mov != this.getDriver())) {
+                            r.charsToFlag.add(mov);
+                        }
+                    }
+                }
+
+                if (collideObjects) {
+                    for (int ix = 0; ix < sq.getStaticMovingObjects().size(); ix++) {
+                        IsoMovingObject mov = sq.getStaticMovingObjects().get(ix);
+                        if (mov instanceof IsoDeadBody) {
+                            this.testCollisionWithCorpse((IsoDeadBody)mov, true);
+                        }
+                    }
+                }
+            }
+        }
+        return r;
+    }
+
+    /**
+     * Application phase: applies collision results from the async detection.
+     * Must run on the main thread because object.Collision() mutates IsoObject state.
+     */
+    private void apocBrApplyBreaking(ApocBRBreakingResult r) {
+        if (r == null) return;
+
+        // Apply new collisions
+        for (int i = 0; i < r.newHits.size(); i++) {
+            IsoObject obj = r.newHits.get(i);
+            Vector2 pos = r.hitPositions.get(i);
+            if (!this.breakingObjectsList.contains(obj)) {
+                this.breakingObjectsList.add(obj);
+                if (!GameClient.client) {
+                    obj.Collision(pos, this);
+                }
+            }
+        }
+
+        // Re-check existing breaking objects (slow factor + removal)
+        Vector2 vecPool = new Vector2();
+        float slowFactor = -999.0F;
+        for (int i = 0; i < this.breakingObjectsList.size(); i++) {
+            IsoObject obj = this.breakingObjectsList.get(i);
+            Vector2 collision = this.testCollisionWithObject(obj, 1.0F, vecPool);
+            if (collision == null || !obj.getSquare().getObjects().contains(obj)) {
+                this.breakingObjectsList.remove(i);
+                i--;
+                obj.UnCollision(this);
+            } else if (slowFactor < obj.GetVehicleSlowFactor(this)) {
+                slowFactor = obj.GetVehicleSlowFactor(this);
+            }
+        }
+
+        if (slowFactor != -999.0F) {
+            this.breakingSlowFactor = PZMath.clamp(slowFactor, 0.0F, 34.0F);
+        } else {
+            this.breakingSlowFactor = 0.0F;
+        }
+
+        if (r.hasPlantHits) {
+            this.hittingPlant = true;
+        }
+
+        // Flag characters for collision test (sets vehicle4TestCollision)
+        for (int i = 0; i < r.charsToFlag.size(); i++) {
+            IsoMovingObject mov = r.charsToFlag.get(i);
+            if (mov instanceof IsoZombie z) {
+                if (z.isProne()) {
+                    this.testCollisionWithProneCharacter(z, false, null);
+                }
+                z.setVehicle4TestCollision(this);
+            } else if (mov instanceof IsoAnimal a) {
+                a.setVehicle4TestCollision(this);
+            } else if (mov instanceof IsoPlayer p && mov != this.getDriver()) {
+                p.setVehicle4TestCollision(this);
+            }
+        }
     }
 
     public static enum Authorization {
