@@ -283,7 +283,7 @@ else
 
         cp "$compiled" "$target"
         echo "    Deployed: $class_file"
-        ((deployed++))
+        deployed=$((deployed + 1))
     done
     echo "    Deployed $deployed class files."
 fi
