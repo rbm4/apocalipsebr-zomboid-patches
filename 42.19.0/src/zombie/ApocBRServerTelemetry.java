@@ -133,9 +133,13 @@ public final class ApocBRServerTelemetry {
     private static final long[] isoWorldSectionNanos = new long[ISO_WORLD_SECTION_KEYS.length];
     private static final long[] isoWorldSectionMaxNanos = new long[ISO_WORLD_SECTION_KEYS.length];
     private static final String[] ISO_CELL_SECTION_KEYS = new String[] {
-        "startFrame", "spottedRooms", "chunkMap", "removeItemsPre", "items", "removeItemsPost", "isoObject",
-        "movingObjects", "animalSounds", "zombieVocals", "objects", "networkZombieSend", "itemsFutureJoin",
-        "staticUpdaters", "objectDeletionAddition", "deadBodies", "fish", "lightCounters", "serverLightClear",
+        "startFrame", "spottedRooms", "chunkMap", "removeItemsPre",
+        "preLuaSubmit", "preLuaSkip",
+        "movingObjects", "animalSounds", "zombieVocals", "objects",
+        "objectDeletionAddition",
+        "postLuaSubmit", "postLuaSkip",
+        "asyncItems", "asyncWorldItems", "asyncIsoObject", "asyncStaticUpdaters",
+        "deadBodies", "fish", "lightCounters", "serverLightClear",
         "rainScroll", "weatherFx", "updateInternal"
     };
     private static final long[] isoCellSectionNanos = new long[ISO_CELL_SECTION_KEYS.length];
