@@ -114,7 +114,9 @@ $Sources = @(
     # ServerChunkLoader CRC fix (async save thread safety)
     (Join-Path $SrcRoot "zombie\network\ServerChunkLoader.java"),
     # Parallel Animal Simulation (null safety + async-ready)
-    (Join-Path $SrcRoot "zombie\characters\animals\IsoAnimal.java")
+    (Join-Path $SrcRoot "zombie\characters\animals\IsoAnimal.java"),
+    # Parallel Player LOS (split-phase compute, chunk-parallel)
+    (Join-Path $SrcRoot "zombie\characters\IsoPlayer.java")
 )
 
 # --- All expected class files (relative to deploy root) ---
@@ -197,6 +199,9 @@ $ClassFiles = @(
     "zombie\network\ServerChunkLoader.class",
     # Parallel Animal Simulation
     "zombie\characters\animals\IsoAnimal.class",
+    # Parallel Player LOS
+    "zombie\characters\IsoPlayer.class",
+    "zombie\characters\IsoPlayer`$LOSRecord.class",
     "zombie\network\ServerChunkLoader`$GetSquare.class",
     "zombie\network\ServerChunkLoader`$LoaderThread.class",
     "zombie\network\ServerChunkLoader`$QuitThreadTask.class",

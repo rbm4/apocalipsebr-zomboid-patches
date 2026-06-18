@@ -4140,25 +4140,35 @@ public final class IsoCell {
             this.ProcessRemoveItems(null);
             ApocBRServerTelemetry.recordIsoCellSection("removeItemsPre", System.nanoTime() - apocBrSectionStart);
 
-            // - Phase B: Ship-or-Skip - submit PRE-LUA async work -
-            // If previous async is still running, skip this frame (stale results
-            // discarded). Otherwise snapshot the current lists and submit.
+            // - Phase B: Process IsoObjects and static updaters on main thread -
+            // These must NOT run on worker threads (IsoGenerator.update() modifies
+            // building toxic flags causing phantom CO poisoning & anxiety).
+            apocBrSectionStart = System.nanoTime();
+            this.ProcessIsoObject();
+            ApocBRServerTelemetry.recordIsoCellSection("isoObjectsMain", System.nanoTime() - apocBrSectionStart);
+            apocBrSectionStart = System.nanoTime();
+            this.ProcessStaticUpdaters();
+            ApocBRServerTelemetry.recordIsoCellSection("staticUpdatersMain", System.nanoTime() - apocBrSectionStart);
+
+            // - Phase C: Ship-or-Skip - submit PRE-LUA async work -
+            // Only items + world items (self-contained state, no shared mutations).
+            // If previous async is still running, skip this frame.
             this.apocBrSubmitPreLuaAsync();
 
-            // - Phase C: Lua wall - always runs on main thread -
+            // - Phase D: Lua wall - always runs on main thread -
             this.safeToAdd = false;
             long apocBrObjectsStart = System.nanoTime();
             this.ProcessObjects(null);
             ApocBRServerTelemetry.recordIsoCellSection("objects", System.nanoTime() - apocBrObjectsStart);
             this.safeToAdd = true;
 
-            // - Phase D: Post-Lua cleanup - ObjectDeletion must be main thread -
+            // - Phase E: Post-Lua cleanup - ObjectDeletion must be main thread -
             // (IsoGridSquare.getMovingObjects() returns ArrayList - not thread-safe)
             apocBrSectionStart = System.nanoTime();
             this.ObjectDeletionAddition();
             ApocBRServerTelemetry.recordIsoCellSection("objectDeletionAddition", System.nanoTime() - apocBrSectionStart);
 
-            // - Phase E: Ship-or-Skip - submit POST-LUA async work -
+            // - Phase F: Ship-or-Skip - submit POST-LUA async work -
             // Dead bodies, fish, light counters, weather - independent data structures.
             this.apocBrSubmitPostLuaAsync();
         }
@@ -4182,12 +4192,10 @@ public final class IsoCell {
         }
 
         // Snapshot the current lists on the main thread (safe - ArrayList iteration).
-        // The async worker processes the snapshot; modifications to the live lists
-        // during async will be picked up in the next frame's snapshot.
+        // Only items and world items are safe for async (self-contained state).
+        // IsoObjects and static updaters run on the main thread in IsoCell.update().
         ArrayList<InventoryItem> itemsSnapshot = new ArrayList<>(this.processItems);
         ArrayList<IsoWorldInventoryObject> worldItemsSnapshot = new ArrayList<>(this.processWorldItems);
-        ArrayList<IsoObject> isoObjectSnapshot = new ArrayList<>(this.processIsoObject);
-        ArrayList<IsoObject> staticUpdaterSnapshot = new ArrayList<>(this.staticUpdaterObjectList);
 
         // Check the items-update timer on the main thread.
         boolean shouldProcessItems = !GameClient.client && !GameServer.server
@@ -4205,7 +4213,6 @@ public final class IsoCell {
                 if (captured != null) {
                     captured.apocBrUpdatePreLuaAsync(
                     itemsSnapshot, worldItemsSnapshot,
-                    isoObjectSnapshot, staticUpdaterSnapshot,
                     processItemsFlag
                     );
                 }
@@ -4217,21 +4224,21 @@ public final class IsoCell {
     }
 
     /**
-     * Runs on ForkJoinPool - processes items, IsoObject, and static updaters
-     * from snapshots taken on the main thread. Never calls Lua.
+     * Runs on ForkJoinPool - processes items and world items from snapshots
+     * taken on the main thread. Never calls Lua.
+     * IsoObjects and static updaters are NOT processed here - they run on
+     * the main thread in IsoCell.update() to prevent data corruption from
+     * IsoGenerator.update() (building toxic flags), IsoRadio.update() (sound),
+     * and other IsoObject subclasses that modify shared game state.
      * Results (finished items) are written to ConcurrentHashMap-backed sets
      * that the main thread merges next frame via ProcessRemoveItems.
      */
     private void apocBrUpdatePreLuaAsync(
             ArrayList<InventoryItem> itemsSnapshot,
             ArrayList<IsoWorldInventoryObject> worldItemsSnapshot,
-            ArrayList<IsoObject> isoObjectSnapshot,
-            ArrayList<IsoObject> staticUpdaterSnapshot,
             boolean processItemsFlag) {
         if (itemsSnapshot == null) itemsSnapshot = new ArrayList<>();
         if (worldItemsSnapshot == null) worldItemsSnapshot = new ArrayList<>();
-        if (isoObjectSnapshot == null) isoObjectSnapshot = new ArrayList<>();
-        if (staticUpdaterSnapshot == null) staticUpdaterSnapshot = new ArrayList<>();
 
         long apocBrSectionStart = System.nanoTime();
 
@@ -4269,34 +4276,6 @@ public final class IsoCell {
             }
             ApocBRServerTelemetry.recordIsoCellSection("asyncWorldItems", System.nanoTime() - apocBrSectionStart);
         }
-
-        apocBrSectionStart = System.nanoTime();
-        for (IsoObject obj : isoObjectSnapshot) {
-            if (obj == null) {
-                continue;
-            }
-
-            try {
-                obj.update();
-            } catch (Throwable t) {
-                    ExceptionLogger.logException(t);
-                }
-        }
-        ApocBRServerTelemetry.recordIsoCellSection("asyncIsoObject", System.nanoTime() - apocBrSectionStart);
-
-        apocBrSectionStart = System.nanoTime();
-        for (IsoObject obj : staticUpdaterSnapshot) {
-            if (obj == null) {
-                continue;
-            }
-
-            try {
-                obj.update();
-            } catch (Throwable t) {
-                    ExceptionLogger.logException(t);
-                }
-        }
-        ApocBRServerTelemetry.recordIsoCellSection("asyncStaticUpdaters", System.nanoTime() - apocBrSectionStart);
     }
 
     /**

@@ -7,7 +7,9 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
+import zombie.core.PZForkJoinPool;
 import zombie.GameTime;
 import zombie.MapCollisionData;
 import zombie.ReanimatedPlayers;
@@ -646,12 +648,20 @@ public class ServerMap {
         }
     }
 
+    private static final int PARALLEL_CELL_THRESHOLD = 4;
+
     public void postupdate() {
         boolean pathfindPaused = false;
 
+        // Phase A (main thread): Partition cells
+        // Handle unloads and cancellations on main thread (mutates cellMap
+        // and loadedCells ArrayList - not thread-safe).
+        // Collect cells that need chunk updates for parallel dispatch.
+        ArrayList<ServerCell> cellsToUpdate = new ArrayList<>();
+
         try {
             for (int n = 0; n < this.loadedCells.size(); n++) {
-                ServerMap.ServerCell cell = this.loadedCells.get(n);
+                ServerCell cell = this.loadedCells.get(n);
                 boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
                 if (!cell.isLoaded) {
                     if (!shouldBeLoaded && !cell.cancelLoading) {
@@ -680,7 +690,7 @@ public class ServerMap {
                     this.loadedCells.remove(cell);
                     n--;
                 } else {
-                    cell.update();
+                    cellsToUpdate.add(cell);
                 }
             }
         } catch (Exception var10) {
@@ -691,8 +701,68 @@ public class ServerMap {
             }
         }
 
-        NetworkZombiePacker.getInstance().postupdate();
-        ServerMap.ServerCell.chunkLoader.updateSaved();
+        // Phase B+C (parallel, on ForkJoinPool):
+        // Cell updates, NetworkZombiePacker, and chunkLoader all run off the
+        // main thread. Each is independently safe for worker threads:
+        //
+        //   cell.update()        - writes per-cell/chunk fields only (no shared state)
+        //   NetworkZombiePacker  - uses synchronized(this.zombiesReceived) internally
+        //   chunkLoader.updateSaved() - drains LinkedBlockingQueue (thread-safe by design)
+        //
+        // For small cell counts, skip threading overhead and run sequentially.
+        if (cellsToUpdate.size() >= PARALLEL_CELL_THRESHOLD) {
+            final ArrayList<ServerCell> keepCells = new ArrayList<>(cellsToUpdate);
+            int numWorkers = Math.min(
+                Math.max(1, keepCells.size() / 20 + 1),
+                Runtime.getRuntime().availableProcessors());
+            int chunkSize = (keepCells.size() + numWorkers - 1) / numWorkers;
+
+            @SuppressWarnings("unchecked")
+            CompletableFuture<Void>[] allFutures = new CompletableFuture[numWorkers + 1];
+
+            // Cell update workers: split keepCells into chunks, each chunk
+            // runs cell.update() on a worker thread.
+            for (int t = 0; t < numWorkers; t++) {
+                final int start = t * chunkSize;
+                final int end = Math.min(start + chunkSize, keepCells.size());
+                if (start >= end) {
+                    allFutures[t] = CompletableFuture.completedFuture(null);
+                    continue;
+                }
+                allFutures[t] = CompletableFuture.runAsync(() -> {
+                    for (int i = start; i < end; i++) {
+                        keepCells.get(i).update();
+                    }
+                }, PZForkJoinPool.commonPool());
+            }
+
+            // Network + DB coordination worker:
+            // NetworkZombiePacker uses synchronized internals - safe.
+            // chunkLoader.updateSaved() drains thread-safe queues - safe.
+            allFutures[numWorkers] = CompletableFuture.runAsync(() -> {
+                try {
+                    NetworkZombiePacker.getInstance().postupdate();
+                } catch (Throwable t) {
+                    DebugType.General.printException(t, LogSeverity.Error);
+                }
+                try {
+                    ServerCell.chunkLoader.updateSaved();
+                } catch (Throwable t) {
+                    DebugType.General.printException(t, LogSeverity.Error);
+                }
+            }, PZForkJoinPool.commonPool());
+
+            // Wait for ALL parallel work to complete before returning
+            // to the main thread tick loop.
+            CompletableFuture.allOf(allFutures).join();
+        } else {
+            // Sequential path: few cells, not worth threading overhead.
+            for (int i = 0; i < cellsToUpdate.size(); i++) {
+                cellsToUpdate.get(i).update();
+            }
+            NetworkZombiePacker.getInstance().postupdate();
+            ServerCell.chunkLoader.updateSaved();
+        }
     }
 
     public void physicsCheck(int x, int y) {

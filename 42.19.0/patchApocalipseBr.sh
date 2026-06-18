@@ -98,6 +98,7 @@ SOURCES=(
     "$SRC_ROOT/zombie/inventory/CompressIdenticalItems.java"
     "$SRC_ROOT/zombie/network/ServerChunkLoader.java"
     "$SRC_ROOT/zombie/characters/animals/IsoAnimal.java"
+    "$SRC_ROOT/zombie/characters/IsoPlayer.java"
 )
 
 # --- All expected class files (relative to deploy base) ---
@@ -184,6 +185,8 @@ CLASSES=(
     'zombie/network/ServerChunkLoader$SaveTask.class'
     'zombie/network/ServerChunkLoader$SaveUnloadedTask.class'
     "zombie/characters/animals/IsoAnimal.class"
+    "zombie/characters/IsoPlayer.class"
+    "zombie/characters/IsoPlayer\$LOSRecord.class"
 )
 
 echo ""

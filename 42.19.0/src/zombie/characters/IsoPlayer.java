@@ -256,6 +256,8 @@ import zombie.vehicles.VehiclesDB2;
 import zombie.world.WorldDictionary;
 import zombie.worldMap.WorldMapRemotePlayer;
 import zombie.worldMap.WorldMapRemotePlayers;
+import java.util.concurrent.CompletableFuture;
+import zombie.core.PZForkJoinPool;
 
 @UsedFromLua
 public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHumanVisual, IPositional {
@@ -5699,6 +5701,354 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         }
     }
 
+    /**
+     * Precomputed LOS data for a single moving object.
+     * All fields computed during the parallel compute phase;
+     * the apply phase reads them without redoing expensive calculations.
+     */
+    private static class LOSRecord {
+        IsoMovingObject movingObject;
+        float distance;
+        boolean couldSee;
+        boolean canSee;
+        IsoGridSquare chrCurrentSquare;
+        boolean isZombie;
+        boolean isPlayer;
+        boolean isAnimal;
+        boolean isSurvivor;
+        boolean isGameCharacter;
+        boolean isReanimatedGrapple;
+        boolean isInvisibleToPlayer;
+        boolean isVisibleToPlayer;
+        boolean isSceneCulled;
+        boolean zombieTargetsThis;
+        boolean zombieWalkingTowardOrLunging;
+        boolean zombieGhost;
+        boolean zombieFakeDead;
+        boolean isThisObject; // movingObject == this player
+        IsoGameCharacter movingCharacter;
+        IsoZombie movingZombie;
+        IsoPlayer movingPlayer;
+        IsoAnimal movingAnimal;
+        float movingObjectZ;
+        float movingObjectX;
+        float movingObjectY;
+        boolean hasSquare;
+        int roomHash; // cached room identity for same-room comparison
+    }
+
+    /**
+     * Read-only LOS computation for a single moving object.
+     * This method is safe to call from worker threads because it only
+     * reads shared state (positions, grid squares) and does NOT write
+     * to any cross-object state (no alpha updates, no TestZombieSpotPlayer).
+     */
+    private static LOSRecord computeLOSRecord(
+        IsoMovingObject movingObject, IsoPlayer player,
+        boolean bServer, boolean bClient, int playerIndex,
+        float locX, float locY, float locZ,
+        boolean isSeeEveryone, boolean isAsleep, boolean isGhostMode, boolean isRemote,
+        float detectionRange) {
+        LOSRecord rec = new LOSRecord();
+        rec.movingObject = movingObject;
+        rec.movingObjectX = movingObject.getX();
+        rec.movingObjectY = movingObject.getY();
+        rec.movingObjectZ = movingObject.getZ();
+        rec.isThisObject = false;
+
+        if (movingObject instanceof IsoPhysicsObject || movingObject instanceof BaseVehicle) {
+            rec.hasSquare = false;
+            return rec;
+        }
+
+        rec.distance = IsoUtils.DistanceTo(rec.movingObjectX, rec.movingObjectY, locX, locY);
+
+        IsoGridSquare sq = movingObject.getCurrentSquare();
+        rec.chrCurrentSquare = sq;
+        rec.hasSquare = sq != null;
+        if (sq == null) {
+            return rec;
+        }
+
+        IsoGameCharacter chr = Type.tryCastTo(movingObject, IsoGameCharacter.class);
+        rec.movingCharacter = chr;
+        rec.isGameCharacter = chr != null;
+        rec.isAnimal = chr instanceof IsoAnimal;
+        rec.isPlayer = !rec.isAnimal && chr instanceof IsoPlayer;
+        rec.isZombie = chr instanceof IsoZombie;
+        rec.isSurvivor = chr instanceof IsoSurvivor;
+
+        if (rec.isZombie) {
+            IsoZombie z = (IsoZombie) chr;
+            rec.movingZombie = z;
+            rec.movingPlayer = null;
+            rec.movingAnimal = null;
+            rec.isReanimatedGrapple = z.isReanimatedForGrappleOnly();
+            rec.zombieGhost = z.ghost;
+            rec.zombieFakeDead = z.isFakeDead();
+            rec.isSceneCulled = z.isSceneCulled();
+            // Note: z.target is IsoGameCharacter; we check against the player parameter
+            // for matching the original 'zombieTargetsThis = z.target == this' logic
+            rec.zombieTargetsThis = z.target == player;
+            rec.zombieWalkingTowardOrLunging = z.isCurrentState(WalkTowardState.instance())
+                || z.isCurrentState(LungeState.instance())
+                || z.isCurrentState(PathFindState.instance());
+        } else if (rec.isPlayer) {
+            rec.movingPlayer = (IsoPlayer) chr;
+            rec.movingZombie = null;
+            rec.movingAnimal = null;
+            rec.isReanimatedGrapple = false;
+            rec.zombieGhost = false;
+            rec.zombieFakeDead = false;
+            rec.isSceneCulled = false;
+            rec.zombieTargetsThis = false;
+            rec.zombieWalkingTowardOrLunging = false;
+        } else if (rec.isAnimal) {
+            rec.movingAnimal = (IsoAnimal) chr;
+            rec.movingPlayer = null;
+            rec.movingZombie = null;
+            rec.isReanimatedGrapple = false;
+            rec.zombieGhost = false;
+            rec.zombieFakeDead = false;
+            rec.isSceneCulled = false;
+            rec.zombieTargetsThis = false;
+            rec.zombieWalkingTowardOrLunging = false;
+        } else {
+            rec.movingPlayer = null;
+            rec.movingZombie = null;
+            rec.movingAnimal = null;
+            rec.isReanimatedGrapple = false;
+            rec.zombieGhost = false;
+            rec.zombieFakeDead = false;
+            rec.isSceneCulled = false;
+            rec.zombieTargetsThis = false;
+            rec.zombieWalkingTowardOrLunging = false;
+        }
+
+        if (rec.isReanimatedGrapple) {
+            // nothing else to compute for reanimated grapple zombies
+            return rec;
+        }
+
+        // Invisibility check (client only)
+        rec.isInvisibleToPlayer = bClient
+            && chr != null
+            && chr.isInvisible();
+
+        // Visibility checks
+        if (bServer) {
+            rec.couldSee = ServerLOS.instance.isCouldSee(player, sq);
+        } else {
+            rec.couldSee = sq.isCouldSee(playerIndex);
+            if (!rec.couldSee && rec.movingZombie != null && rec.movingZombie.couldSeeHeadSquare(player)) {
+                rec.couldSee = true;
+            }
+        }
+
+        if (bClient && rec.movingPlayer != null && sq.getCanSee(playerIndex)) {
+            rec.canSee = true;
+        } else if (!bServer) {
+            rec.canSee = sq.isCanSee(playerIndex);
+            if (!rec.canSee && rec.movingZombie != null && rec.movingZombie.canSeeHeadSquare(player)) {
+                rec.canSee = true;
+            }
+        } else {
+            rec.canSee = rec.couldSee;
+        }
+
+        // IsVisibleToPlayer computation
+        if (chr != null) {
+            rec.isVisibleToPlayer = bServer
+                ? chr.TestIfSeen(playerIndex, player)
+                : chr.isVisibleToPlayer[playerIndex];
+        } else {
+            rec.isVisibleToPlayer = false;
+        }
+
+        return rec;
+    }
+
+    /**
+     * Applies precomputed LOSRecords on the main thread.
+     * This replays the same logic as the original updateLOS() loop body
+     * but without expensive computations (distance, visibility, type checks).
+     */
+    private void applyLOSRecords(java.util.ArrayList<LOSRecord> results,
+        boolean bServer, boolean bClient, int playerIndex,
+        float locX, float locY, float locZ) {
+        int close = 0;
+        int vclose = 0;
+
+        for (int idx = 0; idx < results.size(); idx++) {
+            LOSRecord rec = results.get(idx);
+            if (rec == null || rec.movingObject == null) continue;
+
+            if (rec.movingObject instanceof IsoPhysicsObject || rec.movingObject instanceof BaseVehicle) {
+                continue;
+            }
+
+            if (rec.isThisObject) {
+                this.spottedList.add(rec.movingObject);
+                continue;
+            }
+
+            if (!rec.hasSquare || rec.chrCurrentSquare == null) {
+                continue;
+            }
+
+            if (rec.distance < 20.0F) {
+                close++;
+            }
+
+            if (this.isSeeEveryone()) {
+                rec.movingObject.setAlphaAndTarget(playerIndex, 1.0F);
+            }
+
+            if (rec.isReanimatedGrapple) {
+                IsoMovingObject grappledBy = Type.tryCastTo(rec.movingZombie.getGrappledBy(), IsoMovingObject.class);
+                rec.movingObject.setAlphaAndTarget(grappledBy == null ? 1.0F : grappledBy.getTargetAlpha());
+                continue;
+            }
+
+            if (rec.isInvisibleToPlayer && !this.getRole().hasCapability(Capability.SeesInvisiblePlayers)) {
+                rec.movingCharacter.setAlphaAndTarget(playerIndex, 0.0F);
+                continue;
+            }
+
+            if (this.isAsleep()
+                || (!rec.canSee && (!(rec.distance < this.getDetectionRange()) || !rec.couldSee))) {
+                boolean isAttachedAnimal = rec.movingAnimal != null && this.getAttachedAnimals().contains(rec.movingAnimal);
+                rec.movingObject.setTargetAlpha(playerIndex, isAttachedAnimal ? 1.0F : 0.0F);
+                if (rec.couldSee) {
+                    this.TestZombieSpotPlayer(rec.movingObject);
+                }
+            } else {
+                this.TestZombieSpotPlayer(rec.movingObject);
+                if (!rec.isGameCharacter || rec.movingCharacter == null) {
+                    continue;
+                }
+
+                if (rec.isVisibleToPlayer) {
+                    if (rec.isSurvivor) {
+                        this.numSurvivorsInVicinity++;
+                    }
+
+                    if (rec.isZombie && rec.movingZombie != null) {
+                        this.lastSeenZombieTime = 0.0;
+                        if (rec.movingObjectZ >= locZ - 1.0F
+                            && rec.distance < 7.0F
+                            && !rec.zombieGhost
+                            && !rec.zombieFakeDead
+                            && rec.chrCurrentSquare.getRoom() == this.getCurrentSquare().getRoom()) {
+                            this.ticksSinceSeenZombie = 0;
+                            this.stats.numVisibleZombies++;
+                        }
+
+                        if (rec.distance < 3.0F) {
+                            vclose++;
+                        }
+
+                        if (!rec.isSceneCulled) {
+                            this.stats.musicZombiesVisible++;
+                            if (rec.zombieTargetsThis) {
+                                if (!rec.zombieWalkingTowardOrLunging) {
+                                    if (this.DistToProper(rec.movingZombie) >= 10.0F) {
+                                        this.stats.musicZombiesTargetingDistantNotMoving++;
+                                    } else {
+                                        this.stats.musicZombiesTargetingNearbyNotMoving++;
+                                    }
+                                } else if (this.DistToProper(rec.movingZombie) >= 10.0F) {
+                                    this.stats.musicZombiesTargetingDistantMoving++;
+                                } else {
+                                    this.stats.musicZombiesTargetingNearbyMoving++;
+                                }
+                            }
+                        }
+                    }
+
+                    this.spottedList.add(rec.movingCharacter);
+                    if (!rec.isPlayer && !this.remote) {
+                        rec.movingCharacter.setTargetAlpha(playerIndex, 1.0F);
+                    }
+
+                    if (!bClient && !bServer && rec.isPlayer && rec.movingPlayer != null) {
+                        rec.movingPlayer.setTargetAlpha(playerIndex, 1.0F);
+                    }
+
+                    float maxdist = 4.0F;
+                    if (this.stats.numVisibleZombies > 4) {
+                        maxdist = 7.0F;
+                    }
+
+                    if (rec.distance < maxdist
+                        && rec.isZombie
+                        && PZMath.fastfloor(rec.movingObjectZ) == PZMath.fastfloor(locZ)
+                        && !this.isGhostMode()
+                        && !bClient) {
+                        GameTime.instance.setMultiplier(1.0F);
+                        if (!bServer) {
+                            UIManager.getSpeedControls().SetCurrentGameSpeed(1);
+                        }
+                    }
+
+                    if (rec.distance < maxdist
+                        && rec.isZombie
+                        && PZMath.fastfloor(rec.movingObjectZ) == PZMath.fastfloor(locZ)
+                        && !this.lastSpotted.contains(rec.movingCharacter)) {
+                        this.stats.numVisibleZombies += 2;
+                    }
+                }
+            }
+
+            if (rec.distance < 2.0F
+                && rec.movingObject.getTargetAlpha(playerIndex) == 1.0F
+                && !this.remote) {
+                rec.movingObject.setAlpha(playerIndex, 1.0F);
+            }
+        }
+
+        // Post-loop logic (identical to original)
+        if (!bServer
+            && this.isAlive()
+            && vclose > 0
+            && this.stats.lastVeryCloseZombies == 0
+            && this.stats.numVisibleZombies > 0
+            && this.stats.lastNumVisibleZombies == 0
+            && this.timeSinceLastStab >= 600.0F) {
+            this.timeSinceLastStab = 0.0F;
+            long inst = this.getEmitter().playSoundImpl("ZombieSurprisedPlayer", null);
+            this.getEmitter().setVolume(inst, Core.getInstance().getOptionJumpScareVolume() / 10.0F);
+        }
+
+        if (this.stats.numVisibleZombies > 0) {
+            this.timeSinceLastStab = 0.0F;
+        }
+
+        if (this.timeSinceLastStab < 600.0F) {
+            this.timeSinceLastStab = this.timeSinceLastStab + GameTime.getInstance().getThirtyFPSMultiplier();
+        }
+
+        int actualSpotted = 0;
+        for (int n = 0; n < this.spottedList.size(); n++) {
+            if (!this.lastSpotted.contains(this.spottedList.get(n))) {
+                this.lastSpotted.add(this.spottedList.get(n));
+            }
+            if (this.spottedList.get(n) instanceof IsoZombie) {
+                actualSpotted++;
+            }
+        }
+
+        if (this.clearSpottedTimer <= 0 && actualSpotted == 0) {
+            this.lastSpotted.clear();
+            this.clearSpottedTimer = 1000;
+        } else {
+            this.clearSpottedTimer--;
+        }
+
+        this.stats.lastNumVisibleZombies = this.stats.numVisibleZombies;
+        this.stats.lastVeryCloseZombies = vclose;
+    }
+
     public void updateLOS() {
         this.spottedList.clear();
         this.stats.numVisibleZombies = 0;
@@ -5710,210 +6060,117 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         this.stats.musicZombiesTargetingNearbyMoving = 0;
         this.stats.musicZombiesVisible = 0;
         this.numSurvivorsInVicinity = 0;
-        if (this.getCurrentSquare() != null) {
-            boolean bServer = GameServer.server;
-            boolean bClient = GameClient.client;
-            int playerIndex = this.playerIndex;
-            float locX = this.getX();
-            float locY = this.getY();
-            float locZ = this.getZ();
-            int close = 0;
-            int vclose = 0;
 
-            for (IsoMovingObject movingObject : this.getCell().getObjectList()) {
-                if (!(movingObject instanceof IsoPhysicsObject) && !(movingObject instanceof BaseVehicle)) {
-                    if (movingObject == this) {
-                        this.spottedList.add(movingObject);
-                    } else {
-                        float movingObjectX = movingObject.getX();
-                        float movingObjectY = movingObject.getY();
-                        float movingObjectZ = movingObject.getZ();
-                        float distanceToMovingObject = IsoUtils.DistanceTo(movingObjectX, movingObjectY, locX, locY);
-                        if (distanceToMovingObject < 20.0F) {
-                            close++;
-                        }
-
-                        IsoGridSquare chrCurrentSquare = movingObject.getCurrentSquare();
-                        if (chrCurrentSquare != null) {
-                            if (this.isSeeEveryone()) {
-                                movingObject.setAlphaAndTarget(playerIndex, 1.0F);
-                            }
-
-                            IsoGameCharacter movingCharacter = Type.tryCastTo(movingObject, IsoGameCharacter.class);
-                            IsoAnimal movingAnimal = Type.tryCastTo(movingCharacter, IsoAnimal.class);
-                            IsoPlayer movingPlayer = movingAnimal == null ? Type.tryCastTo(movingCharacter, IsoPlayer.class) : null;
-                            IsoZombie movingZombie = Type.tryCastTo(movingCharacter, IsoZombie.class);
-                            if (movingZombie != null && movingZombie.isReanimatedForGrappleOnly()) {
-                                IsoMovingObject grappledBy = Type.tryCastTo(movingZombie.getGrappledBy(), IsoMovingObject.class);
-                                movingObject.setAlphaAndTarget(grappledBy == null ? 1.0F : grappledBy.getTargetAlpha());
-                            } else if (GameClient.client
-                                && movingCharacter != null
-                                && movingCharacter.isInvisible()
-                                && !this.getRole().hasCapability(Capability.SeesInvisiblePlayers)) {
-                                movingCharacter.setAlphaAndTarget(playerIndex, 0.0F);
-                            } else {
-                                boolean couldSee;
-                                if (bServer) {
-                                    couldSee = ServerLOS.instance.isCouldSee(this, chrCurrentSquare);
-                                } else {
-                                    couldSee = chrCurrentSquare.isCouldSee(playerIndex);
-                                    if (!couldSee && movingZombie != null && movingZombie.couldSeeHeadSquare(this)) {
-                                        couldSee = true;
-                                    }
-                                }
-
-                                boolean canSee;
-                                if (bClient && movingPlayer != null && chrCurrentSquare.getCanSee(playerIndex)) {
-                                    canSee = true;
-                                } else if (!bServer) {
-                                    canSee = chrCurrentSquare.isCanSee(playerIndex);
-                                    if (!canSee && movingZombie != null && movingZombie.canSeeHeadSquare(this)) {
-                                        canSee = true;
-                                    }
-                                } else {
-                                    canSee = couldSee;
-                                }
-
-                                if (this.isAsleep() || !canSee && (!(distanceToMovingObject < this.getDetectionRange()) || !couldSee)) {
-                                    boolean isAttachedAnimal = movingAnimal != null && this.getAttachedAnimals().contains(movingAnimal);
-                                    movingObject.setTargetAlpha(playerIndex, isAttachedAnimal ? 1.0F : 0.0F);
-                                    if (couldSee) {
-                                        this.TestZombieSpotPlayer(movingObject);
-                                    }
-                                } else {
-                                    this.TestZombieSpotPlayer(movingObject);
-                                    if (movingCharacter == null) {
-                                        continue;
-                                    }
-
-                                    boolean isVisibleToPlayer = GameServer.server
-                                        ? movingCharacter.TestIfSeen(playerIndex, this)
-                                        : movingCharacter.isVisibleToPlayer[playerIndex];
-                                    if (isVisibleToPlayer) {
-                                        if (movingCharacter instanceof IsoSurvivor) {
-                                            this.numSurvivorsInVicinity++;
-                                        }
-
-                                        if (movingZombie != null) {
-                                            this.lastSeenZombieTime = 0.0;
-                                            if (movingObjectZ >= locZ - 1.0F
-                                                && distanceToMovingObject < 7.0F
-                                                && !movingZombie.ghost
-                                                && !movingZombie.isFakeDead()
-                                                && chrCurrentSquare.getRoom() == this.getCurrentSquare().getRoom()) {
-                                                this.ticksSinceSeenZombie = 0;
-                                                this.stats.numVisibleZombies++;
-                                            }
-
-                                            if (distanceToMovingObject < 3.0F) {
-                                                vclose++;
-                                            }
-
-                                            if (!movingZombie.isSceneCulled()) {
-                                                this.stats.musicZombiesVisible++;
-                                                if (movingZombie.target == this) {
-                                                    if (!movingZombie.isCurrentState(WalkTowardState.instance())
-                                                        && !movingZombie.isCurrentState(LungeState.instance())
-                                                        && !movingZombie.isCurrentState(PathFindState.instance())) {
-                                                        if (this.DistToProper(movingZombie) >= 10.0F) {
-                                                            this.stats.musicZombiesTargetingDistantNotMoving++;
-                                                        } else {
-                                                            this.stats.musicZombiesTargetingNearbyNotMoving++;
-                                                        }
-                                                    } else if (this.DistToProper(movingZombie) >= 10.0F) {
-                                                        this.stats.musicZombiesTargetingDistantMoving++;
-                                                    } else {
-                                                        this.stats.musicZombiesTargetingNearbyMoving++;
-                                                    }
-                                                }
-                                            }
-                                        }
-
-                                        this.spottedList.add(movingCharacter);
-                                        if (movingPlayer == null && !this.remote) {
-                                            movingCharacter.setTargetAlpha(playerIndex, 1.0F);
-                                        }
-
-                                        if (!bClient && !bServer && movingPlayer != null) {
-                                            movingPlayer.setTargetAlpha(playerIndex, 1.0F);
-                                        }
-
-                                        float maxdist = 4.0F;
-                                        if (this.stats.numVisibleZombies > 4) {
-                                            maxdist = 7.0F;
-                                        }
-
-                                        if (distanceToMovingObject < maxdist
-                                            && movingCharacter instanceof IsoZombie
-                                            && PZMath.fastfloor(movingObjectZ) == PZMath.fastfloor(locZ)
-                                            && !this.isGhostMode()
-                                            && !bClient) {
-                                            GameTime.instance.setMultiplier(1.0F);
-                                            if (!bServer) {
-                                                UIManager.getSpeedControls().SetCurrentGameSpeed(1);
-                                            }
-                                        }
-
-                                        if (distanceToMovingObject < maxdist
-                                            && movingCharacter instanceof IsoZombie
-                                            && PZMath.fastfloor(movingObjectZ) == PZMath.fastfloor(locZ)
-                                            && !this.lastSpotted.contains(movingCharacter)) {
-                                            this.stats.numVisibleZombies += 2;
-                                        }
-                                    }
-                                }
-
-                                if (distanceToMovingObject < 2.0F && movingObject.getTargetAlpha(playerIndex) == 1.0F && !this.remote) {
-                                    movingObject.setAlpha(playerIndex, 1.0F);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (!bServer
-                && this.isAlive()
-                && vclose > 0
-                && this.stats.lastVeryCloseZombies == 0
-                && this.stats.numVisibleZombies > 0
-                && this.stats.lastNumVisibleZombies == 0
-                && this.timeSinceLastStab >= 600.0F) {
-                this.timeSinceLastStab = 0.0F;
-                long inst = this.getEmitter().playSoundImpl("ZombieSurprisedPlayer", null);
-                this.getEmitter().setVolume(inst, Core.getInstance().getOptionJumpScareVolume() / 10.0F);
-            }
-
-            if (this.stats.numVisibleZombies > 0) {
-                this.timeSinceLastStab = 0.0F;
-            }
-
-            if (this.timeSinceLastStab < 600.0F) {
-                this.timeSinceLastStab = this.timeSinceLastStab + GameTime.getInstance().getThirtyFPSMultiplier();
-            }
-
-            int actualSpotted = 0;
-
-            for (int n = 0; n < this.spottedList.size(); n++) {
-                if (!this.lastSpotted.contains(this.spottedList.get(n))) {
-                    this.lastSpotted.add(this.spottedList.get(n));
-                }
-
-                if (this.spottedList.get(n) instanceof IsoZombie) {
-                    actualSpotted++;
-                }
-            }
-
-            if (this.clearSpottedTimer <= 0 && actualSpotted == 0) {
-                this.lastSpotted.clear();
-                this.clearSpottedTimer = 1000;
-            } else {
-                this.clearSpottedTimer--;
-            }
-
+        if (this.getCurrentSquare() == null) {
             this.stats.lastNumVisibleZombies = this.stats.numVisibleZombies;
-            this.stats.lastVeryCloseZombies = vclose;
+            this.stats.lastVeryCloseZombies = 0;
+            return;
         }
+
+        final boolean bServer = GameServer.server;
+        final boolean bClient = GameClient.client;
+        final int playerIndex = this.playerIndex;
+        final float locX = this.getX();
+        final float locY = this.getY();
+        final float locZ = this.getZ();
+
+        // Snapshot object list to avoid CME during parallel iteration
+        IsoCell cell = this.getCell();
+        if (cell == null) {
+            this.stats.lastNumVisibleZombies = this.stats.numVisibleZombies;
+            this.stats.lastVeryCloseZombies = 0;
+            return;
+        }
+        ArrayList<IsoMovingObject> objects = new ArrayList<>(cell.getObjectList());
+        final int size = objects.size();
+
+        // Only parallelize server-side LOS for large object lists;
+        // client and small lists use the fast sequential path.
+        final boolean useParallel = bServer && size > 100 && !this.remote;
+
+        // Compute phase: build LOSRecords with all expensive calculations precomputed
+        final ArrayList<LOSRecord> results = new ArrayList<>(size);
+
+        if (useParallel) {
+            int threadCount = Math.max(2,
+                Math.min(size / 200 + 1, Runtime.getRuntime().availableProcessors()));
+            int chunkSize = (size + threadCount - 1) / threadCount;
+
+            @SuppressWarnings("unchecked")
+            ArrayList<LOSRecord>[] chunks = new ArrayList[threadCount];
+            CompletableFuture<?>[] futures = new CompletableFuture[threadCount];
+
+            final boolean isSeeEveryone = this.isSeeEveryone();
+            final boolean isAsleep = this.isAsleep();
+            final boolean isGhostMode = this.isGhostMode();
+            final boolean isRemote = this.remote;
+            final float detectionRange = this.getDetectionRange();
+
+            for (int t = 0; t < threadCount; t++) {
+                final int start = t * chunkSize;
+                final int end = Math.min(start + chunkSize, size);
+                if (start >= end) {
+                    chunks[t] = new ArrayList<>(0);
+                    futures[t] = CompletableFuture.completedFuture(null);
+                    continue;
+                }
+                ArrayList<LOSRecord> chunk = new ArrayList<>(end - start);
+                chunks[t] = chunk;
+                futures[t] = CompletableFuture.runAsync(() -> {
+                    for (int i = start; i < end; i++) {
+                        IsoMovingObject mo = objects.get(i);
+                        if (mo == null) continue;
+                        if (mo == this) {
+                            LOSRecord selfRec = new LOSRecord();
+                            selfRec.movingObject = mo;
+                            selfRec.isThisObject = true;
+                            selfRec.hasSquare = true;
+                            chunk.add(selfRec);
+                            continue;
+                        }
+                        chunk.add(computeLOSRecord(mo, this, bServer, bClient, playerIndex,
+                            locX, locY, locZ,
+                            isSeeEveryone, isAsleep, isGhostMode, isRemote,
+                            detectionRange));
+                    }
+                }, PZForkJoinPool.commonPool());
+            }
+
+            // Wait for all parallel workers to finish
+            CompletableFuture.allOf(futures).join();
+
+            // Merge chunks in original order
+            for (int t = 0; t < threadCount; t++) {
+                results.addAll(chunks[t]);
+            }
+        } else {
+            // Sequential path: same computation but inline
+            final boolean isSeeEveryone = this.isSeeEveryone();
+            final boolean isAsleep = this.isAsleep();
+            final boolean isGhostMode = this.isGhostMode();
+            final boolean isRemote = this.remote;
+            final float detectionRange = this.getDetectionRange();
+
+            for (int i = 0; i < size; i++) {
+                IsoMovingObject mo = objects.get(i);
+                if (mo == null) continue;
+                if (mo == this) {
+                    LOSRecord selfRec = new LOSRecord();
+                    selfRec.movingObject = mo;
+                    selfRec.isThisObject = true;
+                    selfRec.hasSquare = true;
+                    results.add(selfRec);
+                    continue;
+                }
+                results.add(computeLOSRecord(mo, this, bServer, bClient, playerIndex,
+                    locX, locY, locZ,
+                    isSeeEveryone, isAsleep, isGhostMode, isRemote,
+                    detectionRange));
+            }
+        }
+
+        // Apply phase: replay all state mutations on the main thread
+        applyLOSRecords(results, bServer, bClient, playerIndex, locX, locY, locZ);
     }
 
     private boolean checkSpottedPLayerTimer(IsoPlayer remoteChr) {
