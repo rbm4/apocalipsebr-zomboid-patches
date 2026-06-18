@@ -3609,7 +3609,7 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
                 // ApocBR: check if previous frame's async breakingObjects detection completed.
                 // The detection phase is read-only grid math (no Bullet JNI, no state mutation).
                 // If it finished, we apply the results (object.Collision etc.) and grant Lua.
-                // If not, the ForkJoinPool is saturated → skip Lua this frame.
+                // If not, the ForkJoinPool is saturated â†’ skip Lua this frame.
                 if (this.apocBrAsyncWork != null) {
                     if (this.apocBrAsyncWork.isDone()) {
                         try {
@@ -3618,7 +3618,7 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
                                 this.apocBrApplyBreaking(result);
                             }
                         } catch (Exception e) {
-                            // detection failed — breaking state unchanged, safe to ignore
+                            // detection failed â€” breaking state unchanged, safe to ignore
                         }
                         this.apocBrAsyncWork = null;
                         this.apocBrAsyncLuaReady = true;
@@ -3708,7 +3708,7 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
 
                 // ApocBR: frame-skip updateParts() to reduce Lua call frequency on the main thread.
                 // The elapsedMinutes mechanism in each Lua update function already handles
-                // irregular intervals correctly — skipped frames just produce larger deltas.
+                // irregular intervals correctly â€” skipped frames just produce larger deltas.
                 //
                 // Two independent throttles:
                 //   1. Frame-skip: baseline rate (1 in 3 for undriven server vehicles)
@@ -11926,63 +11926,91 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
         float capX, float capY, float capZ, VehicleScript capScript,
         boolean collideChars, boolean collideObjects, IsoCell cell
     ) {
-        if (!collideChars && !collideObjects) return null;
-        ApocBRBreakingResult r = new ApocBRBreakingResult();
+        if ((!collideChars && !collideObjects) || cell == null || capScript == null) return null;
         Vector3f ext = capScript.getExtents();
+        if (ext == null) return null;
+
+        ApocBRBreakingResult r = new ApocBRBreakingResult();
         Vector2 vecPool = new Vector2();
         float radius = Math.max(ext.x / 2.0F, ext.z / 2.0F) + 0.3F + 1.0F;
         int radiusSq = (int)Math.ceil(radius);
 
         for (int yy = -radiusSq; yy < radiusSq; yy++) {
             for (int xx = -radiusSq; xx < radiusSq; xx++) {
-                IsoGridSquare sq = cell.getGridSquare((double)(capX + xx), (double)(capY + yy), (double)capZ);
+                IsoGridSquare sq;
+                try {
+                    sq = cell.getGridSquare((double)(capX + xx), (double)(capY + yy), (double)capZ);
+                } catch (Throwable t) {
+                    ExceptionLogger.logException(t);
+                    continue;
+                }
                 if (sq == null) continue;
 
                 if (collideObjects) {
-                    for (int i = 0; i < sq.getObjects().size(); i++) {
-                        IsoObject obj = sq.getObjects().get(i);
-                        if (obj instanceof IsoWorldInventoryObject) continue;
-                        Vector2 collision = null;
-                        if (obj != null && obj.getProperties() != null) {
-                            if (obj.getProperties().has("CarSlowFactor")) {
-                                collision = this.testCollisionWithObject(obj, 0.3F, vecPool);
-                            }
-                            if (collision != null) {
-                                r.newHits.add(obj);
-                                r.hitPositions.add(new Vector2(collision));
-                                r.hasChanges = true;
-                            }
-                            if (obj.getProperties().has("HitByCar")) {
-                                collision = this.testCollisionWithObject(obj, 0.3F, vecPool);
-                            }
-                            if (collision != null) {
-                                r.newHits.add(obj);
-                                r.hitPositions.add(new Vector2(collision));
-                                r.hasChanges = true;
-                            }
-                            // Plant collision check (read-only property test)
-                            if (obj.getProperties().has("CarDestroy") || obj.getProperties().has("DestroyByCar")) {
-                                r.hasPlantHits = true;
+                    try {
+                        if (sq.getObjects() != null) {
+                            for (int i = 0; i < sq.getObjects().size(); i++) {
+                                IsoObject obj = sq.getObjects().get(i);
+                                if (obj == null) continue;
+                                if (obj instanceof IsoWorldInventoryObject) continue;
+                                Vector2 collision = null;
+                                if (obj.getProperties() != null) {
+                                    if (obj.getProperties().has("CarSlowFactor")) {
+                                        collision = this.testCollisionWithObject(obj, 0.3F, vecPool);
+                                    }
+                                    if (collision != null) {
+                                        r.newHits.add(obj);
+                                        r.hitPositions.add(new Vector2(collision));
+                                        r.hasChanges = true;
+                                    }
+                                    if (obj.getProperties().has("HitByCar")) {
+                                        collision = this.testCollisionWithObject(obj, 0.3F, vecPool);
+                                    }
+                                    if (collision != null) {
+                                        r.newHits.add(obj);
+                                        r.hitPositions.add(new Vector2(collision));
+                                        r.hasChanges = true;
+                                    }
+                                    if (obj.getProperties().has("CarDestroy") || obj.getProperties().has("DestroyByCar")) {
+                                        r.hasPlantHits = true;
+                                    }
+                                }
                             }
                         }
+                    } catch (Throwable t) {
+                        ExceptionLogger.logException(t);
                     }
                 }
 
                 if (collideChars) {
-                    for (int ix = 0; ix < sq.getMovingObjects().size(); ix++) {
-                        IsoMovingObject mov = sq.getMovingObjects().get(ix);
-                        if (mov instanceof IsoZombie || mov instanceof IsoAnimal || (mov instanceof IsoPlayer && mov != this.getDriver())) {
-                            r.charsToFlag.add(mov);
+                    try {
+                        if (sq.getMovingObjects() != null) {
+                            for (int ix = 0; ix < sq.getMovingObjects().size(); ix++) {
+                                IsoMovingObject mov = sq.getMovingObjects().get(ix);
+                                if (mov == null) continue;
+                                if (mov instanceof IsoZombie || mov instanceof IsoAnimal || (mov instanceof IsoPlayer && mov != this.getDriver())) {
+                                    r.charsToFlag.add(mov);
+                                }
+                            }
                         }
+                    } catch (Throwable t) {
+                        ExceptionLogger.logException(t);
                     }
                 }
 
                 if (collideObjects) {
-                    for (int ix = 0; ix < sq.getStaticMovingObjects().size(); ix++) {
-                        IsoMovingObject mov = sq.getStaticMovingObjects().get(ix);
-                        if (mov instanceof IsoDeadBody) {
-                            this.testCollisionWithCorpse((IsoDeadBody)mov, true);
+                    try {
+                        if (sq.getStaticMovingObjects() != null) {
+                            for (int ix = 0; ix < sq.getStaticMovingObjects().size(); ix++) {
+                                IsoMovingObject mov = sq.getStaticMovingObjects().get(ix);
+                                if (mov == null) continue;
+                                if (mov instanceof IsoDeadBody) {
+                                    this.testCollisionWithCorpse((IsoDeadBody)mov, true);
+                                }
+                            }
                         }
+                    } catch (Throwable t) {
+                        ExceptionLogger.logException(t);
                     }
                 }
             }
@@ -11997,10 +12025,10 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     private void apocBrApplyBreaking(ApocBRBreakingResult r) {
         if (r == null) return;
 
-        // Apply new collisions
-        for (int i = 0; i < r.newHits.size(); i++) {
+        for (int i = 0; i < r.newHits.size() && i < r.hitPositions.size(); i++) {
             IsoObject obj = r.newHits.get(i);
             Vector2 pos = r.hitPositions.get(i);
+            if (obj == null || pos == null) continue;
             if (!this.breakingObjectsList.contains(obj)) {
                 this.breakingObjectsList.add(obj);
                 if (!GameClient.client) {
@@ -12009,11 +12037,16 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
             }
         }
 
-        // Re-check existing breaking objects (slow factor + removal)
         Vector2 vecPool = new Vector2();
         float slowFactor = -999.0F;
         for (int i = 0; i < this.breakingObjectsList.size(); i++) {
             IsoObject obj = this.breakingObjectsList.get(i);
+            if (obj == null || obj.getSquare() == null || obj.getSquare().getObjects() == null) {
+                this.breakingObjectsList.remove(i);
+                i--;
+                continue;
+            }
+
             Vector2 collision = this.testCollisionWithObject(obj, 1.0F, vecPool);
             if (collision == null || !obj.getSquare().getObjects().contains(obj)) {
                 this.breakingObjectsList.remove(i);
@@ -12034,9 +12067,9 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
             this.hittingPlant = true;
         }
 
-        // Flag characters for collision test (sets vehicle4TestCollision)
         for (int i = 0; i < r.charsToFlag.size(); i++) {
             IsoMovingObject mov = r.charsToFlag.get(i);
+            if (mov == null) continue;
             if (mov instanceof IsoZombie z) {
                 if (z.isProne()) {
                     this.testCollisionWithProneCharacter(z, false, null);
@@ -12361,3 +12394,7 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
         public static final BaseVehicle.engineStateTypes[] Values = values();
     }
 }
+
+
+
+

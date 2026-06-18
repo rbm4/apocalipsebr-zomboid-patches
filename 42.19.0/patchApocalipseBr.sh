@@ -5,21 +5,21 @@
 #
 # Combined deploy script for all ApocBR patches targeting Build 42.19:
 #
-# 1. Zombie NoCull Fix   – MovingObjectUpdateScheduler.postupdate()
+# 1. Zombie NoCull Fix   â€“ MovingObjectUpdateScheduler.postupdate()
 #    Removes ZombieCountOptimiser.deleteZombies() call that aggressively
 #    culls zombie populations on servers with many connected players.
 #
-# 2. Pathfind Safety     – PathfindNative + ChunkUpdateTask
+# 2. Pathfind Safety     â€“ PathfindNative + ChunkUpdateTask
 #    Stale-chunk guard that prevents SIGSEGV crashes in libPZPathFind64.so
 #    when a ChunkUpdateTask executes after its chunk has been removed or
 #    reloaded in native pathfind state.
 #
-# 3. NullCraft Fix       – CompressIdenticalItems.save() Null Guard
+# 3. NullCraft Fix       â€“ CompressIdenticalItems.save() Null Guard
 #    Adds a null guard in save(ByteBuffer, InventoryItem) to prevent NPE
 #    when a drying/curing craft item becomes null, which would corrupt
 #    chunk saves and cause vehicles to vanish.
 #
-# 4. Async Save Telemetry – ServerMap, ApocBRServerTelemetry, etc.
+# 4. Async Save Telemetry â€“ ServerMap, ApocBRServerTelemetry, etc.
 #    Async background save (ServerMap) + ApocBR server telemetry +
 #    guarded IsoWorld parallelism + vehicle hit-field optimizations.
 #
@@ -75,6 +75,7 @@ DEPLOY_ISO="$DEPLOY_BASE/zombie/iso"
 DEPLOY_VEHICLES="$DEPLOY_BASE/zombie/vehicles"
 DEPLOY_PATHFIND="$DEPLOY_BASE/zombie/pathfind/nativeCode"
 DEPLOY_INVENTORY="$DEPLOY_BASE/zombie/inventory"
+DEPLOY_CHARACTERS_ANIMALS="$DEPLOY_BASE/zombie/characters/animals"
 
 REQUIRED_MAJOR=25
 
@@ -83,6 +84,8 @@ SOURCES=(
     "$SRC_ROOT/zombie/ApocBRServerTelemetry.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateScheduler.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
+    "$SRC_ROOT/zombie/WorldSoundManager.java"
+    "$SRC_ROOT/zombie/iso/FishSchoolManager.java"
     "$SRC_ROOT/zombie/vehicles/BaseVehicle.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
     "$SRC_ROOT/zombie/gameStates/IngameState.java"
@@ -93,6 +96,8 @@ SOURCES=(
     "$SRC_ROOT/zombie/pathfind/nativeCode/PathfindNative.java"
     "$SRC_ROOT/zombie/pathfind/nativeCode/ChunkUpdateTask.java"
     "$SRC_ROOT/zombie/inventory/CompressIdenticalItems.java"
+    "$SRC_ROOT/zombie/network/ServerChunkLoader.java"
+    "$SRC_ROOT/zombie/characters/animals/IsoAnimal.java"
 )
 
 # --- All expected class files (relative to deploy base) ---
@@ -100,6 +105,12 @@ CLASSES=(
     "zombie/ApocBRServerTelemetry.class"
     "zombie/MovingObjectUpdateScheduler.class"
     "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
+    "zombie/WorldSoundManager.class"
+    'zombie/WorldSoundManager$ResultBiggestSound.class'
+    'zombie/WorldSoundManager$WorldSound.class'
+    "zombie/iso/FishSchoolManager.class"
+    'zombie/iso/FishSchoolManager$ChumData.class'
+    'zombie/iso/FishSchoolManager$ZoneData.class'
     "zombie/vehicles/BaseVehicle.class"
     'zombie/vehicles/BaseVehicle$1.class'
     'zombie/vehicles/BaseVehicle$Authorization.class'
@@ -162,6 +173,17 @@ CLASSES=(
     'zombie/inventory/CompressIdenticalItems$1.class'
     'zombie/inventory/CompressIdenticalItems$PerCallData.class'
     'zombie/inventory/CompressIdenticalItems$PerThreadData.class'
+    "zombie/network/ServerChunkLoader.class"
+    'zombie/network/ServerChunkLoader$GetSquare.class'
+    'zombie/network/ServerChunkLoader$LoaderThread.class'
+    'zombie/network/ServerChunkLoader$QuitThreadTask.class'
+    'zombie/network/ServerChunkLoader$RecalcAllThread.class'
+    'zombie/network/ServerChunkLoader$SaveChunkThread.class'
+    'zombie/network/ServerChunkLoader$SaveGameTimeTask.class'
+    'zombie/network/ServerChunkLoader$SaveLoadedTask.class'
+    'zombie/network/ServerChunkLoader$SaveTask.class'
+    'zombie/network/ServerChunkLoader$SaveUnloadedTask.class'
+    "zombie/characters/animals/IsoAnimal.class"
 )
 
 echo ""
@@ -266,7 +288,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
 else
     echo "[*] Deploying..."
     mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_NET" "$DEPLOY_GAMESTATES" "$DEPLOY_ISO" \
-             "$DEPLOY_VEHICLES" "$DEPLOY_PATHFIND" "$DEPLOY_INVENTORY" "$BACKUP_DIR"
+             "$DEPLOY_VEHICLES" "$DEPLOY_PATHFIND" "$DEPLOY_INVENTORY" "$DEPLOY_CHARACTERS_ANIMALS" "$BACKUP_DIR"
 
     ts=$(date +%Y%m%d_%H%M%S)
     deployed=0
@@ -314,3 +336,5 @@ echo ""
 echo "To revert:"
 echo "  ./patchApocalipseBr.sh --revert"
 echo ""
+
+
