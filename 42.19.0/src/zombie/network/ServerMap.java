@@ -32,6 +32,7 @@ import zombie.debug.DebugLog;
 import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.entity.GameEntityManager;
+import zombie.ApocBRServerTelemetry;
 import zombie.globalObjects.SGlobalObjects;
 import zombie.iso.InstanceTracker;
 import zombie.iso.IsoChunk;
@@ -654,9 +655,7 @@ public class ServerMap {
         boolean pathfindPaused = false;
 
         // Phase A (main thread): Partition cells
-        // Handle unloads and cancellations on main thread (mutates cellMap
-        // and loadedCells ArrayList - not thread-safe).
-        // Collect cells that need chunk updates for parallel dispatch.
+        long apocBrPhaseStart = System.nanoTime();
         ArrayList<ServerCell> cellsToUpdate = new ArrayList<>();
 
         try {
@@ -670,11 +669,7 @@ public class ServerMap {
                                 DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy + " cell.startedLoading=" + cell.startedLoading
                             );
                         }
-
-                        if (!cell.startedLoading) {
-                            cell.loadingWasCancelled = true;
-                        }
-
+                        if (!cell.startedLoading) cell.loadingWasCancelled = true;
                         cell.cancelLoading = true;
                     }
                 } else if (!shouldBeLoaded) {
@@ -684,7 +679,6 @@ public class ServerMap {
                         ServerLOS.instance.suspend();
                         pathfindPaused = true;
                     }
-
                     this.cellMap[y * this.width + x].Unload();
                     this.cellMap[y * this.width + x] = null;
                     this.loadedCells.remove(cell);
@@ -700,17 +694,11 @@ public class ServerMap {
                 ServerLOS.instance.resume();
             }
         }
+        ApocBRServerTelemetry.recordWorldSection("serverMapPartition", System.nanoTime() - apocBrPhaseStart);
 
         // Phase B+C (parallel, on ForkJoinPool):
-        // Cell updates, NetworkZombiePacker, and chunkLoader all run off the
-        // main thread. Each is independently safe for worker threads:
-        //
-        //   cell.update()        - writes per-cell/chunk fields only (no shared state)
-        //   NetworkZombiePacker  - uses synchronized(this.zombiesReceived) internally
-        //   chunkLoader.updateSaved() - drains LinkedBlockingQueue (thread-safe by design)
-        //
-        // For small cell counts, skip threading overhead and run sequentially.
-        if (cellsToUpdate.size() >= PARALLEL_CELL_THRESHOLD) {
+        int cellCount = cellsToUpdate.size();
+        if (cellCount >= PARALLEL_CELL_THRESHOLD) {
             final ArrayList<ServerCell> keepCells = new ArrayList<>(cellsToUpdate);
             int numWorkers = Math.min(
                 Math.max(1, keepCells.size() / 20 + 1),
@@ -720,8 +708,7 @@ public class ServerMap {
             @SuppressWarnings("unchecked")
             CompletableFuture<Void>[] allFutures = new CompletableFuture[numWorkers + 1];
 
-            // Cell update workers: split keepCells into chunks, each chunk
-            // runs cell.update() on a worker thread.
+            long apocBrCellStart = System.nanoTime();
             for (int t = 0; t < numWorkers; t++) {
                 final int start = t * chunkSize;
                 final int end = Math.min(start + chunkSize, keepCells.size());
@@ -730,38 +717,32 @@ public class ServerMap {
                     continue;
                 }
                 allFutures[t] = CompletableFuture.runAsync(() -> {
-                    for (int i = start; i < end; i++) {
-                        keepCells.get(i).update();
-                    }
+                    for (int i = start; i < end; i++) keepCells.get(i).update();
                 }, PZForkJoinPool.commonPool());
             }
 
-            // Network + DB coordination worker:
-            // NetworkZombiePacker uses synchronized internals - safe.
-            // chunkLoader.updateSaved() drains thread-safe queues - safe.
             allFutures[numWorkers] = CompletableFuture.runAsync(() -> {
-                try {
-                    NetworkZombiePacker.getInstance().postupdate();
-                } catch (Throwable t) {
-                    DebugType.General.printException(t, LogSeverity.Error);
-                }
-                try {
-                    ServerCell.chunkLoader.updateSaved();
-                } catch (Throwable t) {
-                    DebugType.General.printException(t, LogSeverity.Error);
-                }
+                try { NetworkZombiePacker.getInstance().postupdate(); }
+                catch (Throwable t) { DebugType.General.printException(t, LogSeverity.Error); }
+                try { ServerCell.chunkLoader.updateSaved(); }
+                catch (Throwable t) { DebugType.General.printException(t, LogSeverity.Error); }
             }, PZForkJoinPool.commonPool());
 
-            // Wait for ALL parallel work to complete before returning
-            // to the main thread tick loop.
+            // Wait time includes both cell updates and misc tasks running in parallel
             CompletableFuture.allOf(allFutures).join();
+            ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", System.nanoTime() - apocBrCellStart);
+            ApocBRServerTelemetry.recordServerMapCellsUpdated(keepCells.size(), numWorkers);
         } else {
-            // Sequential path: few cells, not worth threading overhead.
-            for (int i = 0; i < cellsToUpdate.size(); i++) {
-                cellsToUpdate.get(i).update();
-            }
+            long apocBrSequentialStart = System.nanoTime();
+            for (int i = 0; i < cellCount; i++) cellsToUpdate.get(i).update();
+            long cellMs = System.nanoTime() - apocBrSequentialStart;
+            ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", cellMs);
+            ApocBRServerTelemetry.recordServerMapCellsUpdated(cellCount, 0);
+
+            apocBrSequentialStart = System.nanoTime();
             NetworkZombiePacker.getInstance().postupdate();
             ServerCell.chunkLoader.updateSaved();
+            ApocBRServerTelemetry.recordWorldSection("serverMapMiscTasks", System.nanoTime() - apocBrSequentialStart);
         }
     }
 

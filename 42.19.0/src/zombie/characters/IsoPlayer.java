@@ -251,6 +251,7 @@ import zombie.util.list.PZArrayList;
 import zombie.util.list.PZArrayUtil;
 import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehiclePart;
+import zombie.ApocBRServerTelemetry;
 import zombie.vehicles.VehicleWindow;
 import zombie.vehicles.VehiclesDB2;
 import zombie.world.WorldDictionary;
@@ -6091,6 +6092,7 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         // Compute phase: build LOSRecords with all expensive calculations precomputed
         final ArrayList<LOSRecord> results = new ArrayList<>(size);
 
+        long apocBrComputeStart = System.nanoTime();
         if (useParallel) {
             int threadCount = Math.max(2,
                 Math.min(size / 200 + 1, Runtime.getRuntime().availableProcessors()));
@@ -6136,15 +6138,12 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
                 }, PZForkJoinPool.commonPool());
             }
 
-            // Wait for all parallel workers to finish
             CompletableFuture.allOf(futures).join();
 
-            // Merge chunks in original order
             for (int t = 0; t < threadCount; t++) {
                 results.addAll(chunks[t]);
             }
         } else {
-            // Sequential path: same computation but inline
             final boolean isSeeEveryone = this.isSeeEveryone();
             final boolean isAsleep = this.isAsleep();
             final boolean isGhostMode = this.isGhostMode();
@@ -6168,9 +6167,13 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
                     detectionRange));
             }
         }
+        long apocBrComputeNanos = System.nanoTime() - apocBrComputeStart;
 
         // Apply phase: replay all state mutations on the main thread
+        long apocBrApplyStart = System.nanoTime();
         applyLOSRecords(results, bServer, bClient, playerIndex, locX, locY, locZ);
+        long apocBrApplyNanos = System.nanoTime() - apocBrApplyStart;
+        ApocBRServerTelemetry.recordPlayerLOS(size, useParallel, apocBrComputeNanos, apocBrApplyNanos);
     }
 
     private boolean checkSpottedPLayerTimer(IsoPlayer remoteChr) {

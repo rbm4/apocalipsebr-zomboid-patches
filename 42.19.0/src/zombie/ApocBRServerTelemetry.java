@@ -45,6 +45,24 @@ public final class ApocBRServerTelemetry {
     private static long serverMapPostNanos;
     private static long serverMapPostMaxNanos;
     private static long downloadConnections;
+    private static long serverMapPartitionNanos;
+    private static long serverMapPartitionMaxNanos;
+    private static long serverMapCellTasksNanos;
+    private static long serverMapCellTasksMaxNanos;
+    private static long serverMapMiscTasksNanos;
+    private static long serverMapMiscTasksMaxNanos;
+    private static long serverMapWaitNanos;
+    private static long serverMapWaitMaxNanos;
+    private static long serverMapCellsUpdated;
+    private static int serverMapNumWorkersLast;
+    private static long playerLOSComputeNanos;
+    private static long playerLOSComputeMaxNanos;
+    private static long playerLOSApplyNanos;
+    private static long playerLOSApplyMaxNanos;
+    private static long playerLOSObjects;
+    private static long playerLOSCalls;
+    private static long playerLOSParallel;
+    private static long playerLOSSequential;
     private static long chunkMainCalls;
     private static long chunkMainNanos;
     private static long chunkMainMaxNanos;
@@ -135,6 +153,7 @@ public final class ApocBRServerTelemetry {
     private static final String[] ISO_CELL_SECTION_KEYS = new String[] {
         "startFrame", "spottedRooms", "chunkMap", "removeItemsPre",
         "preLuaSubmit", "preLuaSkip",
+        "isoObjectsMain", "staticUpdatersMain",
         "movingObjects", "animalSounds", "zombieVocals", "objects",
         "objectDeletionAddition",
         "postLuaSubmit", "postLuaSkip",
@@ -189,6 +208,24 @@ public final class ApocBRServerTelemetry {
         } else if ("serverMapPost".equals(section)) {
             serverMapPostNanos += nanos;
             serverMapPostMaxNanos = Math.max(serverMapPostMaxNanos, nanos);
+        } else if ("serverMapPartition".equals(section)) {
+            serverMapPartitionNanos += nanos;
+            serverMapPartitionMaxNanos = Math.max(serverMapPartitionMaxNanos, nanos);
+        } else if ("serverMapCellTasks".equals(section)) {
+            serverMapCellTasksNanos += nanos;
+            serverMapCellTasksMaxNanos = Math.max(serverMapCellTasksMaxNanos, nanos);
+        } else if ("serverMapMiscTasks".equals(section)) {
+            serverMapMiscTasksNanos += nanos;
+            serverMapMiscTasksMaxNanos = Math.max(serverMapMiscTasksMaxNanos, nanos);
+        } else if ("serverMapWait".equals(section)) {
+            serverMapWaitNanos += nanos;
+            serverMapWaitMaxNanos = Math.max(serverMapWaitMaxNanos, nanos);
+        } else if ("playerLOSCompute".equals(section)) {
+            playerLOSComputeNanos += nanos;
+            playerLOSComputeMaxNanos = Math.max(playerLOSComputeMaxNanos, nanos);
+        } else if ("playerLOSApply".equals(section)) {
+            playerLOSApplyNanos += nanos;
+            playerLOSApplyMaxNanos = Math.max(playerLOSApplyMaxNanos, nanos);
         }
     }
 
@@ -394,6 +431,23 @@ public final class ApocBRServerTelemetry {
         if (ENABLED) downloadConnections += count;
     }
 
+    public static synchronized void recordServerMapCellsUpdated(int cells, int workers) {
+        if (!ENABLED) return;
+        serverMapCellsUpdated += cells;
+        serverMapNumWorkersLast = Math.max(serverMapNumWorkersLast, workers);
+    }
+
+    public static synchronized void recordPlayerLOS(int objects, boolean isParallel, long computeNanos, long applyNanos) {
+        if (!ENABLED) return;
+        playerLOSCalls++;
+        playerLOSObjects += objects;
+        if (isParallel) playerLOSParallel++; else playerLOSSequential++;
+        playerLOSComputeNanos += computeNanos;
+        playerLOSComputeMaxNanos = Math.max(playerLOSComputeMaxNanos, computeNanos);
+        playerLOSApplyNanos += applyNanos;
+        playerLOSApplyMaxNanos = Math.max(playerLOSApplyMaxNanos, applyNanos);
+    }
+
     public static synchronized void recordWorldTick(long nanos) {
         if (!ENABLED) return;
         worldTicks++;
@@ -433,7 +487,16 @@ public final class ApocBRServerTelemetry {
             + ",vehicleAvgMs=" + avgMs(vehicleUpdateNanos, worldTicks) + ",vehicleMaxMs=" + ms(vehicleUpdateMaxNanos)
             + ",objectIdAvgMs=" + avgMs(objectIdNanos, worldTicks) + ",objectIdMaxMs=" + ms(objectIdMaxNanos)
             + ",connChunkAvgMs=" + avgMs(connectionChunkNanos, worldTicks) + ",connChunkMaxMs=" + ms(connectionChunkMaxNanos)
-            + ",serverMapPostAvgMs=" + avgMs(serverMapPostNanos, worldTicks) + ",serverMapPostMaxMs=" + ms(serverMapPostMaxNanos) + "}"
+            + ",serverMapPostAvgMs=" + avgMs(serverMapPostNanos, worldTicks) + ",serverMapPostMaxMs=" + ms(serverMapPostMaxNanos)
+            + ",serverMapPartitionAvgMs=" + avgMs(serverMapPartitionNanos, worldTicks) + ",serverMapPartitionMaxMs=" + ms(serverMapPartitionMaxNanos)
+            + ",serverMapCellTasksAvgMs=" + avgMs(serverMapCellTasksNanos, worldTicks) + ",serverMapCellTasksMaxMs=" + ms(serverMapCellTasksMaxNanos)
+            + ",serverMapMiscTasksAvgMs=" + avgMs(serverMapMiscTasksNanos, worldTicks) + ",serverMapMiscTasksMaxMs=" + ms(serverMapMiscTasksMaxNanos)
+            + ",serverMapWaitAvgMs=" + avgMs(serverMapWaitNanos, worldTicks) + ",serverMapWaitMaxMs=" + ms(serverMapWaitMaxNanos)
+            + ",serverMapCellsUpdated=" + serverMapCellsUpdated + ",serverMapWorkers=" + serverMapNumWorkersLast
+            + ",playerLOS=" + playerLOSCalls + ",playerLOSObjects=" + playerLOSObjects
+            + ",playerLOSParallel=" + playerLOSParallel + ",playerLOSSequential=" + playerLOSSequential
+            + ",playerLOSComputeAvgMs=" + avgMs(playerLOSComputeNanos, playerLOSCalls) + ",playerLOSComputeMaxMs=" + ms(playerLOSComputeMaxNanos)
+            + ",playerLOSApplyAvgMs=" + avgMs(playerLOSApplyNanos, playerLOSCalls) + ",playerLOSApplyMaxMs=" + ms(playerLOSApplyMaxNanos) + "}"
             + " packets{high=" + highPackets + "/" + ms(highNanos) + "ms max=" + ms(highMaxNanos)
             + ",player=" + playerPackets + "/" + ms(playerNanos) + "ms max=" + ms(playerMaxNanos)
             + ",normal=" + normalPackets + "/" + ms(normalNanos) + "ms max=" + ms(normalMaxNanos) + "}"
@@ -469,6 +532,15 @@ public final class ApocBRServerTelemetry {
         connectionChunkNanos = connectionChunkMaxNanos = 0L;
         serverMapPostNanos = serverMapPostMaxNanos = 0L;
         downloadConnections = 0L;
+        serverMapPartitionNanos = serverMapPartitionMaxNanos = 0L;
+        serverMapCellTasksNanos = serverMapCellTasksMaxNanos = 0L;
+        serverMapMiscTasksNanos = serverMapMiscTasksMaxNanos = 0L;
+        serverMapWaitNanos = serverMapWaitMaxNanos = 0L;
+        serverMapCellsUpdated = 0L;
+        serverMapNumWorkersLast = 0;
+        playerLOSComputeNanos = playerLOSComputeMaxNanos = 0L;
+        playerLOSApplyNanos = playerLOSApplyMaxNanos = 0L;
+        playerLOSObjects = playerLOSCalls = playerLOSParallel = playerLOSSequential = 0L;
         chunkMainCalls = chunkMainNanos = chunkMainMaxNanos = 0L;
         chunkMainRequests = chunkMainPrepared = 0L;
         chunkMainMaxWaiting = 0;
