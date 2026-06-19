@@ -37,18 +37,27 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\ApocBRServerTelemetry.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateScheduler.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
+    (Join-Path $SrcRoot "zombie\WorldSoundManager.java"),
+    (Join-Path $SrcRoot "zombie\iso\FishSchoolManager.java"),
     (Join-Path $SrcRoot "zombie\vehicles\BaseVehicle.java"),
     (Join-Path $SrcRoot "zombie\network\GameServer.java"),
     (Join-Path $SrcRoot "zombie\gameStates\IngameState.java"),
     (Join-Path $SrcRoot "zombie\iso\IsoWorld.java"),
     (Join-Path $SrcRoot "zombie\iso\IsoCell.java"),
     (Join-Path $SrcRoot "zombie\network\PlayerDownloadServer.java"),
-    (Join-Path $SrcRoot "zombie\network\ServerMap.java")
+    (Join-Path $SrcRoot "zombie\network\ServerMap.java"),
+    (Join-Path $SrcRoot "zombie\network\ServerChunkLoader.java")
 )
 $ClassFiles = @(
     "zombie\ApocBRServerTelemetry.class",
     "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
+    "zombie\WorldSoundManager.class",
+    "zombie\WorldSoundManager`$ResultBiggestSound.class",
+    "zombie\WorldSoundManager`$WorldSound.class",
+    "zombie\iso\FishSchoolManager.class",
+    "zombie\iso\FishSchoolManager`$ChumData.class",
+    "zombie\iso\FishSchoolManager`$ZoneData.class",
     "zombie\vehicles\BaseVehicle.class",
     "zombie\vehicles\BaseVehicle`$1.class",
     "zombie\vehicles\BaseVehicle`$Authorization.class",
@@ -104,7 +113,17 @@ $ClassFiles = @(
     "zombie\network\ServerMap`$EThreadCommand.class",
     "zombie\network\ServerMap`$ServerCell.class",
     "zombie\network\ServerMap`$WorkerThread.class",
-    "zombie\network\ServerMap`$WorkerThreadCommand.class"
+    "zombie\network\ServerMap`$WorkerThreadCommand.class",
+    "zombie\network\ServerChunkLoader.class",
+    "zombie\network\ServerChunkLoader`$GetSquare.class",
+    "zombie\network\ServerChunkLoader`$LoaderThread.class",
+    "zombie\network\ServerChunkLoader`$QuitThreadTask.class",
+    "zombie\network\ServerChunkLoader`$RecalcAllThread.class",
+    "zombie\network\ServerChunkLoader`$SaveChunkThread.class",
+    "zombie\network\ServerChunkLoader`$SaveGameTimeTask.class",
+    "zombie\network\ServerChunkLoader`$SaveLoadedTask.class",
+    "zombie\network\ServerChunkLoader`$SaveTask.class",
+    "zombie\network\ServerChunkLoader`$SaveUnloadedTask.class"
 )
 
 function Get-JavacVersion { param([string]$JavacPath) try { $o = & $JavacPath -version 2>&1 | Out-String; if ($o -match "javac\s+(\d+)") { return [int]$Matches[1] } } catch {}; return 0 }
@@ -176,7 +195,7 @@ if ($DryRun) {
         if (-not (Test-Path $compiled)) { continue }
         $dest = Join-Path $DeployRoot $rel
         if (Test-Path $dest) {
-            $safe = $rel.Replace("\", "_")
+            $safe = $rel.Replace('\', '_')
             Copy-Item $dest (Join-Path $BackupDir "$safe.prev_$ts") -Force
         }
         Copy-Item $compiled $dest -Force
@@ -189,4 +208,7 @@ Write-Host ""
 Write-Host "=== Done ===" -ForegroundColor White
 Write-Host "Patch deployed: $PatchName" -ForegroundColor Green
 Write-Host "Config: -Dapocbr.telemetry.enabled=true -Dapocbr.telemetry.intervalMs=30000 -Dapocbr.parallel.isoWorldSafe=true -Dapocbr.parallel.skipIfBacklogged=true" -ForegroundColor Gray
+
+
+
 

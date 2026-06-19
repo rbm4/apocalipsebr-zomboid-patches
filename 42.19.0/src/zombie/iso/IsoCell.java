@@ -25,7 +25,11 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+
+import zombie.ui.UIManager;
+
 import org.joml.Vector2i;
+
 import se.krka.kahlua.integration.annotations.LuaMethod;
 import se.krka.kahlua.vm.JavaFunction;
 import se.krka.kahlua.vm.KahluaTable;
@@ -35,6 +39,10 @@ import zombie.GameProfiler;
 import zombie.GameTime;
 import zombie.GameWindow;
 import zombie.IndieGL;
+import zombie.Lua.LuaEventManager;
+import zombie.Lua.LuaHookManager;
+import zombie.Lua.LuaManager;
+import zombie.Lua.MapObjects;
 import zombie.MainThread;
 import zombie.MovingObjectUpdateScheduler;
 import zombie.ReanimatedPlayers;
@@ -42,11 +50,6 @@ import zombie.SandboxOptions;
 import zombie.UsedFromLua;
 import zombie.VirtualZombieManager;
 import zombie.ZomboidFileSystem;
-import zombie.core.PZForkJoinPool;
-import zombie.Lua.LuaEventManager;
-import zombie.Lua.LuaHookManager;
-import zombie.Lua.LuaManager;
-import zombie.Lua.MapObjects;
 import zombie.ai.astar.Mover;
 import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
@@ -54,6 +57,7 @@ import zombie.characters.IsoSurvivor;
 import zombie.characters.IsoZombie;
 import zombie.characters.animals.IsoAnimal;
 import zombie.core.Core;
+import zombie.core.PZForkJoinPool;
 import zombie.core.PerformanceSettings;
 import zombie.core.SpriteRenderer;
 import zombie.core.Translator;
@@ -107,11 +111,9 @@ import zombie.iso.weather.fx.WeatherFxMask;
 import zombie.network.GameClient;
 import zombie.network.GameServer;
 import zombie.network.ServerMap;
-import zombie.popman.NetworkZombieSimulator;
 import zombie.savefile.ClientPlayerDB;
 import zombie.savefile.PlayerDB;
 import zombie.scripting.objects.VehicleScript;
-import zombie.ui.UIManager;
 import zombie.vehicles.BaseVehicle;
 
 /**
@@ -140,11 +142,11 @@ public final class IsoCell {
     private final Set<IsoMovingObject> removeList = ConcurrentHashMap.newKeySet();
     private final Set<IsoMovingObject> addList = ConcurrentHashMap.newKeySet();
     private final ArrayList<IsoObject> processIsoObject = new ArrayList<>();
-    private final ArrayList<IsoObject> processIsoObjectRemove = new ArrayList<>();
+    private final Set<IsoObject> processIsoObjectRemove = ConcurrentHashMap.newKeySet();
     private final ArrayList<InventoryItem> processItems = new ArrayList<>();
-    private final Set<InventoryItem> processItemsRemove = new HashSet<>();
+    private final Set<InventoryItem> processItemsRemove = ConcurrentHashMap.newKeySet();
     private final ArrayList<IsoWorldInventoryObject> processWorldItems = new ArrayList<>();
-    public final Set<IsoWorldInventoryObject> processWorldItemsRemove = new HashSet<>();
+    public final Set<IsoWorldInventoryObject> processWorldItemsRemove = ConcurrentHashMap.newKeySet();
     private final IsoGridSquare[][] gridSquares = GameServer.server
         ? null
         : new IsoGridSquare[4][IsoChunkMap.chunkWidthInTiles * IsoChunkMap.chunkWidthInTiles * 64];
@@ -268,8 +270,10 @@ public final class IsoCell {
     private OnceEvery dangerUpdate = new OnceEvery(0.4F, false);
     private Thread lightInfoUpdate;
     long lastServerItemsUpdate = System.currentTimeMillis();
-    private CompletableFuture<Void> apocBrAsyncCellUpdate;
-    private boolean apocBrAsyncCellUpdatePending;
+    private CompletableFuture<Void> apocBrPreLuaAsyncFuture;
+    private boolean apocBrPreLuaAsyncPending;
+    private CompletableFuture<Void> apocBrPostLuaAsyncFuture;
+    private boolean apocBrPostLuaAsyncPending;
     private final Stack<IsoRoom> spottedRooms = new Stack<>();
     private IsoZombie fakeZombieForHit;
 
@@ -2173,20 +2177,14 @@ public final class IsoCell {
     }
 
     private void ProcessItems(Iterator<InventoryItem> it2) {
-        int size = this.processItems.size();
-
-        for (int n = 0; n < size; n++) {
-            InventoryItem i = this.processItems.get(n);
+        for (InventoryItem i : this.processItems) {
             i.update();
             if (i.finishupdate()) {
                 this.processItemsRemove.add(i);
             }
         }
 
-        size = this.processWorldItems.size();
-
-        for (int nx = 0; nx < size; nx++) {
-            IsoWorldInventoryObject i = this.processWorldItems.get(nx);
+        for (IsoWorldInventoryObject i : this.processWorldItems) {
             i.update();
             if (i.finishupdate()) {
                 this.processWorldItemsRemove.add(i);
@@ -2197,16 +2195,9 @@ public final class IsoCell {
     private void ProcessIsoObject() {
         this.processIsoObject.removeAll(this.processIsoObjectRemove);
         this.processIsoObjectRemove.clear();
-        int size = this.processIsoObject.size();
-
-        for (int n = 0; n < size; n++) {
-            IsoObject i = this.processIsoObject.get(n);
+        for (IsoObject i : this.processIsoObject) {
             if (i != null) {
                 i.update();
-                if (size > this.processIsoObject.size()) {
-                    n--;
-                    size--;
-                }
             }
         }
     }
@@ -2248,18 +2239,11 @@ public final class IsoCell {
     }
 
     private void ProcessStaticUpdaters() {
-        int size = this.staticUpdaterObjectList.size();
-
-        for (int n = 0; n < size; n++) {
+        for (IsoObject obj : this.staticUpdaterObjectList) {
             try {
-                this.staticUpdaterObjectList.get(n).update();
+                obj.update();
             } catch (Exception var4) {
                 Logger.getLogger(GameWindow.class.getName()).log(Level.SEVERE, null, var4);
-            }
-
-            if (size > this.staticUpdaterObjectList.size()) {
-                n--;
-                size--;
             }
         }
     }
@@ -4108,32 +4092,35 @@ public final class IsoCell {
 
     public void update() {
         try (AbstractPerformanceProfileProbe var1 = IsoCell.s_performance.isoCellUpdate.profile()) {
-            // ApocBR: IsoCell bookkeeping runs FIRST (sync), then ProcessObjects (sync),
-            // then the truly independent work (dead bodies, fish, counters) is submitted
-            // async. This ordering eliminates ALL data races because:
-            //   1. Bookkeeping (ProcessSpottedRooms, chunkMap, items, etc.) modifies
-            //      IsoCell state that ProcessObjects reads — they must complete first.
-            //   2. ProcessObjects calls addToProcessItems/addToProcessIsoObject etc.
-            //      on the main thread — if we ran these concurrently, ArrayList would CME.
-            //   3. Objects' update() during ProcessObjects can also call Remove()/addMovingObject()
-            //      → uses ConcurrentHashMap.newKeySet (safe regardless of ordering).
-            //   4. Independent work (deadBodies, fish, counters) runs on ForkJoinPool
-            //      AFTER all IsoCell state is settled — no conflict possible.
+            // ApocBR: Concurrent-resilient async pipeline (Build 42.19)
             //
-            // The ConcurrentHashMap.newKeySet() for objectList/addList/removeList remain
-            // as a safety net in case any future change introduces concurrent access.
+            // Architecture: Ship-or-Skip parallelism
+            //   Non-Lua work (ProcessItems, ProcessIsoObject, ProcessStaticUpdaters,
+            //   dead bodies, fish, counters, weather) runs on ForkJoinPool workers.
+            //   Lua-dependent work (ProcessSpottedRooms, ProcessObjects) always runs
+            //   on the main thread. If an async worker hasn't completed from the
+            //   previous frame, its results are discarded and no new work is submitted
+            //   for that slot - the game tolerates 1-frame staleness.
+            //
+            // Remove sets (processItemsRemove, processIsoObjectRemove) are
+            // ConcurrentHashMap-backed - safe for async writes + main-thread reads.
+            // The lists themselves (processItems, staticUpdaterObjectList) use
+            // snapshot copies to avoid concurrent iteration with ArrayList.
+            //
+            // postupdate() is NOT called here - it runs once in IsoWorld.updateWorld()
+            // to prevent double-processing with the same frameCounter.
 
-            long apocBrBookkeepStart = System.nanoTime();
-            MovingObjectUpdateScheduler.instance.startFrame();
-            ApocBRServerTelemetry.recordIsoCellSection("startFrame", System.nanoTime() - apocBrBookkeepStart);
-
-            apocBrBookkeepStart = System.nanoTime();
+            long apocBrSectionStart = System.nanoTime();
             IsoSprite.alphaStep = 0.075F * GameTime.getInstance().getThirtyFPSMultiplier();
             IsoGridSquare.gridSquareCacheEmptyTimer++;
             this.ProcessSpottedRooms();
-            ApocBRServerTelemetry.recordIsoCellSection("spottedRooms", System.nanoTime() - apocBrBookkeepStart);
+            ApocBRServerTelemetry.recordIsoCellSection("spottedRooms", System.nanoTime() - apocBrSectionStart);
 
-            apocBrBookkeepStart = System.nanoTime();
+            apocBrSectionStart = System.nanoTime();
+            MovingObjectUpdateScheduler.instance.startFrame();
+            ApocBRServerTelemetry.recordIsoCellSection("startFrame", System.nanoTime() - apocBrSectionStart);
+
+            apocBrSectionStart = System.nanoTime();
             if (!GameServer.server) {
                 for (int n = 0; n < IsoPlayer.numPlayers; n++) {
                     if (IsoPlayer.players[n] != null && (!IsoPlayer.players[n].isDead() || IsoPlayer.players[n].reanimatedCorpse != null)) {
@@ -4143,113 +4130,257 @@ public final class IsoCell {
                     }
                 }
             }
-            ApocBRServerTelemetry.recordIsoCellSection("chunkMap", System.nanoTime() - apocBrBookkeepStart);
+            ApocBRServerTelemetry.recordIsoCellSection("chunkMap", System.nanoTime() - apocBrSectionStart);
 
-            apocBrBookkeepStart = System.nanoTime();
+            // - Phase A: Merge PREVIOUS frame's async results -
+            // ProcessRemoveItems removes items/finished IsoWorldObjects that the
+            // previous async ProcessItems run marked for removal. The remove sets
+            // are ConcurrentHashMap - safe for concurrent write + main-thread read.
+            apocBrSectionStart = System.nanoTime();
             this.ProcessRemoveItems(null);
-            ApocBRServerTelemetry.recordIsoCellSection("removeItemsPre", System.nanoTime() - apocBrBookkeepStart);
-            if (!GameClient.client && !GameServer.server || GameServer.server && System.currentTimeMillis() - this.lastServerItemsUpdate > 5000L) {
-                this.lastServerItemsUpdate = System.currentTimeMillis();
-                this.ProcessItems(null);
-            }
-            ApocBRServerTelemetry.recordIsoCellSection("items", System.nanoTime() - apocBrBookkeepStart);
+            ApocBRServerTelemetry.recordIsoCellSection("removeItemsPre", System.nanoTime() - apocBrSectionStart);
 
-            apocBrBookkeepStart = System.nanoTime();
-            this.ProcessRemoveItems(null);
-            ApocBRServerTelemetry.recordIsoCellSection("removeItemsPost", System.nanoTime() - apocBrBookkeepStart);
-
-            apocBrBookkeepStart = System.nanoTime();
+            // - Phase B: Process IsoObjects and static updaters on main thread -
+            // These must NOT run on worker threads (IsoGenerator.update() modifies
+            // building toxic flags causing phantom CO poisoning & anxiety).
+            apocBrSectionStart = System.nanoTime();
             this.ProcessIsoObject();
-            ApocBRServerTelemetry.recordIsoCellSection("isoObject", System.nanoTime() - apocBrBookkeepStart);
-
-            this.safeToAdd = false;
-
-            apocBrBookkeepStart = System.nanoTime();
+            ApocBRServerTelemetry.recordIsoCellSection("isoObjectsMain", System.nanoTime() - apocBrSectionStart);
+            apocBrSectionStart = System.nanoTime();
             this.ProcessStaticUpdaters();
-            ApocBRServerTelemetry.recordIsoCellSection("staticUpdaters", System.nanoTime() - apocBrBookkeepStart);
+            ApocBRServerTelemetry.recordIsoCellSection("staticUpdatersMain", System.nanoTime() - apocBrSectionStart);
 
-            apocBrBookkeepStart = System.nanoTime();
-            this.ObjectDeletionAddition();
-            ApocBRServerTelemetry.recordIsoCellSection("objectDeletionAddition", System.nanoTime() - apocBrBookkeepStart);
+            // - Phase C: Ship-or-Skip - submit PRE-LUA async work -
+            // Only items + world items (self-contained state, no shared mutations).
+            // If previous async is still running, skip this frame.
+            this.apocBrSubmitPreLuaAsync();
 
-            // ProcessObjects MUST run on main thread — moving object update()
-            // methods can call Lua (KahluaThread is not thread-safe).
+            // - Phase D: Lua wall - always runs on main thread -
+            this.safeToAdd = false;
             long apocBrObjectsStart = System.nanoTime();
             this.ProcessObjects(null);
             ApocBRServerTelemetry.recordIsoCellSection("objects", System.nanoTime() - apocBrObjectsStart);
             this.safeToAdd = true;
 
-            // Postupdate the scheduler buckets (also main thread)
-            long apocBrPostUpdateStart = System.nanoTime();
-            MovingObjectUpdateScheduler.instance.postupdate();
-            ApocBRServerTelemetry.recordIsoCellSection("objectsPostUpdate", System.nanoTime() - apocBrPostUpdateStart);
+            // - Phase E: Post-Lua cleanup - ObjectDeletion must be main thread -
+            // (IsoGridSquare.getMovingObjects() returns ArrayList - not thread-safe)
+            apocBrSectionStart = System.nanoTime();
+            this.ObjectDeletionAddition();
+            ApocBRServerTelemetry.recordIsoCellSection("objectDeletionAddition", System.nanoTime() - apocBrSectionStart);
 
-            // Submit truly independent work (dead bodies, fish, counters) async.
-            // These operate on their own data structures — never touch IsoCell state.
-            if (this.apocBrAsyncCellUpdate != null) {
-                if (this.apocBrAsyncCellUpdate.isDone()) {
-                    this.apocBrAsyncCellUpdate = null;
-                    this.apocBrAsyncCellUpdatePending = false;
-                }
-            }
-            if (!this.apocBrAsyncCellUpdatePending) {
-                long apocBrAsyncStart = System.nanoTime();
-                IsoCell captured = this;
-                this.apocBrAsyncCellUpdatePending = true;
-                this.apocBrAsyncCellUpdate = CompletableFuture.runAsync(() -> {
-                    captured.updateInternalNonLuaAsync();
-                }, PZForkJoinPool.commonPool());
-                ApocBRServerTelemetry.recordIsoCellSection("asyncSubmit", System.nanoTime() - apocBrAsyncStart);
-            } else {
-                ApocBRServerTelemetry.recordIsoCellSection("asyncSkipped", 1);
-            }
+            // - Phase F: Ship-or-Skip - submit POST-LUA async work -
+            // Dead bodies, fish, light counters, weather - independent data structures.
+            this.apocBrSubmitPostLuaAsync();
         }
     }
 
-    private void updateInternalNonLuaAsync() {
-        // Truly independent operations that operate on their own data structures.
-        // These never touch IsoCell collections — safe to run on ForkJoinPool.
-        long apocBrIsoCellSectionStart = System.nanoTime();
+    /**
+     * Ship-or-Skip: submit pre-Lua work (items, IsoObject, static updaters) to
+     * ForkJoinPool. These never call Lua - safe for worker threads.
+     * If the previous async hasn't finished, skip this frame entirely.
+     */
+    private void apocBrSubmitPreLuaAsync() {
+        if (this.apocBrPreLuaAsyncFuture != null) {
+            if (this.apocBrPreLuaAsyncFuture.isDone()) {
+                this.apocBrPreLuaAsyncFuture = null;
+                this.apocBrPreLuaAsyncPending = false;
+            }
+        }
+        if (this.apocBrPreLuaAsyncPending) {
+            ApocBRServerTelemetry.recordIsoCellSection("preLuaSkip", 1);
+            return;
+        }
+
+        // Snapshot the current lists on the main thread (safe - ArrayList iteration).
+        // Only items and world items are safe for async (self-contained state).
+        // IsoObjects and static updaters run on the main thread in IsoCell.update().
+        ArrayList<InventoryItem> itemsSnapshot = new ArrayList<>(this.processItems);
+        ArrayList<IsoWorldInventoryObject> worldItemsSnapshot = new ArrayList<>(this.processWorldItems);
+
+        // Check the items-update timer on the main thread.
+        boolean shouldProcessItems = !GameClient.client && !GameServer.server
+            || GameServer.server && System.currentTimeMillis() - this.lastServerItemsUpdate > 5000L;
+        if (shouldProcessItems) {
+            this.lastServerItemsUpdate = System.currentTimeMillis();
+        }
+
+        long apocBrAsyncStart = System.nanoTime();
+        IsoCell captured = this;
+        final boolean processItemsFlag = shouldProcessItems;
+        this.apocBrPreLuaAsyncPending = true;
+        this.apocBrPreLuaAsyncFuture = CompletableFuture.runAsync(() -> {
+            try {
+                if (captured != null) {
+                    captured.apocBrUpdatePreLuaAsync(
+                    itemsSnapshot, worldItemsSnapshot,
+                    processItemsFlag
+                    );
+                }
+            } catch (Throwable t) {
+                ExceptionLogger.logException(t);
+            }
+        }, PZForkJoinPool.commonPool());
+        ApocBRServerTelemetry.recordIsoCellSection("preLuaSubmit", System.nanoTime() - apocBrAsyncStart);
+    }
+
+    /**
+     * Runs on ForkJoinPool - processes items and world items from snapshots
+     * taken on the main thread. Never calls Lua.
+     * IsoObjects and static updaters are NOT processed here - they run on
+     * the main thread in IsoCell.update() to prevent data corruption from
+     * IsoGenerator.update() (building toxic flags), IsoRadio.update() (sound),
+     * and other IsoObject subclasses that modify shared game state.
+     * Results (finished items) are written to ConcurrentHashMap-backed sets
+     * that the main thread merges next frame via ProcessRemoveItems.
+     */
+    private void apocBrUpdatePreLuaAsync(
+            ArrayList<InventoryItem> itemsSnapshot,
+            ArrayList<IsoWorldInventoryObject> worldItemsSnapshot,
+            boolean processItemsFlag) {
+        if (itemsSnapshot == null) itemsSnapshot = new ArrayList<>();
+        if (worldItemsSnapshot == null) worldItemsSnapshot = new ArrayList<>();
+
+        long apocBrSectionStart = System.nanoTime();
+
+        if (processItemsFlag) {
+            for (InventoryItem i : itemsSnapshot) {
+                if (i == null) {
+                    continue;
+                }
+
+                try {
+                    i.update();
+                    if (i.finishupdate()) {
+                        this.processItemsRemove.add(i);
+                    }
+                } catch (Throwable t) {
+                    ExceptionLogger.logException(t);
+                }
+            }
+            ApocBRServerTelemetry.recordIsoCellSection("asyncItems", System.nanoTime() - apocBrSectionStart);
+
+            apocBrSectionStart = System.nanoTime();
+            for (IsoWorldInventoryObject i : worldItemsSnapshot) {
+                if (i == null) {
+                    continue;
+                }
+
+                try {
+                    i.update();
+                    if (i.finishupdate()) {
+                        this.processWorldItemsRemove.add(i);
+                    }
+                } catch (Throwable t) {
+                    ExceptionLogger.logException(t);
+                }
+            }
+            ApocBRServerTelemetry.recordIsoCellSection("asyncWorldItems", System.nanoTime() - apocBrSectionStart);
+        }
+    }
+
+    /**
+     * Ship-or-Skip: submit post-Lua work (dead bodies, fish, counters, weather) to
+     * ForkJoinPool. These operate on independent data structures - never touch
+     * IsoCell collections. Same skip-if-backlogged pattern as pre-Lua.
+     */
+    private void apocBrSubmitPostLuaAsync() {
+        if (this.apocBrPostLuaAsyncFuture != null) {
+            if (this.apocBrPostLuaAsyncFuture.isDone()) {
+                this.apocBrPostLuaAsyncFuture = null;
+                this.apocBrPostLuaAsyncPending = false;
+            }
+        }
+        if (this.apocBrPostLuaAsyncPending) {
+            ApocBRServerTelemetry.recordIsoCellSection("postLuaSkip", 1);
+            return;
+        }
+
+        long apocBrAsyncStart = System.nanoTime();
+        IsoCell captured = this;
+        this.apocBrPostLuaAsyncPending = true;
+        this.apocBrPostLuaAsyncFuture = CompletableFuture.runAsync(() -> {
+            try {
+                if (captured != null) {
+                    captured.apocBrUpdatePostLuaAsync();
+                }
+            } catch (Throwable t) {
+                ExceptionLogger.logException(t);
+            }
+        }, PZForkJoinPool.commonPool());
+        ApocBRServerTelemetry.recordIsoCellSection("postLuaSubmit", System.nanoTime() - apocBrAsyncStart);
+    }
+
+    /**
+     * Runs on ForkJoinPool - dead bodies, fish, light counters, weather.
+     * These operate on their own data structures - never touch IsoCell collections.
+     */
+    private void apocBrUpdatePostLuaAsync() {
+        long apocBrSectionStart = System.nanoTime();
         GameProfiler profiler = GameProfiler.getInstance();
 
-        try (GameProfiler.ProfileArea var30 = profiler.profile("Update Dead Bodies")) {
-            apocBrIsoCellSectionStart = System.nanoTime();
-            IsoDeadBody.updateBodies();
-            ApocBRServerTelemetry.recordIsoCellSection("deadBodies", System.nanoTime() - apocBrIsoCellSectionStart);
-        }
-
-        try (GameProfiler.ProfileArea var31 = profiler.profile("Update Fish")) {
-            apocBrIsoCellSectionStart = System.nanoTime();
-            FishSchoolManager.getInstance().update();
-            ApocBRServerTelemetry.recordIsoCellSection("fish", System.nanoTime() - apocBrIsoCellSectionStart);
-        }
-
-        apocBrIsoCellSectionStart = System.nanoTime();
-        IsoGridSquare.setLightcache(IsoGridSquare.getLightcache() - 1);
-        IsoGridSquare.setRecalcLightTime(IsoGridSquare.getRecalcLightTime() - GameTime.getInstance().getThirtyFPSMultiplier());
-        ApocBRServerTelemetry.recordIsoCellSection("lightCounters", System.nanoTime() - apocBrIsoCellSectionStart);
-        apocBrIsoCellSectionStart = System.nanoTime();
-        if (GameServer.server) {
-            this.lamppostPositions.clear();
-            this.roomLights.clear();
-        }
-        ApocBRServerTelemetry.recordIsoCellSection("serverLightClear", System.nanoTime() - apocBrIsoCellSectionStart);
-
-        apocBrIsoCellSectionStart = System.nanoTime();
-        if (!GameTime.isGamePaused()) {
-            this.rainScroll = this.rainScroll + this.rainSpeed / 10.0F * 0.075F * (30.0F / PerformanceSettings.getLockFPS());
-            if (this.rainScroll > 1.0F) {
-                this.rainScroll = 0.0F;
+        try {
+            try (GameProfiler.ProfileArea var30 = profiler.profile("Update Dead Bodies")) {
+                apocBrSectionStart = System.nanoTime();
+                IsoDeadBody.updateBodies();
+                ApocBRServerTelemetry.recordIsoCellSection("deadBodies", System.nanoTime() - apocBrSectionStart);
             }
+        } catch (Throwable t) {
+            ExceptionLogger.logException(t);
         }
-        ApocBRServerTelemetry.recordIsoCellSection("rainScroll", System.nanoTime() - apocBrIsoCellSectionStart);
 
-        if (!GameServer.server) {
-            try (GameProfiler.ProfileArea var32 = profiler.profile("Update Weather")) {
-                apocBrIsoCellSectionStart = System.nanoTime();
-                this.updateWeatherFx();
-                ApocBRServerTelemetry.recordIsoCellSection("weatherFx", System.nanoTime() - apocBrIsoCellSectionStart);
+        try {
+            try (GameProfiler.ProfileArea var31 = profiler.profile("Update Fish")) {
+                apocBrSectionStart = System.nanoTime();
+                FishSchoolManager.getInstance().update();
+                ApocBRServerTelemetry.recordIsoCellSection("fish", System.nanoTime() - apocBrSectionStart);
             }
+        } catch (Throwable t) {
+            ExceptionLogger.logException(t);
+        }
+
+        try {
+            apocBrSectionStart = System.nanoTime();
+            IsoGridSquare.setLightcache(IsoGridSquare.getLightcache() - 1);
+            IsoGridSquare.setRecalcLightTime(IsoGridSquare.getRecalcLightTime() - GameTime.getInstance().getThirtyFPSMultiplier());
+            ApocBRServerTelemetry.recordIsoCellSection("lightCounters", System.nanoTime() - apocBrSectionStart);
+        } catch (Throwable t) {
+            ExceptionLogger.logException(t);
+        }
+
+        try {
+            apocBrSectionStart = System.nanoTime();
+            if (GameServer.server) {
+                this.lamppostPositions.clear();
+                this.roomLights.clear();
+            }
+            ApocBRServerTelemetry.recordIsoCellSection("serverLightClear", System.nanoTime() - apocBrSectionStart);
+        } catch (Throwable t) {
+            ExceptionLogger.logException(t);
+        }
+
+        try {
+            apocBrSectionStart = System.nanoTime();
+            if (!GameTime.isGamePaused()) {
+                this.rainScroll = this.rainScroll + this.rainSpeed / 10.0F * 0.075F * (30.0F / PerformanceSettings.getLockFPS());
+                if (this.rainScroll > 1.0F) {
+                    this.rainScroll = 0.0F;
+                }
+            }
+            ApocBRServerTelemetry.recordIsoCellSection("rainScroll", System.nanoTime() - apocBrSectionStart);
+        } catch (Throwable t) {
+            ExceptionLogger.logException(t);
+        }
+
+        try {
+            if (!GameServer.server) {
+                try (GameProfiler.ProfileArea var32 = profiler.profile("Update Weather")) {
+                    apocBrSectionStart = System.nanoTime();
+                    this.updateWeatherFx();
+                    ApocBRServerTelemetry.recordIsoCellSection("weatherFx", System.nanoTime() - apocBrSectionStart);
+                }
+            }
+        } catch (Throwable t) {
+            ExceptionLogger.logException(t);
         }
     }
 
@@ -4552,7 +4683,7 @@ public final class IsoCell {
         return false;
     }
 
-    public ArrayList<IsoObject> getProcessIsoObjectRemove() {
+    public Set<IsoObject> getProcessIsoObjectRemove() {
         return this.processIsoObjectRemove;
     }
 
@@ -5208,3 +5339,9 @@ public final class IsoCell {
         }
     }
 }
+
+
+
+
+
+

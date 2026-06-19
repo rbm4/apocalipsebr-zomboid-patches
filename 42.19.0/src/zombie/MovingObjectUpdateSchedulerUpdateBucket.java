@@ -46,6 +46,10 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
 
         for (int i = 0; i < fullSimulation.size(); i++) {
             IsoMovingObject isoMovingObject = fullSimulation.get(i);
+            if (isoMovingObject == null) {
+                continue;
+            }
+
             if (isoMovingObject instanceof IsoDeadBody) {
                 ApocBRServerTelemetry.recordMovingBucketDeadBody();
                 IsoWorld.instance.getCell().getRemoveList().add(isoMovingObject);
@@ -81,6 +85,10 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
 
         for (int i = 0; i < fullSimulation.size(); i++) {
             IsoMovingObject isoMovingObject = fullSimulation.get(i);
+            if (isoMovingObject == null) {
+                continue;
+            }
+
             IsoZombie zombie = Type.tryCastTo(isoMovingObject, IsoZombie.class);
             if (zombie != null && VirtualZombieManager.instance.isReused(zombie)) {
                 DebugLog.log(DebugType.Zombie, "REUSABLE ZOMBIE IN MovingObjectUpdateSchedulerUpdateBucket IGNORED " + isoMovingObject);
@@ -98,6 +106,10 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
 
         for (int i = 0; i < fullSimulation.size(); i++) {
             IsoMovingObject isoMovingObject = fullSimulation.get(i);
+            if (isoMovingObject == null) {
+                continue;
+            }
+
             IsoZombie zombie = Type.tryCastTo(isoMovingObject, IsoZombie.class);
             if (zombie != null && VirtualZombieManager.instance.isReused(zombie)) {
                 DebugLog.log(DebugType.Zombie, "REUSABLE ZOMBIE IN MovingObjectUpdateSchedulerUpdateBucket IGNORED " + isoMovingObject);
@@ -122,3 +134,5 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         return this.buckets[frameCounter % this.frameMod];
     }
 }
+
+

@@ -3016,10 +3016,13 @@ public final class IsoWorld {
         }
 
         ApocBRServerTelemetry.recordParallelWorldSubmitted();
+        IsoWorld captured = this;
         apocBrSafeWorldFuture = CompletableFuture.runAsync(() -> {
             long taskStart = System.nanoTime();
             try {
-                this.updateThreadSafeParallel();
+                if (captured != null && IsoWorld.instance == captured) {
+                    captured.updateThreadSafeParallel();
+                }
             } catch (Throwable throwable) {
                 ApocBRServerTelemetry.recordParallelWorldError();
                 ExceptionLogger.logException(throwable);
@@ -3045,30 +3048,54 @@ public final class IsoWorld {
     }
 
     private void updateThreadSafeParallel() {
+        if (IsoWorld.instance != this) {
+            return;
+        }
+
         GameProfiler profiler = GameProfiler.getInstance();
 
-        try (GameProfiler.ProfileArea i = profiler.profile("Update Buildings")) {
-            long apocBrIsoWorldSectionStart = System.nanoTime();
-            this.updateBuildings();
-            ApocBRServerTelemetry.recordIsoWorldSection("buildings", System.nanoTime() - apocBrIsoWorldSectionStart);
+        try {
+            try (GameProfiler.ProfileArea i = profiler.profile("Update Buildings")) {
+                long apocBrIsoWorldSectionStart = System.nanoTime();
+                this.updateBuildings();
+                ApocBRServerTelemetry.recordIsoWorldSection("buildings", System.nanoTime() - apocBrIsoWorldSectionStart);
+            }
+        } catch (Throwable t) {
+            ApocBRServerTelemetry.recordParallelWorldError();
+            ExceptionLogger.logException(t);
         }
 
-        try (GameProfiler.ProfileArea var15 = profiler.profile("Update Static")) {
-            long apocBrIsoWorldSectionStart = System.nanoTime();
-            ObjectRenderEffects.updateStatic();
-            ApocBRServerTelemetry.recordIsoWorldSection("staticEffects", System.nanoTime() - apocBrIsoWorldSectionStart);
+        try {
+            try (GameProfiler.ProfileArea var15 = profiler.profile("Update Static")) {
+                long apocBrIsoWorldSectionStart = System.nanoTime();
+                ObjectRenderEffects.updateStatic();
+                ApocBRServerTelemetry.recordIsoWorldSection("staticEffects", System.nanoTime() - apocBrIsoWorldSectionStart);
+            }
+        } catch (Throwable t) {
+            ApocBRServerTelemetry.recordParallelWorldError();
+            ExceptionLogger.logException(t);
         }
 
-        try (GameProfiler.ProfileArea var18 = profiler.profile("Update VA")) {
-            long apocBrIsoWorldSectionStart = System.nanoTime();
-            AnimalZones.updateVirtualAnimals();
-            ApocBRServerTelemetry.recordIsoWorldSection("virtualAnimals", System.nanoTime() - apocBrIsoWorldSectionStart);
+        try {
+            try (GameProfiler.ProfileArea var18 = profiler.profile("Update VA")) {
+                long apocBrIsoWorldSectionStart = System.nanoTime();
+                AnimalZones.updateVirtualAnimals();
+                ApocBRServerTelemetry.recordIsoWorldSection("virtualAnimals", System.nanoTime() - apocBrIsoWorldSectionStart);
+            }
+        } catch (Throwable t) {
+            ApocBRServerTelemetry.recordParallelWorldError();
+            ExceptionLogger.logException(t);
         }
 
-        try (GameProfiler.ProfileArea var19 = profiler.profile("Load Animal Defs")) {
-            long apocBrIsoWorldSectionStart = System.nanoTime();
-            AnimalTracksDefinitions.loadTracksDefinitions();
-            ApocBRServerTelemetry.recordIsoWorldSection("animalDefs", System.nanoTime() - apocBrIsoWorldSectionStart);
+        try {
+            try (GameProfiler.ProfileArea var19 = profiler.profile("Load Animal Defs")) {
+                long apocBrIsoWorldSectionStart = System.nanoTime();
+                AnimalTracksDefinitions.loadTracksDefinitions();
+                ApocBRServerTelemetry.recordIsoWorldSection("animalDefs", System.nanoTime() - apocBrIsoWorldSectionStart);
+            }
+        } catch (Throwable t) {
+            ApocBRServerTelemetry.recordParallelWorldError();
+            ExceptionLogger.logException(t);
         }
     }
 

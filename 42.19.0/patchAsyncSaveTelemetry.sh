@@ -44,6 +44,8 @@ SOURCES=(
     "$SRC_ROOT/zombie/ApocBRServerTelemetry.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateScheduler.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
+    "$SRC_ROOT/zombie/WorldSoundManager.java"
+    "$SRC_ROOT/zombie/iso/FishSchoolManager.java"
     "$SRC_ROOT/zombie/vehicles/BaseVehicle.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
     "$SRC_ROOT/zombie/gameStates/IngameState.java"
@@ -51,12 +53,19 @@ SOURCES=(
     "$SRC_ROOT/zombie/iso/IsoCell.java"
     "$SRC_ROOT/zombie/network/PlayerDownloadServer.java"
     "$SRC_ROOT/zombie/network/ServerMap.java"
+    "$SRC_ROOT/zombie/network/ServerChunkLoader.java"
 )
 
 CLASSES=(
     "zombie/ApocBRServerTelemetry.class"
     "zombie/MovingObjectUpdateScheduler.class"
     "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
+    "zombie/WorldSoundManager.class"
+    'zombie/WorldSoundManager$ResultBiggestSound.class'
+    'zombie/WorldSoundManager$WorldSound.class'
+    "zombie/iso/FishSchoolManager.class"
+    'zombie/iso/FishSchoolManager$ChumData.class'
+    'zombie/iso/FishSchoolManager$ZoneData.class'
     "zombie/vehicles/BaseVehicle.class"
     'zombie/vehicles/BaseVehicle$1.class'
     'zombie/vehicles/BaseVehicle$Authorization.class'
@@ -112,6 +121,16 @@ CLASSES=(
     'zombie/network/ServerMap$ServerCell.class'
     'zombie/network/ServerMap$WorkerThread.class'
     'zombie/network/ServerMap$WorkerThreadCommand.class'
+    "zombie/network/ServerChunkLoader.class"
+    'zombie/network/ServerChunkLoader$GetSquare.class'
+    'zombie/network/ServerChunkLoader$LoaderThread.class'
+    'zombie/network/ServerChunkLoader$QuitThreadTask.class'
+    'zombie/network/ServerChunkLoader$RecalcAllThread.class'
+    'zombie/network/ServerChunkLoader$SaveChunkThread.class'
+    'zombie/network/ServerChunkLoader$SaveGameTimeTask.class'
+    'zombie/network/ServerChunkLoader$SaveLoadedTask.class'
+    'zombie/network/ServerChunkLoader$SaveTask.class'
+    'zombie/network/ServerChunkLoader$SaveUnloadedTask.class'
 )
 
 echo ""
@@ -220,4 +239,6 @@ echo "=== Done ==="
 echo "Patch deployed: $PATCH_NAME"
 echo "Config: -Dapocbr.telemetry.enabled=true -Dapocbr.telemetry.intervalMs=30000 -Dapocbr.parallel.isoWorldSafe=true -Dapocbr.parallel.skipIfBacklogged=true"
 echo "To revert: ./patchAsyncSaveTelemetry.sh --revert"
+
+
 

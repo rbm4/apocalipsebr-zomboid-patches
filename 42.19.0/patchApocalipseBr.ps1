@@ -6,21 +6,21 @@
 .DESCRIPTION
     Combined deploy script for all ApocBR patches targeting Build 42.19:
 
-    1. Zombie NoCull Fix   – MovingObjectUpdateScheduler.postupdate()
+    1. Zombie NoCull Fix   â€“ MovingObjectUpdateScheduler.postupdate()
        Removes ZombieCountOptimiser.deleteZombies() call that aggressively
        culls zombie populations on servers with many connected players.
 
-    2. Pathfind Safety     – PathfindNative + ChunkUpdateTask
+    2. Pathfind Safety     â€“ PathfindNative + ChunkUpdateTask
        Stale-chunk guard that prevents SIGSEGV crashes in libPZPathFind64.so
        when a ChunkUpdateTask executes after its chunk has been removed or
        reloaded in native pathfind state.
 
-    3. NullCraft Fix       – CompressIdenticalItems.save() Null Guard
+    3. NullCraft Fix       â€“ CompressIdenticalItems.save() Null Guard
        Adds a null guard in save(ByteBuffer, InventoryItem) to prevent NPE
        when a drying/curing craft item becomes null, which would corrupt
        chunk saves and cause vehicles to vanish.
 
-    4. Async Save Telemetry – ServerMap, ApocBRServerTelemetry, etc.
+    4. Async Save Telemetry â€“ ServerMap, ApocBRServerTelemetry, etc.
        Async background save (ServerMap) + ApocBR server telemetry +
        guarded IsoWorld parallelism + vehicle hit-field optimizations.
 
@@ -97,6 +97,8 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\ApocBRServerTelemetry.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateScheduler.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
+    (Join-Path $SrcRoot "zombie\WorldSoundManager.java"),
+    (Join-Path $SrcRoot "zombie\iso\FishSchoolManager.java"),
     (Join-Path $SrcRoot "zombie\vehicles\BaseVehicle.java"),
     (Join-Path $SrcRoot "zombie\network\GameServer.java"),
     (Join-Path $SrcRoot "zombie\gameStates\IngameState.java"),
@@ -108,7 +110,13 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\pathfind\nativeCode\PathfindNative.java"),
     (Join-Path $SrcRoot "zombie\pathfind\nativeCode\ChunkUpdateTask.java"),
     # NullCraft
-    (Join-Path $SrcRoot "zombie\inventory\CompressIdenticalItems.java")
+    (Join-Path $SrcRoot "zombie\inventory\CompressIdenticalItems.java"),
+    # ServerChunkLoader CRC fix (async save thread safety)
+    (Join-Path $SrcRoot "zombie\network\ServerChunkLoader.java"),
+    # Parallel Animal Simulation (null safety + async-ready)
+    (Join-Path $SrcRoot "zombie\characters\animals\IsoAnimal.java"),
+    # Parallel Player LOS (split-phase compute, chunk-parallel)
+    (Join-Path $SrcRoot "zombie\characters\IsoPlayer.java")
 )
 
 # --- All expected class files (relative to deploy root) ---
@@ -117,6 +125,12 @@ $ClassFiles = @(
     "zombie\ApocBRServerTelemetry.class",
     "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
+    "zombie\WorldSoundManager.class",
+    "zombie\WorldSoundManager`$ResultBiggestSound.class",
+    "zombie\WorldSoundManager`$WorldSound.class",
+    "zombie\iso\FishSchoolManager.class",
+    "zombie\iso\FishSchoolManager`$ChumData.class",
+    "zombie\iso\FishSchoolManager`$ZoneData.class",
     "zombie\vehicles\BaseVehicle.class",
     "zombie\vehicles\BaseVehicle`$1.class",
     "zombie\vehicles\BaseVehicle`$Authorization.class",
@@ -180,7 +194,23 @@ $ClassFiles = @(
     "zombie\inventory\CompressIdenticalItems.class",
     "zombie\inventory\CompressIdenticalItems`$1.class",
     "zombie\inventory\CompressIdenticalItems`$PerCallData.class",
-    "zombie\inventory\CompressIdenticalItems`$PerThreadData.class"
+    "zombie\inventory\CompressIdenticalItems`$PerThreadData.class",
+    # ServerChunkLoader CRC fix
+    "zombie\network\ServerChunkLoader.class",
+    # Parallel Animal Simulation
+    "zombie\characters\animals\IsoAnimal.class",
+    # Parallel Player LOS
+    "zombie\characters\IsoPlayer.class",
+    "zombie\characters\IsoPlayer`$LOSRecord.class",
+    "zombie\network\ServerChunkLoader`$GetSquare.class",
+    "zombie\network\ServerChunkLoader`$LoaderThread.class",
+    "zombie\network\ServerChunkLoader`$QuitThreadTask.class",
+    "zombie\network\ServerChunkLoader`$RecalcAllThread.class",
+    "zombie\network\ServerChunkLoader`$SaveChunkThread.class",
+    "zombie\network\ServerChunkLoader`$SaveGameTimeTask.class",
+    "zombie\network\ServerChunkLoader`$SaveLoadedTask.class",
+    "zombie\network\ServerChunkLoader`$SaveTask.class",
+    "zombie\network\ServerChunkLoader`$SaveUnloadedTask.class"
 )
 
 # --- Functions ---
@@ -399,6 +429,7 @@ if ($DryRun) {
     New-Item -Path (Join-Path $DeployRoot "zombie\vehicles") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\pathfind\nativeCode") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\inventory") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $DeployRoot "zombie\characters\animals") -ItemType Directory -Force | Out-Null
     New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
 
     $ts = Get-Date -Format "yyyyMMdd_HHmmss"
@@ -410,7 +441,7 @@ if ($DryRun) {
 
         # Backup existing override
         if (Test-Path $dest) {
-            $safe = $rel.Replace("\", "_").Replace("`$", "D")
+            $safe = $rel.Replace('\', '_').Replace("`$", "D")
             Copy-Item $dest (Join-Path $BackupDir "$safe.prev_$ts") -Force -ErrorAction SilentlyContinue
         }
 
@@ -451,3 +482,6 @@ Write-Host ""
 Write-Host "To revert:" -ForegroundColor Yellow
 Write-Host "  .\patchApocalipseBr.ps1 -Revert" -ForegroundColor Yellow
 Write-Host ""
+
+
+

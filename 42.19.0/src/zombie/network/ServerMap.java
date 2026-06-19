@@ -7,7 +7,9 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.LinkedBlockingQueue;
+import zombie.core.PZForkJoinPool;
 import zombie.GameTime;
 import zombie.MapCollisionData;
 import zombie.ReanimatedPlayers;
@@ -30,6 +32,7 @@ import zombie.debug.DebugLog;
 import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.entity.GameEntityManager;
+import zombie.ApocBRServerTelemetry;
 import zombie.globalObjects.SGlobalObjects;
 import zombie.iso.InstanceTracker;
 import zombie.iso.IsoChunk;
@@ -646,12 +649,18 @@ public class ServerMap {
         }
     }
 
+    private static final int PARALLEL_CELL_THRESHOLD = 4;
+
     public void postupdate() {
         boolean pathfindPaused = false;
 
+        // Phase A (main thread): Partition cells
+        long apocBrPhaseStart = System.nanoTime();
+        ArrayList<ServerCell> cellsToUpdate = new ArrayList<>();
+
         try {
             for (int n = 0; n < this.loadedCells.size(); n++) {
-                ServerMap.ServerCell cell = this.loadedCells.get(n);
+                ServerCell cell = this.loadedCells.get(n);
                 boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
                 if (!cell.isLoaded) {
                     if (!shouldBeLoaded && !cell.cancelLoading) {
@@ -660,11 +669,7 @@ public class ServerMap {
                                 DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy + " cell.startedLoading=" + cell.startedLoading
                             );
                         }
-
-                        if (!cell.startedLoading) {
-                            cell.loadingWasCancelled = true;
-                        }
-
+                        if (!cell.startedLoading) cell.loadingWasCancelled = true;
                         cell.cancelLoading = true;
                     }
                 } else if (!shouldBeLoaded) {
@@ -674,13 +679,12 @@ public class ServerMap {
                         ServerLOS.instance.suspend();
                         pathfindPaused = true;
                     }
-
                     this.cellMap[y * this.width + x].Unload();
                     this.cellMap[y * this.width + x] = null;
                     this.loadedCells.remove(cell);
                     n--;
                 } else {
-                    cell.update();
+                    cellsToUpdate.add(cell);
                 }
             }
         } catch (Exception var10) {
@@ -690,9 +694,56 @@ public class ServerMap {
                 ServerLOS.instance.resume();
             }
         }
+        ApocBRServerTelemetry.recordWorldSection("serverMapPartition", System.nanoTime() - apocBrPhaseStart);
 
-        NetworkZombiePacker.getInstance().postupdate();
-        ServerMap.ServerCell.chunkLoader.updateSaved();
+        // Phase B+C (parallel, on ForkJoinPool):
+        int cellCount = cellsToUpdate.size();
+        if (cellCount >= PARALLEL_CELL_THRESHOLD) {
+            final ArrayList<ServerCell> keepCells = new ArrayList<>(cellsToUpdate);
+            int numWorkers = Math.min(
+                Math.max(1, keepCells.size() / 20 + 1),
+                Runtime.getRuntime().availableProcessors());
+            int chunkSize = (keepCells.size() + numWorkers - 1) / numWorkers;
+
+            @SuppressWarnings("unchecked")
+            CompletableFuture<Void>[] allFutures = new CompletableFuture[numWorkers + 1];
+
+            long apocBrCellStart = System.nanoTime();
+            for (int t = 0; t < numWorkers; t++) {
+                final int start = t * chunkSize;
+                final int end = Math.min(start + chunkSize, keepCells.size());
+                if (start >= end) {
+                    allFutures[t] = CompletableFuture.completedFuture(null);
+                    continue;
+                }
+                allFutures[t] = CompletableFuture.runAsync(() -> {
+                    for (int i = start; i < end; i++) keepCells.get(i).update();
+                }, PZForkJoinPool.commonPool());
+            }
+
+            allFutures[numWorkers] = CompletableFuture.runAsync(() -> {
+                try { NetworkZombiePacker.getInstance().postupdate(); }
+                catch (Throwable t) { DebugType.General.printException(t, LogSeverity.Error); }
+                try { ServerCell.chunkLoader.updateSaved(); }
+                catch (Throwable t) { DebugType.General.printException(t, LogSeverity.Error); }
+            }, PZForkJoinPool.commonPool());
+
+            // Wait time includes both cell updates and misc tasks running in parallel
+            CompletableFuture.allOf(allFutures).join();
+            ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", System.nanoTime() - apocBrCellStart);
+            ApocBRServerTelemetry.recordServerMapCellsUpdated(keepCells.size(), numWorkers);
+        } else {
+            long apocBrSequentialStart = System.nanoTime();
+            for (int i = 0; i < cellCount; i++) cellsToUpdate.get(i).update();
+            long cellMs = System.nanoTime() - apocBrSequentialStart;
+            ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", cellMs);
+            ApocBRServerTelemetry.recordServerMapCellsUpdated(cellCount, 0);
+
+            apocBrSequentialStart = System.nanoTime();
+            NetworkZombiePacker.getInstance().postupdate();
+            ServerCell.chunkLoader.updateSaved();
+            ApocBRServerTelemetry.recordWorldSection("serverMapMiscTasks", System.nanoTime() - apocBrSequentialStart);
+        }
     }
 
     public void physicsCheck(int x, int y) {
