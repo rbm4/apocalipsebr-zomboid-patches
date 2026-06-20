@@ -1,6 +1,10 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie.characters;
 
+import zombie.util.Type;
+import zombie.network.statistics.data.ConnectionQueueStatistic;
+import zombie.network.packets.*;
+import zombie.scripting.objects.*;
 import fmod.fmod.BaseSoundListener;
 import fmod.fmod.DummySoundListener;
 import fmod.fmod.SoundListener;
@@ -17,18 +21,21 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Objects;
 import java.util.Stack;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
 import java.util.function.Consumer;
 import org.joml.Vector2f;
 import org.joml.Vector3f;
 import org.lwjgl.util.vector.Quaternion;
+import zombie.ApocBRServerTelemetry;
 import zombie.AttackType;
 import zombie.CombatManager;
 import zombie.DebugFileWatcher;
 import zombie.GameSounds;
 import zombie.GameTime;
 import zombie.GameWindow;
+import zombie.Lua.LuaEventManager;
 import zombie.PredicatedFileWatcher;
 import zombie.SandboxOptions;
 import zombie.SoundManager;
@@ -37,7 +44,6 @@ import zombie.UpdateSchedulerSimulationLevel;
 import zombie.UsedFromLua;
 import zombie.ZomboidFileSystem;
 import zombie.ZomboidGlobals;
-import zombie.Lua.LuaEventManager;
 import zombie.ai.State;
 import zombie.ai.sadisticAIDirector.SleepingEvent;
 import zombie.ai.states.BumpedState;
@@ -219,6 +225,7 @@ import zombie.network.ServerLOS;
 import zombie.network.ServerMap;
 import zombie.network.ServerOptions;
 import zombie.network.ServerWorldDatabase;
+import zombie.network.ServerMap;
 import zombie.network.fields.IPositional;
 import zombie.network.fields.hit.HitInfo;
 import zombie.network.packets.INetworkPacket;
@@ -259,7 +266,6 @@ import zombie.worldMap.WorldMapRemotePlayer;
 import zombie.worldMap.WorldMapRemotePlayers;
 import java.util.concurrent.CompletableFuture;
 import zombie.core.PZForkJoinPool;
-
 @UsedFromLua
 public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHumanVisual, IPositional {
     private static final int RAND_INJURY = 7;
@@ -6087,7 +6093,7 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
 
         // Only parallelize server-side LOS for large object lists;
         // client and small lists use the fast sequential path.
-        final boolean useParallel = bServer && size > 100 && !this.remote;
+        final boolean useParallel = bServer && size > 100;
 
         // Compute phase: build LOSRecords with all expensive calculations precomputed
         final ArrayList<LOSRecord> results = new ArrayList<>(size);
