@@ -87,7 +87,10 @@ SOURCES=(
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
     "$SRC_ROOT/zombie/WorldSoundManager.java"
     "$SRC_ROOT/zombie/iso/FishSchoolManager.java"
-    "$SRC_ROOT/zombie/vehicles/BaseVehicle.java"
+    "$SRC_ROOT/zombie/iso/IsoPuddlesCompute.java"
+    "$SRC_ROOT/zombie/iso/objects/IsoZombieGiblets.java"
+  "$SRC_ROOT/zombie/iso/objects/IsoDoor.java"
+  "$SRC_ROOT/zombie/vehicles/BaseVehicle.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
     "$SRC_ROOT/zombie/gameStates/IngameState.java"
     "$SRC_ROOT/zombie/iso/IsoWorld.java"
@@ -96,10 +99,12 @@ SOURCES=(
     "$SRC_ROOT/zombie/network/ServerMap.java"
     "$SRC_ROOT/zombie/pathfind/nativeCode/PathfindNative.java"
     "$SRC_ROOT/zombie/pathfind/nativeCode/ChunkUpdateTask.java"
+    "$SRC_ROOT/zombie/pathfind/LineClearCollideMain.java"
     "$SRC_ROOT/zombie/inventory/CompressIdenticalItems.java"
     "$SRC_ROOT/zombie/network/ServerChunkLoader.java"
     "$SRC_ROOT/zombie/characters/animals/IsoAnimal.java"
     "$SRC_ROOT/zombie/characters/IsoPlayer.java"
+    "$SRC_ROOT/zombie/network/ServerLOS.java"
 )
 
 # --- All expected class files (relative to deploy base) ---
@@ -114,7 +119,10 @@ CLASSES=(
     "zombie/iso/FishSchoolManager.class"
     'zombie/iso/FishSchoolManager$ChumData.class'
     'zombie/iso/FishSchoolManager$ZoneData.class'
-    "zombie/vehicles/BaseVehicle.class"
+    "zombie/iso/IsoPuddlesCompute.class"
+    "zombie/iso/objects/IsoZombieGiblets.class"
+  "zombie/iso/objects/IsoDoor.class"
+  "zombie/vehicles/BaseVehicle.class"
     'zombie/vehicles/BaseVehicle$1.class'
     'zombie/vehicles/BaseVehicle$Authorization.class'
     'zombie/vehicles/BaseVehicle$engineStateTypes.class'
@@ -173,6 +181,7 @@ CLASSES=(
     'zombie/network/ServerMap$WorkerThreadCommand.class'
     "zombie/pathfind/nativeCode/PathfindNative.class"
     "zombie/pathfind/nativeCode/ChunkUpdateTask.class"
+    "zombie/pathfind/LineClearCollideMain.class"
     "zombie/inventory/CompressIdenticalItems.class"
     'zombie/inventory/CompressIdenticalItems$1.class'
     'zombie/inventory/CompressIdenticalItems$PerCallData.class'
@@ -190,6 +199,11 @@ CLASSES=(
     "zombie/characters/animals/IsoAnimal.class"
     "zombie/characters/IsoPlayer.class"
     "zombie/characters/IsoPlayer\$LOSRecord.class"
+    "zombie/network/ServerLOS.class"
+    'zombie/network/ServerLOS$LOSThread.class'
+    'zombie/network/ServerLOS$PlayerData.class'
+    'zombie/network/ServerLOS$ServerLighting.class'
+    'zombie/network/ServerLOS$UpdateStatus.class'
 )
 
 echo ""

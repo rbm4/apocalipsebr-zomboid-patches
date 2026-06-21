@@ -182,6 +182,8 @@ import zombie.vehicleSound.VehicleSounds;
 
 @UsedFromLua
 public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFMODParameterUpdater, IPositional, VehicleSoundOwner {
+    private static final int APOCBR_VEHICLE_UPDATE_PARTS_SKIP_ACTIVE_SERVER = Math.max(1, Integer.getInteger("apocbr.vehicleUpdatePartsSkip", 3));
+    private static final int APOCBR_VEHICLE_UPDATE_PARTS_SKIP_IDLE_SERVER = Math.max(1, Integer.getInteger("apocbr.vehicleUpdatePartsSkipIdle", 10));
     public static final int MASK1_FRONT = 0;
     public static final int MASK1_REAR = 4;
     public static final int MASK1_DOOR_RIGHT_FRONT = 8;
@@ -3718,7 +3720,7 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
                 // Configure via -Dapocbr.vehicleUpdatePartsSkip=N (default=3 on server, 1 on client).
                 boolean apocBrNeedPartsUpdate = this.needPartsUpdate() || this.isMechanicUIOpen() || this.alarmStartTime > 0.0;
                 if (apocBrNeedPartsUpdate) {
-                    int apocBrSkipN = this.getDriver() != null ? 1 : (GameServer.server ? 3 : 1);
+                    int apocBrSkipN = this.apocBrGetUpdatePartsSkipInterval(bTowed, bTowing);
                     boolean apocBrCounterReady = ++this.apocBrUpdatePartsSkipCounter >= apocBrSkipN;
                     boolean apocBrPoolOk = this.apocBrAsyncLuaReady || GameClient.client || this.getDriver() != null;
                     if (apocBrCounterReady && apocBrPoolOk) {
@@ -8121,6 +8123,21 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
         } finally {
             ApocBRServerTelemetry.recordVehiclePart(System.nanoTime() - apocBrVehiclePartStart);
         }
+    }
+
+    private int apocBrGetUpdatePartsSkipInterval(boolean bTowed, boolean bTowing) {
+        if (!GameServer.server || this.getDriver() != null || this.isMechanicUIOpen()) {
+            return 1;
+        }
+
+        boolean activeVehicle = this.engineState != BaseVehicle.engineStateTypes.Idle
+            || bTowed
+            || bTowing
+            || !this.isAtRest()
+            || this.alarmStartTime > 0.0
+            || this.lightbarLightsMode.isEnable()
+            || this.lightbarSirenMode.isEnable();
+        return activeVehicle ? APOCBR_VEHICLE_UPDATE_PARTS_SKIP_ACTIVE_SERVER : APOCBR_VEHICLE_UPDATE_PARTS_SKIP_IDLE_SERVER;
     }
 
     public void updateParts() {

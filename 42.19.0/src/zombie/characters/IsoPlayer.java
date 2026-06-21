@@ -238,16 +238,6 @@ import zombie.popman.animal.AnimalInstanceManager;
 import zombie.savefile.ClientPlayerDB;
 import zombie.savefile.PlayerDB;
 import zombie.scripting.entity.components.crafting.CraftRecipe;
-import zombie.scripting.objects.CharacterProfession;
-import zombie.scripting.objects.CharacterTrait;
-import zombie.scripting.objects.ItemBodyLocation;
-import zombie.scripting.objects.ItemKey;
-import zombie.scripting.objects.MoodleType;
-import zombie.scripting.objects.Registries;
-import zombie.scripting.objects.ResourceLocation;
-import zombie.scripting.objects.SoundKey;
-import zombie.scripting.objects.VehicleScript;
-import zombie.scripting.objects.WeaponCategory;
 import zombie.ui.TutorialManager;
 import zombie.ui.UIManager;
 import zombie.util.StringUtils;
@@ -6093,7 +6083,7 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
 
         // Only parallelize server-side LOS for large object lists;
         // client and small lists use the fast sequential path.
-        final boolean useParallel = bServer && size > 100;
+        final boolean useParallel = true;
 
         // Compute phase: build LOSRecords with all expensive calculations precomputed
         final ArrayList<LOSRecord> results = new ArrayList<>(size);

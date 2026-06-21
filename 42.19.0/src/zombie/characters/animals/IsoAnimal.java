@@ -11,10 +11,13 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import zombie.core.PZForkJoinPool;
 import org.joml.Matrix4f;
 import org.joml.Vector3f;
-
+import zombie.core.logger.ExceptionLogger;
 import se.krka.kahlua.j2se.KahluaTableImpl;
 import zombie.GameTime;
 import zombie.GameWindow;
@@ -124,6 +127,13 @@ import zombie.vehicles.VehiclePart;
 
 @UsedFromLua
 public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
+    /**
+     * An animal's state machine and PathFindBehavior2 keep mutable cursor state.
+     * Async updates must therefore be single-flight per animal: queuing every server
+     * tick allows two workers to advance pathIndex against different path snapshots.
+     */
+    private final AtomicBoolean asyncUpdateInFlight = new AtomicBoolean();
+
     public static final int INVALID_SQUARE_XY = Integer.MAX_VALUE;
     private static final long serialVersionUID = 1L;
     private static final Vector3f tempVector3f = new Vector3f();
@@ -380,6 +390,24 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
 
     @Override
     public void update() {
+        // Do not queue work behind an already-running update. Coalescing the missed
+        // tick keeps server load bounded and preserves one owner for state/path data.
+        if (!this.asyncUpdateInFlight.compareAndSet(false, true)) {
+            return;
+        }
+
+        CompletableFuture.runAsync(() -> {
+            try {
+                this.updateAsync();
+            } catch (Throwable t) {
+                ExceptionLogger.logException(t);
+            } finally {
+                this.asyncUpdateInFlight.set(false);
+            }
+        }, PZForkJoinPool.commonPool());
+    }
+
+    private void updateAsync() {
         if (this.isOnHook()) {
             this.reattachBackToHook();
             this.ensureCorrectSkin();
@@ -3744,10 +3772,14 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         float locX = this.getX();
         float locY = this.getY();
         float locZ = this.getZ();
-        this.spottedList.clear();
+        // Keep the inherited spottedList as live shared state. Build this update's
+        // result locally so a reader can never observe the list halfway through a
+        // clear/add sequence while animal simulation runs on a worker.
+        ArrayList<IsoMovingObject> spottedResults = new ArrayList<>(1);
 
         IsoCell cell = this.getCell();
         if (cell == null) {
+            this.replaceSpottedList(spottedResults);
             return;
         }
         // Snapshot: iterate a copy of the object list to avoid
@@ -3764,7 +3796,7 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
                     && !(movingObject instanceof BaseVehicle)
                     && !(movingObject instanceof IsoZombie zombie && zombie.isReanimatedForGrappleOnly())) {
                 if (movingObject == this) {
-                    this.spottedList.add(movingObject);
+                    spottedResults.add(movingObject);
                 } else {
                     float movingObjectX = movingObject.getX();
                     float movingObjectY = movingObject.getY();
@@ -3793,6 +3825,22 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
                     }
                 }
             }
+        }
+
+        this.replaceSpottedList(spottedResults);
+    }
+
+    /**
+     * Atomically publishes the result of one animal LOS pass. IsoPlayer exposes
+     * this
+     * collection as a Stack, so changing its type here would break the inherited
+     * API
+     * and its indexed consumers.
+     */
+    private void replaceSpottedList(List<IsoMovingObject> spottedResults) {
+        synchronized (this.spottedList) {
+            this.spottedList.clear();
+            this.spottedList.addAll(spottedResults);
         }
     }
 

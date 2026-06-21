@@ -100,6 +100,9 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
     (Join-Path $SrcRoot "zombie\WorldSoundManager.java"),
     (Join-Path $SrcRoot "zombie\iso\FishSchoolManager.java"),
+    (Join-Path $SrcRoot "zombie\iso\IsoPuddlesCompute.java"),
+    (Join-Path $SrcRoot "zombie\iso\objects\IsoZombieGiblets.java"),
+    (Join-Path $SrcRoot "zombie\iso\objects\IsoDoor.java"),
     (Join-Path $SrcRoot "zombie\vehicles\BaseVehicle.java"),
     (Join-Path $SrcRoot "zombie\network\GameServer.java"),
     (Join-Path $SrcRoot "zombie\gameStates\IngameState.java"),
@@ -110,6 +113,7 @@ $Sources = @(
     # PathfindSafety
     (Join-Path $SrcRoot "zombie\pathfind\nativeCode\PathfindNative.java"),
     (Join-Path $SrcRoot "zombie\pathfind\nativeCode\ChunkUpdateTask.java"),
+    (Join-Path $SrcRoot "zombie\pathfind\LineClearCollideMain.java"),
     # NullCraft
     (Join-Path $SrcRoot "zombie\inventory\CompressIdenticalItems.java"),
     # ServerChunkLoader CRC fix (async save thread safety)
@@ -117,7 +121,8 @@ $Sources = @(
     # Parallel Animal Simulation (null safety + async-ready)
     (Join-Path $SrcRoot "zombie\characters\animals\IsoAnimal.java"),
     # Parallel Player LOS (split-phase compute, chunk-parallel)
-    (Join-Path $SrcRoot "zombie\characters\IsoPlayer.java")
+    (Join-Path $SrcRoot "zombie\characters\IsoPlayer.java"),
+    (Join-Path $SrcRoot "zombie\network\ServerLOS.java")
 )
 
 # --- All expected class files (relative to deploy root) ---
@@ -133,6 +138,9 @@ $ClassFiles = @(
     "zombie\iso\FishSchoolManager.class",
     "zombie\iso\FishSchoolManager`$ChumData.class",
     "zombie\iso\FishSchoolManager`$ZoneData.class",
+    "zombie\iso\IsoPuddlesCompute.class",
+    "zombie\iso\objects\IsoZombieGiblets.class",
+    "zombie\iso\objects\IsoDoor.class",
     "zombie\vehicles\BaseVehicle.class",
     "zombie\vehicles\BaseVehicle`$1.class",
     "zombie\vehicles\BaseVehicle`$Authorization.class",
@@ -193,6 +201,7 @@ $ClassFiles = @(
     # PathfindSafety
     "zombie\pathfind\nativeCode\PathfindNative.class",
     "zombie\pathfind\nativeCode\ChunkUpdateTask.class",
+    "zombie\pathfind\LineClearCollideMain.class",
     # NullCraft
     "zombie\inventory\CompressIdenticalItems.class",
     "zombie\inventory\CompressIdenticalItems`$1.class",
@@ -205,6 +214,11 @@ $ClassFiles = @(
     # Parallel Player LOS
     "zombie\characters\IsoPlayer.class",
     "zombie\characters\IsoPlayer`$LOSRecord.class",
+    "zombie\network\ServerLOS.class",
+    "zombie\network\ServerLOS`$LOSThread.class",
+    "zombie\network\ServerLOS`$PlayerData.class",
+    "zombie\network\ServerLOS`$ServerLighting.class",
+    "zombie\network\ServerLOS`$UpdateStatus.class",
     "zombie\network\ServerChunkLoader`$GetSquare.class",
     "zombie\network\ServerChunkLoader`$LoaderThread.class",
     "zombie\network\ServerChunkLoader`$QuitThreadTask.class",
@@ -429,6 +443,7 @@ if ($DryRun) {
     New-Item -Path (Join-Path $DeployRoot "zombie\network") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\gameStates") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\iso") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $DeployRoot "zombie\iso\objects") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\vehicles") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\pathfind\nativeCode") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\inventory") -ItemType Directory -Force | Out-Null
