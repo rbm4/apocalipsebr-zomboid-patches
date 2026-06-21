@@ -317,6 +317,10 @@ else
         [[ -f "$compiled" ]] || continue
         target="$DEPLOY_BASE/$class_file"
 
+        # Class paths include nested Java packages. Create the exact destination
+        # directory so newly added overrides do not depend on a previous deployment.
+        mkdir -p "$(dirname "$target")"
+
         # Backup existing override
         if [[ -f "$target" ]]; then
             safe_name="${class_file//\//_}"
