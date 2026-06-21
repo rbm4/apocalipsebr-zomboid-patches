@@ -82,6 +82,7 @@ REQUIRED_MAJOR=25
 # --- All patched source files ---
 SOURCES=(
     "$SRC_ROOT/zombie/ApocBRServerTelemetry.java"
+    "$SRC_ROOT/zombie/GameTime.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateScheduler.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
     "$SRC_ROOT/zombie/WorldSoundManager.java"
@@ -104,6 +105,7 @@ SOURCES=(
 # --- All expected class files (relative to deploy base) ---
 CLASSES=(
     "zombie/ApocBRServerTelemetry.class"
+    "zombie/GameTime.class"
     "zombie/MovingObjectUpdateScheduler.class"
     "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
     "zombie/WorldSoundManager.class"

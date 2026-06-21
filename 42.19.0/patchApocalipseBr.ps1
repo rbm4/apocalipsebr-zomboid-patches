@@ -95,6 +95,7 @@ $ZuluApiUrl = "https://api.azul.com/metadata/v1/zulu/packages/?java_version=$Req
 $Sources = @(
     # AsyncSaveTelemetry + NoCull (MovingObjectUpdateScheduler is shared)
     (Join-Path $SrcRoot "zombie\ApocBRServerTelemetry.java"),
+    (Join-Path $SrcRoot "zombie\GameTime.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateScheduler.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
     (Join-Path $SrcRoot "zombie\WorldSoundManager.java"),
@@ -123,6 +124,7 @@ $Sources = @(
 $ClassFiles = @(
     # AsyncSaveTelemetry + NoCull
     "zombie\ApocBRServerTelemetry.class",
+    "zombie\GameTime.class",
     "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
     "zombie\WorldSoundManager.class",

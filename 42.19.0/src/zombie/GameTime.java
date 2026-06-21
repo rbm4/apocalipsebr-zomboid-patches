@@ -21,17 +21,20 @@ import zombie.Lua.LuaManager;
 import zombie.ai.sadisticAIDirector.SleepingEvent;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
-import zombie.core.Color;
 import zombie.core.Core;
 import zombie.core.PerformanceSettings;
 import zombie.core.SceneShaderStore;
 import zombie.core.Translator;
 import zombie.core.logger.ExceptionLogger;
 import zombie.core.math.PZMath;
+import zombie.core.network.ByteBufferReader;
+import zombie.core.network.ByteBufferWriter;
 import zombie.core.opengl.RenderSettings;
 import zombie.core.random.Rand;
 import zombie.debug.DebugLog;
 import zombie.debug.DebugOptions;
+import zombie.debug.DebugType;
+import zombie.debug.LogSeverity;
 import zombie.erosion.ErosionMain;
 import zombie.iso.IsoWorld;
 import zombie.iso.LightingJNI;
@@ -203,6 +206,14 @@ public final class GameTime {
         return 0.016666668F * this.getUnmoddedMultiplier();
     }
 
+    public float getPhysicsSecondsSinceLastUpdate() {
+        return this.getRealworldSecondsSinceLastUpdate() * getSlomoMultiplier();
+    }
+
+    public static float getSlomoMultiplier() {
+        return DebugOptions.instance.getSlowMotionMultiplier().getMultiplier();
+    }
+
     /**
      * Number of in-game seconds passed since the last tick.
      */
@@ -265,12 +276,12 @@ public final class GameTime {
     public String getTimeSurvived(IsoPlayer playerObj) {
         String total = "";
         float hours = (float)playerObj.getHoursSurvived();
-        Integer hoursLeft = (int)hours % 24;
-        Integer days = (int)hours / 24;
-        Integer months = days / 30;
-        days = days % 30;
-        Integer years = months / 12;
-        months = months % 12;
+        int hoursLeft = (int)hours % 24;
+        int days = (int)hours / 24;
+        int months = days / 30;
+        days %= 30;
+        int years = months / 12;
+        months %= 12;
         String dayString = Translator.getText("IGUI_Gametime_day");
         String yearString = Translator.getText("IGUI_Gametime_year");
         String hourString = Translator.getText("IGUI_Gametime_hour");
@@ -430,24 +441,24 @@ public final class GameTime {
      * @return Interpolated value based on the current time.
      */
     public float TimeLerp(float startVal, float endVal, float startTime, float endTime) {
-        float TimeOfDay = getInstance().getTimeOfDay();
+        float timeOfDay = getInstance().getTimeOfDay();
         if (endTime < startTime) {
             endTime += 24.0F;
         }
 
         boolean bReverse = false;
-        if (TimeOfDay > endTime && TimeOfDay > startTime || TimeOfDay < endTime && TimeOfDay < startTime) {
+        if (timeOfDay > endTime && timeOfDay > startTime || timeOfDay < endTime && timeOfDay < startTime) {
             startTime += 24.0F;
             bReverse = true;
             startTime = endTime;
             endTime = startTime;
-            if (TimeOfDay < startTime) {
-                TimeOfDay += 24.0F;
+            if (timeOfDay < startTime) {
+                timeOfDay += 24.0F;
             }
         }
 
         float dist = endTime - startTime;
-        float current = TimeOfDay - startTime;
+        float current = timeOfDay - startTime;
         float delta = 0.0F;
         if (current > dist) {
             delta = 1.0F;
@@ -461,8 +472,8 @@ public final class GameTime {
             delta = 1.0F - delta;
         }
 
-        float signval = 0.0F;
         delta = (delta - 0.5F) * 2.0F;
+        float signval;
         if (delta < 0.0) {
             signval = -1.0F;
         } else {
@@ -527,6 +538,7 @@ public final class GameTime {
 
     public void update(boolean bSleeping) {
         long ms = System.currentTimeMillis();
+        long apocBrGameTimeSectionStart;
         int metaSandbox = 9000;
         if (SandboxOptions.instance.metaEvent.getValue() == 1) {
             metaSandbox = -1;
@@ -638,7 +650,9 @@ public final class GameTime {
 
         if (!GameClient.client && lastTimeOfDay <= 7.0F && this.getTimeOfDay() > 7.0F) {
             this.setNightsSurvived(this.getNightsSurvived() + 1);
+            apocBrGameTimeSectionStart = System.nanoTime();
             this.doMetaEvents();
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeMetaEvents", System.nanoTime() - apocBrGameTimeSectionStart);
         }
 
         if (GameClient.client) {
@@ -659,7 +673,9 @@ public final class GameTime {
                 }
 
                 this.updateCalendar(this.getYear(), this.getMonth(), this.getDay(), (int)this.getTimeOfDay(), this.getMinutes());
+                apocBrGameTimeSectionStart = System.nanoTime();
                 LuaEventManager.triggerEvent("EveryDays");
+                ApocBRServerTelemetry.recordStateUpdateSection("gameTimeEveryDays", System.nanoTime() - apocBrGameTimeSectionStart);
             }
         } else if (this.getTimeOfDay() >= 24.0F) {
             this.setTimeOfDay(this.getTimeOfDay() - 24.0F);
@@ -674,14 +690,17 @@ public final class GameTime {
             }
 
             this.updateCalendar(this.getYear(), this.getMonth(), this.getDay(), (int)this.getTimeOfDay(), this.getMinutes());
+            apocBrGameTimeSectionStart = System.nanoTime();
             LuaEventManager.triggerEvent("EveryDays");
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeEveryDays", System.nanoTime() - apocBrGameTimeSectionStart);
             if (GameServer.server) {
+                apocBrGameTimeSectionStart = System.nanoTime();
                 GameServer.syncClock();
+                ApocBRServerTelemetry.recordStateUpdateSection("gameTimeSyncClock", System.nanoTime() - apocBrGameTimeSectionStart);
                 this.lastClockSync = ms;
             }
         }
 
-        float moonMod = this.moon * 20.0F;
         if (!ClimateManager.getInstance().getThunderStorm().isModifyingNight()) {
             this.setAmbient(this.TimeLerp(this.getAmbientMin(), this.getAmbientMax(), this.getDusk(), this.getDawn()));
         }
@@ -692,7 +711,9 @@ public final class GameTime {
 
         this.setMinutesStamp();
         if (this.getHour() != previousHour) {
+            apocBrGameTimeSectionStart = System.nanoTime();
             LuaEventManager.triggerEvent("EveryHours");
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeEveryHours", System.nanoTime() - apocBrGameTimeSectionStart);
         }
 
         if (GameServer.server && this.getHour() < previousHour) {
@@ -716,21 +737,33 @@ public final class GameTime {
                 }
             }
 
+            apocBrGameTimeSectionStart = System.nanoTime();
             ErosionMain.EveryTenMinutes();
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeErosion", System.nanoTime() - apocBrGameTimeSectionStart);
+            apocBrGameTimeSectionStart = System.nanoTime();
             ClimateManager.getInstance().updateEveryTenMins();
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeClimate", System.nanoTime() - apocBrGameTimeSectionStart);
             getInstance().updateRoomLight();
+            apocBrGameTimeSectionStart = System.nanoTime();
             LuaEventManager.triggerEvent("EveryTenMinutes");
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeEveryTenMinutes", System.nanoTime() - apocBrGameTimeSectionStart);
             this.minutesMod = now / 10;
+            apocBrGameTimeSectionStart = System.nanoTime();
             ZomboidRadio.getInstance().UpdateScripts(this.getHour(), now);
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeRadio", System.nanoTime() - apocBrGameTimeSectionStart);
         }
 
         if (this.previousMinuteStamp != this.minutesStamp) {
+            apocBrGameTimeSectionStart = System.nanoTime();
             LuaEventManager.triggerEvent("EveryOneMinute");
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeEveryOneMinute", System.nanoTime() - apocBrGameTimeSectionStart);
             this.previousMinuteStamp = this.minutesStamp;
         }
 
         if (GameServer.server && (ms - this.lastClockSync > 10000L || GameServer.fastForward)) {
+            apocBrGameTimeSectionStart = System.nanoTime();
             GameServer.syncClock();
+            ApocBRServerTelemetry.recordStateUpdateSection("gameTimeSyncClock", System.nanoTime() - apocBrGameTimeSectionStart);
             this.lastClockSync = ms;
         }
     }
@@ -789,7 +822,6 @@ public final class GameTime {
 
     public int getSkyLightLevel() {
         RenderSettings.PlayerRenderSettings aa = RenderSettings.getInstance().getPlayerSettings(IsoPlayer.getPlayerIndex());
-        Color e = ClimateManager.getInstance().getGlobalLight().getExterior();
         float b = aa.getBmod();
         float g = aa.getGmod();
         float r = aa.getRmod();
@@ -814,11 +846,11 @@ public final class GameTime {
 
     /**
      * 
-     * @param Ambient the Ambient to set
+     * @param ambient the Ambient to set
      * @deprecated
      */
-    public void setAmbient(float Ambient) {
-        this.ambient = Ambient;
+    public void setAmbient(float ambient) {
+        this.ambient = ambient;
     }
 
     /**
@@ -831,13 +863,13 @@ public final class GameTime {
 
     /**
      * 
-     * @param AmbientMax the AmbientMax to set
+     * @param ambientMax the AmbientMax to set
      * @deprecated
      */
-    public void setAmbientMax(float AmbientMax) {
-        AmbientMax = Math.min(1.0F, AmbientMax);
-        AmbientMax = Math.max(0.0F, AmbientMax);
-        this.ambientMax = AmbientMax;
+    public void setAmbientMax(float ambientMax) {
+        ambientMax = Math.min(1.0F, ambientMax);
+        ambientMax = Math.max(0.0F, ambientMax);
+        this.ambientMax = ambientMax;
     }
 
     /**
@@ -850,13 +882,13 @@ public final class GameTime {
 
     /**
      * 
-     * @param AmbientMin the AmbientMin to set
+     * @param ambientMin the AmbientMin to set
      * @deprecated
      */
-    public void setAmbientMin(float AmbientMin) {
-        AmbientMin = Math.min(1.0F, AmbientMin);
-        AmbientMin = Math.max(0.0F, AmbientMin);
-        this.ambientMin = AmbientMin;
+    public void setAmbientMin(float ambientMin) {
+        ambientMin = Math.min(1.0F, ambientMin);
+        ambientMin = Math.max(0.0F, ambientMin);
+        this.ambientMin = ambientMin;
     }
 
     /**
@@ -870,10 +902,10 @@ public final class GameTime {
     /**
      * Current day of the month in the game world.
      * 
-     * @param Day 0 indexed day of the month.
+     * @param day 0 indexed day of the month.
      */
-    public void setDay(int Day) {
-        this.day = Day;
+    public void setDay(int day) {
+        this.day = day;
     }
 
     /**
@@ -895,10 +927,10 @@ public final class GameTime {
     /**
      * Day of the month the game started on as defined by sandbox options. Changing this does not affect the age of the world.
      * 
-     * @param StartDay 0 indexed day of the month the game started on.
+     * @param startDay 0 indexed day of the month the game started on.
      */
-    public void setStartDay(int StartDay) {
-        this.startDay = StartDay;
+    public void setStartDay(int startDay) {
+        this.startDay = startDay;
     }
 
     /**
@@ -911,11 +943,11 @@ public final class GameTime {
 
     /**
      * 
-     * @param MaxZombieCountStart the MaxZombieCountStart to set
+     * @param maxZombieCountStart the MaxZombieCountStart to set
      * @deprecated
      */
-    public void setMaxZombieCountStart(float MaxZombieCountStart) {
-        this.maxZombieCountStart = MaxZombieCountStart;
+    public void setMaxZombieCountStart(float maxZombieCountStart) {
+        this.maxZombieCountStart = maxZombieCountStart;
     }
 
     /**
@@ -928,11 +960,11 @@ public final class GameTime {
 
     /**
      * 
-     * @param MinZombieCountStart the MinZombieCountStart to set
+     * @param minZombieCountStart the MinZombieCountStart to set
      * @deprecated
      */
-    public void setMinZombieCountStart(float MinZombieCountStart) {
-        this.minZombieCountStart = MinZombieCountStart;
+    public void setMinZombieCountStart(float minZombieCountStart) {
+        this.minZombieCountStart = minZombieCountStart;
     }
 
     /**
@@ -945,11 +977,11 @@ public final class GameTime {
 
     /**
      * 
-     * @param MaxZombieCount the MaxZombieCount to set
+     * @param maxZombieCount the MaxZombieCount to set
      * @deprecated
      */
-    public void setMaxZombieCount(float MaxZombieCount) {
-        this.maxZombieCount = MaxZombieCount;
+    public void setMaxZombieCount(float maxZombieCount) {
+        this.maxZombieCount = maxZombieCount;
     }
 
     /**
@@ -962,11 +994,11 @@ public final class GameTime {
 
     /**
      * 
-     * @param MinZombieCount the MinZombieCount to set
+     * @param minZombieCount the MinZombieCount to set
      * @deprecated
      */
-    public void setMinZombieCount(float MinZombieCount) {
-        this.minZombieCount = MinZombieCount;
+    public void setMinZombieCount(float minZombieCount) {
+        this.minZombieCount = minZombieCount;
     }
 
     /**
@@ -980,10 +1012,10 @@ public final class GameTime {
     /**
      * Current month of the year in the game world.
      * 
-     * @param Month 0 indexed month of the year.
+     * @param month 0 indexed month of the year.
      */
-    public void setMonth(int Month) {
-        this.month = Month;
+    public void setMonth(int month) {
+        this.month = month;
     }
 
     /**
@@ -997,10 +1029,10 @@ public final class GameTime {
     /**
      * Month of the year the game started on as defined by sandbox options. Changing this does not affect the age of the world.
      * 
-     * @param StartMonth 0 indexed month of the year the game started on.
+     * @param startMonth 0 indexed month of the year the game started on.
      */
-    public void setStartMonth(int StartMonth) {
-        this.startMonth = StartMonth;
+    public void setStartMonth(int startMonth) {
+        this.startMonth = startMonth;
     }
 
     /**
@@ -1013,10 +1045,10 @@ public final class GameTime {
 
     /**
      * 
-     * @param NightTint the NightTint to set
+     * @param nightTint the NightTint to set
      * @deprecated
      */
-    private void setNightTint(float NightTint) {
+    private void setNightTint(float nightTint) {
     }
 
     /**
@@ -1029,10 +1061,10 @@ public final class GameTime {
 
     /**
      * 
-     * @param NightTint the NightTint to set
+     * @param nightTint the NightTint to set
      * @deprecated
      */
-    private void setNight(float NightTint) {
+    private void setNight(float nightTint) {
     }
 
     /**
@@ -1044,10 +1076,10 @@ public final class GameTime {
 
     /**
      * 
-     * @param TimeOfDay the TimeOfDay to set
+     * @param timeOfDay the TimeOfDay to set
      */
-    public void setTimeOfDay(float TimeOfDay) {
-        this.timeOfDay = TimeOfDay;
+    public void setTimeOfDay(float timeOfDay) {
+        this.timeOfDay = timeOfDay;
     }
 
     /**
@@ -1061,10 +1093,10 @@ public final class GameTime {
     /**
      * Time of day the game started on as defined by sandbox options. The value will change if sandbox options are changed, so getNightsSurvived() or getWorldAgeHours() should be used instead to determine the age of the world. Changing this does not affect the age of the world.
      * 
-     * @param StartTimeOfDay The time of day in hours the game started at.
+     * @param startTimeOfDay The time of day in hours the game started at.
      */
-    public void setStartTimeOfDay(float StartTimeOfDay) {
-        this.startTimeOfDay = StartTimeOfDay;
+    public void setStartTimeOfDay(float startTimeOfDay) {
+        this.startTimeOfDay = startTimeOfDay;
     }
 
     /**
@@ -1083,10 +1115,10 @@ public final class GameTime {
 
     /**
      * 
-     * @param ViewDistMax the ViewDistMax to set
+     * @param viewDistMax the ViewDistMax to set
      */
-    public void setViewDistMax(float ViewDistMax) {
-        this.viewDistMax = ViewDistMax;
+    public void setViewDistMax(float viewDistMax) {
+        this.viewDistMax = viewDistMax;
     }
 
     /**
@@ -1099,11 +1131,11 @@ public final class GameTime {
 
     /**
      * 
-     * @param ViewDistMin the ViewDistMin to set
+     * @param viewDistMin the ViewDistMin to set
      * @deprecated
      */
-    public void setViewDistMin(float ViewDistMin) {
-        this.viewDistMin = ViewDistMin;
+    public void setViewDistMin(float viewDistMin) {
+        this.viewDistMin = viewDistMin;
     }
 
     /**
@@ -1117,8 +1149,8 @@ public final class GameTime {
     /**
      * Current year in the game world.
      */
-    public void setYear(int Year) {
-        this.year = Year;
+    public void setYear(int year) {
+        this.year = year;
     }
 
     /**
@@ -1132,10 +1164,10 @@ public final class GameTime {
     /**
      * Year the game started on. Changing this does not affect the age of the world.
      * 
-     * @param StartYear Year the game started on.
+     * @param startYear Year the game started on.
      */
-    public void setStartYear(int StartYear) {
-        this.startYear = StartYear;
+    public void setStartYear(int startYear) {
+        this.startYear = startYear;
     }
 
     /**
@@ -1149,10 +1181,10 @@ public final class GameTime {
     /**
      * Number of nights since the game began. A night is survived when the time passes 7am.
      * 
-     * @param NightsSurvived the NightsSurvived to set
+     * @param nightsSurvived the NightsSurvived to set
      */
-    public void setNightsSurvived(int NightsSurvived) {
-        this.nightsSurvived = NightsSurvived;
+    public void setNightsSurvived(int nightsSurvived) {
+        this.nightsSurvived = nightsSurvived;
     }
 
     public double getWorldAgeDaysSinceBegin() {
@@ -1185,12 +1217,12 @@ public final class GameTime {
 
     /**
      * 
-     * @param HoursSurvived the HoursSurvived to set
+     * @param hoursSurvived the HoursSurvived to set
      * @deprecated
      */
-    public void setHoursSurvived(double HoursSurvived) {
+    public void setHoursSurvived(double hoursSurvived) {
         DebugLog.log("GameTime.getHoursSurvived() has no meaning, use IsoPlayer.getHourSurvived() instead");
-        this.hoursSurvived = HoursSurvived;
+        this.hoursSurvived = hoursSurvived;
     }
 
     public int getHour() {
@@ -1210,10 +1242,10 @@ public final class GameTime {
 
     /**
      * 
-     * @param Calender the Calender to set
+     * @param calendar the Calender to set
      */
-    public void setCalender(PZCalendar Calender) {
-        this.calender = Calender;
+    public void setCalender(PZCalendar calendar) {
+        this.calender = calendar;
     }
 
     public void updateCalendar(int year, int month, int dayOfMonth, int hourOfDay, int minute) {
@@ -1233,10 +1265,10 @@ public final class GameTime {
 
     /**
      * 
-     * @param MinutesPerDay the MinutesPerDay to set
+     * @param minutesPerDay the MinutesPerDay to set
      */
-    public void setMinutesPerDay(float MinutesPerDay) {
-        this.minutesPerDay = MinutesPerDay;
+    public void setMinutesPerDay(float minutesPerDay) {
+        this.minutesPerDay = minutesPerDay;
     }
 
     /**
@@ -1248,19 +1280,19 @@ public final class GameTime {
 
     /**
      * 
-     * @param LastTimeOfDay the LastTimeOfDay to set
+     * @param lastTimeOfDay the LastTimeOfDay to set
      */
-    public void setLastTimeOfDay(float LastTimeOfDay) {
-        this.lastTimeOfDay = LastTimeOfDay;
+    public void setLastTimeOfDay(float lastTimeOfDay) {
+        this.lastTimeOfDay = lastTimeOfDay;
     }
 
     /**
      * 
-     * @param TargetZombies the TargetZombies to set
+     * @param targetZombies the TargetZombies to set
      * @deprecated
      */
-    public void setTargetZombies(int TargetZombies) {
-        this.targetZombies = TargetZombies;
+    public void setTargetZombies(int targetZombies) {
+        this.targetZombies = targetZombies;
     }
 
     /**
@@ -1289,18 +1321,7 @@ public final class GameTime {
             multiplier *= this.fpsMultiplier;
             multiplier *= this.multiplierBias;
             multiplier *= this.perObjectMultiplier;
-            if (DebugOptions.instance.gameTimeSpeedEighth.getValue()) {
-                multiplier /= 8.0F;
-            }
-
-            if (DebugOptions.instance.gameTimeSpeedQuarter.getValue()) {
-                multiplier /= 4.0F;
-            }
-
-            if (DebugOptions.instance.gameTimeSpeedHalf.getValue()) {
-                multiplier /= 2.0F;
-            }
-
+            multiplier *= getSlomoMultiplier();
             return multiplier * 0.8F;
         }
     }
@@ -1308,10 +1329,10 @@ public final class GameTime {
     /**
      * The multiplier scales the game simulation speed. getTrueMultiplier() can be used to retrieve this value. getMultiplier() does not return this value.
      * 
-     * @param in_multiplier the Multiplier to set
+     * @param multiplier the Multiplier to set
      */
-    public void setMultiplier(float in_multiplier) {
-        this.multiplier = in_multiplier;
+    public void setMultiplier(float multiplier) {
+        this.multiplier = multiplier;
     }
 
     /**
@@ -1321,20 +1342,20 @@ public final class GameTime {
         return this.getTimeDeltaFromMultiplier(this.getMultiplier());
     }
 
-    public float getTimeDeltaFromMultiplier(float in_multiplier) {
-        return in_multiplier / 0.8F / this.multiplierBias / 60.0F;
+    public float getTimeDeltaFromMultiplier(float multiplier) {
+        return multiplier / 0.8F / this.multiplierBias / 60.0F;
     }
 
-    public float getMultiplierFromTimeDelta(float in_timeDelta) {
-        return in_timeDelta * 0.8F * this.multiplierBias * 60.0F;
+    public float getMultiplierFromTimeDelta(float timeDelta) {
+        return timeDelta * 0.8F * this.multiplierBias * 60.0F;
     }
 
     /**
      * Delta based on the target framerate rather than the actual framerate. Unclear purpose. Probably shouldn't be used.
      */
     public float getServerMultiplier() {
-        float FPSMultiplier = 10.0F / GameWindow.averageFPS / (PerformanceSettings.manualFrameSkips + 1);
-        float multiplier = this.multiplier * FPSMultiplier;
+        float fpsMultiplier = 10.0F / GameWindow.averageFPS / (PerformanceSettings.manualFrameSkips + 1);
+        float multiplier = this.multiplier * fpsMultiplier;
         multiplier *= 0.5F;
         if (!GameServer.server && !GameClient.client && IsoPlayer.getInstance() != null && IsoPlayer.allPlayersAsleep()) {
             return 200.0F * (30.0F / PerformanceSettings.getLockFPS());
@@ -1371,6 +1392,18 @@ public final class GameTime {
         return this.getMultiplier() / 1.6F;
     }
 
+    public float getMultiplierInMenu() {
+        return this.fpsMultiplier * 0.8F;
+    }
+
+    public float getThirtyFPSMultiplierInMenu() {
+        return this.getMultiplierInMenu() / 1.6F;
+    }
+
+    public float getTimeDeltaInMenu() {
+        return this.getTimeDeltaFromMultiplier(this.getMultiplierInMenu());
+    }
+
     public void saveToBufferMap(SaveBufferMap bufferMap) {
         synchronized (SliceY.SliceBufferLock) {
             SliceY.SliceBuffer.clear();
@@ -1384,19 +1417,19 @@ public final class GameTime {
                 String outFile = ZomboidFileSystem.instance.getFileNameInCurrentSave("map_t.bin");
                 bufferMap.put(outFile, buffer);
             } catch (IOException var7) {
-                var7.printStackTrace();
+                DebugType.General.printException(var7, LogSeverity.Error);
             }
         }
     }
 
     public void save() {
         File outFile = new File(ZomboidFileSystem.instance.getFileNameInCurrentSave("map_t.bin"));
-        FileOutputStream outStream = null;
 
+        FileOutputStream outStream;
         try {
             outStream = new FileOutputStream(outFile);
         } catch (FileNotFoundException var7) {
-            var7.printStackTrace();
+            DebugType.General.printException(var7, LogSeverity.Error);
             return;
         }
 
@@ -1405,14 +1438,14 @@ public final class GameTime {
         try {
             instance.save(output);
         } catch (IOException var6) {
-            var6.printStackTrace();
+            DebugType.General.printException(var6, LogSeverity.Error);
         }
 
         try {
             output.flush();
             output.close();
         } catch (IOException var5) {
-            var5.printStackTrace();
+            DebugType.General.printException(var5, LogSeverity.Error);
         }
     }
 
@@ -1421,7 +1454,7 @@ public final class GameTime {
         output.writeByte(77);
         output.writeByte(84);
         output.writeByte(77);
-        output.writeInt(240);
+        output.writeInt(247);
         output.writeFloat(this.multiplier);
         output.writeInt(this.nightsSurvived);
         output.writeInt(this.targetZombies);
@@ -1469,9 +1502,9 @@ public final class GameTime {
     }
 
     public void load(DataInputStream input) throws IOException {
-        int WorldVersion = IsoWorld.savedWorldVersion;
-        if (WorldVersion == -1) {
-            WorldVersion = 240;
+        int worldVersion = IsoWorld.savedWorldVersion;
+        if (worldVersion == -1) {
+            worldVersion = 247;
         }
 
         input.mark(0);
@@ -1480,7 +1513,7 @@ public final class GameTime {
         byte b3 = input.readByte();
         byte b4 = input.readByte();
         if (b1 == 71 && b2 == 77 && b3 == 84 && b4 == 77) {
-            WorldVersion = input.readInt();
+            worldVersion = input.readInt();
         } else {
             input.reset();
         }
@@ -1495,26 +1528,29 @@ public final class GameTime {
         this.year = input.readInt();
         input.readFloat();
         input.readFloat();
-        int nGroups = input.readInt();
+        input.readInt();
         if (input.readByte() == 1) {
             if (this.table == null) {
                 this.table = LuaManager.platform.newTable();
             }
 
-            this.table.load(input, WorldVersion);
+            this.table.load(input, worldVersion);
         }
 
-        Core.getInstance().setPoisonousBerry(GameWindow.ReadString(input));
-        Core.getInstance().setPoisonousMushroom(GameWindow.ReadString(input));
+        if (!GameClient.client) {
+            Core.getInstance().setPoisonousBerry(GameWindow.ReadString(input));
+            Core.getInstance().setPoisonousMushroom(GameWindow.ReadString(input));
+        }
+
         this.helicopterDay1 = input.readInt();
         this.helicopterTime1Start = input.readInt();
         this.helicopterTime1End = input.readInt();
-        ClimateManager.getInstance().load(input, WorldVersion);
+        ClimateManager.getInstance().load(input, worldVersion);
         this.setMinutesStamp();
     }
 
-    public void load(ByteBuffer input) throws IOException {
-        int WorldVersion = 240;
+    public void load(ByteBufferReader input) throws IOException {
+        int worldVersion = 247;
         this.multiplier = input.getFloat();
         this.nightsSurvived = input.getInt();
         this.targetZombies = input.getInt();
@@ -1525,13 +1561,13 @@ public final class GameTime {
         this.year = input.getInt();
         input.getFloat();
         input.getFloat();
-        int nGroups = input.getInt();
-        if (input.get() == 1) {
+        input.getInt();
+        if (input.getBoolean()) {
             if (this.table == null) {
                 this.table = LuaManager.platform.newTable();
             }
 
-            this.table.load(input, 240);
+            this.table.load(input.bb, 247);
         }
 
         this.setMinutesStamp();
@@ -1610,7 +1646,7 @@ public final class GameTime {
         this.thunderDay = thunderDay;
     }
 
-    public void saveToPacket(ByteBuffer bb) throws IOException {
+    public void saveToPacket(ByteBufferWriter bb) throws IOException {
         KahluaTable modData = getInstance().getModData();
         Object camping = modData.rawget("camping");
         Object farming = modData.rawget("farming");
@@ -1618,7 +1654,7 @@ public final class GameTime {
         modData.rawset("camping", null);
         modData.rawset("farming", null);
         modData.rawset("trapping", null);
-        this.save(bb);
+        this.save(bb.bb);
         modData.rawset("camping", camping);
         modData.rawset("farming", farming);
         modData.rawset("trapping", trapping);

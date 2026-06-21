@@ -137,7 +137,7 @@ public final class ApocBRServerTelemetry {
     private static long vehiclePartLuaSlowCalls;
     private static final String[] STATE_SECTION_KEYS = new String[] {
         "evenPausedLua", "isoWorld", "gem", "animal", "radio", "updateStuff", "onTickLua", "ambient", "updateManagers",
-        "gameTime", "script", "worldSound", "fire", "rain", "meta", "virtualZombie", "mapCollisionMain",
+        "gameTime", "gameTimeMetaEvents", "gameTimeEveryDays", "gameTimeEveryHours", "gameTimeErosion", "gameTimeClimate", "gameTimeEveryTenMinutes", "gameTimeRadio", "gameTimeEveryOneMinute", "gameTimeSyncClock", "script", "worldSound", "fire", "rain", "meta", "virtualZombie", "mapCollisionMain",
         "zombiePopulationMain", "pathfindCheck", "pathfindMain", "polygonalMap", "lootRespawn", "serverManagers"
     };
     private static final long[] stateSectionNanos = new long[STATE_SECTION_KEYS.length];
