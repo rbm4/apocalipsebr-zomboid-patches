@@ -88,6 +88,7 @@ SOURCES=(
     "$SRC_ROOT/zombie/WorldSoundManager.java"
     "$SRC_ROOT/zombie/iso/FishSchoolManager.java"
     "$SRC_ROOT/zombie/iso/IsoPuddlesCompute.java"
+    "$SRC_ROOT/zombie/iso/IsoGridSquare.java"
     "$SRC_ROOT/zombie/iso/objects/IsoZombieGiblets.java"
   "$SRC_ROOT/zombie/iso/objects/IsoDoor.java"
   "$SRC_ROOT/zombie/vehicles/BaseVehicle.java"
@@ -120,6 +121,7 @@ CLASSES=(
     'zombie/iso/FishSchoolManager$ChumData.class'
     'zombie/iso/FishSchoolManager$ZoneData.class'
     "zombie/iso/IsoPuddlesCompute.class"
+    "zombie/iso/IsoGridSquare.class"
     "zombie/iso/objects/IsoZombieGiblets.class"
   "zombie/iso/objects/IsoDoor.class"
   "zombie/vehicles/BaseVehicle.class"
@@ -360,5 +362,4 @@ echo ""
 echo "To revert:"
 echo "  ./patchApocalipseBr.sh --revert"
 echo ""
-
 
