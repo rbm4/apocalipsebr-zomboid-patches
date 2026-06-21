@@ -112,6 +112,7 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\network\PlayerDownloadServer.java"),
     (Join-Path $SrcRoot "zombie\network\ServerMap.java"),
     # PathfindSafety
+    (Join-Path $SrcRoot "zombie\pathfind\PathFindBehavior2.java"),
     (Join-Path $SrcRoot "zombie\pathfind\nativeCode\PathfindNative.java"),
     (Join-Path $SrcRoot "zombie\pathfind\nativeCode\ChunkUpdateTask.java"),
     (Join-Path $SrcRoot "zombie\pathfind\LineClearCollideMain.java"),
@@ -201,6 +202,7 @@ $ClassFiles = @(
     "zombie\network\ServerMap`$WorkerThread.class",
     "zombie\network\ServerMap`$WorkerThreadCommand.class",
     # PathfindSafety
+    "zombie\pathfind\PathFindBehavior2.class",
     "zombie\pathfind\nativeCode\PathfindNative.class",
     "zombie\pathfind\nativeCode\ChunkUpdateTask.class",
     "zombie\pathfind\LineClearCollideMain.class",

@@ -98,6 +98,7 @@ SOURCES=(
     "$SRC_ROOT/zombie/iso/IsoCell.java"
     "$SRC_ROOT/zombie/network/PlayerDownloadServer.java"
     "$SRC_ROOT/zombie/network/ServerMap.java"
+    "$SRC_ROOT/zombie/pathfind/PathFindBehavior2.java"
     "$SRC_ROOT/zombie/pathfind/nativeCode/PathfindNative.java"
     "$SRC_ROOT/zombie/pathfind/nativeCode/ChunkUpdateTask.java"
     "$SRC_ROOT/zombie/pathfind/LineClearCollideMain.java"
@@ -181,6 +182,7 @@ CLASSES=(
     'zombie/network/ServerMap$ServerCell.class'
     'zombie/network/ServerMap$WorkerThread.class'
     'zombie/network/ServerMap$WorkerThreadCommand.class'
+    "zombie/pathfind/PathFindBehavior2.class"
     "zombie/pathfind/nativeCode/PathfindNative.class"
     "zombie/pathfind/nativeCode/ChunkUpdateTask.class"
     "zombie/pathfind/LineClearCollideMain.class"
@@ -362,4 +364,3 @@ echo ""
 echo "To revert:"
 echo "  ./patchApocalipseBr.sh --revert"
 echo ""
-
