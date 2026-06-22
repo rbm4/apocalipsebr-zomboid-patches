@@ -108,6 +108,10 @@ SOURCES=(
     "$SRC_ROOT/zombie/inventory/CompressIdenticalItems.java"
     "$SRC_ROOT/zombie/network/ServerChunkLoader.java"
     "$SRC_ROOT/zombie/characters/animals/IsoAnimal.java"
+    "$SRC_ROOT/zombie/characters/animals/AnimalChunk.java"
+    "$SRC_ROOT/zombie/characters/animals/AnimalZones.java"
+    "$SRC_ROOT/zombie/characters/animals/VirtualAnimal.java"
+    "$SRC_ROOT/zombie/characters/animals/VirtualAnimalState.java"
     "$SRC_ROOT/zombie/characters/IsoGameCharacter.java"
     "$SRC_ROOT/zombie/characters/IsoPlayer.java"
     "$SRC_ROOT/zombie/network/ServerLOS.java"
@@ -207,6 +211,17 @@ CLASSES=(
     'zombie/network/ServerChunkLoader$SaveTask.class'
     'zombie/network/ServerChunkLoader$SaveUnloadedTask.class'
     "zombie/characters/animals/IsoAnimal.class"
+    "zombie/characters/animals/AnimalChunk.class"
+    "zombie/characters/animals/AnimalZones.class"
+    "zombie/characters/animals/VirtualAnimal.class"
+    "zombie/characters/animals/VirtualAnimalState.class"
+    'zombie/characters/animals/VirtualAnimalState$StateEat.class'
+    'zombie/characters/animals/VirtualAnimalState$StateFollow.class'
+    'zombie/characters/animals/VirtualAnimalState$StateMoveFromEat.class'
+    'zombie/characters/animals/VirtualAnimalState$StateMoveFromSleep.class'
+    'zombie/characters/animals/VirtualAnimalState$StateMoveToEat.class'
+    'zombie/characters/animals/VirtualAnimalState$StateMoveToSleep.class'
+    'zombie/characters/animals/VirtualAnimalState$StateSleep.class'
     "zombie/characters/IsoGameCharacter.class"
     "zombie/characters/IsoPlayer.class"
     "zombie/characters/IsoPlayer\$LOSRecord.class"

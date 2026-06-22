@@ -122,6 +122,25 @@ public final class ApocBRServerTelemetry {
     private static long movingStartFrameQuarter;
     private static long movingStartFrameEighth;
     private static long movingStartFrameSixteenth;
+    private static long movingAnimalFull;
+    private static long movingAnimalHalf;
+    private static long movingAnimalQuarter;
+    private static long movingAnimalEighth;
+    private static long movingAnimalSixteenth;
+    private static long virtualAnimalChunks;
+    private static long virtualAnimalChunksWithAnimals;
+    private static long virtualAnimalChunksWithTracksOnly;
+    private static long virtualAnimalUpdated;
+    private static long virtualAnimalSkipped;
+    private static long virtualAnimalTrackAdds;
+    private static long virtualAnimalTrackSkips;
+    private static long virtualAnimalTrackCleanupRuns;
+    private static long virtualAnimalTracksRemoved;
+    private static long virtualAnimalStateFollow;
+    private static long virtualAnimalStateMove;
+    private static long virtualAnimalStateEat;
+    private static long virtualAnimalStateSleep;
+    private static long virtualAnimalStateUnknown;
     private static final int MOVING_START_TYPE_SLOTS = 6;
     private static final String[] movingStartTypeNames = new String[MOVING_START_TYPE_SLOTS];
     private static final long[] movingStartTypeCounts = new long[MOVING_START_TYPE_SLOTS];
@@ -351,9 +370,62 @@ public final class ApocBRServerTelemetry {
         else if ("quarter".equals(bucketName)) movingStartFrameQuarter++;
         else if ("eighth".equals(bucketName)) movingStartFrameEighth++;
         else if ("sixteenth".equals(bucketName)) movingStartFrameSixteenth++;
+        if ("IsoAnimal".equals(typeName)) {
+            if ("full".equals(bucketName)) movingAnimalFull++;
+            else if ("half".equals(bucketName)) movingAnimalHalf++;
+            else if ("quarter".equals(bucketName)) movingAnimalQuarter++;
+            else if ("eighth".equals(bucketName)) movingAnimalEighth++;
+            else if ("sixteenth".equals(bucketName)) movingAnimalSixteenth++;
+        }
         if (typeName == null || typeName.length() == 0) typeName = "Unknown";
         int slot = movingStartTypeSlot(typeName);
         movingStartTypeCounts[slot]++;
+    }
+
+    public static synchronized void recordVirtualAnimalChunk(boolean emptyAnimals, boolean hasTracks) {
+        if (!ENABLED) return;
+        virtualAnimalChunks++;
+        if (!emptyAnimals) {
+            virtualAnimalChunksWithAnimals++;
+        } else if (hasTracks) {
+            virtualAnimalChunksWithTracksOnly++;
+        }
+    }
+
+    public static synchronized void recordVirtualAnimalUpdate(String stateName, boolean skipped) {
+        if (!ENABLED) return;
+        if (skipped) {
+            virtualAnimalSkipped++;
+        } else {
+            virtualAnimalUpdated++;
+        }
+
+        if ("Follow".equals(stateName)) {
+            virtualAnimalStateFollow++;
+        } else if ("MoveToEat".equals(stateName) || "MoveToSleep".equals(stateName) || "MoveFromEat".equals(stateName) || "MoveFromSleep".equals(stateName)) {
+            virtualAnimalStateMove++;
+        } else if ("Eat".equals(stateName)) {
+            virtualAnimalStateEat++;
+        } else if ("Sleep".equals(stateName)) {
+            virtualAnimalStateSleep++;
+        } else {
+            virtualAnimalStateUnknown++;
+        }
+    }
+
+    public static synchronized void recordVirtualAnimalTrackAttempt(boolean emitted) {
+        if (!ENABLED) return;
+        if (emitted) {
+            virtualAnimalTrackAdds++;
+        } else {
+            virtualAnimalTrackSkips++;
+        }
+    }
+
+    public static synchronized void recordVirtualAnimalTrackCleanup(long removed) {
+        if (!ENABLED) return;
+        virtualAnimalTrackCleanupRuns++;
+        virtualAnimalTracksRemoved += removed;
     }
 
     public static synchronized void recordMovingBucketStart(int objectCount) {
@@ -512,6 +584,8 @@ public final class ApocBRServerTelemetry {
             + movingTypeLog()
             + movingStartFrameLog()
             + movingStartTypeLog()
+            + movingVirtualAnimalLog()
+            + movingAnimalBucketLog()
             + vehicleLog()
             + " state{connections=" + connectionsLast + ",players=" + playersLast + ",zombies=" + zombiesLast + "}");
         resetCounters();
@@ -561,6 +635,12 @@ public final class ApocBRServerTelemetry {
         movingStartFrameZombieOptimiserNanos = movingStartFrameZombieOptimiserMaxNanos = 0L;
         movingStartFrameSquareFixes = movingStartFrameSquareFixNanos = movingStartFrameSquareFixMaxNanos = 0L;
         movingStartFrameBucketed = movingStartFrameFull = movingStartFrameHalf = movingStartFrameQuarter = movingStartFrameEighth = movingStartFrameSixteenth = 0L;
+        movingAnimalFull = movingAnimalHalf = movingAnimalQuarter = movingAnimalEighth = movingAnimalSixteenth = 0L;
+        virtualAnimalChunks = virtualAnimalChunksWithAnimals = virtualAnimalChunksWithTracksOnly = 0L;
+        virtualAnimalUpdated = virtualAnimalSkipped = 0L;
+        virtualAnimalTrackAdds = virtualAnimalTrackSkips = 0L;
+        virtualAnimalTrackCleanupRuns = virtualAnimalTracksRemoved = 0L;
+        virtualAnimalStateFollow = virtualAnimalStateMove = virtualAnimalStateEat = virtualAnimalStateSleep = virtualAnimalStateUnknown = 0L;
         vehiclePartsCalls = vehiclePartsNanos = vehiclePartsMaxNanos = 0L;
         vehiclePartCalls = vehiclePartNanos = vehiclePartMaxNanos = 0L;
         vehiclePartLuaCalls = vehiclePartLuaNanos = vehiclePartLuaMaxNanos = vehiclePartLuaSlowCalls = 0L;
@@ -711,6 +791,31 @@ public final class ApocBRServerTelemetry {
         }
         builder.append("}");
         return builder.toString();
+    }
+
+    private static String movingAnimalBucketLog() {
+        return " movingAnimalBuckets{full=" + movingAnimalFull
+            + ",half=" + movingAnimalHalf
+            + ",quarter=" + movingAnimalQuarter
+            + ",eighth=" + movingAnimalEighth
+            + ",sixteenth=" + movingAnimalSixteenth + "}";
+    }
+
+    private static String movingVirtualAnimalLog() {
+        return " virtualAnimalSim{chunks=" + virtualAnimalChunks
+            + ",chunksWithAnimals=" + virtualAnimalChunksWithAnimals
+            + ",chunksWithTracksOnly=" + virtualAnimalChunksWithTracksOnly
+            + ",updated=" + virtualAnimalUpdated
+            + ",skipped=" + virtualAnimalSkipped
+            + ",follow=" + virtualAnimalStateFollow
+            + ",move=" + virtualAnimalStateMove
+            + ",eat=" + virtualAnimalStateEat
+            + ",sleep=" + virtualAnimalStateSleep
+            + ",unknown=" + virtualAnimalStateUnknown
+            + ",trackAdds=" + virtualAnimalTrackAdds
+            + ",trackSkips=" + virtualAnimalTrackSkips
+            + ",trackCleanupRuns=" + virtualAnimalTrackCleanupRuns
+            + ",tracksRemoved=" + virtualAnimalTracksRemoved + "}";
     }
 
     private static String movingTypeLog() {

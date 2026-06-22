@@ -13,6 +13,7 @@ package zombie;
 
 import java.util.ArrayList;
 
+import zombie.characters.animals.IsoAnimal;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
 import zombie.core.math.PZMath;
@@ -104,6 +105,10 @@ public final class MovingObjectUpdateScheduler {
         // this only decides how often that main-thread update is invoked.
         if (GameServer.server && isoMovingObject instanceof BaseVehicle vehicle) {
             return vehicle.apocBrGetServerSimulationLevel();
+        }
+
+        if (GameServer.server && isoMovingObject instanceof IsoAnimal animal) {
+            return animal.apocBrGetServerSimulationLevel();
         }
 
         if (this.isEnabled && !GameServer.server) {

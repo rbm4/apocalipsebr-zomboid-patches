@@ -26,6 +26,7 @@ import zombie.Lua.LuaEventManager;
 import zombie.Lua.LuaManager;
 import zombie.SandboxOptions;
 import zombie.SoundManager;
+import zombie.UpdateSchedulerSimulationLevel;
 import zombie.UsedFromLua;
 import zombie.WorldSoundManager;
 import zombie.ZomboidGlobals;
@@ -388,26 +389,27 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         this.addWorldSoundUnlessInvisible(40, 30, false);
     }
 
+    // @Override
+    // public void update() {
+    //     // Do not queue work behind an already-running update. Coalescing the missed
+    //     // tick keeps server load bounded and preserves one owner for state/path data.
+    //     if (!this.asyncUpdateInFlight.compareAndSet(false, true)) {
+    //         return;
+    //     }
+
+    //     CompletableFuture.runAsync(() -> {
+    //         try {
+    //             this.updateAsync();
+    //         } catch (Throwable t) {
+    //             ExceptionLogger.logException(t);
+    //         } finally {
+    //             this.asyncUpdateInFlight.set(false);
+    //         }
+    //     }, PZForkJoinPool.commonPool());
+    // }
+
     @Override
     public void update() {
-        // Do not queue work behind an already-running update. Coalescing the missed
-        // tick keeps server load bounded and preserves one owner for state/path data.
-        if (!this.asyncUpdateInFlight.compareAndSet(false, true)) {
-            return;
-        }
-
-        CompletableFuture.runAsync(() -> {
-            try {
-                this.updateAsync();
-            } catch (Throwable t) {
-                ExceptionLogger.logException(t);
-            } finally {
-                this.asyncUpdateInFlight.set(false);
-            }
-        }, PZForkJoinPool.commonPool());
-    }
-
-    private void updateAsync() {
         if (this.isOnHook()) {
             this.reattachBackToHook();
             this.ensureCorrectSkin();
@@ -434,6 +436,37 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
                 }
             }
         }
+    }
+
+    public UpdateSchedulerSimulationLevel apocBrGetServerSimulationLevel() {
+        if (!GameServer.server) {
+            return UpdateSchedulerSimulationLevel.FULL;
+        }
+
+        if ( this.isOnHook()
+                || this.isHeld()
+                || this.luredBy != null
+                || this.walkToCharLuring
+                || this.alerted
+                || this.alertedChr != null
+                || this.spottedChr != null
+                || this.atkTarget != null
+                || this.thumpTarget != null
+                || this.fightingOpponent != null
+                || this.soundSourceTarget != null
+                || this.vehicle4testCollision != null
+                || this.getVariableBoolean("bPathfind")
+                || this.isAnimalAttacking()
+                || this.isAnimalMoving()) {
+            return UpdateSchedulerSimulationLevel.FULL;
+        }
+
+        if (this.getCurrentState() != AnimalIdleState.instance()
+                && this.getCurrentState() != AnimalZoneState.instance()) {
+            return UpdateSchedulerSimulationLevel.FULL;
+        }
+
+        return UpdateSchedulerSimulationLevel.SIXTEENTH;
     }
 
     private void updateZoneAcceptance() {
@@ -495,7 +528,6 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
                             + GameTime.getInstance().getThirtyFPSMultiplier();
                     this.updateStress();
                     this.updateLured();
-                    this.updateEmitter();
                     this.tryThump(null);
                     this.updateLOS();
                     if (localVehicle4Test != null) {

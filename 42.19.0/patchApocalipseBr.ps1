@@ -124,6 +124,10 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\network\ServerChunkLoader.java"),
     # Parallel Animal Simulation (null safety + async-ready)
     (Join-Path $SrcRoot "zombie\characters\animals\IsoAnimal.java"),
+    (Join-Path $SrcRoot "zombie\characters\animals\AnimalChunk.java"),
+    (Join-Path $SrcRoot "zombie\characters\animals\AnimalZones.java"),
+    (Join-Path $SrcRoot "zombie\characters\animals\VirtualAnimal.java"),
+    (Join-Path $SrcRoot "zombie\characters\animals\VirtualAnimalState.java"),
     # IsoGameCharacter null-safety patch
     (Join-Path $SrcRoot "zombie\characters\IsoGameCharacter.java"),
     # Parallel Player LOS (split-phase compute, chunk-parallel)
@@ -221,6 +225,17 @@ $ClassFiles = @(
     "zombie\network\ServerChunkLoader.class",
     # Parallel Animal Simulation
     "zombie\characters\animals\IsoAnimal.class",
+    "zombie\characters\animals\AnimalChunk.class",
+    "zombie\characters\animals\AnimalZones.class",
+    "zombie\characters\animals\VirtualAnimal.class",
+    "zombie\characters\animals\VirtualAnimalState.class",
+    "zombie\characters\animals\VirtualAnimalState`$StateEat.class",
+    "zombie\characters\animals\VirtualAnimalState`$StateFollow.class",
+    "zombie\characters\animals\VirtualAnimalState`$StateMoveFromEat.class",
+    "zombie\characters\animals\VirtualAnimalState`$StateMoveFromSleep.class",
+    "zombie\characters\animals\VirtualAnimalState`$StateMoveToEat.class",
+    "zombie\characters\animals\VirtualAnimalState`$StateMoveToSleep.class",
+    "zombie\characters\animals\VirtualAnimalState`$StateSleep.class",
     # IsoGameCharacter null-safety patch
     "zombie\characters\IsoGameCharacter.class",
     # Parallel Player LOS
