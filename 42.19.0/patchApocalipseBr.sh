@@ -75,6 +75,7 @@ DEPLOY_ISO="$DEPLOY_BASE/zombie/iso"
 DEPLOY_VEHICLES="$DEPLOY_BASE/zombie/vehicles"
 DEPLOY_PATHFIND="$DEPLOY_BASE/zombie/pathfind/nativeCode"
 DEPLOY_INVENTORY="$DEPLOY_BASE/zombie/inventory"
+DEPLOY_LUA="$DEPLOY_BASE/zombie/Lua"
 DEPLOY_CHARACTERS_ANIMALS="$DEPLOY_BASE/zombie/characters/animals"
 
 REQUIRED_MAJOR=25
@@ -85,6 +86,8 @@ SOURCES=(
     "$SRC_ROOT/zombie/GameTime.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateScheduler.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
+    "$SRC_ROOT/zombie/Lua/AsyncLuaManager.java"
+    "$SRC_ROOT/zombie/Lua/LuaManager.java"
     "$SRC_ROOT/zombie/WorldSoundManager.java"
     "$SRC_ROOT/zombie/iso/FishSchoolManager.java"
     "$SRC_ROOT/zombie/iso/IsoPuddlesCompute.java"
@@ -105,6 +108,7 @@ SOURCES=(
     "$SRC_ROOT/zombie/inventory/CompressIdenticalItems.java"
     "$SRC_ROOT/zombie/network/ServerChunkLoader.java"
     "$SRC_ROOT/zombie/characters/animals/IsoAnimal.java"
+    "$SRC_ROOT/zombie/characters/IsoGameCharacter.java"
     "$SRC_ROOT/zombie/characters/IsoPlayer.java"
     "$SRC_ROOT/zombie/network/ServerLOS.java"
 )
@@ -115,6 +119,8 @@ CLASSES=(
     "zombie/GameTime.class"
     "zombie/MovingObjectUpdateScheduler.class"
     "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
+    "zombie/Lua/AsyncLuaManager.class"
+    'zombie/Lua/LuaManager$GlobalObject.class'
     "zombie/WorldSoundManager.class"
     'zombie/WorldSoundManager$ResultBiggestSound.class'
     'zombie/WorldSoundManager$WorldSound.class'
@@ -201,6 +207,7 @@ CLASSES=(
     'zombie/network/ServerChunkLoader$SaveTask.class'
     'zombie/network/ServerChunkLoader$SaveUnloadedTask.class'
     "zombie/characters/animals/IsoAnimal.class"
+    "zombie/characters/IsoGameCharacter.class"
     "zombie/characters/IsoPlayer.class"
     "zombie/characters/IsoPlayer\$LOSRecord.class"
     "zombie/network/ServerLOS.class"

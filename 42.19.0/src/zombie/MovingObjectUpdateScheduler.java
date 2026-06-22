@@ -20,6 +20,7 @@ import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
 import zombie.popman.ZombieCountOptimiser;
+import zombie.vehicles.BaseVehicle;
 
 public final class MovingObjectUpdateScheduler {
     public static final MovingObjectUpdateScheduler instance = new MovingObjectUpdateScheduler();
@@ -97,6 +98,14 @@ public final class MovingObjectUpdateScheduler {
         ApocBRServerTelemetry.recordMovingStartFrame(apocBrObjectCount, System.nanoTime() - apocBrStartFrameNanos);
     }
     private UpdateSchedulerSimulationLevel getUpdateSchedulerSimulationLevelForObject(IsoMovingObject isoMovingObject, float averageFps) {
+        // Dedicated servers normally force every non-zombie object to FULL. Parked
+        // vehicles dominate that list, however, and have no per-frame work while
+        // dormant. BaseVehicle keeps all state-changing work on the main thread;
+        // this only decides how often that main-thread update is invoked.
+        if (GameServer.server && isoMovingObject instanceof BaseVehicle vehicle) {
+            return vehicle.apocBrGetServerSimulationLevel();
+        }
+
         if (this.isEnabled && !GameServer.server) {
             UpdateSchedulerSimulationLevel minSim = isoMovingObject.getMinimumSimulationLevel();
             if (minSim == UpdateSchedulerSimulationLevel.FULL) {

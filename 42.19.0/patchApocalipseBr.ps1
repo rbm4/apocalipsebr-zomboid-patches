@@ -98,6 +98,8 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\GameTime.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateScheduler.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
+    (Join-Path $SrcRoot "zombie\Lua\AsyncLuaManager.java"),
+    (Join-Path $SrcRoot "zombie\Lua\LuaManager.java"),
     (Join-Path $SrcRoot "zombie\WorldSoundManager.java"),
     (Join-Path $SrcRoot "zombie\iso\FishSchoolManager.java"),
     (Join-Path $SrcRoot "zombie\iso\IsoPuddlesCompute.java"),
@@ -122,6 +124,8 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\network\ServerChunkLoader.java"),
     # Parallel Animal Simulation (null safety + async-ready)
     (Join-Path $SrcRoot "zombie\characters\animals\IsoAnimal.java"),
+    # IsoGameCharacter null-safety patch
+    (Join-Path $SrcRoot "zombie\characters\IsoGameCharacter.java"),
     # Parallel Player LOS (split-phase compute, chunk-parallel)
     (Join-Path $SrcRoot "zombie\characters\IsoPlayer.java"),
     (Join-Path $SrcRoot "zombie\network\ServerLOS.java")
@@ -134,6 +138,8 @@ $ClassFiles = @(
     "zombie\GameTime.class",
     "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
+    "zombie\Lua\AsyncLuaManager.class",
+    "zombie\Lua\LuaManager`$GlobalObject.class",
     "zombie\WorldSoundManager.class",
     "zombie\WorldSoundManager`$ResultBiggestSound.class",
     "zombie\WorldSoundManager`$WorldSound.class",
@@ -215,6 +221,8 @@ $ClassFiles = @(
     "zombie\network\ServerChunkLoader.class",
     # Parallel Animal Simulation
     "zombie\characters\animals\IsoAnimal.class",
+    # IsoGameCharacter null-safety patch
+    "zombie\characters\IsoGameCharacter.class",
     # Parallel Player LOS
     "zombie\characters\IsoPlayer.class",
     "zombie\characters\IsoPlayer`$LOSRecord.class",
@@ -451,6 +459,7 @@ if ($DryRun) {
     New-Item -Path (Join-Path $DeployRoot "zombie\vehicles") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\pathfind\nativeCode") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\inventory") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $DeployRoot "zombie\Lua") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\characters\animals") -ItemType Directory -Force | Out-Null
     New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
 

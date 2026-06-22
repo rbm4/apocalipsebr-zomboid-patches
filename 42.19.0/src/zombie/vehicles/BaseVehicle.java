@@ -2,7 +2,6 @@
 package zombie.vehicles;
 
 import zombie.ApocBRServerTelemetry;
-import zombie.core.PZForkJoinPool;
 
 import fmod.fmod.FMODSoundEmitter;
 import fmod.fmod.FMOD_STUDIO_PARAMETER_DESCRIPTION;
@@ -17,7 +16,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.Map.Entry;
 import org.joml.Matrix4f;
 import org.joml.Quaternionf;
@@ -369,9 +367,6 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     private int mechanicalId;
     private boolean needPartsUpdate;
     private int apocBrUpdatePartsSkipCounter;
-    private CompletableFuture<ApocBRBreakingResult> apocBrAsyncWork;
-    private boolean apocBrAsyncLuaReady;
-    private boolean apocBrAsyncWorkPending;
     private boolean alarmed;
     private double alarmStartTime;
     private float alarmAccumulator;
@@ -3608,48 +3603,6 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
                     releaseVector3f(currentVelocity);
                 }
 
-                // ApocBR: check if previous frame's async breakingObjects detection completed.
-                // The detection phase is read-only grid math (no Bullet JNI, no state mutation).
-                // If it finished, we apply the results (object.Collision etc.) and grant Lua.
-                // If not, the ForkJoinPool is saturated â†’ skip Lua this frame.
-                if (this.apocBrAsyncWork != null) {
-                    if (this.apocBrAsyncWork.isDone()) {
-                        try {
-                            ApocBRBreakingResult result = this.apocBrAsyncWork.get();
-                            if (result != null) {
-                                this.apocBrApplyBreaking(result);
-                            }
-                        } catch (Exception e) {
-                            // detection failed â€” breaking state unchanged, safe to ignore
-                        }
-                        this.apocBrAsyncWork = null;
-                        this.apocBrAsyncLuaReady = true;
-                    } else {
-                        this.apocBrAsyncLuaReady = false;
-                    }
-                }
-
-                // Submit async breakingObjects DETECTION for next frame.
-                // Captures snapshot of vehicle position + script data. Runs on PZForkJoinPool.
-                if (GameServer.server && this.getDriver() == null) {
-                    this.apocBrAsyncWorkPending = true;
-                    float capX = this.getX();
-                    float capY = this.getY();
-                    float capZ = this.getZ();
-                    VehicleScript capScript = this.script;
-                    boolean capCollideChars = this.shouldCollideWithCharacters();
-                    boolean capCollideObjects = this.shouldCollideWithObjects();
-                    IsoCell capCell = this.getCell();
-                    this.apocBrAsyncWork = CompletableFuture.supplyAsync(() -> {
-                        return this.apocBrDetectBreaking(capX, capY, capZ, capScript,
-                            capCollideChars, capCollideObjects, capCell);
-                    }, PZForkJoinPool.commonPool());
-                } else {
-                    // Driver vehicles: run breakingObjects sync (no async delay for responsiveness)
-                    this.apocBrAsyncWork = null;
-                    this.apocBrAsyncWorkPending = false;
-                }
-
                 for (int ixxx = 0; ixxx < this.impulsesFromSquishedBodies.length; ixxx++) {
                     BaseVehicle.VehicleImpulse impulsex = this.impulsesFromSquishedBodies[ixxx];
                     if (impulsex != null) {
@@ -3659,11 +3612,7 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
 
                 this.updateSounds();
                 this.hittingPlant = false;
-                // ApocBR: undriven server vehicles run breakingObjects detection async.
-                // Driver vehicles still run it synchronously for responsive collision.
-                if (this.getDriver() != null || !GameServer.server) {
-                    this.breakingObjects();
-                }
+                this.breakingObjects();
                 this.updateScrapPastPlantSound();
                 if (this.addThumpWorldSound) {
                     this.addThumpWorldSound = false;
@@ -3708,22 +3657,13 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
                     this.setLightbarSirenMode(0);
                 }
 
-                // ApocBR: frame-skip updateParts() to reduce Lua call frequency on the main thread.
-                // The elapsedMinutes mechanism in each Lua update function already handles
-                // irregular intervals correctly â€” skipped frames just produce larger deltas.
-                //
-                // Two independent throttles:
-                //   1. Frame-skip: baseline rate (1 in 3 for undriven server vehicles)
-                //   2. Async backpressure: if PZForkJoinPool is saturated (sentinel didn't
-                //      finish), skip an extra frame regardless of counter.
-                //
-                // Configure via -Dapocbr.vehicleUpdatePartsSkip=N (default=3 on server, 1 on client).
+                // Idle server vehicles batch parts Lua onto their infrequent main-thread
+                // update; active and player-facing vehicles remain immediate.
                 boolean apocBrNeedPartsUpdate = this.needPartsUpdate() || this.isMechanicUIOpen() || this.alarmStartTime > 0.0;
                 if (apocBrNeedPartsUpdate) {
                     int apocBrSkipN = this.apocBrGetUpdatePartsSkipInterval(bTowed, bTowing);
                     boolean apocBrCounterReady = ++this.apocBrUpdatePartsSkipCounter >= apocBrSkipN;
-                    boolean apocBrPoolOk = this.apocBrAsyncLuaReady || GameClient.client || this.getDriver() != null;
-                    if (apocBrCounterReady && apocBrPoolOk) {
+                    if (apocBrCounterReady) {
                         this.apocBrUpdatePartsSkipCounter = 0;
                         this.updateParts();
                     } else {
@@ -8138,6 +8078,41 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
             || this.lightbarLightsMode.isEnable()
             || this.lightbarSirenMode.isEnable();
         return activeVehicle ? APOCBR_VEHICLE_UPDATE_PARTS_SKIP_ACTIVE_SERVER : APOCBR_VEHICLE_UPDATE_PARTS_SKIP_IDLE_SERVER;
+    }
+
+    /**
+     * Server-only update tier for the moving-object scheduler. This is deliberately
+     * conservative: any vehicle that can affect a player or the world immediately
+     * remains full-rate. Truly parked vehicles stay main-thread authoritative but
+     * are only visited once every sixteen frames.
+     */
+    public UpdateSchedulerSimulationLevel apocBrGetServerSimulationLevel() {
+        if (!GameServer.server) {
+            return UpdateSchedulerSimulationLevel.FULL;
+        }
+
+        if (this.getDriver() != null
+            || this.isMechanicUIOpen()
+            || this.needPartsUpdate
+            || this.engineState != BaseVehicle.engineStateTypes.Idle
+            || this.alarmStartTime > 0.0
+            || this.lightbarLightsMode.isEnable()
+            || this.lightbarSirenMode.isEnable()
+            || this.getVehicleTowedBy() != null
+            || this.getVehicleTowing() != null
+            || !this.isAtRest()
+            || this.isPhysicsActive()
+            || !this.getAnimals().isEmpty()) {
+            return UpdateSchedulerSimulationLevel.FULL;
+        }
+
+        for (int seat = 0; seat < this.getMaxPassengers(); seat++) {
+            if (this.getCharacter(seat) != null) {
+                return UpdateSchedulerSimulationLevel.FULL;
+            }
+        }
+
+        return UpdateSchedulerSimulationLevel.SIXTEENTH;
     }
 
     public void updateParts() {
