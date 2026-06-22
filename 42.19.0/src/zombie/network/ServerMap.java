@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -91,6 +92,10 @@ public class ServerMap {
     ArrayList<ServerMap.ServerCell> toLoad = new ArrayList<>();
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
+    // Main-thread-only queue. LinkedHashMap keeps the first irrelevant cell first.
+    private static final long DEFERRED_UNLOAD_GRACE_MS = 5000L;
+    private static final int MAX_DEFERRED_UNLOADS_PER_TICK = 1;
+    private final LinkedHashMap<ServerMap.ServerCell, Long> pendingUnloads = new LinkedHashMap<>();
     long lastTick;
 
     public short getUniqueZombieId() {
@@ -682,8 +687,81 @@ public class ServerMap {
         final List<ServerCell> toCancel = new ArrayList<>();
     }
 
+    /**
+     * Defers full ServerCell teardown so a burst of irrelevant cells cannot stall one server frame.
+     * This method is intentionally main-thread-only: ServerCell.Unload() mutates live world state.
+     */
+    private void processDeferredUnloads(List<ServerCell> toUpdate, List<ServerCell> toUnload) {
+        long now = System.currentTimeMillis();
+        int queued = 0;
+        int revalidated = 0;
+        int unloaded = 0;
+        int unloadAttempts = 0;
+        long unloadNanos = 0L;
+
+        for (ServerCell cell : toUpdate) {
+            if (this.pendingUnloads.remove(cell) != null) {
+                revalidated++;
+            }
+        }
+
+        for (ServerCell cell : toUnload) {
+            if (!this.pendingUnloads.containsKey(cell)) {
+                this.pendingUnloads.put(cell, now);
+                queued++;
+            }
+        }
+
+        while (unloadAttempts < MAX_DEFERRED_UNLOADS_PER_TICK && !this.pendingUnloads.isEmpty()) {
+            ServerCell cell = this.pendingUnloads.keySet().iterator().next();
+            Long queuedAt = this.pendingUnloads.get(cell);
+            if (queuedAt == null || now - queuedAt < DEFERRED_UNLOAD_GRACE_MS) {
+                break;
+            }
+
+            // A cell can disappear through a separate load-cancellation path before it reaches us.
+            if (!cell.isLoaded || !this.loadedCells.contains(cell)) {
+                this.pendingUnloads.remove(cell);
+                continue;
+            }
+
+            boolean losSuspended = false;
+            long unloadStart = System.nanoTime();
+            unloadAttempts++;
+            try {
+                ServerLOS.instance.suspend();
+                losSuspended = true;
+                int x = cell.wx - this.getMinX();
+                int y = cell.wy - this.getMinY();
+                this.cellMap[y * this.width + x].Unload();
+                this.cellMap[y * this.width + x] = null;
+                this.loadedCells.remove(cell);
+                this.releventNow.remove(cell);
+                this.pendingUnloads.remove(cell);
+                unloaded++;
+            } catch (Exception e) {
+                DebugType.General.printException(e, LogSeverity.Error);
+            } finally {
+                unloadNanos += System.nanoTime() - unloadStart;
+                if (losSuspended) {
+                    ServerLOS.instance.resume();
+                }
+            }
+        }
+
+        long oldestAgeMs = 0L;
+        if (!this.pendingUnloads.isEmpty()) {
+            Long oldestQueuedAt = this.pendingUnloads.values().iterator().next();
+            if (oldestQueuedAt != null) {
+                oldestAgeMs = Math.max(0L, now - oldestQueuedAt);
+            }
+        }
+        ApocBRServerTelemetry.recordServerMapDeferredUnload(
+            this.pendingUnloads.size(), queued, revalidated, unloaded, unloadNanos, oldestAgeMs
+        );
+    }
+
     public void postupdate() {
-        boolean pathfindPaused = false;
         final int cellCount = this.loadedCells.size();
 
         // Phase AP (Parallel Partition): read-only classification on ForkJoinPool,
@@ -756,68 +834,31 @@ public class ServerMap {
                 cell.cancelLoading = true;
             }
 
-            // Serial mutation: unloads (requires ServerLOS suspend/resume)
-            try {
-                if (!merged.toUnload.isEmpty()) {
-                    ServerLOS.instance.suspend();
-                    pathfindPaused = true;
-                }
-                for (ServerCell cell : merged.toUnload) {
-                    int x = cell.wx - this.getMinX();
-                    int y = cell.wy - this.getMinY();
-                    this.cellMap[y * this.width + x].Unload();
-                    this.cellMap[y * this.width + x] = null;
-                    this.loadedCells.remove(cell);
-                }
-            } catch (Exception e) {
-                DebugType.General.printException(e, LogSeverity.Error);
-            } finally {
-                if (pathfindPaused) {
-                    ServerLOS.instance.resume();
-                    pathfindPaused = false;
-                }
-            }
-
+            this.processDeferredUnloads(merged.toUpdate, merged.toUnload);
             cellsToUpdate = new ArrayList<>(merged.toUpdate);
         } else {
             // Serial path for small cell counts (no parallelism overhead)
-            try {
-                cellsToUpdate.clear();
-                for (int n = 0; n < this.loadedCells.size(); n++) {
-                    ServerCell cell = this.loadedCells.get(n);
-                    boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
-                    if (!cell.isLoaded) {
-                        if (!shouldBeLoaded && !cell.cancelLoading) {
-                            if (mapLoading) {
-                                DebugLog.log(
-                                    DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy + " cell.startedLoading=" + cell.startedLoading
-                                );
-                            }
-                            if (!cell.startedLoading) cell.loadingWasCancelled = true;
-                            cell.cancelLoading = true;
+            ArrayList<ServerCell> toUnload = new ArrayList<>();
+            for (int n = 0; n < this.loadedCells.size(); n++) {
+                ServerCell cell = this.loadedCells.get(n);
+                boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
+                if (!cell.isLoaded) {
+                    if (!shouldBeLoaded && !cell.cancelLoading) {
+                        if (mapLoading) {
+                            DebugLog.log(
+                                DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy + " cell.startedLoading=" + cell.startedLoading
+                            );
                         }
-                    } else if (!shouldBeLoaded) {
-                        int x = cell.wx - this.getMinX();
-                        int y = cell.wy - this.getMinY();
-                        if (!pathfindPaused) {
-                            ServerLOS.instance.suspend();
-                            pathfindPaused = true;
-                        }
-                        this.cellMap[y * this.width + x].Unload();
-                        this.cellMap[y * this.width + x] = null;
-                        this.loadedCells.remove(cell);
-                        n--;
-                    } else {
-                        cellsToUpdate.add(cell);
+                        if (!cell.startedLoading) cell.loadingWasCancelled = true;
+                        cell.cancelLoading = true;
                     }
-                }
-            } catch (Exception var10) {
-                DebugType.General.printException(var10, LogSeverity.Error);
-            } finally {
-                if (pathfindPaused) {
-                    ServerLOS.instance.resume();
+                } else if (!shouldBeLoaded) {
+                    toUnload.add(cell);
+                } else {
+                    cellsToUpdate.add(cell);
                 }
             }
+            this.processDeferredUnloads(cellsToUpdate, toUnload);
             ApocBRServerTelemetry.recordWorldSection("serverMapPartition", System.nanoTime() - apocBrPhaseStart);
         }
 

@@ -55,6 +55,13 @@ public final class ApocBRServerTelemetry {
     private static long serverMapWaitMaxNanos;
     private static long serverMapCellsUpdated;
     private static int serverMapNumWorkersLast;
+    private static int serverMapUnloadPendingLast;
+    private static long serverMapUnloadQueued;
+    private static long serverMapUnloadRevalidated;
+    private static long serverMapUnloadCells;
+    private static long serverMapUnloadNanos;
+    private static long serverMapUnloadMaxNanos;
+    private static long serverMapUnloadOldestAgeMsLast;
     private static long playerLOSComputeNanos;
     private static long playerLOSComputeMaxNanos;
     private static long playerLOSApplyNanos;
@@ -392,6 +399,19 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static synchronized void recordServerMapDeferredUnload(
+        int pending, int queued, int revalidated, int unloaded, long unloadNanos, long oldestAgeMs
+    ) {
+        if (!ENABLED) return;
+        serverMapUnloadPendingLast = pending;
+        serverMapUnloadQueued += queued;
+        serverMapUnloadRevalidated += revalidated;
+        serverMapUnloadCells += unloaded;
+        serverMapUnloadNanos += unloadNanos;
+        serverMapUnloadMaxNanos = Math.max(serverMapUnloadMaxNanos, unloadNanos);
+        serverMapUnloadOldestAgeMsLast = oldestAgeMs;
+    }
+
     public static synchronized void recordVirtualAnimalUpdate(String stateName, boolean skipped) {
         if (!ENABLED) return;
         if (skipped) {
@@ -569,6 +589,10 @@ public final class ApocBRServerTelemetry {
             + ",playerLOSParallel=" + playerLOSParallel + ",playerLOSSequential=" + playerLOSSequential
             + ",playerLOSComputeAvgMs=" + avgMs(playerLOSComputeNanos, playerLOSCalls) + ",playerLOSComputeMaxMs=" + ms(playerLOSComputeMaxNanos)
             + ",playerLOSApplyAvgMs=" + avgMs(playerLOSApplyNanos, playerLOSCalls) + ",playerLOSApplyMaxMs=" + ms(playerLOSApplyMaxNanos) + "}"
+            + " serverMapUnload{pending=" + serverMapUnloadPendingLast + ",queued=" + serverMapUnloadQueued
+            + ",revalidated=" + serverMapUnloadRevalidated + ",unloaded=" + serverMapUnloadCells
+            + ",avgMs=" + avgMs(serverMapUnloadNanos, serverMapUnloadCells) + ",maxMs=" + ms(serverMapUnloadMaxNanos)
+            + ",oldestMs=" + serverMapUnloadOldestAgeMsLast + "}"
             + " packets{high=" + highPackets + "/" + ms(highNanos) + "ms max=" + ms(highMaxNanos)
             + ",player=" + playerPackets + "/" + ms(playerNanos) + "ms max=" + ms(playerMaxNanos)
             + ",normal=" + normalPackets + "/" + ms(normalNanos) + "ms max=" + ms(normalMaxNanos) + "}"
@@ -612,6 +636,10 @@ public final class ApocBRServerTelemetry {
         serverMapWaitNanos = serverMapWaitMaxNanos = 0L;
         serverMapCellsUpdated = 0L;
         serverMapNumWorkersLast = 0;
+        serverMapUnloadPendingLast = 0;
+        serverMapUnloadQueued = serverMapUnloadRevalidated = serverMapUnloadCells = 0L;
+        serverMapUnloadNanos = serverMapUnloadMaxNanos = 0L;
+        serverMapUnloadOldestAgeMsLast = 0L;
         playerLOSComputeNanos = playerLOSComputeMaxNanos = 0L;
         playerLOSApplyNanos = playerLOSApplyMaxNanos = 0L;
         playerLOSObjects = playerLOSCalls = playerLOSParallel = playerLOSSequential = 0L;
