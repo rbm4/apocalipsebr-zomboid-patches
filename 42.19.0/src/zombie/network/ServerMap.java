@@ -6,6 +6,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
@@ -96,6 +97,17 @@ public class ServerMap {
     private static final long DEFERRED_UNLOAD_GRACE_MS = 5000L;
     private static final int MAX_DEFERRED_UNLOADS_PER_TICK = 1;
     private final LinkedHashMap<ServerMap.ServerCell, Long> pendingUnloads = new LinkedHashMap<>();
+    // Main-thread finalization of worker-recalculated cells. The worker has already
+    // prepared the cell; this queue limits only the live-world commit in Load2().
+    private static final long FINALIZE_BUDGET_NORMAL_NANOS = 20_000_000L;
+    private static final long FINALIZE_BUDGET_ELEVATED_NANOS = 12_000_000L;
+    private static final long FINALIZE_BUDGET_HIGH_NANOS = 8_000_000L;
+    private static final long FINALIZE_BUDGET_CRITICAL_NANOS = 4_000_000L;
+    private static final long FINALIZE_FRAME_ELEVATED_NANOS = 110_000_000L;
+    private static final long FINALIZE_FRAME_HIGH_NANOS = 140_000_000L;
+    private static final long FINALIZE_FRAME_CRITICAL_NANOS = 250_000_000L;
+    private static final long FINALIZE_MAX_WAIT_MS = 1500L;
+    private final IdentityHashMap<ServerMap.ServerCell, Long> finalizeReadySince = new IdentityHashMap<>();
     long lastTick;
 
     public short getUniqueZombieId() {
@@ -499,7 +511,9 @@ public class ServerMap {
     }
 
     public void preupdate() {
-        this.lastTick = System.nanoTime();
+        long preupdateStartNanos = System.nanoTime();
+        long previousFrameNanos = this.lastTick == 0L ? 0L : preupdateStartNanos - this.lastTick;
+        this.lastTick = preupdateStartNanos;
         mapLoading = DebugType.MapLoading.isEnabled();
 
         for (int i = 0; i < this.toLoad.size(); i++) {
@@ -518,6 +532,7 @@ public class ServerMap {
                 this.loadedCells.remove(cell);
                 this.releventNow.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
+                this.finalizeReadySince.remove(cell);
                 this.toLoad.remove(i--);
             }
         }
@@ -538,6 +553,7 @@ public class ServerMap {
                 this.loadedCells.remove(ix--);
                 this.releventNow.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
+                this.finalizeReadySince.remove(cell);
                 this.toLoad.remove(cell);
             }
         }
@@ -558,6 +574,7 @@ public class ServerMap {
                 this.loadedCells.remove(cell);
                 this.releventNow.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
+                this.finalizeReadySince.remove(cell);
                 this.toLoad.remove(cell);
             }
         }
@@ -594,22 +611,7 @@ public class ServerMap {
             }
 
             ServerMap.ServerCell.loaded.clear();
-            ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
-            if (!ServerMap.ServerCell.loaded2.isEmpty()) {
-                try {
-                    ServerLOS.instance.suspend();
-
-                    for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
-                        ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
-                        if (cell.Load2()) {
-                            x--;
-                            this.toLoad.remove(cell);
-                        }
-                    }
-                } finally {
-                    ServerLOS.instance.resume();
-                }
-            }
+            this.finalizeReadyCells(previousFrameNanos);
         }
 
         int saveWorldEveryMinutes = ServerOptions.instance.saveWorldEveryMinutes.getValue();
@@ -655,6 +657,100 @@ public class ServerMap {
         if (GameEntityManager.needSave && this.metaEntitySaveFrequency.Check()) {
             GameEntityManager.Save();
         }
+    }
+
+    /**
+     * Commits worker-recalculated cells to the live world on the main thread. This is
+     * intentionally time-sliced: loading/recalc remains asynchronous, while the
+     * non-thread-safe world mutation in RecalcAll2() is spread across server frames.
+     */
+    private void finalizeReadyCells(long previousFrameNanos) {
+        long nowMs = System.currentTimeMillis();
+        int readyBeforeDrain = ServerMap.ServerCell.loaded2.size();
+        ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
+        int received = 0;
+        for (int i = readyBeforeDrain; i < ServerMap.ServerCell.loaded2.size(); i++) {
+            ServerCell cell = ServerMap.ServerCell.loaded2.get(i);
+            if (!this.finalizeReadySince.containsKey(cell)) {
+                this.finalizeReadySince.put(cell, nowMs);
+                received++;
+            }
+        }
+
+        for (int i = ServerMap.ServerCell.loaded2.size() - 1; i >= 0; i--) {
+            ServerCell cell = ServerMap.ServerCell.loaded2.get(i);
+            if (cell.cancelLoading) {
+                ServerMap.ServerCell.loaded2.remove(i);
+                this.finalizeReadySince.remove(cell);
+            }
+        }
+
+        int finalized = 0;
+        long finalizeNanos = 0L;
+        long finalizeMaxNanos = 0L;
+        long budgetNanos = this.getFinalizeBudgetNanos(previousFrameNanos);
+        if (!ServerMap.ServerCell.loaded2.isEmpty()) {
+            distToCellComparator.init();
+            ServerMap.ServerCell.loaded2.sort(distToCellComparator);
+
+            int oldestIndex = -1;
+            long oldestQueuedAt = Long.MAX_VALUE;
+            for (int i = 0; i < ServerMap.ServerCell.loaded2.size(); i++) {
+                Long queuedAt = this.finalizeReadySince.get(ServerMap.ServerCell.loaded2.get(i));
+                if (queuedAt != null && nowMs - queuedAt >= FINALIZE_MAX_WAIT_MS && queuedAt < oldestQueuedAt) {
+                    oldestQueuedAt = queuedAt;
+                    oldestIndex = i;
+                }
+            }
+            if (oldestIndex > 0) {
+                ServerCell oldest = ServerMap.ServerCell.loaded2.remove(oldestIndex);
+                ServerMap.ServerCell.loaded2.add(0, oldest);
+            }
+
+            boolean losSuspended = false;
+            long startNanos = System.nanoTime();
+            try {
+                ServerLOS.instance.suspend();
+                losSuspended = true;
+                while (!ServerMap.ServerCell.loaded2.isEmpty()) {
+                    if (finalized > 0 && System.nanoTime() - startNanos >= budgetNanos) {
+                        break;
+                    }
+                    ServerCell cell = ServerMap.ServerCell.loaded2.remove(0);
+                    long cellStartNanos = System.nanoTime();
+                    cell.finalizeLoad();
+                    long cellNanos = System.nanoTime() - cellStartNanos;
+                    finalizeNanos += cellNanos;
+                    finalizeMaxNanos = Math.max(finalizeMaxNanos, cellNanos);
+                    this.finalizeReadySince.remove(cell);
+                    this.toLoad.remove(cell);
+                    finalized++;
+                }
+            } finally {
+                if (losSuspended) {
+                    ServerLOS.instance.resume();
+                }
+            }
+        }
+
+        long oldestAgeMs = 0L;
+        for (ServerCell cell : ServerMap.ServerCell.loaded2) {
+            Long queuedAt = this.finalizeReadySince.get(cell);
+            if (queuedAt != null) {
+                oldestAgeMs = Math.max(oldestAgeMs, nowMs - queuedAt);
+            }
+        }
+        ApocBRServerTelemetry.recordServerMapLoadFinalize(
+            ServerMap.ServerCell.loaded2.size(), received, finalized, finalizeNanos, finalizeMaxNanos,
+            oldestAgeMs, budgetNanos, previousFrameNanos
+        );
+    }
+
+    private long getFinalizeBudgetNanos(long previousFrameNanos) {
+        if (previousFrameNanos >= FINALIZE_FRAME_CRITICAL_NANOS) return FINALIZE_BUDGET_CRITICAL_NANOS;
+        if (previousFrameNanos >= FINALIZE_FRAME_HIGH_NANOS) return FINALIZE_BUDGET_HIGH_NANOS;
+        if (previousFrameNanos >= FINALIZE_FRAME_ELEVATED_NANOS) return FINALIZE_BUDGET_ELEVATED_NANOS;
+        return FINALIZE_BUDGET_NORMAL_NANOS;
     }
 
     private static final int PARALLEL_CELL_THRESHOLD = 4;
@@ -1129,24 +1225,28 @@ public class ServerMap {
 
             for (int i = 0; i < loaded2.size(); i++) {
                 if (loaded2.get(i) == this) {
-                    long start = System.nanoTime();
-                    this.RecalcAll2();
                     loaded2.remove(i);
-                    if (ServerMap.mapLoading) {
-                        DebugType.MapLoading.debugln("loaded2=" + loaded2);
-                    }
-
-                    float time = (float)(System.nanoTime() - start) / 1000000.0F;
-                    if (ServerMap.mapLoading) {
-                        DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
-                    }
-
-                    this.loadVehicles();
+                    this.finalizeLoad();
                     return true;
                 }
             }
 
             return false;
+        }
+
+        private void finalizeLoad() {
+            long start = System.nanoTime();
+            this.RecalcAll2();
+            if (ServerMap.mapLoading) {
+                DebugType.MapLoading.debugln("loaded2=" + loaded2);
+            }
+
+            float time = (float)(System.nanoTime() - start) / 1000000.0F;
+            if (ServerMap.mapLoading) {
+                DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
+            }
+
+            this.loadVehicles();
         }
 
         private void loadVehicles() {

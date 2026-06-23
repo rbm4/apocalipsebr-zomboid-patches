@@ -62,6 +62,14 @@ public final class ApocBRServerTelemetry {
     private static long serverMapUnloadNanos;
     private static long serverMapUnloadMaxNanos;
     private static long serverMapUnloadOldestAgeMsLast;
+    private static int serverMapLoadFinalizePendingLast;
+    private static long serverMapLoadFinalizeReceived;
+    private static long serverMapLoadFinalizeCells;
+    private static long serverMapLoadFinalizeNanos;
+    private static long serverMapLoadFinalizeMaxNanos;
+    private static long serverMapLoadFinalizeOldestAgeMsLast;
+    private static long serverMapLoadFinalizeBudgetNanosLast;
+    private static long serverMapLoadFinalizePreviousFrameNanosLast;
     private static long playerLOSComputeNanos;
     private static long playerLOSComputeMaxNanos;
     private static long playerLOSApplyNanos;
@@ -412,6 +420,21 @@ public final class ApocBRServerTelemetry {
         serverMapUnloadOldestAgeMsLast = oldestAgeMs;
     }
 
+    public static synchronized void recordServerMapLoadFinalize(
+        int pending, int received, int finalized, long finalizeNanos, long finalizeMaxNanos,
+        long oldestAgeMs, long budgetNanos, long previousFrameNanos
+    ) {
+        if (!ENABLED) return;
+        serverMapLoadFinalizePendingLast = pending;
+        serverMapLoadFinalizeReceived += received;
+        serverMapLoadFinalizeCells += finalized;
+        serverMapLoadFinalizeNanos += finalizeNanos;
+        serverMapLoadFinalizeMaxNanos = Math.max(serverMapLoadFinalizeMaxNanos, finalizeMaxNanos);
+        serverMapLoadFinalizeOldestAgeMsLast = oldestAgeMs;
+        serverMapLoadFinalizeBudgetNanosLast = budgetNanos;
+        serverMapLoadFinalizePreviousFrameNanosLast = previousFrameNanos;
+    }
+
     public static synchronized void recordVirtualAnimalUpdate(String stateName, boolean skipped) {
         if (!ENABLED) return;
         if (skipped) {
@@ -593,6 +616,10 @@ public final class ApocBRServerTelemetry {
             + ",revalidated=" + serverMapUnloadRevalidated + ",unloaded=" + serverMapUnloadCells
             + ",avgMs=" + avgMs(serverMapUnloadNanos, serverMapUnloadCells) + ",maxMs=" + ms(serverMapUnloadMaxNanos)
             + ",oldestMs=" + serverMapUnloadOldestAgeMsLast + "}"
+            + " serverMapLoadFinalize{pending=" + serverMapLoadFinalizePendingLast + ",received=" + serverMapLoadFinalizeReceived
+            + ",finalized=" + serverMapLoadFinalizeCells + ",avgMs=" + avgMs(serverMapLoadFinalizeNanos, serverMapLoadFinalizeCells)
+            + ",maxMs=" + ms(serverMapLoadFinalizeMaxNanos) + ",oldestMs=" + serverMapLoadFinalizeOldestAgeMsLast
+            + ",budgetMs=" + ms(serverMapLoadFinalizeBudgetNanosLast) + ",previousFrameMs=" + ms(serverMapLoadFinalizePreviousFrameNanosLast) + "}"
             + " packets{high=" + highPackets + "/" + ms(highNanos) + "ms max=" + ms(highMaxNanos)
             + ",player=" + playerPackets + "/" + ms(playerNanos) + "ms max=" + ms(playerMaxNanos)
             + ",normal=" + normalPackets + "/" + ms(normalNanos) + "ms max=" + ms(normalMaxNanos) + "}"
@@ -640,6 +667,11 @@ public final class ApocBRServerTelemetry {
         serverMapUnloadQueued = serverMapUnloadRevalidated = serverMapUnloadCells = 0L;
         serverMapUnloadNanos = serverMapUnloadMaxNanos = 0L;
         serverMapUnloadOldestAgeMsLast = 0L;
+        serverMapLoadFinalizePendingLast = 0;
+        serverMapLoadFinalizeReceived = serverMapLoadFinalizeCells = 0L;
+        serverMapLoadFinalizeNanos = serverMapLoadFinalizeMaxNanos = 0L;
+        serverMapLoadFinalizeOldestAgeMsLast = 0L;
+        serverMapLoadFinalizeBudgetNanosLast = serverMapLoadFinalizePreviousFrameNanosLast = 0L;
         playerLOSComputeNanos = playerLOSComputeMaxNanos = 0L;
         playerLOSApplyNanos = playerLOSApplyMaxNanos = 0L;
         playerLOSObjects = playerLOSCalls = playerLOSParallel = playerLOSSequential = 0L;
