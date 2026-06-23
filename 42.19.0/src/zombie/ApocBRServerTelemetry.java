@@ -128,6 +128,25 @@ public final class ApocBRServerTelemetry {
     private static long movingStartFrameZombieGuiMaxNanos;
     private static long movingStartFrameZombieOptimiserNanos;
     private static long movingStartFrameZombieOptimiserMaxNanos;
+    private static long zombieNetworkPostCalls;
+    private static long zombieNetworkPostNanos;
+    private static long zombieNetworkPostMaxNanos;
+    private static int zombieNetworkLiveLast;
+    private static long zombieNetworkAuthScanned;
+    private static long zombieNetworkAuthLive;
+    private static long zombieNetworkAuthUrgent;
+    private static long zombieNetworkAuthDeferred;
+    private static long zombieNetworkAuthOwnerChanges;
+    private static long zombieNetworkAuthUnowned;
+    private static long zombieNetworkConnections;
+    private static long zombieNetworkHashNanos;
+    private static long zombieNetworkHashMaxNanos;
+    private static long zombieNetworkListPackets;
+    private static long zombieNetworkSendNanos;
+    private static long zombieNetworkSendMaxNanos;
+    private static long zombieNetworkSyncPackets;
+    private static long zombieNetworkSyncZombies;
+    private static long zombieNetworkDeletePackets;
     private static long movingStartFrameSquareFixes;
     private static long movingStartFrameSquareFixNanos;
     private static long movingStartFrameSquareFixMaxNanos;
@@ -358,16 +377,42 @@ public final class ApocBRServerTelemetry {
         movingStartFrameMaxNanos = Math.max(movingStartFrameMaxNanos, nanos);
     }
 
-    public static synchronized void recordMovingStartFrameServerZombie(long guiNanos, long optimiserNanos) {
+    public static synchronized void recordMovingStartFrameServerZombies(int zombies, int guiUpdates, long guiNanos) {
         if (!ENABLED) return;
-        movingStartFrameServerZombies++;
-        if (guiNanos > 0L) {
-            movingStartFrameZombieGuiUpdates++;
-            movingStartFrameZombieGuiNanos += guiNanos;
-            movingStartFrameZombieGuiMaxNanos = Math.max(movingStartFrameZombieGuiMaxNanos, guiNanos);
-        }
-        movingStartFrameZombieOptimiserNanos += optimiserNanos;
-        movingStartFrameZombieOptimiserMaxNanos = Math.max(movingStartFrameZombieOptimiserMaxNanos, optimiserNanos);
+        movingStartFrameServerZombies += zombies;
+        movingStartFrameZombieGuiUpdates += guiUpdates;
+        movingStartFrameZombieGuiNanos += guiNanos;
+        movingStartFrameZombieGuiMaxNanos = Math.max(movingStartFrameZombieGuiMaxNanos, guiNanos);
+    }
+
+    public static synchronized void recordZombieNetworkPost(int liveZombies, long nanos) {
+        if (!ENABLED) return;
+        zombieNetworkPostCalls++;
+        zombieNetworkPostNanos += nanos;
+        zombieNetworkPostMaxNanos = Math.max(zombieNetworkPostMaxNanos, nanos);
+        zombieNetworkLiveLast = liveZombies;
+    }
+
+    public static synchronized void recordZombieNetworkBreakdown(
+        int authLive, int authScanned, int authUrgent, int authDeferred, int ownerChanges, int unowned, int connections, long hashNanos, int listPackets,
+        long sendNanos, int syncPackets, int syncZombies, int deletePackets
+    ) {
+        if (!ENABLED) return;
+        zombieNetworkAuthLive += authLive;
+        zombieNetworkAuthScanned += authScanned;
+        zombieNetworkAuthUrgent += authUrgent;
+        zombieNetworkAuthDeferred += authDeferred;
+        zombieNetworkAuthOwnerChanges += ownerChanges;
+        zombieNetworkAuthUnowned += unowned;
+        zombieNetworkConnections += connections;
+        zombieNetworkHashNanos += hashNanos;
+        zombieNetworkHashMaxNanos = Math.max(zombieNetworkHashMaxNanos, hashNanos);
+        zombieNetworkListPackets += listPackets;
+        zombieNetworkSendNanos += sendNanos;
+        zombieNetworkSendMaxNanos = Math.max(zombieNetworkSendMaxNanos, sendNanos);
+        zombieNetworkSyncPackets += syncPackets;
+        zombieNetworkSyncZombies += syncZombies;
+        zombieNetworkDeletePackets += deletePackets;
     }
 
     public static synchronized void recordMovingStartFrameSquareFix(long nanos) {
@@ -620,6 +665,18 @@ public final class ApocBRServerTelemetry {
             + ",finalized=" + serverMapLoadFinalizeCells + ",avgMs=" + avgMs(serverMapLoadFinalizeNanos, serverMapLoadFinalizeCells)
             + ",maxMs=" + ms(serverMapLoadFinalizeMaxNanos) + ",oldestMs=" + serverMapLoadFinalizeOldestAgeMsLast
             + ",budgetMs=" + ms(serverMapLoadFinalizeBudgetNanosLast) + ",previousFrameMs=" + ms(serverMapLoadFinalizePreviousFrameNanosLast) + "}"
+            + " zombieNetwork{live=" + zombieNetworkLiveLast + ",postCalls=" + zombieNetworkPostCalls
+            + ",postAvgMs=" + avgMs(zombieNetworkPostNanos, zombieNetworkPostCalls)
+            + ",postMaxMs=" + ms(zombieNetworkPostMaxNanos)
+            + ",authLive=" + zombieNetworkAuthLive + ",authScanned=" + zombieNetworkAuthScanned
+            + ",authUrgent=" + zombieNetworkAuthUrgent + ",authDeferred=" + zombieNetworkAuthDeferred
+            + ",ownerChanges=" + zombieNetworkAuthOwnerChanges
+            + ",unowned=" + zombieNetworkAuthUnowned + ",connections=" + zombieNetworkConnections
+            + ",hashAvgMs=" + avgMs(zombieNetworkHashNanos, zombieNetworkPostCalls)
+            + ",hashMaxMs=" + ms(zombieNetworkHashMaxNanos) + ",listPackets=" + zombieNetworkListPackets
+            + ",sendAvgMs=" + avgMs(zombieNetworkSendNanos, zombieNetworkPostCalls)
+            + ",sendMaxMs=" + ms(zombieNetworkSendMaxNanos) + ",syncPackets=" + zombieNetworkSyncPackets
+            + ",syncZombies=" + zombieNetworkSyncZombies + ",deletePackets=" + zombieNetworkDeletePackets + "}"
             + " packets{high=" + highPackets + "/" + ms(highNanos) + "ms max=" + ms(highMaxNanos)
             + ",player=" + playerPackets + "/" + ms(playerNanos) + "ms max=" + ms(playerMaxNanos)
             + ",normal=" + normalPackets + "/" + ms(normalNanos) + "ms max=" + ms(normalMaxNanos) + "}"
@@ -693,6 +750,13 @@ public final class ApocBRServerTelemetry {
         movingStartFrameServerZombies = movingStartFrameZombieGuiUpdates = 0L;
         movingStartFrameZombieGuiNanos = movingStartFrameZombieGuiMaxNanos = 0L;
         movingStartFrameZombieOptimiserNanos = movingStartFrameZombieOptimiserMaxNanos = 0L;
+        zombieNetworkPostCalls = zombieNetworkPostNanos = zombieNetworkPostMaxNanos = 0L;
+        zombieNetworkLiveLast = 0;
+        zombieNetworkAuthLive = zombieNetworkAuthScanned = zombieNetworkAuthUrgent = zombieNetworkAuthDeferred = 0L;
+        zombieNetworkAuthOwnerChanges = zombieNetworkAuthUnowned = zombieNetworkConnections = 0L;
+        zombieNetworkHashNanos = zombieNetworkHashMaxNanos = zombieNetworkListPackets = 0L;
+        zombieNetworkSendNanos = zombieNetworkSendMaxNanos = 0L;
+        zombieNetworkSyncPackets = zombieNetworkSyncZombies = zombieNetworkDeletePackets = 0L;
         movingStartFrameSquareFixes = movingStartFrameSquareFixNanos = movingStartFrameSquareFixMaxNanos = 0L;
         movingStartFrameBucketed = movingStartFrameFull = movingStartFrameHalf = movingStartFrameQuarter = movingStartFrameEighth = movingStartFrameSixteenth = 0L;
         movingAnimalFull = movingAnimalHalf = movingAnimalQuarter = movingAnimalEighth = movingAnimalSixteenth = 0L;

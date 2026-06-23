@@ -20,7 +20,6 @@ import zombie.core.math.PZMath;
 import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
-import zombie.popman.ZombieCountOptimiser;
 import zombie.vehicles.BaseVehicle;
 
 public final class MovingObjectUpdateScheduler {
@@ -40,6 +39,9 @@ public final class MovingObjectUpdateScheduler {
     public void startFrame() {
         long apocBrStartFrameNanos = System.nanoTime();
         int apocBrObjectCount = 0;
+        int apocBrServerZombieCount = 0;
+        int apocBrServerZombieGuiUpdates = 0;
+        long apocBrServerZombieGuiNanos = 0L;
         this.frameCounter++;
         this.fullSimulation.clear();
         this.halfSimulation.clear();
@@ -47,23 +49,22 @@ public final class MovingObjectUpdateScheduler {
         this.eighthSimulation.clear();
         this.sixteenthSimulation.clear();
         float averageFps = GameWindow.averageFPS;
-        if (GameServer.server) {
-            ZombieCountOptimiser.startCount();
-        }
-
         for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
             apocBrObjectCount++;
             if (GameServer.server && isoMovingObject instanceof IsoZombie isoZombie) {
+                apocBrServerZombieCount++;
                 long apocBrGuiNanos = 0L;
                 if (GameServer.guiCommandline) {
                     long apocBrGuiStart = System.nanoTime();
                     isoZombie.updateForServerGui();
                     apocBrGuiNanos = System.nanoTime() - apocBrGuiStart;
+                    apocBrServerZombieGuiUpdates++;
+                    apocBrServerZombieGuiNanos += apocBrGuiNanos;
                 }
 
-                long apocBrOptimiserStart = System.nanoTime();
-                ZombieCountOptimiser.incrementZombie(isoZombie);
-                ApocBRServerTelemetry.recordMovingStartFrameServerZombie(apocBrGuiNanos, System.nanoTime() - apocBrOptimiserStart);
+                // The 42.19 server cull is intentionally disabled.  Do not keep
+                // running its count/candidate pass: it scans every live zombie
+                // and retains candidates until deleteZombies() clears the list.
             } else {
                 if (isoMovingObject.getCurrentSquare() == null) {
                     long apocBrSquareStart = System.nanoTime();
@@ -96,6 +97,9 @@ public final class MovingObjectUpdateScheduler {
                 }
             }
         }
+        ApocBRServerTelemetry.recordMovingStartFrameServerZombies(
+            apocBrServerZombieCount, apocBrServerZombieGuiUpdates, apocBrServerZombieGuiNanos
+        );
         ApocBRServerTelemetry.recordMovingStartFrame(apocBrObjectCount, System.nanoTime() - apocBrStartFrameNanos);
     }
     private UpdateSchedulerSimulationLevel getUpdateSchedulerSimulationLevelForObject(IsoMovingObject isoMovingObject, float averageFps) {

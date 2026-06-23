@@ -69,6 +69,7 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 OUTPUT_DIR="$WORK_DIR/classes"
 
 DEPLOY_ZOMBIE="$DEPLOY_BASE/zombie"
+DEPLOY_POPMAN="$DEPLOY_BASE/zombie/popman"
 DEPLOY_NET="$DEPLOY_BASE/zombie/network"
 DEPLOY_GAMESTATES="$DEPLOY_BASE/zombie/gameStates"
 DEPLOY_ISO="$DEPLOY_BASE/zombie/iso"
@@ -86,6 +87,7 @@ SOURCES=(
     "$SRC_ROOT/zombie/GameTime.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateScheduler.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
+    "$SRC_ROOT/zombie/popman/NetworkZombiePacker.java"
     "$SRC_ROOT/zombie/Lua/AsyncLuaManager.java"
     "$SRC_ROOT/zombie/Lua/LuaManager.java"
     "$SRC_ROOT/zombie/WorldSoundManager.java"
@@ -123,6 +125,7 @@ CLASSES=(
     "zombie/GameTime.class"
     "zombie/MovingObjectUpdateScheduler.class"
     "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
+    "zombie/popman/NetworkZombiePacker.class"
     "zombie/Lua/AsyncLuaManager.class"
     'zombie/Lua/LuaManager$GlobalObject.class'
     "zombie/WorldSoundManager.class"
@@ -333,7 +336,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
     echo "=== Dry run complete. No files changed. ==="
 else
     echo "[*] Deploying..."
-    mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_NET" "$DEPLOY_GAMESTATES" "$DEPLOY_ISO" \
+    mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_POPMAN" "$DEPLOY_NET" "$DEPLOY_GAMESTATES" "$DEPLOY_ISO" \
              "$DEPLOY_VEHICLES" "$DEPLOY_PATHFIND" "$DEPLOY_INVENTORY" "$DEPLOY_CHARACTERS_ANIMALS" "$BACKUP_DIR"
 
     ts=$(date +%Y%m%d_%H%M%S)

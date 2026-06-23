@@ -984,7 +984,13 @@ public class ServerMap {
             }
 
             allFutures[numWorkers] = CompletableFuture.runAsync(() -> {
-                try { NetworkZombiePacker.getInstance().postupdate(); }
+                try {
+                    long apocBrZombieNetworkStart = System.nanoTime();
+                    NetworkZombiePacker.getInstance().postupdate();
+                    ApocBRServerTelemetry.recordZombieNetworkPost(
+                        IsoWorld.instance.currentCell.getZombieList().size(), System.nanoTime() - apocBrZombieNetworkStart
+                    );
+                }
                 catch (Throwable t) { DebugType.General.printException(t, LogSeverity.Error); }
                 try { ServerCell.chunkLoader.updateSaved(); }
                 catch (Throwable t) { DebugType.General.printException(t, LogSeverity.Error); }
@@ -1002,7 +1008,11 @@ public class ServerMap {
             ApocBRServerTelemetry.recordServerMapCellsUpdated(updatedCount, 0);
 
             apocBrSequentialStart = System.nanoTime();
+            long apocBrZombieNetworkStart = System.nanoTime();
             NetworkZombiePacker.getInstance().postupdate();
+            ApocBRServerTelemetry.recordZombieNetworkPost(
+                IsoWorld.instance.currentCell.getZombieList().size(), System.nanoTime() - apocBrZombieNetworkStart
+            );
             ServerCell.chunkLoader.updateSaved();
             ApocBRServerTelemetry.recordWorldSection("serverMapMiscTasks", System.nanoTime() - apocBrSequentialStart);
         }

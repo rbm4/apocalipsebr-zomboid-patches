@@ -98,6 +98,7 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\GameTime.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateScheduler.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
+    (Join-Path $SrcRoot "zombie\popman\NetworkZombiePacker.java"),
     (Join-Path $SrcRoot "zombie\Lua\AsyncLuaManager.java"),
     (Join-Path $SrcRoot "zombie\Lua\LuaManager.java"),
     (Join-Path $SrcRoot "zombie\WorldSoundManager.java"),
@@ -142,6 +143,7 @@ $ClassFiles = @(
     "zombie\GameTime.class",
     "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
+    "zombie\popman\NetworkZombiePacker.class",
     "zombie\Lua\AsyncLuaManager.class",
     "zombie\Lua\LuaManager`$GlobalObject.class",
     "zombie\WorldSoundManager.class",
@@ -484,6 +486,10 @@ if ($DryRun) {
         $compiled = Join-Path $OutputDir $rel
         if (-not (Test-Path $compiled)) { continue }
         $dest = Join-Path $DeployRoot $rel
+        $destDirectory = Split-Path -Parent $dest
+        if (-not (Test-Path $destDirectory)) {
+            New-Item -Path $destDirectory -ItemType Directory -Force | Out-Null
+        }
 
         # Backup existing override
         if (Test-Path $dest) {
