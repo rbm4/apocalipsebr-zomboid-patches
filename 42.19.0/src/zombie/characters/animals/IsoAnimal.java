@@ -458,12 +458,12 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
                 || this.getVariableBoolean("bPathfind")
                 || this.isAnimalAttacking()
                 || this.isAnimalMoving()) {
-            return UpdateSchedulerSimulationLevel.FULL;
+            return UpdateSchedulerSimulationLevel.HALF;
         }
 
         if (this.getCurrentState() != AnimalIdleState.instance()
                 && this.getCurrentState() != AnimalZoneState.instance()) {
-            return UpdateSchedulerSimulationLevel.FULL;
+            return UpdateSchedulerSimulationLevel.HALF;
         }
 
         return UpdateSchedulerSimulationLevel.SIXTEENTH;

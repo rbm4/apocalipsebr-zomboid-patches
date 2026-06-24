@@ -8,7 +8,9 @@ import zombie.debug.DebugType;
 import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoWorld;
 import zombie.iso.objects.IsoDeadBody;
+import zombie.network.ServerMap;
 import zombie.util.Type;
+import zombie.vehicles.BaseVehicle;
 
 public final class MovingObjectUpdateSchedulerUpdateBucket {
     public int frameMod;
@@ -47,6 +49,14 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         for (int i = 0; i < fullSimulation.size(); i++) {
             IsoMovingObject isoMovingObject = fullSimulation.get(i);
             if (isoMovingObject == null) {
+                continue;
+            }
+
+            BaseVehicle vehicle = Type.tryCastTo(isoMovingObject, BaseVehicle.class);
+            if (vehicle != null && !ServerMap.instance.isVehicleUpdateReady(vehicle)) {
+                // A queued bucket can retain a vehicle for one frame while its
+                // ServerCell is worker-owned. Do not run BaseVehicle.update() on
+                // partially attached chunk/square/list state.
                 continue;
             }
 
@@ -89,6 +99,11 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
                 continue;
             }
 
+            BaseVehicle vehicle = Type.tryCastTo(isoMovingObject, BaseVehicle.class);
+            if (vehicle != null && !ServerMap.instance.isVehicleUpdateReady(vehicle)) {
+                continue;
+            }
+
             IsoZombie zombie = Type.tryCastTo(isoMovingObject, IsoZombie.class);
             if (zombie != null && VirtualZombieManager.instance.isReused(zombie)) {
                 DebugLog.log(DebugType.Zombie, "REUSABLE ZOMBIE IN MovingObjectUpdateSchedulerUpdateBucket IGNORED " + isoMovingObject);
@@ -107,6 +122,11 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         for (int i = 0; i < fullSimulation.size(); i++) {
             IsoMovingObject isoMovingObject = fullSimulation.get(i);
             if (isoMovingObject == null) {
+                continue;
+            }
+
+            BaseVehicle vehicle = Type.tryCastTo(isoMovingObject, BaseVehicle.class);
+            if (vehicle != null && !ServerMap.instance.isVehicleUpdateReady(vehicle)) {
                 continue;
             }
 

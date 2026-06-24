@@ -70,6 +70,16 @@ public final class ApocBRServerTelemetry {
     private static long serverMapLoadFinalizeOldestAgeMsLast;
     private static long serverMapLoadFinalizeBudgetNanosLast;
     private static long serverMapLoadFinalizePreviousFrameNanosLast;
+    private static final String[] SERVER_MAP_LOAD_COMMIT_PHASE_KEYS = new String[] {
+        "publish", "borderSurround", "borderRecalc", "chunkFlags", "gridLoad", "indoorZombies", "vehicles"
+    };
+    private static final long[] serverMapLoadCommitPhaseCalls = new long[SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length];
+    private static final long[] serverMapLoadCommitPhaseUnits = new long[SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length];
+    private static final long[] serverMapLoadCommitPhaseNanos = new long[SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length];
+    private static final long[] serverMapLoadCommitPhaseMaxNanos = new long[SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length];
+    private static long serverMapLoadCommitYields;
+    private static long serverMapLoadCommitCancelled;
+    private static long serverMapLoadCommitInvariantFailures;
     private static long playerLOSComputeNanos;
     private static long playerLOSComputeMaxNanos;
     private static long playerLOSApplyNanos;
@@ -480,6 +490,26 @@ public final class ApocBRServerTelemetry {
         serverMapLoadFinalizePreviousFrameNanosLast = previousFrameNanos;
     }
 
+    public static synchronized void recordServerMapLoadCommitPhase(String phase, int units, long nanos) {
+        if (!ENABLED) return;
+        for (int i = 0; i < SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length; i++) {
+            if (SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i].equals(phase)) {
+                serverMapLoadCommitPhaseCalls[i]++;
+                serverMapLoadCommitPhaseUnits[i] += units;
+                serverMapLoadCommitPhaseNanos[i] += nanos;
+                serverMapLoadCommitPhaseMaxNanos[i] = Math.max(serverMapLoadCommitPhaseMaxNanos[i], nanos);
+                return;
+            }
+        }
+    }
+
+    public static synchronized void recordServerMapLoadCommitOutcome(int yields, int cancelled, int invariantFailures) {
+        if (!ENABLED) return;
+        serverMapLoadCommitYields += yields;
+        serverMapLoadCommitCancelled += cancelled;
+        serverMapLoadCommitInvariantFailures += invariantFailures;
+    }
+
     public static synchronized void recordVirtualAnimalUpdate(String stateName, boolean skipped) {
         if (!ENABLED) return;
         if (skipped) {
@@ -665,6 +695,7 @@ public final class ApocBRServerTelemetry {
             + ",finalized=" + serverMapLoadFinalizeCells + ",avgMs=" + avgMs(serverMapLoadFinalizeNanos, serverMapLoadFinalizeCells)
             + ",maxMs=" + ms(serverMapLoadFinalizeMaxNanos) + ",oldestMs=" + serverMapLoadFinalizeOldestAgeMsLast
             + ",budgetMs=" + ms(serverMapLoadFinalizeBudgetNanosLast) + ",previousFrameMs=" + ms(serverMapLoadFinalizePreviousFrameNanosLast) + "}"
+            + serverMapLoadCommitLog()
             + " zombieNetwork{live=" + zombieNetworkLiveLast + ",postCalls=" + zombieNetworkPostCalls
             + ",postAvgMs=" + avgMs(zombieNetworkPostNanos, zombieNetworkPostCalls)
             + ",postMaxMs=" + ms(zombieNetworkPostMaxNanos)
@@ -729,6 +760,12 @@ public final class ApocBRServerTelemetry {
         serverMapLoadFinalizeNanos = serverMapLoadFinalizeMaxNanos = 0L;
         serverMapLoadFinalizeOldestAgeMsLast = 0L;
         serverMapLoadFinalizeBudgetNanosLast = serverMapLoadFinalizePreviousFrameNanosLast = 0L;
+        for (int i = 0; i < SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length; i++) {
+            serverMapLoadCommitPhaseCalls[i] = 0L;
+            serverMapLoadCommitPhaseUnits[i] = 0L;
+            serverMapLoadCommitPhaseNanos[i] = 0L;
+            serverMapLoadCommitPhaseMaxNanos[i] = 0L;
+        }
         playerLOSComputeNanos = playerLOSComputeMaxNanos = 0L;
         playerLOSApplyNanos = playerLOSApplyMaxNanos = 0L;
         playerLOSObjects = playerLOSCalls = playerLOSParallel = playerLOSSequential = 0L;
@@ -912,6 +949,21 @@ public final class ApocBRServerTelemetry {
             String name = movingStartTypeNames[i] == null ? "none" : movingStartTypeNames[i];
             builder.append("type").append(i).append("=").append(name);
             builder.append(",count").append(i).append("=").append(movingStartTypeCounts[i]);
+        }
+        builder.append("}");
+        return builder.toString();
+    }
+
+    private static String serverMapLoadCommitLog() {
+        StringBuilder builder = new StringBuilder(" serverMapLoadCommit{");
+        for (int i = 0; i < SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length; i++) {
+            if (i > 0) builder.append(",");
+            builder.append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("Calls=").append(serverMapLoadCommitPhaseCalls[i]);
+            builder.append(",").append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("Units=").append(serverMapLoadCommitPhaseUnits[i]);
+            builder.append(",").append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("AvgMs=")
+                .append(avgMs(serverMapLoadCommitPhaseNanos[i], serverMapLoadCommitPhaseCalls[i]));
+            builder.append(",").append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("MaxMs=")
+                .append(ms(serverMapLoadCommitPhaseMaxNanos[i]));
         }
         builder.append("}");
         return builder.toString();
