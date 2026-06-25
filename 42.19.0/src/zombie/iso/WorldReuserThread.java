@@ -2,7 +2,6 @@
 package zombie.iso;
 
 import java.util.ArrayList;
-import java.util.ConcurrentModificationException;
 import java.util.concurrent.LinkedBlockingQueue;
 import zombie.GameWindow;
 import zombie.core.Core;
@@ -116,12 +115,15 @@ public final class WorldReuserThread {
                 IsoGridSquare sq = chunk.squares[squaresIndexOfLevel][m];
                 if (sq != null) {
                     ArrayList<IsoObject> apocBrObjects = new ArrayList<>();
-                    try {
-                        apocBrObjects.addAll(sq.getObjects());
-                    } catch (ConcurrentModificationException ignored) {
-                        sq.discard();
-                        chunk.squares[squaresIndexOfLevel][m] = null;
-                        continue;
+                    int apocBrObjectCount = sq.getObjects().size();
+                    for (int apocBrIndex = 0; apocBrIndex < apocBrObjectCount; apocBrIndex++) {
+                        try {
+                            IsoObject object = sq.getObjects().get(apocBrIndex);
+                            if (object != null) {
+                                apocBrObjects.add(object);
+                            }
+                        } catch (RuntimeException ignored) {
+                        }
                     }
 
                     for (int a = 0; a < apocBrObjects.size(); a++) {
