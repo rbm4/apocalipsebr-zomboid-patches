@@ -101,12 +101,15 @@ SOURCES=(
     "$SRC_ROOT/zombie/iso/IsoGridSquare.java"
     "$SRC_ROOT/zombie/iso/objects/IsoZombieGiblets.java"
   "$SRC_ROOT/zombie/iso/objects/IsoDoor.java"
+  "$SRC_ROOT/zombie/iso/WorldReuserThread.java"
   "$SRC_ROOT/zombie/vehicles/BaseVehicle.java"
+  "$SRC_ROOT/zombie/vehicles/VehicleManager.java"
     "$SRC_ROOT/zombie/entity/GameEntity.java"
     "$SRC_ROOT/zombie/entity/EntityBucket.java"
     "$SRC_ROOT/zombie/entity/EntityBucketManager.java"
     "$SRC_ROOT/zombie/entity/EngineEntityManager.java"
     "$SRC_ROOT/zombie/entity/UsingPlayerUpdateSystem.java"
+    "$SRC_ROOT/zombie/entity/components/fluids/FluidContainerUpdateSystem.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
     "$SRC_ROOT/zombie/gameStates/IngameState.java"
     "$SRC_ROOT/zombie/iso/IsoWorld.java"
@@ -171,6 +174,7 @@ CLASSES=(
     "zombie/iso/IsoGridSquare.class"
     "zombie/iso/objects/IsoZombieGiblets.class"
   "zombie/iso/objects/IsoDoor.class"
+  "zombie/iso/WorldReuserThread.class"
   "zombie/vehicles/BaseVehicle.class"
     'zombie/vehicles/BaseVehicle$1.class'
     'zombie/vehicles/BaseVehicle$Authorization.class'
@@ -193,6 +197,8 @@ CLASSES=(
     'zombie/vehicles/BaseVehicle$WeightedVehiclePart.class'
     'zombie/vehicles/BaseVehicle$ApocBRBreakingResult.class'
     'zombie/vehicles/BaseVehicle$WheelInfo.class'
+  "zombie/vehicles/VehicleManager.class"
+  'zombie/vehicles/VehicleManager$PosUpdateVars.class'
     "zombie/entity/GameEntity.class"
     "zombie/entity/EntityBucket.class"
     'zombie/entity/EntityBucket$BucketListenerComparator.class'
@@ -212,6 +218,7 @@ CLASSES=(
     'zombie/entity/EngineEntityManager$EntityOperation$Type.class'
     'zombie/entity/EngineEntityManager$EntityOperationPool.class'
     "zombie/entity/UsingPlayerUpdateSystem.class"
+    "zombie/entity/components/fluids/FluidContainerUpdateSystem.class"
     "zombie/network/GameServer.class"
     'zombie/network/GameServer$1.class'
     'zombie/network/GameServer$2.class'
