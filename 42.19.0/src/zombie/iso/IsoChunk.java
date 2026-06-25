@@ -18,6 +18,7 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
@@ -4461,14 +4462,25 @@ public final class IsoChunk {
         }
 
         int count = Math.min(1000, this.floorBloodSplats.size());
-        int start = this.floorBloodSplats.size() - count;
+        int start = Math.max(0, this.floorBloodSplats.size() - count);
+        ArrayList<IsoFloorBloodSplat> apocBrFloorBloodSplats = new ArrayList<>(count);
+        for (int n = start; n < start + count; n++) {
+            try {
+                IsoFloorBloodSplat s = this.floorBloodSplats.get(n);
+                if (s != null) {
+                    apocBrFloorBloodSplats.add(s);
+                }
+            } catch (NoSuchElementException ignored) {
+            }
+        }
+
+        count = apocBrFloorBloodSplats.size();
         int positionMinMaxLevel = bb.position();
         bb.putInt(this.maxLevel);
         bb.putInt(this.minLevel);
         bb.putInt(count);
 
-        for (int n = start; n < this.floorBloodSplats.size(); n++) {
-            IsoFloorBloodSplat s = this.floorBloodSplats.get(n);
+        for (IsoFloorBloodSplat s : apocBrFloorBloodSplats) {
             s.save(bb);
         }
 

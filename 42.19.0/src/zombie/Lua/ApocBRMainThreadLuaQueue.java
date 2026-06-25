@@ -16,7 +16,7 @@ public final class ApocBRMainThreadLuaQueue {
             return false;
         }
 
-        queue.offer(new ApocBRMainThreadLuaQueue.QueuedLuaCall(functionName, null, args));
+        queue.offer(new ApocBRMainThreadLuaQueue.QueuedLuaCall(functionName, null, false, args));
         return true;
     }
 
@@ -25,8 +25,21 @@ public final class ApocBRMainThreadLuaQueue {
             return false;
         }
 
-        queue.offer(new ApocBRMainThreadLuaQueue.QueuedLuaCall(null, functionObj, args));
+        queue.offer(new ApocBRMainThreadLuaQueue.QueuedLuaCall(null, functionObj, false, args));
         return true;
+    }
+
+    public static boolean enqueueBoolean(Object functionObj, Object... args) {
+        if (functionObj == null) {
+            return false;
+        }
+
+        queue.offer(new ApocBRMainThreadLuaQueue.QueuedLuaCall(null, functionObj, true, args));
+        return true;
+    }
+
+    public static boolean isMainThread() {
+        return LuaManager.thread != null && LuaManager.thread.debugOwnerThread == Thread.currentThread();
     }
 
     public static int drain() {
@@ -51,11 +64,13 @@ public final class ApocBRMainThreadLuaQueue {
     private static final class QueuedLuaCall {
         private final String functionName;
         private final Object functionObj;
+        private final boolean booleanCall;
         private final Object[] args;
 
-        private QueuedLuaCall(String functionName, Object functionObj, Object[] args) {
+        private QueuedLuaCall(String functionName, Object functionObj, boolean booleanCall, Object[] args) {
             this.functionName = functionName;
             this.functionObj = functionObj;
+            this.booleanCall = booleanCall;
             this.args = args == null ? new Object[0] : Arrays.copyOf(args, args.length);
         }
 
@@ -70,7 +85,11 @@ public final class ApocBRMainThreadLuaQueue {
             }
 
             try {
-                LuaManager.caller.protectedCallVoid(LuaManager.thread, target, this.args);
+                if (this.booleanCall) {
+                    LuaManager.caller.protectedCallBoolean(LuaManager.thread, target, this.args);
+                } else {
+                    LuaManager.caller.protectedCallVoid(LuaManager.thread, target, this.args);
+                }
             } catch (RuntimeException ex) {
                 ExceptionLogger.logException(ex);
             }

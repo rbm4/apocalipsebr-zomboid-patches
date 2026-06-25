@@ -94,6 +94,7 @@ SOURCES=(
     "$SRC_ROOT/zombie/Lua/LuaManager.java"
     "$SRC_ROOT/zombie/WorldSoundManager.java"
     "$SRC_ROOT/zombie/radio/ZomboidRadio.java"
+    "$SRC_ROOT/zombie/inventory/ItemContainer.java"
     "$SRC_ROOT/zombie/iso/FishSchoolManager.java"
     "$SRC_ROOT/zombie/iso/IsoPuddlesCompute.java"
     "$SRC_ROOT/zombie/iso/IsoChunk.java"
@@ -145,6 +146,23 @@ CLASSES=(
     'zombie/WorldSoundManager$WorldSound.class'
     "zombie/radio/ZomboidRadio.class"
     'zombie/radio/ZomboidRadio$FreqListEntry.class'
+    "zombie/inventory/ItemContainer.class"
+    'zombie/inventory/ItemContainer$CategoryPredicate.class'
+    'zombie/inventory/ItemContainer$Comparators.class'
+    'zombie/inventory/ItemContainer$ConditionComparator.class'
+    'zombie/inventory/ItemContainer$EvalArgComparator.class'
+    'zombie/inventory/ItemContainer$EvalArgPredicate.class'
+    'zombie/inventory/ItemContainer$EvalComparator.class'
+    'zombie/inventory/ItemContainer$EvalPredicate.class'
+    'zombie/inventory/ItemContainer$InventoryItemList.class'
+    'zombie/inventory/ItemContainer$InventoryItemListPool.class'
+    'zombie/inventory/ItemContainer$Predicates.class'
+    'zombie/inventory/ItemContainer$TagEvalArgPredicate.class'
+    'zombie/inventory/ItemContainer$TagEvalPredicate.class'
+    'zombie/inventory/ItemContainer$TagPredicate.class'
+    'zombie/inventory/ItemContainer$TypeEvalArgPredicate.class'
+    'zombie/inventory/ItemContainer$TypeEvalPredicate.class'
+    'zombie/inventory/ItemContainer$TypePredicate.class'
     "zombie/iso/FishSchoolManager.class"
     'zombie/iso/FishSchoolManager$ChumData.class'
     'zombie/iso/FishSchoolManager$ZoneData.class'
