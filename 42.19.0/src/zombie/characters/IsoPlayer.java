@@ -6078,7 +6078,12 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
             this.stats.lastVeryCloseZombies = 0;
             return;
         }
-        ArrayList<IsoMovingObject> objects = new ArrayList<>(cell.getObjectList());
+        // ServerLOS owns a short-lived spatial index shared by all players. The
+        // server therefore scans only the 96×96 LOS neighbourhood instead of
+        // every active object in the world for every player.
+        ArrayList<IsoMovingObject> objects = bServer
+            ? ServerLOS.instance.getObjectCandidates(this, cell)
+            : new ArrayList<>(cell.getObjectList());
         final int size = objects.size();
 
         // Only parallelize server-side LOS for large object lists;

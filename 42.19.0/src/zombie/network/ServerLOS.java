@@ -2,6 +2,7 @@
 package zombie.network;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.Objects;
 import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
@@ -11,7 +12,9 @@ import zombie.core.textures.ColorInfo;
 import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.iso.IsoGridSquare;
+import zombie.iso.IsoCell;
 import zombie.iso.LosUtil;
+import zombie.iso.IsoMovingObject;
 
 public class ServerLOS {
     public static ServerLOS instance;
@@ -22,6 +25,15 @@ public class ServerLOS {
     private boolean suspended;
     private static final int PD_SIZE_IN_CHUNKS = 12;
     private static final int PD_SIZE_IN_SQUARES = 96;
+    // Object-level LOS is a player × candidate cost. The tile visibility grid
+    // retains its vanilla cadence; only this higher-level object scan is capped.
+    private static final long OBJECT_LOS_INTERVAL_NANOS = Math.max(50L,
+            Math.min(1000L, Long.getLong("apocbr.los.objectIntervalMs", 200L))) * 1_000_000L;
+    private static final long CANDIDATE_INDEX_INTERVAL_NANOS = 100_000_000L;
+    private static final int CANDIDATE_RADIUS_CHUNKS = 7;
+    private final HashMap<Long, ArrayList<IsoMovingObject>> objectCandidatesByChunk = new HashMap<>();
+    private IsoCell candidateIndexCell;
+    private long candidateIndexBuiltNanos;
     boolean wasSuspended;
 
     private void noise(String str) {
@@ -101,18 +113,79 @@ public class ServerLOS {
         ServerLOS.PlayerData data = this.findData(player);
         if (data != null) {
             if (data.status == ServerLOS.UpdateStatus.ReadyInLOS || data.status == ServerLOS.UpdateStatus.ReadyInMain) {
+                long nowNanos = System.nanoTime();
+                if (data.lastObjectLosNanos != 0L && nowNanos - data.lastObjectLosNanos < OBJECT_LOS_INTERVAL_NANOS) {
+                    return;
+                }
                 if (data.status == ServerLOS.UpdateStatus.ReadyInLOS) {
                     this.noise("BusyInMain playerID=" + player.onlineId);
                 }
 
                 data.status = ServerLOS.UpdateStatus.BusyInMain;
-                player.updateLOS();
-                data.status = ServerLOS.UpdateStatus.ReadyInMain;
-                synchronized (this.thread.notifier) {
-                    this.thread.notifier.notify();
+                try {
+                    player.updateLOS();
+                    data.lastObjectLosNanos = nowNanos;
+                } finally {
+                    data.status = ServerLOS.UpdateStatus.ReadyInMain;
+                    synchronized (this.thread.notifier) {
+                        this.thread.notifier.notify();
+                    }
                 }
             }
         }
+    }
+
+    /**
+     * Builds one short-lived spatial index for all server players, then returns
+     * only objects within (or just outside) the 96×96 ServerLOS visibility grid.
+     * The one-chunk margin covers movement between index rebuilds.
+     */
+    public ArrayList<IsoMovingObject> getObjectCandidates(IsoPlayer player, IsoCell cell) {
+        long nowNanos = System.nanoTime();
+        if (this.candidateIndexCell != cell || nowNanos - this.candidateIndexBuiltNanos >= CANDIDATE_INDEX_INTERVAL_NANOS) {
+            this.rebuildObjectCandidateIndex(cell, nowNanos);
+        }
+
+        int centerChunkX = PZMath.fastfloor(player.getX() / 8.0F);
+        int centerChunkY = PZMath.fastfloor(player.getY() / 8.0F);
+        ArrayList<IsoMovingObject> candidates = new ArrayList<>();
+        for (int chunkY = centerChunkY - CANDIDATE_RADIUS_CHUNKS;
+                chunkY <= centerChunkY + CANDIDATE_RADIUS_CHUNKS; chunkY++) {
+            for (int chunkX = centerChunkX - CANDIDATE_RADIUS_CHUNKS;
+                    chunkX <= centerChunkX + CANDIDATE_RADIUS_CHUNKS; chunkX++) {
+                ArrayList<IsoMovingObject> bucket = this.objectCandidatesByChunk.get(chunkKey(chunkX, chunkY));
+                if (bucket != null) {
+                    candidates.addAll(bucket);
+                }
+            }
+        }
+        return candidates;
+    }
+
+    private void rebuildObjectCandidateIndex(IsoCell cell, long nowNanos) {
+        this.objectCandidatesByChunk.clear();
+        this.candidateIndexCell = cell;
+        this.candidateIndexBuiltNanos = nowNanos;
+        if (cell == null) {
+            return;
+        }
+
+        ArrayList<IsoMovingObject> objects = new ArrayList<>(cell.getObjectList());
+        for (int i = 0; i < objects.size(); i++) {
+            IsoMovingObject object = objects.get(i);
+            if (object == null) {
+                continue;
+            }
+            int chunkX = PZMath.fastfloor(object.getX() / 8.0F);
+            int chunkY = PZMath.fastfloor(object.getY() / 8.0F);
+            this.objectCandidatesByChunk
+                    .computeIfAbsent(chunkKey(chunkX, chunkY), ignored -> new ArrayList<>())
+                    .add(object);
+        }
+    }
+
+    private static long chunkKey(int chunkX, int chunkY) {
+        return (long)chunkX << 32 | (long)chunkY & 4294967295L;
     }
 
     private ServerLOS.PlayerData findData(IsoPlayer player) {
@@ -284,6 +357,7 @@ public class ServerLOS {
         public int px;
         public int py;
         public int pz;
+        public long lastObjectLosNanos;
         public boolean[][][] visible = new boolean[96][96][LosUtil.sizeZ];
 
         public PlayerData(IsoPlayer player) {

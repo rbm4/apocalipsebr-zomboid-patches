@@ -99,15 +99,24 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateScheduler.java"),
     (Join-Path $SrcRoot "zombie\MovingObjectUpdateSchedulerUpdateBucket.java"),
     (Join-Path $SrcRoot "zombie\popman\NetworkZombiePacker.java"),
+    (Join-Path $SrcRoot "zombie\popman\ZombiePopulationManager.java"),
+    (Join-Path $SrcRoot "zombie\Lua\ApocBRMainThreadLuaQueue.java"),
     (Join-Path $SrcRoot "zombie\Lua\AsyncLuaManager.java"),
     (Join-Path $SrcRoot "zombie\Lua\LuaManager.java"),
     (Join-Path $SrcRoot "zombie\WorldSoundManager.java"),
+    (Join-Path $SrcRoot "zombie\radio\ZomboidRadio.java"),
     (Join-Path $SrcRoot "zombie\iso\FishSchoolManager.java"),
     (Join-Path $SrcRoot "zombie\iso\IsoPuddlesCompute.java"),
+    (Join-Path $SrcRoot "zombie\iso\IsoChunk.java"),
     (Join-Path $SrcRoot "zombie\iso\IsoGridSquare.java"),
     (Join-Path $SrcRoot "zombie\iso\objects\IsoZombieGiblets.java"),
     (Join-Path $SrcRoot "zombie\iso\objects\IsoDoor.java"),
     (Join-Path $SrcRoot "zombie\vehicles\BaseVehicle.java"),
+    (Join-Path $SrcRoot "zombie\entity\GameEntity.java"),
+    (Join-Path $SrcRoot "zombie\entity\EntityBucket.java"),
+    (Join-Path $SrcRoot "zombie\entity\EntityBucketManager.java"),
+    (Join-Path $SrcRoot "zombie\entity\EngineEntityManager.java"),
+    (Join-Path $SrcRoot "zombie\entity\UsingPlayerUpdateSystem.java"),
     (Join-Path $SrcRoot "zombie\network\GameServer.java"),
     (Join-Path $SrcRoot "zombie\gameStates\IngameState.java"),
     (Join-Path $SrcRoot "zombie\iso\IsoWorld.java"),
@@ -144,15 +153,21 @@ $ClassFiles = @(
     "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
     "zombie\popman\NetworkZombiePacker.class",
+    "zombie\popman\ZombiePopulationManager.class",
+    "zombie\Lua\ApocBRMainThreadLuaQueue.class",
+    "zombie\Lua\ApocBRMainThreadLuaQueue`$QueuedLuaCall.class",
     "zombie\Lua\AsyncLuaManager.class",
     "zombie\Lua\LuaManager`$GlobalObject.class",
     "zombie\WorldSoundManager.class",
     "zombie\WorldSoundManager`$ResultBiggestSound.class",
     "zombie\WorldSoundManager`$WorldSound.class",
+    "zombie\radio\ZomboidRadio.class",
+    "zombie\radio\ZomboidRadio`$FreqListEntry.class",
     "zombie\iso\FishSchoolManager.class",
     "zombie\iso\FishSchoolManager`$ChumData.class",
     "zombie\iso\FishSchoolManager`$ZoneData.class",
     "zombie\iso\IsoPuddlesCompute.class",
+    "zombie\iso\IsoChunk.class",
     "zombie\iso\IsoGridSquare.class",
     "zombie\iso\objects\IsoZombieGiblets.class",
     "zombie\iso\objects\IsoDoor.class",
@@ -178,6 +193,25 @@ $ClassFiles = @(
     "zombie\vehicles\BaseVehicle`$WeightedVehiclePart.class",
     "zombie\vehicles\BaseVehicle`$ApocBRBreakingResult.class",
     "zombie\vehicles\BaseVehicle`$WheelInfo.class",
+    "zombie\entity\GameEntity.class",
+    "zombie\entity\EntityBucket.class",
+    "zombie\entity\EntityBucket`$BucketListenerComparator.class",
+    "zombie\entity\EntityBucket`$BucketListenerData.class",
+    "zombie\entity\EntityBucket`$CustomBucket.class",
+    "zombie\entity\EntityBucket`$EntityValidator.class",
+    "zombie\entity\EntityBucket`$FamilyBucket.class",
+    "zombie\entity\EntityBucket`$InventoryItemBucket.class",
+    "zombie\entity\EntityBucket`$IsoObjectBucket.class",
+    "zombie\entity\EntityBucket`$RendererBucket.class",
+    "zombie\entity\EntityBucket`$VehiclePartBucket.class",
+    "zombie\entity\EntityBucketManager.class",
+    "zombie\entity\EntityBucketManager`$BucketsUpdatingInformer.class",
+    "zombie\entity\EngineEntityManager.class",
+    "zombie\entity\EngineEntityManager`$ComponentOperationListener.class",
+    "zombie\entity\EngineEntityManager`$EntityOperation.class",
+    "zombie\entity\EngineEntityManager`$EntityOperation`$Type.class",
+    "zombie\entity\EngineEntityManager`$EntityOperationPool.class",
+    "zombie\entity\UsingPlayerUpdateSystem.class",
     "zombie\network\GameServer.class",
     "zombie\network\GameServer`$1.class",
     "zombie\network\GameServer`$2.class",
@@ -258,6 +292,12 @@ $ClassFiles = @(
     "zombie\network\ServerChunkLoader`$SaveLoadedTask.class",
     "zombie\network\ServerChunkLoader`$SaveTask.class",
     "zombie\network\ServerChunkLoader`$SaveUnloadedTask.class"
+)
+
+# --- Stale class files from previous patch iterations that must not remain as loose overrides ---
+$LegacyClassFiles = @(
+    "zombie\Lua\LuaManager.class",
+    "zombie\Lua\LuaManager`$QueuedLuaCall.class"
 )
 
 # --- Functions ---
@@ -376,7 +416,7 @@ Write-Host ""
 if ($Revert) {
     Write-Host "[*] Reverting ALL ApocBR patches..." -ForegroundColor Yellow
     $reverted = $false
-    foreach ($rel in $ClassFiles) {
+    foreach ($rel in ($ClassFiles + $LegacyClassFiles)) {
         $path = Join-Path $DeployRoot $rel
         if (Test-Path $path) {
             Remove-Item $path -Force
@@ -480,6 +520,14 @@ if ($DryRun) {
     New-Item -Path (Join-Path $DeployRoot "zombie\Lua") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\characters\animals") -ItemType Directory -Force | Out-Null
     New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
+
+    foreach ($rel in $LegacyClassFiles) {
+        $stale = Join-Path $DeployRoot $rel
+        if (Test-Path $stale) {
+            Remove-Item $stale -Force
+            Write-Host "    Removed stale override: $rel" -ForegroundColor Yellow
+        }
+    }
 
     $ts = Get-Date -Format "yyyyMMdd_HHmmss"
     $deployed = 0

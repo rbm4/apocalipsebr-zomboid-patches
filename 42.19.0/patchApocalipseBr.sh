@@ -88,15 +88,24 @@ SOURCES=(
     "$SRC_ROOT/zombie/MovingObjectUpdateScheduler.java"
     "$SRC_ROOT/zombie/MovingObjectUpdateSchedulerUpdateBucket.java"
     "$SRC_ROOT/zombie/popman/NetworkZombiePacker.java"
+    "$SRC_ROOT/zombie/popman/ZombiePopulationManager.java"
+    "$SRC_ROOT/zombie/Lua/ApocBRMainThreadLuaQueue.java"
     "$SRC_ROOT/zombie/Lua/AsyncLuaManager.java"
     "$SRC_ROOT/zombie/Lua/LuaManager.java"
     "$SRC_ROOT/zombie/WorldSoundManager.java"
+    "$SRC_ROOT/zombie/radio/ZomboidRadio.java"
     "$SRC_ROOT/zombie/iso/FishSchoolManager.java"
     "$SRC_ROOT/zombie/iso/IsoPuddlesCompute.java"
+    "$SRC_ROOT/zombie/iso/IsoChunk.java"
     "$SRC_ROOT/zombie/iso/IsoGridSquare.java"
     "$SRC_ROOT/zombie/iso/objects/IsoZombieGiblets.java"
   "$SRC_ROOT/zombie/iso/objects/IsoDoor.java"
   "$SRC_ROOT/zombie/vehicles/BaseVehicle.java"
+    "$SRC_ROOT/zombie/entity/GameEntity.java"
+    "$SRC_ROOT/zombie/entity/EntityBucket.java"
+    "$SRC_ROOT/zombie/entity/EntityBucketManager.java"
+    "$SRC_ROOT/zombie/entity/EngineEntityManager.java"
+    "$SRC_ROOT/zombie/entity/UsingPlayerUpdateSystem.java"
     "$SRC_ROOT/zombie/network/GameServer.java"
     "$SRC_ROOT/zombie/gameStates/IngameState.java"
     "$SRC_ROOT/zombie/iso/IsoWorld.java"
@@ -126,15 +135,21 @@ CLASSES=(
     "zombie/MovingObjectUpdateScheduler.class"
     "zombie/MovingObjectUpdateSchedulerUpdateBucket.class"
     "zombie/popman/NetworkZombiePacker.class"
+    "zombie/popman/ZombiePopulationManager.class"
+    "zombie/Lua/ApocBRMainThreadLuaQueue.class"
+    'zombie/Lua/ApocBRMainThreadLuaQueue$QueuedLuaCall.class'
     "zombie/Lua/AsyncLuaManager.class"
     'zombie/Lua/LuaManager$GlobalObject.class'
     "zombie/WorldSoundManager.class"
     'zombie/WorldSoundManager$ResultBiggestSound.class'
     'zombie/WorldSoundManager$WorldSound.class'
+    "zombie/radio/ZomboidRadio.class"
+    'zombie/radio/ZomboidRadio$FreqListEntry.class'
     "zombie/iso/FishSchoolManager.class"
     'zombie/iso/FishSchoolManager$ChumData.class'
     'zombie/iso/FishSchoolManager$ZoneData.class'
     "zombie/iso/IsoPuddlesCompute.class"
+    "zombie/iso/IsoChunk.class"
     "zombie/iso/IsoGridSquare.class"
     "zombie/iso/objects/IsoZombieGiblets.class"
   "zombie/iso/objects/IsoDoor.class"
@@ -160,6 +175,25 @@ CLASSES=(
     'zombie/vehicles/BaseVehicle$WeightedVehiclePart.class'
     'zombie/vehicles/BaseVehicle$ApocBRBreakingResult.class'
     'zombie/vehicles/BaseVehicle$WheelInfo.class'
+    "zombie/entity/GameEntity.class"
+    "zombie/entity/EntityBucket.class"
+    'zombie/entity/EntityBucket$BucketListenerComparator.class'
+    'zombie/entity/EntityBucket$BucketListenerData.class'
+    'zombie/entity/EntityBucket$CustomBucket.class'
+    'zombie/entity/EntityBucket$EntityValidator.class'
+    'zombie/entity/EntityBucket$FamilyBucket.class'
+    'zombie/entity/EntityBucket$InventoryItemBucket.class'
+    'zombie/entity/EntityBucket$IsoObjectBucket.class'
+    'zombie/entity/EntityBucket$RendererBucket.class'
+    'zombie/entity/EntityBucket$VehiclePartBucket.class'
+    "zombie/entity/EntityBucketManager.class"
+    'zombie/entity/EntityBucketManager$BucketsUpdatingInformer.class'
+    "zombie/entity/EngineEntityManager.class"
+    'zombie/entity/EngineEntityManager$ComponentOperationListener.class'
+    'zombie/entity/EngineEntityManager$EntityOperation.class'
+    'zombie/entity/EngineEntityManager$EntityOperation$Type.class'
+    'zombie/entity/EngineEntityManager$EntityOperationPool.class'
+    "zombie/entity/UsingPlayerUpdateSystem.class"
     "zombie/network/GameServer.class"
     'zombie/network/GameServer$1.class'
     'zombie/network/GameServer$2.class'
@@ -236,6 +270,11 @@ CLASSES=(
     'zombie/network/ServerLOS$UpdateStatus.class'
 )
 
+LEGACY_CLASSES=(
+    "zombie/Lua/LuaManager.class"
+    'zombie/Lua/LuaManager$QueuedLuaCall.class'
+)
+
 echo ""
 echo "=== ApocBR All-in-One Patch Suite (Build 42.19) ==="
 echo "=== $PATCH_NAME ==="
@@ -245,7 +284,7 @@ echo ""
 if [[ "$REVERT" == "true" ]]; then
     echo "[*] Reverting ALL ApocBR patches..."
     reverted=false
-    for class_file in "${CLASSES[@]}"; do
+    for class_file in "${CLASSES[@]}" "${LEGACY_CLASSES[@]}"; do
         target="$DEPLOY_BASE/$class_file"
         if [[ -f "$target" ]]; then
             rm -f "$target"
@@ -339,6 +378,14 @@ else
     echo "[*] Deploying..."
     mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_POPMAN" "$DEPLOY_NET" "$DEPLOY_GAMESTATES" "$DEPLOY_ISO" \
              "$DEPLOY_VEHICLES" "$DEPLOY_PATHFIND" "$DEPLOY_INVENTORY" "$DEPLOY_CHARACTERS_ANIMALS" "$BACKUP_DIR"
+
+    for class_file in "${LEGACY_CLASSES[@]}"; do
+        stale="$DEPLOY_BASE/$class_file"
+        if [[ -f "$stale" ]]; then
+            rm -f "$stale"
+            echo "    Removed stale override: $class_file"
+        fi
+    done
 
     ts=$(date +%Y%m%d_%H%M%S)
     deployed=0

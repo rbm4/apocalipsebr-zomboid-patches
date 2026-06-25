@@ -36,6 +36,7 @@ import zombie.SystemDisabler;
 import zombie.UpdateSchedulerSimulationLevel;
 import zombie.UsedFromLua;
 import zombie.WorldSoundManager;
+import zombie.Lua.ApocBRMainThreadLuaQueue;
 import zombie.Lua.LuaEventManager;
 import zombie.Lua.LuaManager;
 import zombie.ai.states.animals.AnimalFalldownState;
@@ -8765,11 +8766,13 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     }
 
     private void callLuaVoid(String functionName, Object arg1, Object arg2) {
-        Object functionObj = LuaManager.getFunctionObject(functionName);
-        if (functionObj != null) {
+        if (functionName != null) {
             long apocBrVehicleLuaStart = System.nanoTime();
             try {
-                LuaManager.caller.protectedCallVoid(LuaManager.thread, functionObj, arg1, arg2);
+                // ApocBR: vehicle creation can happen from async chunk/cell work.
+                // Queue Lua hooks for the main-thread drain instead of touching
+                // Kahlua from the worker thread.
+                ApocBRMainThreadLuaQueue.enqueueVoid(functionName, arg1, arg2);
             } finally {
                 ApocBRServerTelemetry.recordVehiclePartLua(System.nanoTime() - apocBrVehicleLuaStart);
             }
@@ -8777,11 +8780,10 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     }
 
     private void callLuaVoid(String functionName, Object arg1) {
-        Object functionObj = LuaManager.getFunctionObject(functionName);
-        if (functionObj != null) {
+        if (functionName != null) {
             long apocBrVehicleLuaStart = System.nanoTime();
             try {
-                LuaManager.caller.protectedCallVoid(LuaManager.thread, functionObj, arg1);
+                ApocBRMainThreadLuaQueue.enqueueVoid(functionName, arg1);
             } finally {
                 ApocBRServerTelemetry.recordVehiclePartLua(System.nanoTime() - apocBrVehicleLuaStart);
             }
@@ -8789,11 +8791,10 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     }
 
     private void callLuaVoid(String functionName, Object arg1, Object arg2, Object arg3) {
-        Object functionObj = LuaManager.getFunctionObject(functionName);
-        if (functionObj != null) {
+        if (functionName != null) {
             long apocBrVehicleLuaStart = System.nanoTime();
             try {
-                LuaManager.caller.protectedCallVoid(LuaManager.thread, functionObj, arg1, arg2, arg3);
+                ApocBRMainThreadLuaQueue.enqueueVoid(functionName, arg1, arg2, arg3);
             } finally {
                 ApocBRServerTelemetry.recordVehiclePartLua(System.nanoTime() - apocBrVehicleLuaStart);
             }

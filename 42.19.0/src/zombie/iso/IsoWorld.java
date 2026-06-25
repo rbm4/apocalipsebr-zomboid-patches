@@ -2462,6 +2462,12 @@ public final class IsoWorld {
 
         for (int n = 0; n < this.currentCell.getZombieList().size(); n++) {
             IsoZombie z = this.currentCell.getZombieList().get(n);
+            // Async chunk retirement can leave a transient null slot in the
+            // render list. It has no renderable state; skip it until the next
+            // list maintenance pass removes the slot.
+            if (z == null) {
+                continue;
+            }
             boolean withModel = false;
 
             for (int pn = 0; pn < IsoPlayer.numPlayers; pn++) {

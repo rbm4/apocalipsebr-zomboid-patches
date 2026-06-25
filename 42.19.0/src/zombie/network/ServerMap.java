@@ -1670,12 +1670,19 @@ public class ServerMap {
                             chunk.removeFromWorld();
                             chunk.loadVehiclesObject = null;
 
+                            long vehicleSaveStartNanos = System.nanoTime();
+                            int vehiclesSaved = chunk.vehicles.size();
                             for (int i = 0; i < chunk.vehicles.size(); i++) {
                                 BaseVehicle vehicle = chunk.vehicles.get(i);
                                 VehiclesDB2.instance.updateVehicle(vehicle);
                             }
+                            ApocBRServerTelemetry.recordServerMapUnloadPhase(
+                                    "vehicleSave", vehiclesSaved, System.nanoTime() - vehicleSaveStartNanos);
 
+                            long saveEnqueueStartNanos = System.nanoTime();
                             chunkLoader.addSaveUnloadedJob(chunk);
+                            ApocBRServerTelemetry.recordServerMapUnloadPhase(
+                                    "saveEnqueue", 1, System.nanoTime() - saveEnqueueStartNanos);
                             this.chunks[x][y] = null;
                         }
                     }

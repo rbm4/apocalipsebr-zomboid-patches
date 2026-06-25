@@ -1039,7 +1039,6 @@ public final class LuaManager {
     private static final HashMap<String, VideoTexture> videoTextures = new HashMap<>();
     private static KahluaArrayConverter arrayConverter;
     private static final HashSet<KahluaTable> s_wiping = new HashSet<>();
-
     public static void outputTable(KahluaTable t, int nTabs) {
     }
 

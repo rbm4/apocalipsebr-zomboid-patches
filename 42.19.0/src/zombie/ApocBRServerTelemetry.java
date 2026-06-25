@@ -62,6 +62,15 @@ public final class ApocBRServerTelemetry {
     private static long serverMapUnloadNanos;
     private static long serverMapUnloadMaxNanos;
     private static long serverMapUnloadOldestAgeMsLast;
+    private static final String[] SERVER_MAP_UNLOAD_PHASE_KEYS = new String[] {
+        "chunkGlobal", "squareTeardown", "vehicleDetach", "vehicleSave", "saveEnqueue"
+    };
+    private static final long[] serverMapUnloadPhaseCalls = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
+    private static final long[] serverMapUnloadPhaseUnits = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
+    private static final long[] serverMapUnloadPhaseNanos = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
+    private static final long[] serverMapUnloadPhaseMaxNanos = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
+    private static long serverMapUnloadMovingObjects;
+    private static long serverMapUnloadStaticObjects;
     private static int serverMapLoadFinalizePendingLast;
     private static long serverMapLoadFinalizeReceived;
     private static long serverMapLoadFinalizeCells;
@@ -475,6 +484,25 @@ public final class ApocBRServerTelemetry {
         serverMapUnloadOldestAgeMsLast = oldestAgeMs;
     }
 
+    public static synchronized void recordServerMapUnloadPhase(String phase, int units, long nanos) {
+        if (!ENABLED) return;
+        for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
+            if (SERVER_MAP_UNLOAD_PHASE_KEYS[i].equals(phase)) {
+                serverMapUnloadPhaseCalls[i]++;
+                serverMapUnloadPhaseUnits[i] += units;
+                serverMapUnloadPhaseNanos[i] += nanos;
+                serverMapUnloadPhaseMaxNanos[i] = Math.max(serverMapUnloadPhaseMaxNanos[i], nanos);
+                return;
+            }
+        }
+    }
+
+    public static synchronized void recordServerMapUnloadSquareCounts(int movingObjects, int staticObjects) {
+        if (!ENABLED) return;
+        serverMapUnloadMovingObjects += movingObjects;
+        serverMapUnloadStaticObjects += staticObjects;
+    }
+
     public static synchronized void recordServerMapLoadFinalize(
         int pending, int received, int finalized, long finalizeNanos, long finalizeMaxNanos,
         long oldestAgeMs, long budgetNanos, long previousFrameNanos
@@ -691,6 +719,7 @@ public final class ApocBRServerTelemetry {
             + ",revalidated=" + serverMapUnloadRevalidated + ",unloaded=" + serverMapUnloadCells
             + ",avgMs=" + avgMs(serverMapUnloadNanos, serverMapUnloadCells) + ",maxMs=" + ms(serverMapUnloadMaxNanos)
             + ",oldestMs=" + serverMapUnloadOldestAgeMsLast + "}"
+            + serverMapUnloadDetailLog()
             + " serverMapLoadFinalize{pending=" + serverMapLoadFinalizePendingLast + ",received=" + serverMapLoadFinalizeReceived
             + ",finalized=" + serverMapLoadFinalizeCells + ",avgMs=" + avgMs(serverMapLoadFinalizeNanos, serverMapLoadFinalizeCells)
             + ",maxMs=" + ms(serverMapLoadFinalizeMaxNanos) + ",oldestMs=" + serverMapLoadFinalizeOldestAgeMsLast
@@ -755,6 +784,13 @@ public final class ApocBRServerTelemetry {
         serverMapUnloadQueued = serverMapUnloadRevalidated = serverMapUnloadCells = 0L;
         serverMapUnloadNanos = serverMapUnloadMaxNanos = 0L;
         serverMapUnloadOldestAgeMsLast = 0L;
+        for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
+            serverMapUnloadPhaseCalls[i] = 0L;
+            serverMapUnloadPhaseUnits[i] = 0L;
+            serverMapUnloadPhaseNanos[i] = 0L;
+            serverMapUnloadPhaseMaxNanos[i] = 0L;
+        }
+        serverMapUnloadMovingObjects = serverMapUnloadStaticObjects = 0L;
         serverMapLoadFinalizePendingLast = 0;
         serverMapLoadFinalizeReceived = serverMapLoadFinalizeCells = 0L;
         serverMapLoadFinalizeNanos = serverMapLoadFinalizeMaxNanos = 0L;
@@ -950,6 +986,23 @@ public final class ApocBRServerTelemetry {
             builder.append("type").append(i).append("=").append(name);
             builder.append(",count").append(i).append("=").append(movingStartTypeCounts[i]);
         }
+        builder.append("}");
+        return builder.toString();
+    }
+
+    private static String serverMapUnloadDetailLog() {
+        StringBuilder builder = new StringBuilder(" serverMapUnloadDetail{");
+        for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
+            if (i > 0) builder.append(",");
+            builder.append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("Calls=").append(serverMapUnloadPhaseCalls[i]);
+            builder.append(",").append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("Units=").append(serverMapUnloadPhaseUnits[i]);
+            builder.append(",").append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("AvgMs=")
+                    .append(avgMs(serverMapUnloadPhaseNanos[i], serverMapUnloadPhaseCalls[i]));
+            builder.append(",").append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("MaxMs=")
+                    .append(ms(serverMapUnloadPhaseMaxNanos[i]));
+        }
+        builder.append(",movingObjects=").append(serverMapUnloadMovingObjects);
+        builder.append(",staticObjects=").append(serverMapUnloadStaticObjects);
         builder.append("}");
         return builder.toString();
     }

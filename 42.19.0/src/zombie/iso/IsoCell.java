@@ -2154,12 +2154,18 @@ public final class IsoCell {
             if (!(r instanceof IsoPlayer isoPlayer && !isoPlayer.isDead())) {
                 MovingObjectUpdateScheduler.instance.removeObject(r);
                 this.objectList.remove(r);
-                if (r.getCurrentSquare() != null) {
-                    r.getCurrentSquare().getMovingObjects().remove(r);
+                // ApocBR: async chunk retirement can clear an object's square
+                // between repeated getter calls.  Snapshot each square once so
+                // ObjectDeletionAddition skips already-detached objects instead
+                // of dereferencing a transient null.
+                IsoGridSquare currentSquare = r.getCurrentSquare();
+                if (currentSquare != null) {
+                    currentSquare.getMovingObjects().remove(r);
                 }
 
-                if (r.getLastSquare() != null) {
-                    r.getLastSquare().getMovingObjects().remove(r);
+                IsoGridSquare lastSquare = r.getLastSquare();
+                if (lastSquare != null) {
+                    lastSquare.getMovingObjects().remove(r);
                 }
             }
         }
@@ -2227,6 +2233,14 @@ public final class IsoCell {
     private void updateZombieVocals() {
         for (int n = 0; n < this.zombieList.size(); n++) {
             IsoZombie zombie = this.zombieList.get(n);
+            // ApocBR: async chunk retirement can leave a transient null slot in the
+            // zombie list while the main-thread object pass is still iterating it.
+            // Skip the missing entry; surviving zombies will update vocals on the
+            // next frame once the list stabilizes.
+            if (zombie == null) {
+                continue;
+            }
+
             zombie.updateVocalProperties();
         }
     }
@@ -2239,7 +2253,15 @@ public final class IsoCell {
     }
 
     private void ProcessStaticUpdaters() {
-        for (IsoObject obj : this.staticUpdaterObjectList) {
+        // ApocBR: async chunk retirement can mutate staticUpdaterObjectList
+        // while the main update pass is iterating it.  Iterate a snapshot to
+        // avoid ArrayList's fail-fast iterator aborting the frame.
+        ArrayList<IsoObject> staticUpdatersSnapshot = new ArrayList<>(this.staticUpdaterObjectList);
+        for (IsoObject obj : staticUpdatersSnapshot) {
+            if (obj == null) {
+                continue;
+            }
+
             try {
                 obj.update();
             } catch (Exception var4) {

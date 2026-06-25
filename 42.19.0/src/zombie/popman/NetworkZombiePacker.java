@@ -194,6 +194,13 @@ public class NetworkZombiePacker {
         if (!APOCBR_AUTH_TIERING) {
             for (int i = 0; i < zl.size(); i++) {
                 IsoZombie z = zl.get(i);
+                // ApocBR: async chunk retirement can leave transient null slots in
+                // the live zombie list.  Do not assign auth or propagate packets for
+                // a missing zombie; surviving entries will be processed next pass.
+                if (z == null) {
+                    continue;
+                }
+
                 if (z.getOwner() == null) this.lastAuthUnowned++;
                 this.updateAuthZombie(z, false);
             }
@@ -206,6 +213,10 @@ public class NetworkZombiePacker {
         // avoids frame-count starvation when the server is already under load.
         for (int i = 0; i < zl.size(); i++) {
             IsoZombie z = zl.get(i);
+            if (z == null) {
+                continue;
+            }
+
             if (z.getOwner() == null) {
                 this.lastAuthUnowned++;
             }
@@ -229,6 +240,10 @@ public class NetworkZombiePacker {
 
             IsoZombie z = zl.get(this.apocBrAuthCursor++);
             visited++;
+            if (z == null) {
+                continue;
+            }
+
             if (!this.isAuthUrgent(z)) {
                 this.updateAuthZombie(z, false);
             }
@@ -236,10 +251,18 @@ public class NetworkZombiePacker {
     }
 
     private boolean isAuthUrgent(IsoZombie zombie) {
+        if (zombie == null) {
+            return false;
+        }
+
         return zombie.getTarget() != null || zombie.getWrappedGrappleable().getGrappledBy() instanceof IsoPlayer;
     }
 
     private void updateAuthZombie(IsoZombie zombie, boolean urgent) {
+        if (zombie == null) {
+            return;
+        }
+
         IConnection previousOwner = zombie.getOwner();
         NetworkZombieManager.getInstance().updateAuth(zombie);
         this.lastAuthScanned++;
@@ -256,6 +279,10 @@ public class NetworkZombiePacker {
 
             while (!nzr.zombies.isEmpty()) {
                 IsoZombie z = nzr.zombies.poll();
+                if (z == null) {
+                    continue;
+                }
+
                 z.zombiePacket.set(z);
                 if (z.onlineId != -1) {
                     packet.sendQueue.add(z);
@@ -268,6 +295,10 @@ public class NetworkZombiePacker {
 
             for (int k = 0; k < this.zombiesProcessing.size(); k++) {
                 IsoZombie z = this.zombiesProcessing.get(k);
+                if (z == null) {
+                    continue;
+                }
+
                 if (z.getOwner() != null
                     && z.getOwner() != connection
                     && connection.RelevantTo(z.getX(), z.getY(), (connection.getRelevantRange() - 2) * 10)
