@@ -11,11 +11,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import zombie.core.PZForkJoinPool;
 import zombie.GameTime;
 import zombie.MapCollisionData;
 import zombie.ReanimatedPlayers;
@@ -64,8 +62,6 @@ import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehiclesDB2;
 import zombie.world.moddata.GlobalModData;
 import zombie.worldMap.network.WorldMapServer;
-import zombie.core.PZForkJoinPool;
-import java.util.concurrent.CompletableFuture;
 
 public class ServerMap {
     public boolean updateLosThisFrame;
@@ -871,42 +867,6 @@ public class ServerMap {
         return FINALIZE_BUDGET_NORMAL_NANOS;
     }
 
-    private static final int PARALLEL_CELL_THRESHOLD = 4;
-
-    /**
-     * Thread-safe overload of outsidePlayerInfluence: uses a pre-snapped
-     * connections
-     * list so worker threads do not read GameServer.udpEngine.connections
-     * concurrently.
-     */
-    private boolean outsidePlayerInfluence(ServerCell cell, List<UdpConnection> connSnapshot) {
-        int x1 = cell.wx * 64;
-        int y1 = cell.wy * 64;
-        int x2 = (cell.wx + 1) * 64;
-        int y2 = (cell.wy + 1) * 64;
-        for (int n = 0; n < connSnapshot.size(); n++) {
-            UdpConnection c = connSnapshot.get(n);
-            if (c.isRelevantTo(x1, y1))
-                return false;
-            if (c.isRelevantTo(x2, y1))
-                return false;
-            if (c.isRelevantTo(x2, y2))
-                return false;
-            if (c.isRelevantTo(x1, y2))
-                return false;
-        }
-        return true;
-    }
-
-    /**
-     * Result holder for the parallel partition phase.
-     */
-    private static final class PhaseAResult {
-        final List<ServerCell> toUpdate = new ArrayList<>();
-        final List<ServerCell> toUnload = new ArrayList<>();
-        final List<ServerCell> toCancel = new ArrayList<>();
-    }
-
     /**
      * Defers full ServerCell teardown so a burst of irrelevant cells cannot stall
      * one server frame.
@@ -986,179 +946,52 @@ public class ServerMap {
     public void postupdate() {
         final int cellCount = this.loadedCells.size();
 
-        // Phase AP (Parallel Partition): read-only classification on ForkJoinPool,
-        // then serial mutation (unloads and cancellations).
         long apocBrPhaseStart = System.nanoTime();
         ArrayList<ServerCell> cellsToUpdate = new ArrayList<>();
-
-        if (cellCount >= PARALLEL_CELL_THRESHOLD) {
-            // Snapshot for read-only access from worker threads
-            final Set<ServerCell> releventSnapshot = this.releventNow;
-            final ArrayList<UdpConnection> connSnapshot;
-            synchronized (GameServer.udpEngine.connections) {
-                connSnapshot = new ArrayList<>(GameServer.udpEngine.connections);
+        ArrayList<ServerCell> toUnload = new ArrayList<>();
+        for (int n = 0; n < this.loadedCells.size(); n++) {
+            ServerCell cell = this.loadedCells.get(n);
+            boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
+            if (cell.isUnloading()) {
+                continue;
             }
 
-            int numWorkers = Math.min(
-                    Math.max(1, cellCount / 20 + 1),
-                    Runtime.getRuntime().availableProcessors());
-            int chunkSize = (cellCount + numWorkers - 1) / numWorkers;
-
-            @SuppressWarnings("unchecked")
-            CompletableFuture<PhaseAResult>[] classifyFutures = new CompletableFuture[numWorkers];
-
-            for (int t = 0; t < numWorkers; t++) {
-                final int start = t * chunkSize;
-                final int end = Math.min(start + chunkSize, cellCount);
-                if (start >= end) {
-                    classifyFutures[t] = CompletableFuture.completedFuture(null);
-                    continue;
-                }
-                classifyFutures[t] = CompletableFuture.supplyAsync(() -> {
-                    PhaseAResult r = new PhaseAResult();
-                    for (int i = start; i < end; i++) {
-                        ServerCell cell = this.loadedCells.get(i);
-                        boolean shouldBeLoaded = releventSnapshot.contains(cell)
-                                || !this.outsidePlayerInfluence(cell, connSnapshot);
-                        if (cell.isUnloading()) {
-                            continue;
-                        }
-
-                        if (!cell.isPublished()) {
-                            if (!shouldBeLoaded && !cell.cancelLoading) {
-                                r.toCancel.add(cell);
-                            }
-                        } else if (!shouldBeLoaded) {
-                            r.toUnload.add(cell);
-                        } else {
-                            r.toUpdate.add(cell);
-                        }
+            if (!cell.isPublished()) {
+                if (!shouldBeLoaded && !cell.cancelLoading) {
+                    if (mapLoading) {
+                        DebugLog.log(
+                                DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy
+                                        + " cell.startedLoading=" + cell.startedLoading);
                     }
-                    return r;
-                }, PZForkJoinPool.commonPool());
-            }
-
-            // Collect results
-            PhaseAResult merged = new PhaseAResult();
-            for (int t = 0; t < numWorkers; t++) {
-                PhaseAResult r = classifyFutures[t].join();
-                if (r == null)
-                    continue;
-                merged.toUpdate.addAll(r.toUpdate);
-                merged.toUnload.addAll(r.toUnload);
-                merged.toCancel.addAll(r.toCancel);
-            }
-
-            ApocBRServerTelemetry.recordWorldSection("serverMapPartition", System.nanoTime() - apocBrPhaseStart);
-
-            // Serial mutation: cancellations (flag-setting, no pathfind pause needed)
-            for (ServerCell cell : merged.toCancel) {
-                if (mapLoading) {
-                    DebugLog.log(
-                            DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy
-                                    + " cell.startedLoading=" + cell.startedLoading);
+                    if (!cell.startedLoading)
+                        cell.loadingWasCancelled = true;
+                    cell.cancelLoading = true;
                 }
-                if (!cell.startedLoading)
-                    cell.loadingWasCancelled = true;
-                cell.cancelLoading = true;
+            } else if (!shouldBeLoaded) {
+                toUnload.add(cell);
+            } else {
+                cellsToUpdate.add(cell);
             }
-
-            this.processDeferredUnloads(merged.toUpdate, merged.toUnload);
-            cellsToUpdate = new ArrayList<>(merged.toUpdate);
-        } else {
-            // Serial path for small cell counts (no parallelism overhead)
-            ArrayList<ServerCell> toUnload = new ArrayList<>();
-            for (int n = 0; n < this.loadedCells.size(); n++) {
-                ServerCell cell = this.loadedCells.get(n);
-                boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
-                if (cell.isUnloading()) {
-                    continue;
-                }
-
-                if (!cell.isPublished()) {
-                    if (!shouldBeLoaded && !cell.cancelLoading) {
-                        if (mapLoading) {
-                            DebugLog.log(
-                                    DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy
-                                            + " cell.startedLoading=" + cell.startedLoading);
-                        }
-                        if (!cell.startedLoading)
-                            cell.loadingWasCancelled = true;
-                        cell.cancelLoading = true;
-                    }
-                } else if (!shouldBeLoaded) {
-                    toUnload.add(cell);
-                } else {
-                    cellsToUpdate.add(cell);
-                }
-            }
-            this.processDeferredUnloads(cellsToUpdate, toUnload);
-            ApocBRServerTelemetry.recordWorldSection("serverMapPartition", System.nanoTime() - apocBrPhaseStart);
         }
+        this.processDeferredUnloads(cellsToUpdate, toUnload);
+        ApocBRServerTelemetry.recordWorldSection("serverMapPartition", System.nanoTime() - apocBrPhaseStart);
 
-        // Phase B+C (parallel, on ForkJoinPool):
+        long apocBrSequentialStart = System.nanoTime();
         int updatedCount = cellsToUpdate.size();
-        if (updatedCount >= PARALLEL_CELL_THRESHOLD) {
-            final ArrayList<ServerCell> keepCells = new ArrayList<>(cellsToUpdate);
-            int numWorkers = Math.min(
-                    Math.max(1, keepCells.size() / 20 + 1),
-                    Runtime.getRuntime().availableProcessors());
-            int chunkSize = (keepCells.size() + numWorkers - 1) / numWorkers;
-
-            @SuppressWarnings("unchecked")
-            CompletableFuture<Void>[] allFutures = new CompletableFuture[numWorkers + 1];
-
-            long apocBrCellStart = System.nanoTime();
-            for (int t = 0; t < numWorkers; t++) {
-                final int start = t * chunkSize;
-                final int end = Math.min(start + chunkSize, keepCells.size());
-                if (start >= end) {
-                    allFutures[t] = CompletableFuture.completedFuture(null);
-                    continue;
-                }
-                allFutures[t] = CompletableFuture.runAsync(() -> {
-                    for (int i = start; i < end; i++)
-                        keepCells.get(i).update();
-                }, PZForkJoinPool.commonPool());
-            }
-
-            allFutures[numWorkers] = CompletableFuture.runAsync(() -> {
-                try {
-                    long apocBrZombieNetworkStart = System.nanoTime();
-                    NetworkZombiePacker.getInstance().postupdate();
-                    ApocBRServerTelemetry.recordZombieNetworkPost(
-                            IsoWorld.instance.currentCell.getZombieList().size(),
-                            System.nanoTime() - apocBrZombieNetworkStart);
-                } catch (Throwable t) {
-                    DebugType.General.printException(t, LogSeverity.Error);
-                }
-                try {
-                    ServerCell.chunkLoader.updateSaved();
-                } catch (Throwable t) {
-                    DebugType.General.printException(t, LogSeverity.Error);
-                }
-            }, PZForkJoinPool.commonPool());
-
-            // Wait time includes both cell updates and misc tasks running in parallel
-            CompletableFuture.allOf(allFutures).join();
-            ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", System.nanoTime() - apocBrCellStart);
-            ApocBRServerTelemetry.recordServerMapCellsUpdated(keepCells.size(), numWorkers);
-        } else {
-            long apocBrSequentialStart = System.nanoTime();
-            for (int i = 0; i < updatedCount; i++)
-                cellsToUpdate.get(i).update();
-            long cellMs = System.nanoTime() - apocBrSequentialStart;
-            ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", cellMs);
-            ApocBRServerTelemetry.recordServerMapCellsUpdated(updatedCount, 0);
-
-            apocBrSequentialStart = System.nanoTime();
-            long apocBrZombieNetworkStart = System.nanoTime();
-            NetworkZombiePacker.getInstance().postupdate();
-            ApocBRServerTelemetry.recordZombieNetworkPost(
-                    IsoWorld.instance.currentCell.getZombieList().size(), System.nanoTime() - apocBrZombieNetworkStart);
-            ServerCell.chunkLoader.updateSaved();
-            ApocBRServerTelemetry.recordWorldSection("serverMapMiscTasks", System.nanoTime() - apocBrSequentialStart);
+        for (int i = 0; i < updatedCount; i++) {
+            cellsToUpdate.get(i).update();
         }
+        long cellMs = System.nanoTime() - apocBrSequentialStart;
+        ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", cellMs);
+        ApocBRServerTelemetry.recordServerMapCellsUpdated(updatedCount, 0);
+
+        apocBrSequentialStart = System.nanoTime();
+        long apocBrZombieNetworkStart = System.nanoTime();
+        NetworkZombiePacker.getInstance().postupdate();
+        ApocBRServerTelemetry.recordZombieNetworkPost(
+                IsoWorld.instance.currentCell.getZombieList().size(), System.nanoTime() - apocBrZombieNetworkStart);
+        ServerCell.chunkLoader.updateSaved();
+        ApocBRServerTelemetry.recordWorldSection("serverMapMiscTasks", System.nanoTime() - apocBrSequentialStart);
     }
 
     public void physicsCheck(int x, int y) {
