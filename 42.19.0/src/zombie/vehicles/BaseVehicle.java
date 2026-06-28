@@ -8766,38 +8766,23 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     }
 
     private void callLuaVoid(String functionName, Object arg1, Object arg2) {
-        if (functionName != null) {
-            long apocBrVehicleLuaStart = System.nanoTime();
-            try {
-                // ApocBR: vehicle creation can happen from async chunk/cell work.
-                // Queue Lua hooks for the main-thread drain instead of touching
-                // Kahlua from the worker thread.
-                ApocBRMainThreadLuaQueue.enqueueVoid(functionName, arg1, arg2);
-            } finally {
-                ApocBRServerTelemetry.recordVehiclePartLua(System.nanoTime() - apocBrVehicleLuaStart);
-            }
+        Object functionObj = LuaManager.getFunctionObject(functionName);
+        if (functionObj != null) {
+            LuaManager.caller.protectedCallVoid(LuaManager.thread, functionObj, arg1, arg2);
         }
     }
 
     private void callLuaVoid(String functionName, Object arg1) {
-        if (functionName != null) {
-            long apocBrVehicleLuaStart = System.nanoTime();
-            try {
-                ApocBRMainThreadLuaQueue.enqueueVoid(functionName, arg1);
-            } finally {
-                ApocBRServerTelemetry.recordVehiclePartLua(System.nanoTime() - apocBrVehicleLuaStart);
-            }
+        Object functionObj = LuaManager.getFunctionObject(functionName);
+        if (functionObj != null) {
+            LuaManager.caller.protectedCallVoid(LuaManager.thread, functionObj, arg1);
         }
     }
 
     private void callLuaVoid(String functionName, Object arg1, Object arg2, Object arg3) {
-        if (functionName != null) {
-            long apocBrVehicleLuaStart = System.nanoTime();
-            try {
-                ApocBRMainThreadLuaQueue.enqueueVoid(functionName, arg1, arg2, arg3);
-            } finally {
-                ApocBRServerTelemetry.recordVehiclePartLua(System.nanoTime() - apocBrVehicleLuaStart);
-            }
+        Object functionObj = LuaManager.getFunctionObject(functionName);
+        if (functionObj != null) {
+            LuaManager.caller.protectedCallVoid(LuaManager.thread, functionObj, arg1, arg2, arg3);
         }
     }
 

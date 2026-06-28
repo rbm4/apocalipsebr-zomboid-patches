@@ -98,7 +98,7 @@ public class ServerMap {
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
     // Main-thread-only queue. LinkedHashMap keeps the first irrelevant cell first.
-    private static final long DEFERRED_UNLOAD_GRACE_MS = 5000L;
+    private static final long DEFERRED_UNLOAD_GRACE_MS = 20000L;
     private static final int MAX_DEFERRED_UNLOADS_PER_TICK = 1;
     private final LinkedHashMap<ServerMap.ServerCell, Long> pendingUnloads = new LinkedHashMap<>();
     // Main-thread load/unload budgets. RecalcAll2(), doLoadGridsquare() and
