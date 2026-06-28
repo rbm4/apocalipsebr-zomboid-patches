@@ -375,13 +375,20 @@ public final class IsoChunk {
                         }
                     }
 
-                    if (this.floorBloodSplats.isFull()) {
-                        IsoFloorBloodSplat b2 = this.floorBloodSplats.removeFirst();
-                        b2.fade = PerformanceSettings.getLockFPS() * 5;
-                        this.floorBloodSplatsFade.add(b2);
-                    }
+                    synchronized (this.floorBloodSplats) {
+                        if (this.floorBloodSplats.isFull()) {
+                            try {
+                                IsoFloorBloodSplat b2 = this.floorBloodSplats.removeFirst();
+                                if (b2 != null) {
+                                    b2.fade = PerformanceSettings.getLockFPS() * 5;
+                                    this.floorBloodSplatsFade.add(b2);
+                                }
+                            } catch (NoSuchElementException ignored) {
+                            }
+                        }
 
-                    this.floorBloodSplats.add(b);
+                        this.floorBloodSplats.add(b);
+                    }
                     if (PerformanceSettings.fboRenderChunk && Thread.currentThread() == GameWindow.gameThread) {
                         this.invalidateRenderChunkLevel(sq.z, 1L);
                     }
@@ -3621,7 +3628,9 @@ public final class IsoChunk {
                         this.nextSplatIndex = s.index % 10;
                     }
 
-                    this.floorBloodSplats.add(s);
+                    synchronized (this.floorBloodSplats) {
+                        this.floorBloodSplats.add(s);
+                    }
                 }
             }
 
@@ -4469,20 +4478,23 @@ public final class IsoChunk {
             }
         }
 
-        int count = Math.min(1000, this.floorBloodSplats.size());
-        int start = Math.max(0, this.floorBloodSplats.size() - count);
-        ArrayList<IsoFloorBloodSplat> apocBrFloorBloodSplats = new ArrayList<>(count);
-        for (int n = start; n < start + count; n++) {
-            try {
-                IsoFloorBloodSplat s = this.floorBloodSplats.get(n);
-                if (s != null) {
-                    apocBrFloorBloodSplats.add(s);
+        ArrayList<IsoFloorBloodSplat> apocBrFloorBloodSplats = new ArrayList<>();
+        synchronized (this.floorBloodSplats) {
+            int count = Math.min(1000, this.floorBloodSplats.size());
+            int start = Math.max(0, this.floorBloodSplats.size() - count);
+            apocBrFloorBloodSplats.ensureCapacity(count);
+            for (int n = start; n < start + count; n++) {
+                try {
+                    IsoFloorBloodSplat s = this.floorBloodSplats.get(n);
+                    if (s != null) {
+                        apocBrFloorBloodSplats.add(s);
+                    }
+                } catch (NoSuchElementException ignored) {
                 }
-            } catch (NoSuchElementException ignored) {
             }
         }
 
-        count = apocBrFloorBloodSplats.size();
+        int count = apocBrFloorBloodSplats.size();
         int positionMinMaxLevel = bb.position();
         bb.putInt(this.maxLevel);
         bb.putInt(this.minLevel);
@@ -5296,8 +5308,10 @@ public final class IsoChunk {
         this.randomId = 0;
         this.revision = 0L;
         this.nextSplatIndex = 0;
-        this.floorBloodSplats.clear();
-        this.floorBloodSplatsFade.clear();
+        synchronized (this.floorBloodSplats) {
+            this.floorBloodSplats.clear();
+            this.floorBloodSplatsFade.clear();
+        }
         this.jobType = IsoChunk.JobType.None;
 
         for (int z = this.minLevel; z <= this.maxLevel; z++) {
