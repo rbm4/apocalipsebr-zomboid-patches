@@ -22,7 +22,6 @@ import java.util.NoSuchElementException;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.zip.CRC32;
@@ -126,7 +125,6 @@ import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehicleType;
 import zombie.vehicles.VehiclesDB2;
 import zombie.vispoly.VisibilityPolygon2;
-import zombie.core.PZForkJoinPool;
 
 @UsedFromLua
 public final class IsoChunk {
@@ -3205,21 +3203,7 @@ public final class IsoChunk {
     }
 
     public void removeFromWorld() {
-        this.removeFromWorldAsyncJob();
-    }
-
-    public CompletableFuture<IsoChunk> removeFromWorldAsyncJob() {
-        return CompletableFuture.supplyAsync(() -> {
-            try {
-                this.removeFromWorldAsync();
-                return this;
-            } catch (Throwable t) {
-                ExceptionLogger.logException(t);
-                throw new RuntimeException(t);
-            }
-        }, PZForkJoinPool.commonPool()).whenComplete((chunk, throwable) ->
-            zombie.ApocBRServerTelemetry.recordAnimalUnloadJob(throwable == null)
-        );
+        this.removeFromWorldAsync();
     }
 
     public void removeFromWorldAsync() {

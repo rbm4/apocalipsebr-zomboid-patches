@@ -269,7 +269,6 @@ $ClassFiles = @(
     "zombie\network\ServerMap.class",
     "zombie\network\ServerMap`$DistToCellComparator.class",
     "zombie\network\ServerMap`$EThreadCommand.class",
-    "zombie\network\ServerMap`$CompletedChunkUnload.class",
     "zombie\network\ServerMap`$PhaseAResult.class",
     "zombie\network\ServerMap`$ServerCell.class",
     "zombie\network\ServerMap`$ServerCell`$LoadState.class",
