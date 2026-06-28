@@ -17,7 +17,6 @@ import zombie.SandboxOptions;
 import zombie.SystemDisabler;
 import zombie.UsedFromLua;
 import zombie.ZomboidGlobals;
-import zombie.Lua.ApocBRMainThreadLuaQueue;
 import zombie.Lua.LuaManager;
 import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
@@ -294,11 +293,6 @@ public final class ItemContainer {
                 if (functionName != null) {
                     Object functionObj = LuaManager.getFunctionObject(functionName);
                     if (functionObj != null) {
-                        if (!ApocBRMainThreadLuaQueue.isMainThread()) {
-                            ApocBRMainThreadLuaQueue.enqueueBoolean(functionObj, this, item);
-                            return true;
-                        }
-
                         Boolean accept = LuaManager.caller.protectedCallBoolean(LuaManager.thread, functionObj, this, item);
                         if (accept != Boolean.TRUE) {
                             return false;

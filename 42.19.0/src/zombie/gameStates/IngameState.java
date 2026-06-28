@@ -35,7 +35,6 @@ import zombie.WorldSoundManager;
 import zombie.ZombieSpawnRecorder;
 import zombie.ZomboidFileSystem;
 import zombie.ZomboidGlobals;
-import zombie.Lua.ApocBRMainThreadLuaQueue;
 import zombie.Lua.LuaEventManager;
 import zombie.Lua.LuaHookManager;
 import zombie.Lua.LuaManager;
@@ -563,8 +562,7 @@ public final class IngameState extends GameState {
     public void UpdateStuff() {
         GameClient.ingame = true;
         long apocBrStateSectionStart = System.nanoTime();
-        ApocBRMainThreadLuaQueue.drain();
-        ApocBRServerTelemetry.recordStateUpdateSection("luaMainQueue", System.nanoTime() - apocBrStateSectionStart);
+        ApocBRServerTelemetry.recordStateUpdateSection("luaMainQueue", 0L);
         this.saveDelay = this.saveDelay + GameTime.instance.getMultiplier();
         if (this.saveDelay / 60.0F > 30.0F) {
             this.saveDelay = 0.0F;

@@ -189,7 +189,7 @@ public final class DebugOptions implements IDebugOptionGroup {
     public final BooleanDebugOption threadLighting = this.newOption("Threading.Lighting", false);
     public final BooleanDebugOption lightingSplitUpdate = this.newDebugOnlyOption("Lighting.SplitUpdate", false);
     // ApocBR patch: was false — offloads FMOD ambient emitters to ForkJoinPool
-    public final BooleanDebugOption threadAmbient = this.newOption("Threading.Ambient", true);
+    public final BooleanDebugOption threadAmbient = this.newOption("Threading.Ambient", false);
     public final BooleanDebugOption displayVisibilityPolygon = this.newDebugOnlyOption("Visibility.DisplayLines", false);
     public final BooleanDebugOption useNewVisibility = this.newOption("Visibility.UseNew", true);
     public final BooleanDebugOption previewTiles = this.newDebugOnlyOption("Visibility.PreviewTiles", false);
@@ -204,7 +204,7 @@ public final class DebugOptions implements IDebugOptionGroup {
     // ApocBR patch: was false — offloads all AnimationPlayer.Update() calls to ForkJoinPool
     // This is the primary fix for CPU-bound lag with 30+ vehicles or many NPCs active.
     // MovingObjectUpdateScheduler.postupdate() distributes across (availableProcessors-1) threads.
-    public final BooleanDebugOption threadAnimation = this.newOption("Threading.Animation", true);
+    public final BooleanDebugOption threadAnimation = this.newOption("Threading.Animation", false);
     public final BooleanDebugOption delayObjectRender = this.newOption("Rendering.DelayObjects", false);
     public final DebugOptions.Checks checks = this.newOptionGroup(new DebugOptions.Checks());
     public final IsoSprite isoSprite = this.newOptionGroup(new IsoSprite());
@@ -412,9 +412,6 @@ public final class DebugOptions implements IDebugOptionGroup {
         // ApocBR patch: force-enable threading after loading so a cached ini
         // with old false values cannot re-disable these options.
         // threadWorld intentionally left false — calls Lua from ForkJoinPool (unsafe).
-        this.threadAnimation.setValue(true);
-        this.threadAmbient.setValue(true);
-        this.threadModelSlotInit.setValue(true);
     }
 
     private void testThreadCrashInternal(int idx) {
