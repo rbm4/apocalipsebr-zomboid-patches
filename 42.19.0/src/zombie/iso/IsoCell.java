@@ -2663,6 +2663,10 @@ public final class IsoCell {
         return this.objectList;
     }
 
+    public ArrayList<IsoMovingObject> getObjectArrayList() {
+        return new ArrayList<>(this.objectList);
+    }
+
     @UsedFromLua
     public List<IsoMovingObject> getObjectListForLua() {
         return this.objectList.stream().toList();

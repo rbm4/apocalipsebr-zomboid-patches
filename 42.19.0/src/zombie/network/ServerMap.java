@@ -10,10 +10,8 @@ import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import zombie.ApocBRServerTelemetry;
 import zombie.GameTime;
 import zombie.MapCollisionData;
 import zombie.ReanimatedPlayers;
@@ -36,7 +34,6 @@ import zombie.debug.DebugLog;
 import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.entity.GameEntityManager;
-import zombie.ApocBRServerTelemetry;
 import zombie.globalObjects.SGlobalObjects;
 import zombie.iso.InstanceTracker;
 import zombie.iso.IsoChunk;
@@ -50,7 +47,6 @@ import zombie.iso.Vector2;
 import zombie.iso.Vector3;
 import zombie.iso.WorldGenerate;
 import zombie.iso.worldgen.WorldGenParams;
-import zombie.network.ServerMap.ServerCell;
 import zombie.network.id.ObjectIDManager;
 import zombie.network.packets.INetworkPacket;
 import zombie.pathfind.nativeCode.PathfindNative;
@@ -82,26 +78,19 @@ public class ServerMap {
     private static final ServerMap.WorkerThread[] workerThreads = new ServerMap.WorkerThread[4];
     public boolean queuedSaveAll;
     public boolean queuedQuit;
-    private volatile boolean asyncSaveRunning = false; // PATCH-E: guards against overlapping background saves
     public static ServerMap instance = new ServerMap();
     public ServerMap.ServerCell[] cellMap;
     public ArrayList<ServerMap.ServerCell> loadedCells = new ArrayList<>();
-    public Set<ServerMap.ServerCell> releventNow = ConcurrentHashMap.newKeySet();
+    public ArrayList<ServerMap.ServerCell> releventNow = new ArrayList<>();
     int width;
     int height;
     IsoMetaGrid grid;
     ArrayList<ServerMap.ServerCell> toLoad = new ArrayList<>();
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
-    // Main-thread-only queue. LinkedHashMap keeps the first irrelevant cell first.
     private static final long DEFERRED_UNLOAD_GRACE_MS = 20000L;
     private static final int MAX_DEFERRED_UNLOADS_PER_TICK = 1;
-    private final LinkedHashMap<ServerMap.ServerCell, Long> pendingUnloads = new LinkedHashMap<>();
-    // Main-thread load/unload budgets. RecalcAll2(), doLoadGridsquare() and
-    // removeFromWorld() all mutate live world state and must not cross thread
-    // ownership boundaries.
     private static final long MAIN_THREAD_LOAD_BUDGET_NANOS = 50_000_000L;
-    private static final long MAIN_THREAD_UNLOAD_BUDGET_NANOS = 50_000_000L;
     private static final long FINALIZE_BUDGET_NORMAL_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
     private static final long FINALIZE_BUDGET_ELEVATED_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
     private static final long FINALIZE_BUDGET_HIGH_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
@@ -110,11 +99,8 @@ public class ServerMap {
     private static final long FINALIZE_FRAME_HIGH_NANOS = 140_000_000L;
     private static final long FINALIZE_FRAME_CRITICAL_NANOS = 250_000_000L;
     private static final long FINALIZE_MAX_WAIT_MS = 1500L;
+    private final LinkedHashMap<ServerMap.ServerCell, Long> pendingUnloads = new LinkedHashMap<>();
     private final IdentityHashMap<ServerMap.ServerCell, Long> finalizeReadySince = new IdentityHashMap<>();
-    // Recalc workers stop before doLoadGridsquare(): it can execute Lua item
-    // distribution callbacks and therefore must run on the main thread.
-    private final ConcurrentLinkedQueue<ServerMap.ServerCell> readyForMainThreadGridLoad = new ConcurrentLinkedQueue<>();
-    private final ArrayList<ServerMap.ServerCell> activeUnloads = new ArrayList<>();
     long lastTick;
 
     public short getUniqueZombieId() {
@@ -265,8 +251,7 @@ public class ServerMap {
 
                 if (mapLoading) {
                     DebugType.MapLoading
-                            .debugln("Loading cell: " + cell.wx + ", " + cell.wy + " (" + this.toWorldCellX(cell.wx)
-                                    + ", " + this.toWorldCellY(cell.wy) + ")");
+                        .debugln("Loading cell: " + cell.wx + ", " + cell.wy + " (" + this.toWorldCellX(cell.wx) + ", " + this.toWorldCellY(cell.wy) + ")");
                 }
 
                 this.cellMap[y * this.width + x] = cell;
@@ -316,8 +301,8 @@ public class ServerMap {
         y = PZMath.coorddivision(y, 64);
         x -= this.getMinX();
         y -= this.getMinY();
-        int cx = PZMath.fastfloor((float) x);
-        int cy = PZMath.fastfloor((float) y);
+        int cx = PZMath.fastfloor((float)x);
+        int cy = PZMath.fastfloor((float)y);
         int lx = wx * 8 % 64;
         int ly = wy * 8 % 64;
         int dist = chunkGridWidth / 2 * 8;
@@ -402,16 +387,6 @@ public class ServerMap {
     }
 
     public void QueuedSaveAll(boolean quit) {
-        // PATCH-E: wait for any in-progress background save before running the blocking
-        // quit-save
-        if (quit) {
-            while (this.asyncSaveRunning) {
-                try {
-                    Thread.sleep(50L);
-                } catch (InterruptedException ignored) {
-                }
-            }
-        }
         this.saveQuitFlag = quit;
         this.saveClientPaused = false;
         this.saveStartTime = System.nanoTime();
@@ -464,88 +439,10 @@ public class ServerMap {
         DebugLog.log("Saving took " + (System.nanoTime() - this.saveStartTime) / 1000000.0 + " ms");
     }
 
-    // PATCH-E: background save implementation - called from a daemon thread
-    // ServerPlayerDB.save() is intentionally excluded here: it was called on the
-    // main thread
-    // before this thread started (see E-2) to avoid iterating the live connection
-    // list off-thread.
-    private void runAsyncSave(ArrayList<ServerMap.ServerCell> cells) {
-        long saveStart = System.nanoTime();
-        System.out.println("[PATCH-E] Background save started (" + cells.size() + " cells)");
-        try {
-            if (!GameServer.softReset && cells.size() >= 10) {
-                for (int i = 0; i < 4; i++) {
-                    workerThreads[i] = new WorkerThread();
-                    workerThreads[i].setDaemon(true);
-                    workerThreads[i].start();
-                }
-                for (int n = 0; n < cells.size(); n++) {
-                    workerThreads[n % 4].putCommand(ServerMap.EThreadCommand.SaveCell, cells.get(n));
-                    cells.get(n).UpdateVehicle();
-                }
-                for (int i = 0; i < 4; i++) {
-                    workerThreads[i].putCommand(ServerMap.EThreadCommand.Quit, null);
-                }
-                while (true) {
-                    boolean running = false;
-                    for (int i = 0; i < 4; i++) {
-                        if (!workerThreads[i].quit) {
-                            running = true;
-                            break;
-                        }
-                    }
-                    if (!running) {
-                        Arrays.fill(workerThreads, null);
-                        ServerMap.ServerCell.chunkLoader.updateSaved();
-                        break;
-                    }
-                    ServerMap.ServerCell.chunkLoader.updateSaved();
-                    try {
-                        Thread.sleep(10L);
-                    } catch (InterruptedException ignored) {
-                    }
-                }
-            } else {
-                for (ServerMap.ServerCell cell : cells) {
-                    cell.Save(false);
-                    cell.UpdateVehicle();
-                }
-            }
-            this.grid.save();
-            ServerMap.ServerCell.chunkLoader.saveLater(GameTime.instance);
-            ReanimatedPlayers.instance.saveReanimatedPlayers();
-            AnimalPopulationManager.getInstance().save();
-            MapCollisionData.instance.save();
-            SGlobalObjects.save();
-            WorldGenParams.INSTANCE.save();
-            InstanceTracker.save();
-            MetaTracker.save();
-            try {
-                ZomboidRadio.getInstance().Save();
-            } catch (Exception e) {
-                DebugType.General.printException(e, LogSeverity.Error);
-            }
-            try {
-                GlobalModData.instance.save();
-            } catch (Exception e) {
-                DebugType.General.printException(e, LogSeverity.Error);
-            }
-            GameEntityManager.Save();
-            WorldMapServer.instance.writeSavefile();
-        } catch (Exception e) {
-            DebugType.General.printException(e, LogSeverity.Error);
-        }
-        System.out.println(
-                "[PATCH-E] Background save finished in " + (System.nanoTime() - saveStart) / 1000000.0 + " ms");
-    }
-
     public void preupdate() {
-        long preupdateStartNanos = System.nanoTime();
-        long previousFrameNanos = this.lastTick == 0L ? 0L : preupdateStartNanos - this.lastTick;
-        this.lastTick = preupdateStartNanos;
+        long previousTick = this.lastTick;
+        this.lastTick = System.nanoTime();
         mapLoading = DebugType.MapLoading.isEnabled();
-        this.publishReadyCells(previousFrameNanos);
-        this.processActiveUnloads();
 
         for (int i = 0; i < this.toLoad.size(); i++) {
             ServerMap.ServerCell cell = this.toLoad.get(i);
@@ -564,6 +461,7 @@ public class ServerMap {
                 this.releventNow.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
                 this.finalizeReadySince.remove(cell);
+                this.pendingUnloads.remove(cell);
                 this.toLoad.remove(i--);
             }
         }
@@ -585,11 +483,12 @@ public class ServerMap {
                 this.releventNow.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
                 this.finalizeReadySince.remove(cell);
+                this.pendingUnloads.remove(cell);
                 this.toLoad.remove(cell);
             }
         }
 
-        for (int ixx = 0; ixx < ServerMap.ServerCell.loaded2.size(); ixx++) {
+        for (int ixx = ServerMap.ServerCell.loaded2.size() - 1; ixx >= 0; ixx--) {
             ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(ixx);
             if (cell.cancelLoading) {
                 if (mapLoading) {
@@ -604,8 +503,9 @@ public class ServerMap {
                 this.cellMap[cx + cy * this.width] = null;
                 this.loadedCells.remove(cell);
                 this.releventNow.remove(cell);
-                ServerMap.ServerCell.loaded2.remove(cell);
+                ServerMap.ServerCell.loaded2.remove(ixx);
                 this.finalizeReadySince.remove(cell);
+                this.pendingUnloads.remove(cell);
                 this.toLoad.remove(cell);
             }
         }
@@ -642,7 +542,86 @@ public class ServerMap {
             }
 
             ServerMap.ServerCell.loaded.clear();
-            this.finalizeReadyCells(previousFrameNanos);
+            long nowMs = System.currentTimeMillis();
+            int readyBeforeDrain = ServerMap.ServerCell.loaded2.size();
+            ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
+            int received = 0;
+            for (int i = readyBeforeDrain; i < ServerMap.ServerCell.loaded2.size(); i++) {
+                ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(i);
+                if (!this.finalizeReadySince.containsKey(cell)) {
+                    this.finalizeReadySince.put(cell, nowMs);
+                    received++;
+                }
+            }
+
+            for (int i = ServerMap.ServerCell.loaded2.size() - 1; i >= 0; i--) {
+                ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(i);
+                if (cell.cancelLoading) {
+                    ServerMap.ServerCell.loaded2.remove(i);
+                    this.finalizeReadySince.remove(cell);
+                }
+            }
+
+            int finalized = 0;
+            long finalizeNanos = 0L;
+            long finalizeMaxNanos = 0L;
+            long previousFrameNanos = previousTick == 0L ? 0L : Math.max(0L, this.lastTick - previousTick);
+            long budgetNanos = this.getFinalizeBudgetNanos(previousFrameNanos);
+            if (!ServerMap.ServerCell.loaded2.isEmpty()) {
+                distToCellComparator.init();
+                ServerMap.ServerCell.loaded2.sort(distToCellComparator);
+
+                int oldestIndex = -1;
+                long oldestQueuedAt = Long.MAX_VALUE;
+                for (int i = 0; i < ServerMap.ServerCell.loaded2.size(); i++) {
+                    Long queuedAt = this.finalizeReadySince.get(ServerMap.ServerCell.loaded2.get(i));
+                    if (queuedAt != null && nowMs - queuedAt >= FINALIZE_MAX_WAIT_MS && queuedAt < oldestQueuedAt) {
+                        oldestQueuedAt = queuedAt;
+                        oldestIndex = i;
+                    }
+                }
+
+                if (oldestIndex > 0) {
+                    ServerMap.ServerCell oldest = ServerMap.ServerCell.loaded2.remove(oldestIndex);
+                    ServerMap.ServerCell.loaded2.add(0, oldest);
+                }
+
+                try {
+                    ServerLOS.instance.suspend();
+                    long finalizeStart = System.nanoTime();
+
+                    while (!ServerMap.ServerCell.loaded2.isEmpty()) {
+                        if (finalized > 0 && System.nanoTime() - finalizeStart >= budgetNanos) {
+                            break;
+                        }
+
+                        ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.remove(0);
+                        long cellStart = System.nanoTime();
+                        if (cell.Load2()) {
+                            long cellNanos = System.nanoTime() - cellStart;
+                            finalizeNanos += cellNanos;
+                            finalizeMaxNanos = Math.max(finalizeMaxNanos, cellNanos);
+                            this.finalizeReadySince.remove(cell);
+                            this.toLoad.remove(cell);
+                            finalized++;
+                        }
+                    }
+                } finally {
+                    ServerLOS.instance.resume();
+                }
+            }
+
+            long oldestAgeMs = 0L;
+            for (ServerMap.ServerCell cell : ServerMap.ServerCell.loaded2) {
+                Long queuedAt = this.finalizeReadySince.get(cell);
+                if (queuedAt != null) {
+                    oldestAgeMs = Math.max(oldestAgeMs, nowMs - queuedAt);
+                }
+            }
+
+            ApocBRServerTelemetry.recordServerMapLoadFinalize(
+                ServerMap.ServerCell.loaded2.size(), received, finalized, finalizeNanos, finalizeMaxNanos, oldestAgeMs, budgetNanos, previousFrameNanos
+            );
         }
 
         int saveWorldEveryMinutes = ServerOptions.instance.saveWorldEveryMinutes.getValue();
@@ -656,24 +635,7 @@ public class ServerMap {
 
         if (this.queuedSaveAll && !ZipBackup.isRunning()) {
             this.queuedSaveAll = false;
-            if (!this.asyncSaveRunning) { // PATCH-E: non-blocking periodic save
-                this.asyncSaveRunning = true;
-                // ServerPlayerDB.save() iterates the live connection list - must run on the
-                // main thread
-                ServerPlayerDB.getInstance().save();
-                final ArrayList<ServerMap.ServerCell> cellsSnapshot = new ArrayList<>(this.loadedCells);
-                final Thread saveThread = new Thread(() -> {
-                    try {
-                        this.runAsyncSave(cellsSnapshot);
-                    } finally {
-                        this.asyncSaveRunning = false;
-                    }
-                }, "ServerMap-AsyncSave");
-                saveThread.setDaemon(true);
-                saveThread.start();
-            } else {
-                System.out.println("[PATCH-E] Skipping periodic save: previous async save still running");
-            }
+            this.QueuedSaveAll(false);
         }
 
         if (this.queuedQuit) {
@@ -691,237 +653,126 @@ public class ServerMap {
         }
     }
 
-    /**
-     * Commits worker-loaded cells to the live world on the main thread. RecalcAll2()
-     * and grid-load publication mutate shared world state, so this path is
-     * time-sliced instead of dispatched to worker threads.
-     */
-    private void finalizeReadyCells(long previousFrameNanos) {
-        long nowMs = System.currentTimeMillis();
-        int readyBeforeDrain = ServerMap.ServerCell.loaded2.size();
-        ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
-        int received = 0;
-        for (int i = readyBeforeDrain; i < ServerMap.ServerCell.loaded2.size(); i++) {
-            ServerCell cell = ServerMap.ServerCell.loaded2.get(i);
-            if (!this.finalizeReadySince.containsKey(cell)) {
-                this.finalizeReadySince.put(cell, nowMs);
-                received++;
-            }
-        }
+    public void postupdate() {
+        long partitionStart = System.nanoTime();
+        ArrayList<ServerMap.ServerCell> cellsToUpdate = new ArrayList<>();
+        ArrayList<ServerMap.ServerCell> toUnload = new ArrayList<>();
 
-        for (int i = ServerMap.ServerCell.loaded2.size() - 1; i >= 0; i--) {
-            ServerCell cell = ServerMap.ServerCell.loaded2.get(i);
-            if (cell.cancelLoading) {
-                ServerMap.ServerCell.loaded2.remove(i);
-                this.finalizeReadySince.remove(cell);
-            }
-        }
+        try {
+            for (int n = 0; n < this.loadedCells.size(); n++) {
+                ServerMap.ServerCell cell = this.loadedCells.get(n);
+                boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
+                if (!cell.isLoaded) {
+                    if (!shouldBeLoaded && !cell.cancelLoading) {
+                        if (mapLoading) {
+                            DebugLog.log(
+                                DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy + " cell.startedLoading=" + cell.startedLoading
+                            );
+                        }
 
-        int finalized = 0;
-        long finalizeNanos = 0L;
-        long finalizeMaxNanos = 0L;
-        long budgetNanos = this.getFinalizeBudgetNanos(previousFrameNanos);
-        if (!ServerMap.ServerCell.loaded2.isEmpty()) {
-            distToCellComparator.init();
-            ServerMap.ServerCell.loaded2.sort(distToCellComparator);
+                        if (!cell.startedLoading) {
+                            cell.loadingWasCancelled = true;
+                        }
 
-            int oldestIndex = -1;
-            long oldestQueuedAt = Long.MAX_VALUE;
-            for (int i = 0; i < ServerMap.ServerCell.loaded2.size(); i++) {
-                Long queuedAt = this.finalizeReadySince.get(ServerMap.ServerCell.loaded2.get(i));
-                if (queuedAt != null && nowMs - queuedAt >= FINALIZE_MAX_WAIT_MS && queuedAt < oldestQueuedAt) {
-                    oldestQueuedAt = queuedAt;
-                    oldestIndex = i;
-                }
-            }
-            if (oldestIndex > 0) {
-                ServerCell oldest = ServerMap.ServerCell.loaded2.remove(oldestIndex);
-                ServerMap.ServerCell.loaded2.add(0, oldest);
-            }
-
-            boolean losSuspended = false;
-            long startNanos = System.nanoTime();
-            try {
-                ServerLOS.instance.suspend();
-                losSuspended = true;
-                while (!ServerMap.ServerCell.loaded2.isEmpty()) {
-                    if (finalized > 0 && System.nanoTime() - startNanos >= budgetNanos) {
-                        break;
+                        cell.cancelLoading = true;
                     }
-                    ServerCell cell = ServerMap.ServerCell.loaded2.remove(0);
-                    long cellStartNanos = System.nanoTime();
-                    cell.finalizeLoad();
-                    long cellNanos = System.nanoTime() - cellStartNanos;
-                    finalizeNanos += cellNanos;
-                    finalizeMaxNanos = Math.max(finalizeMaxNanos, cellNanos);
-                    this.finalizeReadySince.remove(cell);
-                    this.toLoad.remove(cell);
-                    finalized++;
-                }
-            } finally {
-                if (losSuspended) {
-                    ServerLOS.instance.resume();
+                } else if (!shouldBeLoaded) {
+                    toUnload.add(cell);
+                } else {
+                    cellsToUpdate.add(cell);
                 }
             }
+        } catch (Exception var10) {
+            DebugType.General.printException(var10, LogSeverity.Error);
         }
 
-        long oldestAgeMs = 0L;
-        for (ServerCell cell : ServerMap.ServerCell.loaded2) {
-            Long queuedAt = this.finalizeReadySince.get(cell);
-            if (queuedAt != null) {
-                oldestAgeMs = Math.max(oldestAgeMs, nowMs - queuedAt);
-            }
-        }
-        ApocBRServerTelemetry.recordServerMapLoadFinalize(
-                ServerMap.ServerCell.loaded2.size(), received, finalized, finalizeNanos, finalizeMaxNanos,
-                oldestAgeMs, budgetNanos, previousFrameNanos);
-    }
+        this.processDeferredUnloads(cellsToUpdate, toUnload);
+        ApocBRServerTelemetry.recordWorldSection("serverMapPartition", System.nanoTime() - partitionStart);
 
-    /**
-     * Runs the Lua-capable grid-load phase only on the main thread. Cells remain
-     * invisible until every chunk has completed this phase, then publication is
-     * a small frame-boundary transition.
-     */
-    private void publishReadyCells(long previousFrameNanos) {
-        long startNanos = System.nanoTime();
-        long budgetNanos = this.getFinalizeBudgetNanos(previousFrameNanos);
-        int processed = 0;
-        for (ServerCell cell = this.readyForMainThreadGridLoad.poll(); cell != null;
-                cell = this.readyForMainThreadGridLoad.poll()) {
-            if (processed > 0 && System.nanoTime() - startNanos >= budgetNanos) {
-                this.readyForMainThreadGridLoad.add(cell);
-                break;
-            }
-
-            if (cell.cancelLoading) {
-                continue;
-            }
-
-            if (!cell.doNextMainThreadGridLoad()) {
-                this.readyForMainThreadGridLoad.add(cell);
-                processed++;
-                continue;
-            }
-
-            cell.finishMainThreadGridLoad();
-            if (cell.publishLoad()) {
-                cell.loadVehicles();
-            }
-            processed++;
-        }
-    }
-
-    private void processActiveUnloads() {
-        if (this.activeUnloads.isEmpty()) {
-            return;
-        }
-
-        long startNanos = System.nanoTime();
-        int processedChunks = 0;
-        int index = 0;
-        while (index < this.activeUnloads.size()) {
-            if (processedChunks > 0 && System.nanoTime() - startNanos >= MAIN_THREAD_UNLOAD_BUDGET_NANOS) {
-                break;
-            }
-
-            ServerCell cell = this.activeUnloads.get(index);
+        long cellStart = System.nanoTime();
+        int updatedCount = 0;
+        for (int i = 0; i < cellsToUpdate.size(); i++) {
+            ServerMap.ServerCell cell = cellsToUpdate.get(i);
             try {
-                if (cell.processNextMainThreadUnloadChunk()) {
-                    this.detachCompletedUnloadCell(cell);
-                    this.activeUnloads.remove(index);
-                    continue;
+                if (this.loadedCells.contains(cell)) {
+                    cell.update();
+                    updatedCount++;
                 }
-                processedChunks++;
-            } catch (Throwable t) {
-                DebugType.General.printException(t, LogSeverity.Error);
-                this.activeUnloads.remove(index);
-                continue;
+            } catch (Exception e) {
+                DebugType.General.printException(e, LogSeverity.Error);
             }
-
-            index++;
         }
-    }
+        ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", System.nanoTime() - cellStart);
+        ApocBRServerTelemetry.recordServerMapCellsUpdated(updatedCount, 0);
 
-    private void detachCompletedUnloadCell(ServerCell cell) {
-        int x = cell.wx - this.getMinX();
-        int y = cell.wy - this.getMinY();
-        if (!this.isInvalidCell(x, y) && this.cellMap[y * this.width + x] == cell) {
-            this.cellMap[y * this.width + x] = null;
-        }
-
-        this.loadedCells.remove(cell);
-        this.releventNow.remove(cell);
-        this.pendingUnloads.remove(cell);
-        this.toLoad.remove(cell);
-        this.finalizeReadySince.remove(cell);
-        ServerCell.loaded2.remove(cell);
+        long miscStart = System.nanoTime();
+        long zombieStart = System.nanoTime();
+        NetworkZombiePacker.getInstance().postupdate();
+        ApocBRServerTelemetry.recordZombieNetworkPost(IsoWorld.instance.currentCell.getZombieList().size(), System.nanoTime() - zombieStart);
+        ServerMap.ServerCell.chunkLoader.updateSaved();
+        ApocBRServerTelemetry.recordWorldSection("serverMapMiscTasks", System.nanoTime() - miscStart);
     }
 
     private long getFinalizeBudgetNanos(long previousFrameNanos) {
-        if (previousFrameNanos >= FINALIZE_FRAME_CRITICAL_NANOS)
-            return FINALIZE_BUDGET_CRITICAL_NANOS;
-        if (previousFrameNanos >= FINALIZE_FRAME_HIGH_NANOS)
-            return FINALIZE_BUDGET_HIGH_NANOS;
-        if (previousFrameNanos >= FINALIZE_FRAME_ELEVATED_NANOS)
-            return FINALIZE_BUDGET_ELEVATED_NANOS;
+        if (previousFrameNanos >= FINALIZE_FRAME_CRITICAL_NANOS) return FINALIZE_BUDGET_CRITICAL_NANOS;
+        if (previousFrameNanos >= FINALIZE_FRAME_HIGH_NANOS) return FINALIZE_BUDGET_HIGH_NANOS;
+        if (previousFrameNanos >= FINALIZE_FRAME_ELEVATED_NANOS) return FINALIZE_BUDGET_ELEVATED_NANOS;
         return FINALIZE_BUDGET_NORMAL_NANOS;
     }
 
-    /**
-     * Defers full ServerCell teardown so a burst of irrelevant cells cannot stall
-     * one server frame.
-     * This method is intentionally main-thread-only: ServerCell.Unload() mutates
-     * live world state.
-     */
-    private void processDeferredUnloads(List<ServerCell> toUpdate, List<ServerCell> toUnload) {
+    private void processDeferredUnloads(List<ServerMap.ServerCell> toUpdate, List<ServerMap.ServerCell> toUnload) {
         long now = System.currentTimeMillis();
         int queued = 0;
         int revalidated = 0;
         int unloaded = 0;
-        int unloadAttempts = 0;
         long unloadNanos = 0L;
 
-        for (ServerCell cell : toUpdate) {
-            if (this.pendingUnloads.remove(cell) != null) {
+        for (int i = 0; i < toUpdate.size(); i++) {
+            if (this.pendingUnloads.remove(toUpdate.get(i)) != null) {
                 revalidated++;
             }
         }
 
-        for (ServerCell cell : toUnload) {
+        for (int i = 0; i < toUnload.size(); i++) {
+            ServerMap.ServerCell cell = toUnload.get(i);
             if (!this.pendingUnloads.containsKey(cell)) {
                 this.pendingUnloads.put(cell, now);
                 queued++;
             }
         }
 
-        while (unloadAttempts < MAX_DEFERRED_UNLOADS_PER_TICK && !this.pendingUnloads.isEmpty()) {
-            ServerCell cell = this.pendingUnloads.keySet().iterator().next();
+        int attempts = 0;
+        while (attempts < MAX_DEFERRED_UNLOADS_PER_TICK && !this.pendingUnloads.isEmpty()) {
+            ServerMap.ServerCell cell = this.pendingUnloads.keySet().iterator().next();
             Long queuedAt = this.pendingUnloads.get(cell);
             if (queuedAt == null || now - queuedAt < DEFERRED_UNLOAD_GRACE_MS) {
                 break;
             }
 
-            // A cell can disappear through a separate load-cancellation path before it
-            // reaches us.
-            if (!cell.isPublished() || !this.loadedCells.contains(cell)) {
+            if (!cell.isLoaded || !this.loadedCells.contains(cell)) {
                 this.pendingUnloads.remove(cell);
                 continue;
             }
 
+            attempts++;
             boolean losSuspended = false;
             long unloadStart = System.nanoTime();
-            unloadAttempts++;
+
             try {
                 ServerLOS.instance.suspend();
                 losSuspended = true;
                 int x = cell.wx - this.getMinX();
                 int y = cell.wy - this.getMinY();
-                ServerCell mapCell = this.cellMap[y * this.width + x];
-                if (mapCell != null && mapCell.Unload() && !this.activeUnloads.contains(mapCell)) {
-                    this.activeUnloads.add(mapCell);
+                ServerMap.ServerCell mapCell = this.cellMap[y * this.width + x];
+                if (mapCell != null && mapCell.Unload()) {
+                    this.cellMap[y * this.width + x] = null;
+                    this.loadedCells.remove(mapCell);
+                    this.releventNow.remove(mapCell);
+                    this.toLoad.remove(mapCell);
+                    this.finalizeReadySince.remove(mapCell);
+                    unloaded++;
                 }
                 this.pendingUnloads.remove(cell);
-                unloaded++;
             } catch (Exception e) {
                 DebugType.General.printException(e, LogSeverity.Error);
             } finally {
@@ -939,66 +790,15 @@ public class ServerMap {
                 oldestAgeMs = Math.max(0L, now - oldestQueuedAt);
             }
         }
-        ApocBRServerTelemetry.recordServerMapDeferredUnload(
-                this.pendingUnloads.size(), queued, revalidated, unloaded, unloadNanos, oldestAgeMs);
-    }
 
-    public void postupdate() {
-        final int cellCount = this.loadedCells.size();
-
-        long apocBrPhaseStart = System.nanoTime();
-        ArrayList<ServerCell> cellsToUpdate = new ArrayList<>();
-        ArrayList<ServerCell> toUnload = new ArrayList<>();
-        for (int n = 0; n < this.loadedCells.size(); n++) {
-            ServerCell cell = this.loadedCells.get(n);
-            boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
-            if (cell.isUnloading()) {
-                continue;
-            }
-
-            if (!cell.isPublished()) {
-                if (!shouldBeLoaded && !cell.cancelLoading) {
-                    if (mapLoading) {
-                        DebugLog.log(
-                                DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy
-                                        + " cell.startedLoading=" + cell.startedLoading);
-                    }
-                    if (!cell.startedLoading)
-                        cell.loadingWasCancelled = true;
-                    cell.cancelLoading = true;
-                }
-            } else if (!shouldBeLoaded) {
-                toUnload.add(cell);
-            } else {
-                cellsToUpdate.add(cell);
-            }
-        }
-        this.processDeferredUnloads(cellsToUpdate, toUnload);
-        ApocBRServerTelemetry.recordWorldSection("serverMapPartition", System.nanoTime() - apocBrPhaseStart);
-
-        long apocBrSequentialStart = System.nanoTime();
-        int updatedCount = cellsToUpdate.size();
-        for (int i = 0; i < updatedCount; i++) {
-            cellsToUpdate.get(i).update();
-        }
-        long cellMs = System.nanoTime() - apocBrSequentialStart;
-        ApocBRServerTelemetry.recordWorldSection("serverMapCellTasks", cellMs);
-        ApocBRServerTelemetry.recordServerMapCellsUpdated(updatedCount, 0);
-
-        apocBrSequentialStart = System.nanoTime();
-        long apocBrZombieNetworkStart = System.nanoTime();
-        NetworkZombiePacker.getInstance().postupdate();
-        ApocBRServerTelemetry.recordZombieNetworkPost(
-                IsoWorld.instance.currentCell.getZombieList().size(), System.nanoTime() - apocBrZombieNetworkStart);
-        ServerCell.chunkLoader.updateSaved();
-        ApocBRServerTelemetry.recordWorldSection("serverMapMiscTasks", System.nanoTime() - apocBrSequentialStart);
+        ApocBRServerTelemetry.recordServerMapDeferredUnload(this.pendingUnloads.size(), queued, revalidated, unloaded, unloadNanos, oldestAgeMs);
     }
 
     public void physicsCheck(int x, int y) {
         int cx = PZMath.coorddivision(x, 64) - this.getMinX();
         int cy = PZMath.coorddivision(y, 64) - this.getMinY();
         ServerMap.ServerCell cell = this.getCell(cx, cy);
-        if (cell != null && cell.isPublished()) {
+        if (cell != null && cell.isLoaded) {
             cell.physicsCheck = true;
         }
     }
@@ -1056,7 +856,7 @@ public class ServerMap {
             cx -= this.getMinX();
             cy -= this.getMinY();
             ServerMap.ServerCell cell = this.getCell(cx, cy);
-            if (cell != null && (cell.isPublished() || cell.isFinalizingOnCurrentThread() || cell.isGridLoadingOnCurrentThread())) {
+            if (cell != null && cell.isLoaded) {
                 IsoChunk c = cell.chunks[chx][chy];
                 return c == null ? null : c.getGridSquare(sqx, sqy, z);
             } else {
@@ -1091,30 +891,7 @@ public class ServerMap {
         cx -= this.getMinX();
         cy -= this.getMinY();
         ServerMap.ServerCell cell = this.getCell(cx, cy);
-        return cell != null && (cell.isPublished() || cell.isFinalizingOnCurrentThread() || cell.isGridLoadingOnCurrentThread()) ? cell.chunks[chx][chy] : null;
-    }
-
-    /**
-     * Moving-object buckets may outlive a cell transition by one frame. Vehicles
-     * from a cell that has not completed publication must never enter
-     * BaseVehicle.update(): its chunk/square/list links are established by the
-     * vehicle loader only after the cell is published.
-     */
-    public boolean isVehicleUpdateReady(BaseVehicle vehicle) {
-        // ServerMap is not initialized by a pure client/local client world. Client
-        // vehicle streaming has its own lifecycle and must retain vanilla updates.
-        if (!GameServer.server || this.grid == null || this.cellMap == null) {
-            return true;
-        }
-
-        if (vehicle == null || !vehicle.addedToWorld || vehicle.chunk == null) {
-            return false;
-        }
-
-        int cx = this.worldChunkToServerCellXY(vehicle.chunk.wx) - this.getMinX();
-        int cy = this.worldChunkToServerCellXY(vehicle.chunk.wy) - this.getMinY();
-        ServerCell cell = this.getCell(cx, cy);
-        return cell != null && cell.isPublished();
+        return cell != null && cell.isLoaded ? cell.chunks[chx][chy] : null;
     }
 
     public void setSoftResetChunk(IsoChunk chunk) {
@@ -1124,7 +901,7 @@ public class ServerMap {
             ServerMap.ServerCell cell = this.getCell(cx, cy);
             if (cell == null) {
                 cell = new ServerMap.ServerCell();
-                cell.markPublished();
+                cell.isLoaded = true;
                 this.cellMap[cy * this.width + cx] = cell;
             }
 
@@ -1214,177 +991,35 @@ public class ServerMap {
     }
 
     public static final class ServerCell {
-        public static enum LoadState {
-            QUEUED,
-            FINALIZING,
-            READY_FOR_MAIN_THREAD_GRID_LOAD,
-            READY_TO_PUBLISH,
-            PUBLISHED,
-            CANCELLED,
-            FAILED,
-            UNLOADING,
-            UNLOADED;
-        }
-
         public int wx;
         public int wy;
-        public volatile boolean isLoaded;
-        private volatile LoadState loadState = LoadState.QUEUED;
-        private volatile long finalizingThreadId;
-        private volatile long mainThreadGridLoadingThreadId;
-        private int mainThreadGridLoadCursor;
-        private int mainThreadUnloadCursor;
+        public boolean isLoaded;
         public boolean physicsCheck;
         public final IsoChunk[][] chunks = new IsoChunk[8][8];
         private final HashSet<RoomDef> unexploredRooms = new HashSet<>();
         private static final ServerChunkLoader chunkLoader = new ServerChunkLoader();
         private static final ArrayList<ServerMap.ServerCell> loaded = new ArrayList<>();
         private boolean startedLoading;
-        public volatile boolean cancelLoading;
+        public boolean cancelLoading;
         public boolean loadingWasCancelled;
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
 
         public boolean Load2() {
-            chunkLoader.getRecalc(loaded2);
-
-            for (int i = 0; i < loaded2.size(); i++) {
-                if (loaded2.get(i) == this) {
-                    loaded2.remove(i);
-                    this.finalizeLoad();
-                    return true;
-                }
+            long start = System.nanoTime();
+            this.RecalcAll2();
+            if (ServerMap.mapLoading) {
+                DebugType.MapLoading.debugln("loaded2=" + loaded2);
             }
 
-            return false;
-        }
-
-        private synchronized void finalizeLoad() {
-            if (this.cancelLoading || this.loadState != LoadState.QUEUED) {
-                return;
+            float time = (float)(System.nanoTime() - start) / 1000000.0F;
+            if (ServerMap.mapLoading) {
+                DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
             }
 
-            this.loadState = LoadState.FINALIZING;
-            this.finalizingThreadId = Thread.currentThread().getId();
-            try {
-                if (this.cancelLoading) {
-                    this.loadState = LoadState.CANCELLED;
-                    return;
-                }
-
-                long start = System.nanoTime();
-                this.RecalcAll2();
-                if (this.cancelLoading) {
-                    this.loadState = LoadState.CANCELLED;
-                    return;
-                }
-
-                if (ServerMap.mapLoading) {
-                    DebugType.MapLoading.debugln("loaded2=" + loaded2);
-                    DebugType.MapLoading.debugln(
-                            "main-thread finalized cell " + this.wx + "," + this.wy + " ms="
-                                    + (System.nanoTime() - start) / 1000000.0F);
-                }
-
-                this.loadState = LoadState.READY_FOR_MAIN_THREAD_GRID_LOAD;
-            } catch (Throwable t) {
-                this.loadState = LoadState.FAILED;
-                this.cancelLoading = true;
-                DebugType.General.printException(t, LogSeverity.Error);
-                return;
-            } finally {
-                this.finalizingThreadId = 0L;
-            }
-
-            // No live-world structure may observe this cell until preupdate()
-            // finishes its Lua-capable grid-load phase on the main thread.
-            ServerMap.instance.readyForMainThreadGridLoad.add(this);
-        }
-
-        public boolean isPublished() {
-            return this.isLoaded && this.loadState == LoadState.PUBLISHED;
-        }
-
-        public boolean isUnloading() {
-            return this.loadState == LoadState.UNLOADING;
-        }
-
-        private boolean isFinalizingOnCurrentThread() {
-            return this.loadState == LoadState.FINALIZING
-                    && this.finalizingThreadId == Thread.currentThread().getId();
-        }
-
-        private boolean isGridLoadingOnCurrentThread() {
-            return this.loadState == LoadState.READY_FOR_MAIN_THREAD_GRID_LOAD
-                    && this.mainThreadGridLoadingThreadId == Thread.currentThread().getId();
-        }
-
-        private boolean publishLoad() {
-            if (this.cancelLoading || this.loadState != LoadState.READY_TO_PUBLISH) {
-                this.loadState = LoadState.CANCELLED;
-                return false;
-            }
-
-            this.isLoaded = true;
-            this.loadState = LoadState.PUBLISHED;
+            this.loadVehicles();
             return true;
-        }
-
-        /**
-         * Executes exactly one non-null chunk's doLoadGridsquare() call. This is
-         * deliberately main-thread-only because ItemPicker can invoke Kahlua
-         * callbacks while generating container contents.
-         *
-         * @return true once every chunk in the cell has run the grid-load phase
-         */
-        private boolean doNextMainThreadGridLoad() {
-            while (this.mainThreadGridLoadCursor < 64) {
-                int x = this.mainThreadGridLoadCursor / 8;
-                int y = this.mainThreadGridLoadCursor % 8;
-                this.mainThreadGridLoadCursor++;
-                IsoChunk chunk = this.chunks[x][y];
-                if (chunk == null) {
-                    continue;
-                }
-
-                long startNanos = System.nanoTime();
-                this.mainThreadGridLoadingThreadId = Thread.currentThread().getId();
-                try {
-                    chunk.doLoadGridsquare();
-                } finally {
-                    this.mainThreadGridLoadingThreadId = 0L;
-                    ApocBRServerTelemetry.recordServerMapLoadCommitPhase(
-                            "gridLoad", 1, System.nanoTime() - startNanos);
-                }
-                return false;
-            }
-
-            return true;
-        }
-
-        private void finishMainThreadGridLoad() {
-            long phaseStart = System.nanoTime();
-            int indoorRooms = 0;
-            for (RoomDef def : this.unexploredRooms) {
-                indoorRooms++;
-                def.indoorZombies++;
-                if (def.indoorZombies == 1) {
-                    try {
-                        VirtualZombieManager.instance.tryAddIndoorZombies(def, false);
-                    } catch (Exception var15) {
-                        DebugType.General.printException(var15, LogSeverity.Error);
-                    }
-                }
-            }
-            ApocBRServerTelemetry.recordServerMapLoadCommitPhase("indoorZombies", indoorRooms,
-                    System.nanoTime() - phaseStart);
-            this.loadState = LoadState.READY_TO_PUBLISH;
-        }
-
-        private void markPublished() {
-            this.isLoaded = true;
-            this.loadState = LoadState.PUBLISHED;
         }
 
         private void loadVehicles() {
@@ -1399,7 +1034,6 @@ public class ServerMap {
         }
 
         public void RecalcAll2() {
-            long phaseStart = System.nanoTime();
             int sx = this.wx * 8 * 8;
             int sy = this.wy * 8 * 8;
             int ex = sx + 64;
@@ -1410,6 +1044,7 @@ public class ServerMap {
             }
 
             this.unexploredRooms.clear();
+            this.isLoaded = true;
             int minLevel = Integer.MAX_VALUE;
             int maxLevel = Integer.MIN_VALUE;
 
@@ -1422,33 +1057,26 @@ public class ServerMap {
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapLoadCommitPhase("publish", 64, System.nanoTime() - phaseStart);
 
-            phaseStart = System.nanoTime();
-            int borderSurroundCalls = 0;
             for (int z = 1; z <= maxLevel; z++) {
                 for (int x = -1; x < 65; x++) {
                     IsoGridSquare sq = ServerMap.instance.getGridSquare(sx + x, sy - 1, z);
                     if (sq != null && !sq.getObjects().isEmpty()) {
                         IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
-                        borderSurroundCalls++;
                     } else if (x >= 0 && x < 64) {
                         sq = ServerMap.instance.getGridSquare(sx + x, sy, z);
                         if (sq != null && !sq.getObjects().isEmpty()) {
                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
-                            borderSurroundCalls++;
                         }
                     }
 
                     sq = ServerMap.instance.getGridSquare(sx + x, sy + 64, z);
                     if (sq != null && !sq.getObjects().isEmpty()) {
                         IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
-                        borderSurroundCalls++;
                     } else if (x >= 0 && x < 64) {
                         ServerMap.instance.getGridSquare(sx + x, sy + 64 - 1, z);
                         if (sq != null && !sq.getObjects().isEmpty()) {
                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
-                            borderSurroundCalls++;
                         }
                     }
                 }
@@ -1457,45 +1085,35 @@ public class ServerMap {
                     IsoGridSquare sqx = ServerMap.instance.getGridSquare(sx - 1, sy + y, z);
                     if (sqx != null && !sqx.getObjects().isEmpty()) {
                         IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
-                        borderSurroundCalls++;
                     } else {
                         sqx = ServerMap.instance.getGridSquare(sx, sy + y, z);
                         if (sqx != null && !sqx.getObjects().isEmpty()) {
                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
-                            borderSurroundCalls++;
                         }
                     }
 
                     sqx = ServerMap.instance.getGridSquare(sx + 64, sy + y, z);
                     if (sqx != null && !sqx.getObjects().isEmpty()) {
                         IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
-                        borderSurroundCalls++;
                     } else {
                         sqx = ServerMap.instance.getGridSquare(sx + 64 - 1, sy + y, z);
                         if (sqx != null && !sqx.getObjects().isEmpty()) {
                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
-                            borderSurroundCalls++;
                         }
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapLoadCommitPhase("borderSurround", borderSurroundCalls,
-                    System.nanoTime() - phaseStart);
 
-            phaseStart = System.nanoTime();
-            int borderRecalcCalls = 0;
             for (int z = minLevel; z <= maxLevel; z++) {
                 for (int x = 0; x < 64; x++) {
                     IsoGridSquare sqxx = ServerMap.instance.getGridSquare(sx + x, sy, z);
                     if (sqxx != null) {
                         sqxx.RecalcAllWithNeighbours(true);
-                        borderRecalcCalls++;
                     }
 
                     sqxx = ServerMap.instance.getGridSquare(sx + x, ey - 1, z);
                     if (sqxx != null) {
                         sqxx.RecalcAllWithNeighbours(true);
-                        borderRecalcCalls++;
                     }
                 }
 
@@ -1503,21 +1121,15 @@ public class ServerMap {
                     IsoGridSquare sqxxx = ServerMap.instance.getGridSquare(sx, sy + y, z);
                     if (sqxxx != null) {
                         sqxxx.RecalcAllWithNeighbours(true);
-                        borderRecalcCalls++;
                     }
 
                     sqxxx = ServerMap.instance.getGridSquare(ex - 1, sy + y, z);
                     if (sqxxx != null) {
                         sqxxx.RecalcAllWithNeighbours(true);
-                        borderRecalcCalls++;
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapLoadCommitPhase("borderRecalc", borderRecalcCalls,
-                    System.nanoTime() - phaseStart);
 
-            phaseStart = System.nanoTime();
-            int propertySquares = 0;
             int nSquares = 64;
 
             for (int cx = 0; cx < 8; cx++) {
@@ -1536,114 +1148,85 @@ public class ServerMap {
                                     }
 
                                     g.propertiesDirty = true;
-                                    propertySquares++;
                                 }
                             }
                         }
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapLoadCommitPhase("chunkFlags", propertySquares,
-                    System.nanoTime() - phaseStart);
 
+            for (int x = 0; x < 8; x++) {
+                for (int y = 0; y < 8; y++) {
+                    if (this.chunks[x][y] != null) {
+                        this.chunks[x][y].doLoadGridsquare();
+                    }
+                }
+            }
+
+            for (RoomDef def : this.unexploredRooms) {
+                def.indoorZombies++;
+                if (def.indoorZombies == 1) {
+                    try {
+                        VirtualZombieManager.instance.tryAddIndoorZombies(def, false);
+                    } catch (Exception var15) {
+                        DebugType.General.printException(var15, LogSeverity.Error);
+                    }
+                }
+            }
+
+            this.isLoaded = true;
         }
 
         public boolean Unload() {
-            if (!this.isPublished()) {
-                return false;
-            }
-
-            this.loadState = LoadState.UNLOADING;
-            this.mainThreadUnloadCursor = 0;
-            if (ServerMap.mapLoading) {
-                DebugType.MapLoading
+            if (this.isLoaded) {
+                long unloadStart = System.nanoTime();
+                if (ServerMap.mapLoading) {
+                    DebugType.MapLoading
                         .debugln(
-                                "Unloading cell: "
-                                        + this.wx
-                                        + ", "
-                                        + this.wy
-                                        + " ("
-                                        + ServerMap.instance.toWorldCellX(this.wx)
-                                        + ", "
-                                        + ServerMap.instance.toWorldCellY(this.wy)
-                                        + ")");
-            }
-
-            return true;
-        }
-
-        private boolean processNextMainThreadUnloadChunk() {
-            if (this.loadState != LoadState.UNLOADING) {
-                return true;
-            }
-
-            while (this.mainThreadUnloadCursor < 64) {
-                int x = this.mainThreadUnloadCursor / 8;
-                int y = this.mainThreadUnloadCursor % 8;
-                this.mainThreadUnloadCursor++;
-                IsoChunk chunk = this.chunks[x][y];
-                if (chunk == null) {
-                    continue;
+                            "Unloading cell: "
+                                + this.wx
+                                + ", "
+                                + this.wy
+                                + " ("
+                                + ServerMap.instance.toWorldCellX(this.wx)
+                                + ", "
+                                + ServerMap.instance.toWorldCellY(this.wy)
+                                + ")"
+                        );
                 }
 
-                this.unloadChunkOnMainThread(x, y, chunk);
-                return false;
-            }
+                for (int x = 0; x < 8; x++) {
+                    for (int y = 0; y < 8; y++) {
+                        IsoChunk chunk = this.chunks[x][y];
+                        if (chunk != null) {
+                            long chunkStart = System.nanoTime();
+                            chunk.removeFromWorld();
+                            ApocBRServerTelemetry.recordServerMapUnloadPhase("chunkGlobal", 1, System.nanoTime() - chunkStart);
+                            chunk.loadVehiclesObject = null;
 
-            this.completeUnloadState();
-            return true;
-        }
+                            for (int i = 0; i < chunk.vehicles.size(); i++) {
+                                BaseVehicle vehicle = chunk.vehicles.get(i);
+                                VehiclesDB2.instance.updateVehicle(vehicle);
+                            }
 
-        private void unloadChunkOnMainThread(int x, int y, IsoChunk chunk) {
-            chunk.removeFromWorld();
-            chunk.loadVehiclesObject = null;
-
-            long vehicleSaveStartNanos = System.nanoTime();
-            ArrayList<BaseVehicle> vehicles = new ArrayList<>();
-            try {
-                for (int i = 0; i < chunk.vehicles.size(); i++) {
-                    BaseVehicle vehicle = chunk.vehicles.get(i);
-                    if (vehicle != null) {
-                        vehicles.add(vehicle);
+                            ApocBRServerTelemetry.recordServerMapUnloadPhase("vehicleSave", chunk.vehicles.size(), 0L);
+                            chunkLoader.addSaveUnloadedJob(chunk);
+                            ApocBRServerTelemetry.recordServerMapUnloadPhase("saveEnqueue", 1, 0L);
+                            this.chunks[x][y] = null;
+                        }
                     }
                 }
-            } catch (Throwable t) {
-                DebugType.General.printException(t, LogSeverity.Error);
-            }
 
-            for (int i = 0; i < vehicles.size(); i++) {
-                try {
-                    VehiclesDB2.instance.updateVehicle(vehicles.get(i));
-                } catch (Throwable t) {
-                    DebugType.General.printException(t, LogSeverity.Error);
-                }
-            }
-            ApocBRServerTelemetry.recordServerMapUnloadPhase(
-                    "vehicleSave", vehicles.size(), System.nanoTime() - vehicleSaveStartNanos);
-
-            long saveEnqueueStartNanos = System.nanoTime();
-            chunkLoader.addSaveUnloadedJob(chunk);
-            ApocBRServerTelemetry.recordServerMapUnloadPhase(
-                    "saveEnqueue", 1, System.nanoTime() - saveEnqueueStartNanos);
-
-            if (x >= 0 && x < 8 && y >= 0 && y < 8 && this.chunks[x][y] == chunk) {
-                this.chunks[x][y] = null;
-            }
-        }
-
-        private void completeUnloadState() {
-            if (this.loadState == LoadState.UNLOADED) {
-                return;
-            }
-
-            if (this.isLoaded) {
                 for (RoomDef def : this.unexploredRooms) {
                     def.indoorZombies--;
                 }
+
+                this.isLoaded = false;
+                ApocBRServerTelemetry.recordServerMapUnloadPhase("squareTeardown", 64, System.nanoTime() - unloadStart);
+                return true;
             }
 
-            this.isLoaded = false;
-            this.loadState = LoadState.UNLOADED;
+            return false;
         }
 
         public void Save(boolean worker) {

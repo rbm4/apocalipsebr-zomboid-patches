@@ -1,8 +1,6 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie.vehicles;
 
-import zombie.ApocBRServerTelemetry;
-
 import fmod.fmod.FMODSoundEmitter;
 import fmod.fmod.FMOD_STUDIO_PARAMETER_DESCRIPTION;
 import fmod.fmod.IFMODParameterUpdater;
@@ -36,7 +34,6 @@ import zombie.SystemDisabler;
 import zombie.UpdateSchedulerSimulationLevel;
 import zombie.UsedFromLua;
 import zombie.WorldSoundManager;
-import zombie.Lua.ApocBRMainThreadLuaQueue;
 import zombie.Lua.LuaEventManager;
 import zombie.Lua.LuaManager;
 import zombie.ai.states.animals.AnimalFalldownState;
@@ -181,8 +178,6 @@ import zombie.vehicleSound.VehicleSounds;
 
 @UsedFromLua
 public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFMODParameterUpdater, IPositional, VehicleSoundOwner {
-    private static final int APOCBR_VEHICLE_UPDATE_PARTS_SKIP_ACTIVE_SERVER = Math.max(1, Integer.getInteger("apocbr.vehicleUpdatePartsSkip", 3));
-    private static final int APOCBR_VEHICLE_UPDATE_PARTS_SKIP_IDLE_SERVER = Math.max(1, Integer.getInteger("apocbr.vehicleUpdatePartsSkipIdle", 10));
     public static final int MASK1_FRONT = 0;
     public static final int MASK1_REAR = 4;
     public static final int MASK1_DOOR_RIGHT_FRONT = 8;
@@ -367,7 +362,6 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     private boolean isBraking;
     private int mechanicalId;
     private boolean needPartsUpdate;
-    private int apocBrUpdatePartsSkipCounter;
     private boolean alarmed;
     private double alarmStartTime;
     private float alarmAccumulator;
@@ -3658,23 +3652,10 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
                     this.setLightbarSirenMode(0);
                 }
 
-                // Idle server vehicles batch parts Lua onto their infrequent main-thread
-                // update; active and player-facing vehicles remain immediate.
-                boolean apocBrNeedPartsUpdate = this.needPartsUpdate() || this.isMechanicUIOpen() || this.alarmStartTime > 0.0;
-                if (apocBrNeedPartsUpdate) {
-                    int apocBrSkipN = this.apocBrGetUpdatePartsSkipInterval(bTowed, bTowing);
-                    boolean apocBrCounterReady = ++this.apocBrUpdatePartsSkipCounter >= apocBrSkipN;
-                    if (apocBrCounterReady) {
-                        this.apocBrUpdatePartsSkipCounter = 0;
-                        this.updateParts();
-                    } else {
-                        // Skip: either frame-skip counter hasn't triggered yet, or the
-                        // ForkJoinPool is saturated (backpressure). Still drain active
-                        // batteries/lights so player-facing effects don't freeze.
-                        this.drainBatteryUpdateHack();
-                    }
-                } else {
+                if (!this.needPartsUpdate() && !this.isMechanicUIOpen() && !(this.alarmStartTime > 0.0)) {
                     this.drainBatteryUpdateHack();
+                } else {
+                    this.updateParts();
                 }
 
                 if (this.engineState == BaseVehicle.engineStateTypes.Running || bTowed) {
@@ -3746,6 +3727,35 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     @Override
     public UpdateSchedulerSimulationLevel getMinimumSimulationLevel() {
         return UpdateSchedulerSimulationLevel.FULL;
+    }
+
+    public UpdateSchedulerSimulationLevel apocBrGetServerSimulationLevel() {
+        if (!GameServer.server) {
+            return UpdateSchedulerSimulationLevel.FULL;
+        }
+
+        if (this.getDriver() != null
+            || this.isMechanicUIOpen()
+            || this.needPartsUpdate
+            || this.engineState != BaseVehicle.engineStateTypes.Idle
+            || this.alarmStartTime > 0.0
+            || this.lightbarLightsMode.isEnable()
+            || this.lightbarSirenMode.isEnable()
+            || this.getVehicleTowedBy() != null
+            || this.getVehicleTowing() != null
+            || !this.isAtRest()
+            || this.isPhysicsActive()
+            || !this.getAnimals().isEmpty()) {
+            return UpdateSchedulerSimulationLevel.FULL;
+        }
+
+        for (int seat = 0; seat < this.getMaxPassengers(); seat++) {
+            if (this.getCharacter(seat) != null) {
+                return UpdateSchedulerSimulationLevel.FULL;
+            }
+        }
+
+        return UpdateSchedulerSimulationLevel.SIXTEENTH;
     }
 
     private void updateEngineStarting() {
@@ -8033,113 +8043,53 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
     }
 
     private boolean updatePart(VehiclePart part) {
-        long apocBrVehiclePartStart = System.nanoTime();
-        try {
-            part.updateSignalDevice();
-            VehicleLight light = part.getLight();
-            if (light != null && part.getId().contains("Headlight")) {
-                part.setLightActive(this.getHeadlightsOn() && part.getInventoryItem() != null && this.getBatteryCharge() > 0.0F);
+        part.updateSignalDevice();
+        VehicleLight light = part.getLight();
+        if (light != null && part.getId().contains("Headlight")) {
+            part.setLightActive(this.getHeadlightsOn() && part.getInventoryItem() != null && this.getBatteryCharge() > 0.0F);
+        }
+
+        String functionName = part.getLuaFunction("update");
+        if (functionName == null) {
+            return false;
+        } else {
+            float worldAgeHours = (float)GameTime.getInstance().getWorldAgeHours();
+            if (part.getLastUpdated() < 0.0F) {
+                part.setLastUpdated(worldAgeHours);
+            } else if (part.getLastUpdated() > worldAgeHours) {
+                part.setLastUpdated(worldAgeHours);
             }
 
-            String functionName = part.getLuaFunction("update");
-            if (functionName == null) {
-                return false;
+            float elapsedHours = worldAgeHours - part.getLastUpdated();
+            if ((int)(elapsedHours * 60.0F) > 0) {
+                part.setLastUpdated(worldAgeHours);
+                this.callLuaVoid(functionName, this, part, (double)(elapsedHours * 60.0F));
+                return true;
             } else {
-                float worldAgeHours = (float)GameTime.getInstance().getWorldAgeHours();
-                if (part.getLastUpdated() < 0.0F) {
-                    part.setLastUpdated(worldAgeHours);
-                } else if (part.getLastUpdated() > worldAgeHours) {
-                    part.setLastUpdated(worldAgeHours);
-                }
-
-                float elapsedHours = worldAgeHours - part.getLastUpdated();
-                if ((int)(elapsedHours * 60.0F) > 0) {
-                    part.setLastUpdated(worldAgeHours);
-                    this.callLuaVoid(functionName, this, part, (double)(elapsedHours * 60.0F));
-                    return true;
-                } else {
-                    return false;
-                }
-            }
-        } finally {
-            ApocBRServerTelemetry.recordVehiclePart(System.nanoTime() - apocBrVehiclePartStart);
-        }
-    }
-
-    private int apocBrGetUpdatePartsSkipInterval(boolean bTowed, boolean bTowing) {
-        if (!GameServer.server || this.getDriver() != null || this.isMechanicUIOpen()) {
-            return 1;
-        }
-
-        boolean activeVehicle = this.engineState != BaseVehicle.engineStateTypes.Idle
-            || bTowed
-            || bTowing
-            || !this.isAtRest()
-            || this.alarmStartTime > 0.0
-            || this.lightbarLightsMode.isEnable()
-            || this.lightbarSirenMode.isEnable();
-        return activeVehicle ? APOCBR_VEHICLE_UPDATE_PARTS_SKIP_ACTIVE_SERVER : APOCBR_VEHICLE_UPDATE_PARTS_SKIP_IDLE_SERVER;
-    }
-
-    /**
-     * Server-only update tier for the moving-object scheduler. This is deliberately
-     * conservative: any vehicle that can affect a player or the world immediately
-     * remains full-rate. Truly parked vehicles stay main-thread authoritative but
-     * are only visited once every sixteen frames.
-     */
-    public UpdateSchedulerSimulationLevel apocBrGetServerSimulationLevel() {
-        if (!GameServer.server) {
-            return UpdateSchedulerSimulationLevel.FULL;
-        }
-
-        if (this.getDriver() != null
-            || this.isMechanicUIOpen()
-            || this.needPartsUpdate
-            || this.engineState != BaseVehicle.engineStateTypes.Idle
-            || this.alarmStartTime > 0.0
-            || this.lightbarLightsMode.isEnable()
-            || this.lightbarSirenMode.isEnable()
-            || this.getVehicleTowedBy() != null
-            || this.getVehicleTowing() != null
-            || !this.isAtRest()
-            || this.isPhysicsActive()
-            || !this.getAnimals().isEmpty()) {
-            return UpdateSchedulerSimulationLevel.FULL;
-        }
-
-        for (int seat = 0; seat < this.getMaxPassengers(); seat++) {
-            if (this.getCharacter(seat) != null) {
-                return UpdateSchedulerSimulationLevel.FULL;
+                return false;
             }
         }
-
-        return UpdateSchedulerSimulationLevel.SIXTEENTH;
     }
 
     public void updateParts() {
-        long apocBrVehiclePartsStart = System.nanoTime();
-        try {
-            if (!GameClient.client) {
-                boolean didUpdate = false;
+        if (!GameClient.client) {
+            boolean didUpdate = false;
 
-                for (int i = 0; i < this.getPartCount(); i++) {
-                    VehiclePart part = this.getPartByIndex(i);
-                    if (this.updatePart(part) && !didUpdate) {
-                        didUpdate = true;
-                    }
-
-                    if (i == this.getPartCount() - 1 && didUpdate) {
-                        this.brakeBetweenUpdatesSpeed = 0.0F;
-                    }
+            for (int i = 0; i < this.getPartCount(); i++) {
+                VehiclePart part = this.getPartByIndex(i);
+                if (this.updatePart(part) && !didUpdate) {
+                    didUpdate = true;
                 }
-            } else {
-                for (int i = 0; i < this.getPartCount(); i++) {
-                    VehiclePart partx = this.getPartByIndex(i);
-                    partx.updateSignalDevice();
+
+                if (i == this.getPartCount() - 1 && didUpdate) {
+                    this.brakeBetweenUpdatesSpeed = 0.0F;
                 }
             }
-        } finally {
-            ApocBRServerTelemetry.recordVehicleParts(System.nanoTime() - apocBrVehiclePartsStart);
+        } else {
+            for (int i = 0; i < this.getPartCount(); i++) {
+                VehiclePart partx = this.getPartByIndex(i);
+                partx.updateSignalDevice();
+            }
         }
     }
 
@@ -11883,184 +11833,6 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
         this.parts.clear();
     }
 
-    // ---- ApocBR: async breakingObjects split ---- //
-
-    private static class ApocBRBreakingResult {
-        final ArrayList<IsoObject> newHits = new ArrayList<>();
-        final ArrayList<Vector2> hitPositions = new ArrayList<>();
-        final ArrayList<IsoMovingObject> charsToFlag = new ArrayList<>();
-        boolean hasPlantHits;
-        float slowFactor = -999.0F;
-        boolean hasChanges;
-    }
-
-    /**
-     * Read-only detection phase: iterates grid squares, checks object properties,
-     * runs testCollisionWithObject (pure math, no Bullet JNI). Called from
-     * PZForkJoinPool worker thread. Captured parameters avoid reading {@code this}
-     * fields that the main thread mutates concurrently.
-     */
-    private ApocBRBreakingResult apocBrDetectBreaking(
-        float capX, float capY, float capZ, VehicleScript capScript,
-        boolean collideChars, boolean collideObjects, IsoCell cell
-    ) {
-        if ((!collideChars && !collideObjects) || cell == null || capScript == null) return null;
-        Vector3f ext = capScript.getExtents();
-        if (ext == null) return null;
-
-        ApocBRBreakingResult r = new ApocBRBreakingResult();
-        Vector2 vecPool = new Vector2();
-        float radius = Math.max(ext.x / 2.0F, ext.z / 2.0F) + 0.3F + 1.0F;
-        int radiusSq = (int)Math.ceil(radius);
-
-        for (int yy = -radiusSq; yy < radiusSq; yy++) {
-            for (int xx = -radiusSq; xx < radiusSq; xx++) {
-                IsoGridSquare sq;
-                try {
-                    sq = cell.getGridSquare((double)(capX + xx), (double)(capY + yy), (double)capZ);
-                } catch (Throwable t) {
-                    ExceptionLogger.logException(t);
-                    continue;
-                }
-                if (sq == null) continue;
-
-                if (collideObjects) {
-                    try {
-                        if (sq.getObjects() != null) {
-                            for (int i = 0; i < sq.getObjects().size(); i++) {
-                                IsoObject obj = sq.getObjects().get(i);
-                                if (obj == null) continue;
-                                if (obj instanceof IsoWorldInventoryObject) continue;
-                                Vector2 collision = null;
-                                if (obj.getProperties() != null) {
-                                    if (obj.getProperties().has("CarSlowFactor")) {
-                                        collision = this.testCollisionWithObject(obj, 0.3F, vecPool);
-                                    }
-                                    if (collision != null) {
-                                        r.newHits.add(obj);
-                                        r.hitPositions.add(new Vector2(collision));
-                                        r.hasChanges = true;
-                                    }
-                                    if (obj.getProperties().has("HitByCar")) {
-                                        collision = this.testCollisionWithObject(obj, 0.3F, vecPool);
-                                    }
-                                    if (collision != null) {
-                                        r.newHits.add(obj);
-                                        r.hitPositions.add(new Vector2(collision));
-                                        r.hasChanges = true;
-                                    }
-                                    if (obj.getProperties().has("CarDestroy") || obj.getProperties().has("DestroyByCar")) {
-                                        r.hasPlantHits = true;
-                                    }
-                                }
-                            }
-                        }
-                    } catch (Throwable t) {
-                        ExceptionLogger.logException(t);
-                    }
-                }
-
-                if (collideChars) {
-                    try {
-                        if (sq.getMovingObjects() != null) {
-                            for (int ix = 0; ix < sq.getMovingObjects().size(); ix++) {
-                                IsoMovingObject mov = sq.getMovingObjects().get(ix);
-                                if (mov == null) continue;
-                                if (mov instanceof IsoZombie || mov instanceof IsoAnimal || (mov instanceof IsoPlayer && mov != this.getDriver())) {
-                                    r.charsToFlag.add(mov);
-                                }
-                            }
-                        }
-                    } catch (Throwable t) {
-                        ExceptionLogger.logException(t);
-                    }
-                }
-
-                if (collideObjects) {
-                    try {
-                        if (sq.getStaticMovingObjects() != null) {
-                            for (int ix = 0; ix < sq.getStaticMovingObjects().size(); ix++) {
-                                IsoMovingObject mov = sq.getStaticMovingObjects().get(ix);
-                                if (mov == null) continue;
-                                if (mov instanceof IsoDeadBody) {
-                                    this.testCollisionWithCorpse((IsoDeadBody)mov, true);
-                                }
-                            }
-                        }
-                    } catch (Throwable t) {
-                        ExceptionLogger.logException(t);
-                    }
-                }
-            }
-        }
-        return r;
-    }
-
-    /**
-     * Application phase: applies collision results from the async detection.
-     * Must run on the main thread because object.Collision() mutates IsoObject state.
-     */
-    private void apocBrApplyBreaking(ApocBRBreakingResult r) {
-        if (r == null) return;
-
-        for (int i = 0; i < r.newHits.size() && i < r.hitPositions.size(); i++) {
-            IsoObject obj = r.newHits.get(i);
-            Vector2 pos = r.hitPositions.get(i);
-            if (obj == null || pos == null) continue;
-            if (!this.breakingObjectsList.contains(obj)) {
-                this.breakingObjectsList.add(obj);
-                if (!GameClient.client) {
-                    obj.Collision(pos, this);
-                }
-            }
-        }
-
-        Vector2 vecPool = new Vector2();
-        float slowFactor = -999.0F;
-        for (int i = 0; i < this.breakingObjectsList.size(); i++) {
-            IsoObject obj = this.breakingObjectsList.get(i);
-            if (obj == null || obj.getSquare() == null || obj.getSquare().getObjects() == null) {
-                this.breakingObjectsList.remove(i);
-                i--;
-                continue;
-            }
-
-            Vector2 collision = this.testCollisionWithObject(obj, 1.0F, vecPool);
-            if (collision == null || !obj.getSquare().getObjects().contains(obj)) {
-                this.breakingObjectsList.remove(i);
-                i--;
-                obj.UnCollision(this);
-            } else if (slowFactor < obj.GetVehicleSlowFactor(this)) {
-                slowFactor = obj.GetVehicleSlowFactor(this);
-            }
-        }
-
-        if (slowFactor != -999.0F) {
-            this.breakingSlowFactor = PZMath.clamp(slowFactor, 0.0F, 34.0F);
-        } else {
-            this.breakingSlowFactor = 0.0F;
-        }
-
-        if (r.hasPlantHits) {
-            this.hittingPlant = true;
-        }
-
-        for (int i = 0; i < r.charsToFlag.size(); i++) {
-            IsoMovingObject mov = r.charsToFlag.get(i);
-            if (mov == null) continue;
-            if (mov instanceof IsoZombie z) {
-                if (z.isProne()) {
-                    this.testCollisionWithProneCharacter(z, false, null);
-                }
-                z.setVehicle4TestCollision(this);
-            } else if (mov instanceof IsoAnimal a) {
-                a.setVehicle4TestCollision(this);
-            } else if (mov instanceof IsoPlayer p && mov != this.getDriver()) {
-                p.setVehicle4TestCollision(this);
-            }
-        }
-    }
-
     public static enum Authorization {
         Server,
         LocalCollide,
@@ -12372,7 +12144,3 @@ public final class BaseVehicle extends IsoMovingObject implements Thumpable, IFM
         public static final BaseVehicle.engineStateTypes[] Values = values();
     }
 }
-
-
-
-

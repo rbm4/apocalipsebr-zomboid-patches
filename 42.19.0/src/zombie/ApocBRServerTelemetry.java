@@ -686,7 +686,7 @@ public final class ApocBRServerTelemetry {
         if (!ENABLED) return;
         playerLOSCalls++;
         playerLOSObjects += objects;
-        if (isParallel) playerLOSParallel++; else playerLOSSequential++;
+        if (isParallel && computeNanos > 0L) playerLOSParallel++; else playerLOSSequential++;
         playerLOSComputeNanos += computeNanos;
         playerLOSComputeMaxNanos = Math.max(playerLOSComputeMaxNanos, computeNanos);
         playerLOSApplyNanos += applyNanos;

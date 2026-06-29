@@ -27,9 +27,12 @@ public class ServerLOS {
     private static final int PD_SIZE_IN_SQUARES = 96;
     // Object-level LOS is a player × candidate cost. The tile visibility grid
     // retains its vanilla cadence; only this higher-level object scan is capped.
-    private static final long OBJECT_LOS_INTERVAL_NANOS = Math.max(50L,
+    private static final long OBJECT_LOS_INTERVAL_BASE_NANOS = Math.max(50L,
             Math.min(1000L, Long.getLong("apocbr.los.objectIntervalMs", 200L))) * 1_000_000L;
-    private static final long CANDIDATE_INDEX_INTERVAL_NANOS = 100_000_000L;
+    private static final long OBJECT_LOS_INTERVAL_MAX_NANOS = Math.max(OBJECT_LOS_INTERVAL_BASE_NANOS,
+            Math.min(2000L, Long.getLong("apocbr.los.objectIntervalMaxMs", 750L))) * 1_000_000L;
+    private static final long CANDIDATE_INDEX_INTERVAL_BASE_NANOS = 100_000_000L;
+    private static final long CANDIDATE_INDEX_INTERVAL_MAX_NANOS = 400_000_000L;
     private static final int CANDIDATE_RADIUS_CHUNKS = 7;
     private final HashMap<Long, ArrayList<IsoMovingObject>> objectCandidatesByChunk = new HashMap<>();
     private IsoCell candidateIndexCell;
@@ -114,7 +117,8 @@ public class ServerLOS {
         if (data != null) {
             if (data.status == ServerLOS.UpdateStatus.ReadyInLOS || data.status == ServerLOS.UpdateStatus.ReadyInMain) {
                 long nowNanos = System.nanoTime();
-                if (data.lastObjectLosNanos != 0L && nowNanos - data.lastObjectLosNanos < OBJECT_LOS_INTERVAL_NANOS) {
+                long intervalNanos = this.getObjectLosIntervalNanos(player);
+                if (data.lastObjectLosNanos != 0L && nowNanos - data.lastObjectLosNanos < intervalNanos) {
                     return;
                 }
                 if (data.status == ServerLOS.UpdateStatus.ReadyInLOS) {
@@ -142,7 +146,7 @@ public class ServerLOS {
      */
     public ArrayList<IsoMovingObject> getObjectCandidates(IsoPlayer player, IsoCell cell) {
         long nowNanos = System.nanoTime();
-        if (this.candidateIndexCell != cell || nowNanos - this.candidateIndexBuiltNanos >= CANDIDATE_INDEX_INTERVAL_NANOS) {
+        if (this.candidateIndexCell != cell || nowNanos - this.candidateIndexBuiltNanos >= this.getCandidateIndexIntervalNanos(cell)) {
             this.rebuildObjectCandidateIndex(cell, nowNanos);
         }
 
@@ -160,6 +164,31 @@ public class ServerLOS {
             }
         }
         return candidates;
+    }
+
+    private long getObjectLosIntervalNanos(IsoPlayer player) {
+        IsoCell cell = player == null ? null : player.getCell();
+        int objectCount = cell == null ? 0 : cell.getObjectList().size();
+        int loadedCellCount = ServerMap.instance == null ? 0 : ServerMap.instance.loadedCells.size();
+        long pressureNanos = 0L;
+        pressureNanos += (long)Math.max(0, objectCount - 250) / 250L * 25_000_000L;
+        pressureNanos += (long)Math.max(0, loadedCellCount - 8) * 5_000_000L;
+        return Math.max(
+                OBJECT_LOS_INTERVAL_BASE_NANOS,
+                Math.min(OBJECT_LOS_INTERVAL_MAX_NANOS, OBJECT_LOS_INTERVAL_BASE_NANOS + pressureNanos)
+        );
+    }
+
+    private long getCandidateIndexIntervalNanos(IsoCell cell) {
+        int objectCount = cell == null ? 0 : cell.getObjectList().size();
+        int loadedCellCount = ServerMap.instance == null ? 0 : ServerMap.instance.loadedCells.size();
+        long pressureNanos = 0L;
+        pressureNanos += (long)Math.max(0, objectCount - 250) / 250L * 15_000_000L;
+        pressureNanos += (long)Math.max(0, loadedCellCount - 8) * 3_000_000L;
+        return Math.max(
+                CANDIDATE_INDEX_INTERVAL_BASE_NANOS,
+                Math.min(CANDIDATE_INDEX_INTERVAL_MAX_NANOS, CANDIDATE_INDEX_INTERVAL_BASE_NANOS + pressureNanos)
+        );
     }
 
     private void rebuildObjectCandidateIndex(IsoCell cell, long nowNanos) {
