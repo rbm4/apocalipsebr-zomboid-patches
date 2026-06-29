@@ -158,15 +158,14 @@ public final class IsoChunk {
     private boolean blendingDoneFull;
     private boolean blendingDonePartial;
     private boolean[] blendingModified = new boolean[4];
-    private final byte[] blendingDepth = new byte[] {
-            BlendDirection.NORTH.defaultDepth, BlendDirection.SOUTH.defaultDepth, BlendDirection.WEST.defaultDepth,
-            BlendDirection.EAST.defaultDepth
+    private final byte[] blendingDepth = new byte[]{
+        BlendDirection.NORTH.defaultDepth, BlendDirection.SOUTH.defaultDepth, BlendDirection.WEST.defaultDepth, BlendDirection.EAST.defaultDepth
     };
     private boolean attachmentsDoneFull = true;
-    private boolean[] attachmentsState = new boolean[] { true, true, true, true, true };
+    private boolean[] attachmentsState = new boolean[]{true, true, true, true, true};
     private List<SquareCoord> attachmentsPartial;
-    private static final boolean[] comparatorBool4 = new boolean[] { true, true, true, true };
-    private static final boolean[] comparatorBool5 = new boolean[] { true, true, true, true, true };
+    private static final boolean[] comparatorBool4 = new boolean[]{true, true, true, true};
+    private static final boolean[] comparatorBool5 = new boolean[]{true, true, true, true, true};
     private EnumSet<ChunkGenerationStatus> chunkGenerationStatus = EnumSet.noneOf(ChunkGenerationStatus.class);
     public static boolean doWorldgen = true;
     public static boolean doForaging = true;
@@ -184,17 +183,17 @@ public final class IsoChunk {
     public final ArrayList<IsoFloorBloodSplat> floorBloodSplatsFade = new ArrayList<>();
     private static final int MAX_BLOOD_SPLATS = 1000;
     private int nextSplatIndex;
-    public static final byte[][] renderByIndex = new byte[][] {
-            { 1, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-            { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0 },
-            { 1, 0, 0, 1, 0, 0, 1, 0, 0, 0 },
-            { 1, 0, 0, 1, 0, 1, 0, 0, 1, 0 },
-            { 1, 0, 1, 0, 1, 0, 1, 0, 1, 0 },
-            { 1, 1, 0, 1, 1, 0, 1, 1, 0, 0 },
-            { 1, 1, 0, 1, 1, 0, 1, 1, 0, 1 },
-            { 1, 1, 1, 1, 0, 1, 1, 1, 1, 0 },
-            { 1, 1, 1, 1, 1, 1, 1, 1, 1, 0 },
-            { 1, 1, 1, 1, 1, 1, 1, 1, 1, 1 }
+    public static final byte[][] renderByIndex = new byte[][]{
+        {1, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+        {1, 0, 0, 0, 0, 1, 0, 0, 0, 0},
+        {1, 0, 0, 1, 0, 0, 1, 0, 0, 0},
+        {1, 0, 0, 1, 0, 1, 0, 0, 1, 0},
+        {1, 0, 1, 0, 1, 0, 1, 0, 1, 0},
+        {1, 1, 0, 1, 1, 0, 1, 1, 0, 0},
+        {1, 1, 0, 1, 1, 0, 1, 1, 0, 1},
+        {1, 1, 1, 1, 0, 1, 1, 1, 1, 0},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 0},
+        {1, 1, 1, 1, 1, 1, 1, 1, 1, 1}
     };
     public final ArrayList<IsoChunkMap> refs = new ArrayList<>();
     public boolean loaded;
@@ -307,8 +306,7 @@ public final class IsoChunk {
         } else if (maxY <= 0.0F) {
             return false;
         } else {
-            return minX >= IsoCamera.frameState.offscreenWidth + 0 ? false
-                    : !(minY >= IsoCamera.frameState.offscreenHeight + 0);
+            return minX >= IsoCamera.frameState.offscreenWidth + 0 ? false : !(minY >= IsoCamera.frameState.offscreenHeight + 0);
         }
     }
 
@@ -363,11 +361,9 @@ public final class IsoChunk {
     public void addBloodSplat(float x, float y, float z, int type) {
         if (!(x < this.wx * 8) && !(x >= (this.wx + 1) * 8)) {
             if (!(y < this.wy * 8) && !(y >= (this.wy + 1) * 8)) {
-                IsoGridSquare sq = this.getGridSquare(PZMath.fastfloor(x - this.wx * 8),
-                        PZMath.fastfloor(y - this.wy * 8), PZMath.fastfloor(z));
+                IsoGridSquare sq = this.getGridSquare(PZMath.fastfloor(x - this.wx * 8), PZMath.fastfloor(y - this.wy * 8), PZMath.fastfloor(z));
                 if (sq != null && sq.isSolidFloor()) {
-                    IsoFloorBloodSplat b = new IsoFloorBloodSplat(x - this.wx * 8, y - this.wy * 8, z, type,
-                            (float) GameTime.getInstance().getWorldAgeHours());
+                    IsoFloorBloodSplat b = new IsoFloorBloodSplat(x - this.wx * 8, y - this.wy * 8, z, type, (float)GameTime.getInstance().getWorldAgeHours());
                     if (type < 8) {
                         b.index = ++this.nextSplatIndex;
                         if (this.nextSplatIndex >= 10) {
@@ -467,13 +463,11 @@ public final class IsoChunk {
                             }
 
                             int ratChance = 400;
-                            if (Objects.equals(sq.getSquareZombiesType(), "StreetPoor")
-                                    || Objects.equals(sq.getZoneType(), "TrailerPark")) {
+                            if (Objects.equals(sq.getSquareZombiesType(), "StreetPoor") || Objects.equals(sq.getZoneType(), "TrailerPark")) {
                                 ratChance /= 2;
                             }
 
-                            if (Objects.equals(sq.getSquareZombiesType(), "Rich")
-                                    || Objects.equals(sq.getLootZone(), "Rich")) {
+                            if (Objects.equals(sq.getSquareZombiesType(), "Rich") || Objects.equals(sq.getLootZone(), "Rich")) {
                                 ratChance *= 2;
                             }
 
@@ -481,11 +475,9 @@ public final class IsoChunk {
                                 ratChance /= 2;
                             }
 
-                            if (sq.canSpawnVermin()
-                                    && Rand.Next(ratChance) < SandboxOptions.instance.getCurrentRatIndex()) {
+                            if (sq.canSpawnVermin() && Rand.Next(ratChance) < SandboxOptions.instance.getCurrentRatIndex()) {
                                 int max = SandboxOptions.instance.getCurrentRatIndex() / 10;
-                                if (Objects.equals(sq.getSquareZombiesType(), "StreetPoor")
-                                        || Objects.equals(sq.getZoneType(), "TrailerPark")) {
+                                if (Objects.equals(sq.getSquareZombiesType(), "StreetPoor") || Objects.equals(sq.getZoneType(), "TrailerPark")) {
                                     max *= 2;
                                 }
 
@@ -500,22 +492,22 @@ public final class IsoChunk {
                                 int nbrOfRats = Rand.Next(1, max);
                                 String breed = "grey";
                                 if (sq != null
-                                        && sq.getBuilding() != null
-                                        && (sq.getBuilding().hasRoom("laboratory")
-                                                || sq.getBuilding().hasRoom("classroom")
-                                                || sq.getBuilding().hasRoom("secondaryclassroom")
-                                                || Objects.equals(sq.getZombiesType(), "University"))
-                                        && !Rand.NextBool(3)) {
+                                    && sq.getBuilding() != null
+                                    && (
+                                        sq.getBuilding().hasRoom("laboratory")
+                                            || sq.getBuilding().hasRoom("classroom")
+                                            || sq.getBuilding().hasRoom("secondaryclassroom")
+                                            || Objects.equals(sq.getZombiesType(), "University")
+                                    )
+                                    && !Rand.NextBool(3)) {
                                     breed = "white";
                                 }
 
                                 IsoAnimal animal;
                                 if (Rand.NextBool(2)) {
-                                    animal = new IsoAnimal(IsoWorld.instance.getCell(), sq.getX(), sq.getY(), sq.getZ(),
-                                            "rat", breed);
+                                    animal = new IsoAnimal(IsoWorld.instance.getCell(), sq.getX(), sq.getY(), sq.getZ(), "rat", breed);
                                 } else {
-                                    animal = new IsoAnimal(IsoWorld.instance.getCell(), sq.getX(), sq.getY(), sq.getZ(),
-                                            "ratfemale", breed);
+                                    animal = new IsoAnimal(IsoWorld.instance.getCell(), sq.getX(), sq.getY(), sq.getZ(), "ratfemale", breed);
                                 }
 
                                 animal.addToWorld();
@@ -525,12 +517,11 @@ public final class IsoChunk {
                                         IsoGridSquare square = sq.getAdjacentSquare(IsoDirections.getRandom());
                                         if (square != null && square.isFree(true) && square.isSolidFloor()) {
                                             if (Rand.NextBool(2)) {
-                                                animal = new IsoAnimal(IsoWorld.instance.getCell(), square.getX(),
-                                                        square.getY(), square.getZ(), "rat", breed);
+                                                animal = new IsoAnimal(IsoWorld.instance.getCell(), square.getX(), square.getY(), square.getZ(), "rat", breed);
                                             } else {
                                                 animal = new IsoAnimal(
-                                                        IsoWorld.instance.getCell(), square.getX(), square.getY(),
-                                                        square.getZ(), "ratfemale", breed);
+                                                    IsoWorld.instance.getCell(), square.getX(), square.getY(), square.getZ(), "ratfemale", breed
+                                                );
                                             }
 
                                             animal.addToWorld();
@@ -591,9 +582,9 @@ public final class IsoChunk {
             case E:
             case W:
                 if (vehicle.getX() - chunk.wx * 8 < vehicle.getScript().getExtents().x) {
-                    IsoGridSquare sq2 = IsoWorld.instance.currentCell
-                            .getGridSquare((double) (vehicle.getX() - vehicle.getScript().getExtents().x),
-                                    (double) vehicle.getY(), (double) vehicle.getZ());
+                    IsoGridSquare sq2 = IsoWorld.instance
+                        .currentCell
+                        .getGridSquare((double)(vehicle.getX() - vehicle.getScript().getExtents().x), (double)vehicle.getY(), (double)vehicle.getZ());
                     if (sq2 == null) {
                         return;
                     }
@@ -602,9 +593,9 @@ public final class IsoChunk {
                 }
 
                 if (vehicle.getX() - chunk.wx * 8 > 8.0F - vehicle.getScript().getExtents().x) {
-                    IsoGridSquare sq2 = IsoWorld.instance.currentCell
-                            .getGridSquare((double) (vehicle.getX() + vehicle.getScript().getExtents().x),
-                                    (double) vehicle.getY(), (double) vehicle.getZ());
+                    IsoGridSquare sq2 = IsoWorld.instance
+                        .currentCell
+                        .getGridSquare((double)(vehicle.getX() + vehicle.getScript().getExtents().x), (double)vehicle.getY(), (double)vehicle.getZ());
                     if (sq2 == null) {
                         return;
                     }
@@ -615,10 +606,9 @@ public final class IsoChunk {
             case N:
             case S:
                 if (vehicle.getY() - chunk.wy * 8 < vehicle.getScript().getExtents().z) {
-                    IsoGridSquare sq2 = IsoWorld.instance.currentCell
-                            .getGridSquare((double) vehicle.getX(),
-                                    (double) (vehicle.getY() - vehicle.getScript().getExtents().z),
-                                    (double) vehicle.getZ());
+                    IsoGridSquare sq2 = IsoWorld.instance
+                        .currentCell
+                        .getGridSquare((double)vehicle.getX(), (double)(vehicle.getY() - vehicle.getScript().getExtents().z), (double)vehicle.getZ());
                     if (sq2 == null) {
                         return;
                     }
@@ -627,10 +617,9 @@ public final class IsoChunk {
                 }
 
                 if (vehicle.getY() - chunk.wy * 8 > 8.0F - vehicle.getScript().getExtents().z) {
-                    IsoGridSquare sq2 = IsoWorld.instance.currentCell
-                            .getGridSquare((double) vehicle.getX(),
-                                    (double) (vehicle.getY() + vehicle.getScript().getExtents().z),
-                                    (double) vehicle.getZ());
+                    IsoGridSquare sq2 = IsoWorld.instance
+                        .currentCell
+                        .getGridSquare((double)vehicle.getX(), (double)(vehicle.getY() + vehicle.getScript().getExtents().z), (double)vehicle.getZ());
                     if (sq2 == null) {
                         return;
                     }
@@ -692,19 +681,18 @@ public final class IsoChunk {
     private boolean isGoodVehiclePos(BaseVehicle vehicle, IsoChunk chunk) {
         int chunkMinX = (PZMath.fastfloor(vehicle.getX()) - 4) / 8 - 1;
         int chunkMinY = (PZMath.fastfloor(vehicle.getY()) - 4) / 8 - 1;
-        int chunkMaxX = (int) Math.ceil((vehicle.getX() + 4.0F) / 8.0F) + 1;
-        int chunkMaxY = (int) Math.ceil((vehicle.getY() + 4.0F) / 8.0F) + 1;
+        int chunkMaxX = (int)Math.ceil((vehicle.getX() + 4.0F) / 8.0F) + 1;
+        int chunkMaxY = (int)Math.ceil((vehicle.getY() + 4.0F) / 8.0F) + 1;
 
         for (int cy = chunkMinY; cy < chunkMaxY; cy++) {
             for (int cx = chunkMinX; cx < chunkMaxX; cx++) {
                 IsoChunk chunk2 = GameServer.server
-                        ? ServerMap.instance.getChunk(cx, cy)
-                        : IsoWorld.instance.currentCell.getChunkForGridSquare(cx * 8, cy * 8, 0);
+                    ? ServerMap.instance.getChunk(cx, cy)
+                    : IsoWorld.instance.currentCell.getChunkForGridSquare(cx * 8, cy * 8, 0);
                 if (chunk2 != null) {
                     for (int i = 0; i < chunk2.vehicles.size(); i++) {
                         BaseVehicle vehicle2 = chunk2.vehicles.get(i);
-                        if (PZMath.fastfloor(vehicle2.getZ()) == PZMath.fastfloor(vehicle.getZ())
-                                && vehicle.testCollisionWithVehicle(vehicle2)) {
+                        if (PZMath.fastfloor(vehicle2.getZ()) == PZMath.fastfloor(vehicle.getZ()) && vehicle.testCollisionWithVehicle(vehicle2)) {
                             return false;
                         }
                     }
@@ -927,8 +915,7 @@ public final class IsoChunk {
                     v.setX(sq.x);
                     v.setY(sq.y + 3.0F - 3.0F);
                     v.setZ(sq.z);
-                    v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                            v.getY() - WorldSimulation.instance.offsetY);
+                    v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                     v.setScript();
                     this.checkVehiclePos(v, this);
                     this.vehicles.add(v);
@@ -951,8 +938,7 @@ public final class IsoChunk {
         IsoDirections dir = IsoDirections.N;
         int stallWid = 3;
         int stallLen = 4;
-        if ((zone.w == stallLen || zone.w == stallLen + 1 || zone.w == stallLen + 2)
-                && (zone.h <= stallWid || zone.h >= stallLen + 2)) {
+        if ((zone.w == stallLen || zone.w == stallLen + 1 || zone.w == stallLen + 2) && (zone.h <= stallWid || zone.h >= stallLen + 2)) {
             dir = IsoDirections.W;
         }
 
@@ -995,13 +981,12 @@ public final class IsoChunk {
                     int chance = type.spawnRate;
 
                     chance = switch (SandboxOptions.instance.carSpawnRate.getValue()) {
-                        case 2 -> (int) Math.ceil(chance / 10.0F);
-                        case 3 -> (int) Math.ceil(chance / 1.5F);
+                        case 2 -> (int)Math.ceil(chance / 10.0F);
+                        case 3 -> (int)Math.ceil(chance / 1.5F);
                         case 5 -> 2;
-                        default -> chance; // COMPILE-FIX: default branch required by javac
+                        default -> 1;
                     };
-                    if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue()
-                            || type.forceSpawn) {
+                    if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue() || type.forceSpawn) {
                         chance = 100;
                     }
 
@@ -1038,8 +1023,7 @@ public final class IsoChunk {
                                 alarmChance = 50;
                         }
 
-                        boolean wrecked = v.getScriptName().toLowerCase().contains("burnt")
-                                || v.getScriptName().toLowerCase().contains("smashed");
+                        boolean wrecked = v.getScriptName().toLowerCase().contains("burnt") || v.getScriptName().toLowerCase().contains("smashed");
                         if (Rand.Next(100) < alarmChance && !wrecked) {
                             v.setAlarmed(true);
                         }
@@ -1055,7 +1039,7 @@ public final class IsoChunk {
                         float angle = v.getDir().toAngle() + (float) Math.PI;
 
                         while (angle > Math.PI * 2) {
-                            angle = (float) (angle - (Math.PI * 2));
+                            angle = (float)(angle - (Math.PI * 2));
                         }
 
                         if (type.randomAngle) {
@@ -1069,31 +1053,27 @@ public final class IsoChunk {
                         float vx = sq.x + 0.5F;
                         float vy = sq.y + 0.5F;
                         if (dir == IsoDirections.N) {
-                            vx = sq.x + stallWid / 2.0F - (int) (stallWid / 2.0F);
+                            vx = sq.x + stallWid / 2.0F - (int)(stallWid / 2.0F);
                             vy = zone.y + vehicleLength / 2.0F + 0.5F;
-                            if (vy >= sq.y + 1 && PZMath.fastfloor(y) < 7
-                                    && this.getGridSquare(PZMath.fastfloor(x), PZMath.fastfloor(y) + 1, 0) != null) {
+                            if (vy >= sq.y + 1 && PZMath.fastfloor(y) < 7 && this.getGridSquare(PZMath.fastfloor(x), PZMath.fastfloor(y) + 1, 0) != null) {
                                 sq = this.getGridSquare(PZMath.fastfloor(x), PZMath.fastfloor(y) + 1, 0);
                             }
                         } else if (dir == IsoDirections.S) {
-                            vx = sq.x + stallWid / 2.0F - (int) (stallWid / 2.0F);
+                            vx = sq.x + stallWid / 2.0F - (int)(stallWid / 2.0F);
                             vy = zone.y + zone.h - vehicleLength / 2.0F - 0.5F;
-                            if (vy < sq.y && PZMath.fastfloor(y) > 0
-                                    && this.getGridSquare(PZMath.fastfloor(x), PZMath.fastfloor(y) - 1, 0) != null) {
+                            if (vy < sq.y && PZMath.fastfloor(y) > 0 && this.getGridSquare(PZMath.fastfloor(x), PZMath.fastfloor(y) - 1, 0) != null) {
                                 sq = this.getGridSquare(PZMath.fastfloor(x), PZMath.fastfloor(y) - 1, 0);
                             }
                         } else if (dir == IsoDirections.W) {
                             vx = zone.x + vehicleLength / 2.0F + 0.5F;
-                            vy = sq.y + var23 / 2.0F - (int) (var23 / 2.0F);
-                            if (vx >= sq.x + 1 && PZMath.fastfloor(x) < 7
-                                    && this.getGridSquare(PZMath.fastfloor(x) + 1, PZMath.fastfloor(y), 0) != null) {
+                            vy = sq.y + var23 / 2.0F - (int)(var23 / 2.0F);
+                            if (vx >= sq.x + 1 && PZMath.fastfloor(x) < 7 && this.getGridSquare(PZMath.fastfloor(x) + 1, PZMath.fastfloor(y), 0) != null) {
                                 sq = this.getGridSquare(PZMath.fastfloor(x) + 1, PZMath.fastfloor(y), 0);
                             }
                         } else if (dir == IsoDirections.E) {
                             vx = zone.x + zone.w - vehicleLength / 2.0F - 0.5F;
-                            vy = sq.y + var23 / 2.0F - (int) (var23 / 2.0F);
-                            if (vx < sq.x && PZMath.fastfloor(x) > 0
-                                    && this.getGridSquare(PZMath.fastfloor(x) - 1, PZMath.fastfloor(y), 0) != null) {
+                            vy = sq.y + var23 / 2.0F - (int)(var23 / 2.0F);
+                            if (vx < sq.x && PZMath.fastfloor(x) > 0 && this.getGridSquare(PZMath.fastfloor(x) - 1, PZMath.fastfloor(y), 0) != null) {
                                 sq = this.getGridSquare(PZMath.fastfloor(x) - 1, PZMath.fastfloor(y), 0);
                             }
                         }
@@ -1117,8 +1097,7 @@ public final class IsoChunk {
                         v.setX(vx);
                         v.setY(vy);
                         v.setZ(sq.z);
-                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                                v.getY() - WorldSimulation.instance.offsetY);
+                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                         float rustChance = 100.0F - Math.min(type.baseVehicleQuality * 120.0F, 100.0F);
                         v.rust = Rand.Next(100) < rustChance ? 1.0F : 0.0F;
                         if (doSpawnedVehiclesInInvalidPosition(v) || GameClient.client) {
@@ -1199,7 +1178,7 @@ public final class IsoChunk {
                     float angle = vector2.getDirectionNeg() + 0.0F;
 
                     while (angle > Math.PI * 2) {
-                        angle = (float) (angle - (Math.PI * 2));
+                        angle = (float)(angle - (Math.PI * 2));
                     }
 
                     vector2.x = oldx;
@@ -1210,8 +1189,7 @@ public final class IsoChunk {
 
                     v.savedRot.setAngleAxis(angle, 0.0F, 1.0F, 0.0F);
                     v.jniTransform.setRotation(v.savedRot);
-                    IsoGridSquare sq = this.getGridSquare(PZMath.fastfloor(vx) - this.wx * 8,
-                            PZMath.fastfloor(vy) - this.wy * 8, 0);
+                    IsoGridSquare sq = this.getGridSquare(PZMath.fastfloor(vx) - this.wx * 8, PZMath.fastfloor(vy) - this.wy * 8, 0);
                     if (vx < sq.x + 0.005F) {
                         vx = sq.x + 0.005F;
                     }
@@ -1231,8 +1209,7 @@ public final class IsoChunk {
                     v.setX(vx);
                     v.setY(vy);
                     v.setZ(sq.z);
-                    v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                            v.getY() - WorldSimulation.instance.offsetY);
+                    v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                     float rustChance = 100.0F - Math.min(type.baseVehicleQuality * 120.0F, 100.0F);
                     v.rust = Rand.Next(100) < rustChance ? 1.0F : 0.0F;
                     if (doSpawnedVehiclesInInvalidPosition(v) || GameClient.client) {
@@ -1291,8 +1268,7 @@ public final class IsoChunk {
         boolean north = true;
         int stallWid = 3;
         int stallLen = 4;
-        if ((zone.w == stallLen || zone.w == stallLen + 1 || zone.w == stallLen + 2)
-                && (zone.h <= stallWid || zone.h >= stallLen + 2)) {
+        if ((zone.w == stallLen || zone.w == stallLen + 1 || zone.w == stallLen + 2) && (zone.h <= stallWid || zone.h >= stallLen + 2)) {
             north = false;
         }
 
@@ -1319,16 +1295,15 @@ public final class IsoChunk {
                 v.savedRot.setAngleAxis(angle, 0.0F, 1.0F, 0.0F);
                 v.jniTransform.setRotation(v.savedRot);
                 if (north) {
-                    v.setX(sq.x + stallWid / 2.0F - (int) (stallWid / 2.0F));
+                    v.setX(sq.x + stallWid / 2.0F - (int)(stallWid / 2.0F));
                     v.setY(sq.y);
                 } else {
                     v.setX(sq.x);
-                    v.setY(sq.y + var10 / 2.0F - (int) (var10 / 2.0F));
+                    v.setY(sq.y + var10 / 2.0F - (int)(var10 / 2.0F));
                 }
 
                 v.setZ(sq.z);
-                v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                        v.getY() - WorldSimulation.instance.offsetY);
+                v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                 if (doSpawnedVehiclesInInvalidPosition(v) || GameClient.client) {
                     this.vehicles.add(v);
                 }
@@ -1405,8 +1380,7 @@ public final class IsoChunk {
                     }
 
                     int chance = 80;
-                    if (SystemDisabler.doVehiclesEverywhere
-                            || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
+                    if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
                         chance = 100;
                     }
 
@@ -1422,8 +1396,7 @@ public final class IsoChunk {
                         v.setX(sq.x + Rand.Next(0.0F, 1.0F));
                         v.setY(sq.y + Rand.Next(0.0F, 1.0F));
                         v.setZ(sq.z);
-                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                                v.getY() - WorldSimulation.instance.offsetY);
+                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                         if (this.isGoodVehiclePos(v, this)) {
                             v.setSkinIndex(Rand.Next(v.getSkinCount() - 1));
                             v.setDir(IsoDirections.W);
@@ -1433,7 +1406,7 @@ public final class IsoChunk {
                             float angle = v.getDir().toAngle() + (float) Math.PI - 0.25F + Rand.Next(0.0F, dist);
 
                             while (angle > Math.PI * 2) {
-                                angle = (float) (angle - (Math.PI * 2));
+                                angle = (float)(angle - (Math.PI * 2));
                             }
 
                             v.savedRot.setAngleAxis(angle, 0.0F, 1.0F, 0.0F);
@@ -1474,8 +1447,7 @@ public final class IsoChunk {
                     }
 
                     int chance = 80;
-                    if (SystemDisabler.doVehiclesEverywhere
-                            || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
+                    if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
                         chance = 100;
                     }
 
@@ -1491,8 +1463,7 @@ public final class IsoChunk {
                         v.setX(sq.x + Rand.Next(0.0F, 1.0F));
                         v.setY(sq.y + Rand.Next(0.0F, 1.0F));
                         v.setZ(sq.z);
-                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                                v.getY() - WorldSimulation.instance.offsetY);
+                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                         if (this.isGoodVehiclePos(v, this)) {
                             v.setSkinIndex(Rand.Next(v.getSkinCount() - 1));
                             v.setDir(IsoDirections.E);
@@ -1502,7 +1473,7 @@ public final class IsoChunk {
                             float angle = v.getDir().toAngle() + (float) Math.PI - 0.25F + Rand.Next(0.0F, dist);
 
                             while (angle > Math.PI * 2) {
-                                angle = (float) (angle - (Math.PI * 2));
+                                angle = (float)(angle - (Math.PI * 2));
                             }
 
                             v.savedRot.setAngleAxis(angle, 0.0F, 1.0F, 0.0F);
@@ -1543,8 +1514,7 @@ public final class IsoChunk {
                     }
 
                     int chance = 80;
-                    if (SystemDisabler.doVehiclesEverywhere
-                            || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
+                    if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
                         chance = 100;
                     }
 
@@ -1560,8 +1530,7 @@ public final class IsoChunk {
                         v.setX(sq.x + Rand.Next(0.0F, 1.0F));
                         v.setY(sq.y + Rand.Next(0.0F, 1.0F));
                         v.setZ(sq.z);
-                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                                v.getY() - WorldSimulation.instance.offsetY);
+                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                         if (this.isGoodVehiclePos(v, this)) {
                             v.setSkinIndex(Rand.Next(v.getSkinCount() - 1));
                             v.setDir(IsoDirections.S);
@@ -1571,7 +1540,7 @@ public final class IsoChunk {
                             float angle = v.getDir().toAngle() + (float) Math.PI - 0.25F + Rand.Next(0.0F, dist);
 
                             while (angle > Math.PI * 2) {
-                                angle = (float) (angle - (Math.PI * 2));
+                                angle = (float)(angle - (Math.PI * 2));
                             }
 
                             v.savedRot.setAngleAxis(angle, 0.0F, 1.0F, 0.0F);
@@ -1612,8 +1581,7 @@ public final class IsoChunk {
                     }
 
                     int chance = 80;
-                    if (SystemDisabler.doVehiclesEverywhere
-                            || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
+                    if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
                         chance = 100;
                     }
 
@@ -1629,8 +1597,7 @@ public final class IsoChunk {
                         v.setX(sq.x + Rand.Next(0.0F, 1.0F));
                         v.setY(sq.y + Rand.Next(0.0F, 1.0F));
                         v.setZ(sq.z);
-                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                                v.getY() - WorldSimulation.instance.offsetY);
+                        v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                         if (this.isGoodVehiclePos(v, this)) {
                             v.setSkinIndex(Rand.Next(v.getSkinCount() - 1));
                             v.setDir(IsoDirections.N);
@@ -1640,7 +1607,7 @@ public final class IsoChunk {
                             float angle = v.getDir().toAngle() + (float) Math.PI - 0.25F + Rand.Next(0.0F, dist);
 
                             while (angle > Math.PI * 2) {
-                                angle = (float) (angle - (Math.PI * 2));
+                                angle = (float)(angle - (Math.PI * 2));
                             }
 
                             v.savedRot.setAngleAxis(angle, 0.0F, 1.0F, 0.0F);
@@ -1682,8 +1649,7 @@ public final class IsoChunk {
                 float localPerpOffset = Rand.Next(-1.0F, 1.0F);
                 float spawnX = x1 + vector2.x / len * offset + perp.x * localPerpOffset;
                 float spawnY = y1 + vector2.y / len * offset + perp.y * localPerpOffset;
-                this.TryAddVehicle_TrafficJam(zone, zoneName, spawnX, spawnY, vector2, distanceToSpawnPoint + offset,
-                        zoneLength);
+                this.TryAddVehicle_TrafficJam(zone, zoneName, spawnX, spawnY, vector2, distanceToSpawnPoint + offset, zoneLength);
 
                 for (float dp = 2.0F; dp + 1.5F <= zone.polylineWidth / 2.0F; dp += 2.0F) {
                     localPerpOffset = dp + Rand.Next(-1.0F, 1.0F);
@@ -1691,8 +1657,7 @@ public final class IsoChunk {
                         offset = PZMath.clamp(d + Rand.Next(-2.0F, 2.0F), 3.0F, len - 3.0F);
                         spawnX = x1 + vector2.x / len * offset + perp.x * localPerpOffset;
                         spawnY = y1 + vector2.y / len * offset + perp.y * localPerpOffset;
-                        this.TryAddVehicle_TrafficJam(zone, zoneName, spawnX, spawnY, vector2,
-                                distanceToSpawnPoint + offset, zoneLength);
+                        this.TryAddVehicle_TrafficJam(zone, zoneName, spawnX, spawnY, vector2, distanceToSpawnPoint + offset, zoneLength);
                     }
 
                     localPerpOffset = dp + Rand.Next(-1.0F, 1.0F);
@@ -1700,29 +1665,24 @@ public final class IsoChunk {
                         offset = PZMath.clamp(d + Rand.Next(-2.0F, 2.0F), 3.0F, len - 3.0F);
                         spawnX = x1 + vector2.x / len * offset - perp.x * localPerpOffset;
                         spawnY = y1 + vector2.y / len * offset - perp.y * localPerpOffset;
-                        this.TryAddVehicle_TrafficJam(zone, zoneName, spawnX, spawnY, vector2,
-                                distanceToSpawnPoint + offset, zoneLength);
+                        this.TryAddVehicle_TrafficJam(zone, zoneName, spawnX, spawnY, vector2, distanceToSpawnPoint + offset, zoneLength);
                     }
                 }
             }
         }
     }
 
-    private void TryAddVehicle_TrafficJam(Zone zone, String zoneName, float spawnX, float spawnY, Vector2 vector2,
-            float distanceToSpawnPoint, float zoneLength) {
+    private void TryAddVehicle_TrafficJam(Zone zone, String zoneName, float spawnX, float spawnY, Vector2 vector2, float distanceToSpawnPoint, float zoneLength) {
         int chunksPerWidth = 8;
-        if (!(spawnX < this.wx * 8) && !(spawnX >= (this.wx + 1) * 8) && !(spawnY < this.wy * 8)
-                && !(spawnY >= (this.wy + 1) * 8)) {
-            IsoGridSquare sq = this.getGridSquare(PZMath.fastfloor(spawnX) - this.wx * 8,
-                    PZMath.fastfloor(spawnY) - this.wy * 8, 0);
+        if (!(spawnX < this.wx * 8) && !(spawnX >= (this.wx + 1) * 8) && !(spawnY < this.wy * 8) && !(spawnY >= (this.wy + 1) * 8)) {
+            IsoGridSquare sq = this.getGridSquare(PZMath.fastfloor(spawnX) - this.wx * 8, PZMath.fastfloor(spawnY) - this.wy * 8, 0);
             if (sq != null) {
                 VehicleType type = VehicleType.getRandomVehicleType(zoneName + "W");
                 if (type == null) {
                     System.out.println("Can't find car: " + zoneName);
                 } else {
                     int chance = 80;
-                    if (SystemDisabler.doVehiclesEverywhere
-                            || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
+                    if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue()) {
                         chance = 100;
                     }
 
@@ -1745,13 +1705,12 @@ public final class IsoChunk {
                             angle += Rand.Next(-r, r) * (float) (Math.PI / 180.0);
 
                             while (angle > Math.PI * 2) {
-                                angle = (float) (angle - (Math.PI * 2));
+                                angle = (float)(angle - (Math.PI * 2));
                             }
 
                             v.savedRot.setAngleAxis(angle, 0.0F, 1.0F, 0.0F);
                             v.jniTransform.setRotation(v.savedRot);
-                            v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(),
-                                    v.getY() - WorldSimulation.instance.offsetY);
+                            v.jniTransform.origin.set(v.getX() - WorldSimulation.instance.offsetX, v.getZ(), v.getY() - WorldSimulation.instance.offsetY);
                             if (this.isGoodVehiclePos(v, this)) {
                                 v.setSkinIndex(Rand.Next(v.getSkinCount() - 1));
                                 if (doSpawnedVehiclesInInvalidPosition(v)) {
@@ -1782,8 +1741,7 @@ public final class IsoChunk {
 
                     for (int i = 0; vehicleZones != null && i < vehicleZones.size(); i++) {
                         VehicleZone zone = vehicleZones.get(i);
-                        if (zone.x + zone.w >= this.wx * 8 && zone.y + zone.h >= this.wy * 8
-                                && zone.x < (this.wx + 1) * 8 && zone.y < (this.wy + 1) * 8) {
+                        if (zone.x + zone.w >= this.wx * 8 && zone.y + zone.h >= this.wy * 8 && zone.x < (this.wx + 1) * 8 && zone.y < (this.wy + 1) * 8) {
                             String name = zone.name;
                             if (name.isEmpty()) {
                                 name = zone.type;
@@ -1797,8 +1755,7 @@ public final class IsoChunk {
                                     }
 
                                     if ("RTrafficJam".equalsIgnoreCase(name) && Rand.Next(100) < 10) {
-                                        this.AddVehicles_TrafficJam_Polyline(zone,
-                                                name.replaceFirst("rtraffic", "traffic"));
+                                        this.AddVehicles_TrafficJam_Polyline(zone, name.replaceFirst("rtraffic", "traffic"));
                                         continue;
                                     }
                                 }
@@ -1870,9 +1827,9 @@ public final class IsoChunk {
                     Zone zone = metaChunk.getZone(i);
                     if (this.canAddSurvivorInHorde(zone, forced)) {
                         int baseChance = 4;
-                        float worldAgeDays = (float) GameTime.getInstance().getWorldAgeHours() / 24.0F;
+                        float worldAgeDays = (float)GameTime.getInstance().getWorldAgeHours() / 24.0F;
                         worldAgeDays += (SandboxOptions.instance.timeSinceApo.getValue() - 1) * 30;
-                        baseChance = (int) (baseChance + worldAgeDays * 0.03F);
+                        baseChance = (int)(baseChance + worldAgeDays * 0.03F);
                         baseChance = Math.min(baseChance, 15);
                         if (forced || Rand.Next(0.0F, 500.0F) < 0.4F * baseChance) {
                             this.addSurvivorInHorde(zone);
@@ -1911,8 +1868,7 @@ public final class IsoChunk {
 
         for (int i = -3; i < 3; i++) {
             for (int j = -3; j < 3; j++) {
-                IsoGridSquare sq = this.getGridSquare((int) (centerX + i) - this.wx * 8,
-                        (int) (centerY + j) - this.wy * 8, 0);
+                IsoGridSquare sq = this.getGridSquare((int)(centerX + i) - this.wx * 8, (int)(centerY + j) - this.wy * 8, 0);
                 if (sq != null && sq.getBuilding() == null && !sq.isVehicleIntersecting() && sq.isGoodSquare()) {
                     VirtualZombieManager.instance.choices.add(sq);
                 }
@@ -1923,8 +1879,7 @@ public final class IsoChunk {
             int zombiesNbr = Rand.Next(15, 20);
 
             for (int i = 0; i < zombiesNbr; i++) {
-                IsoZombie zombie = VirtualZombieManager.instance.createRealZombieAlways(IsoDirections.getRandom(),
-                        false);
+                IsoZombie zombie = VirtualZombieManager.instance.createRealZombieAlways(IsoDirections.getRandom(), false);
                 if (zombie != null) {
                     zombie.dressInRandomOutfit();
                     ZombieSpawnRecorder.instance.record(zombie, "addSurvivorInHorde");
@@ -1932,11 +1887,10 @@ public final class IsoChunk {
             }
 
             VirtualZombieManager.instance.choices.clear();
-            IsoGridSquare sq = this.getGridSquare((int) centerX - this.wx * 8, (int) centerY - this.wy * 8, 0);
+            IsoGridSquare sq = this.getGridSquare((int)centerX - this.wx * 8, (int)centerY - this.wy * 8, 0);
             if (sq != null && sq.getBuilding() == null && !sq.isVehicleIntersecting() && sq.isGoodSquare()) {
                 VirtualZombieManager.instance.choices.add(sq);
-                IsoZombie zombie = VirtualZombieManager.instance.createRealZombieAlways(IsoDirections.getRandom(),
-                        false);
+                IsoZombie zombie = VirtualZombieManager.instance.createRealZombieAlways(IsoDirections.getRandom(), false);
                 if (zombie != null) {
                     ZombieSpawnRecorder.instance.record(zombie, "addSurvivorInHorde");
                     zombie.setAsSurvivor();
@@ -2001,7 +1955,7 @@ public final class IsoChunk {
 
                 for (int i = 0; i < 4; i++) {
                     if (this.shapes[i] != -1) {
-                        bshapes[nShapes++] = (byte) (this.shapes[i] + 1);
+                        bshapes[nShapes++] = (byte)(this.shapes[i] + 1);
                     }
                 }
 
@@ -2026,13 +1980,14 @@ public final class IsoChunk {
                 for (int i = 0; i < sq.getObjects().size(); i++) {
                     IsoObject o = sq.getObjects().get(i);
                     if (o.sprite != null
-                            && o.sprite.name != null
-                            && (o.sprite.name.contains("lighting_outdoor_")
-                                    || o.sprite.name.equals("recreational_sports_01_21")
-                                    || o.sprite.name.equals("recreational_sports_01_19")
-                                    || o.sprite.name.equals("recreational_sports_01_32"))
-                            && (!o.getProperties().has("MoveType")
-                                    || !"WallObject".equals(o.getProperties().get("MoveType")))) {
+                        && o.sprite.name != null
+                        && (
+                            o.sprite.name.contains("lighting_outdoor_")
+                                || o.sprite.name.equals("recreational_sports_01_21")
+                                || o.sprite.name.equals("recreational_sports_01_19")
+                                || o.sprite.name.equals("recreational_sports_01_32")
+                        )
+                        && (!o.getProperties().has("MoveType") || !"WallObject".equals(o.getProperties().get("MoveType")))) {
                         isColumn = true;
                         break;
                     }
@@ -2078,18 +2033,16 @@ public final class IsoChunk {
                     shapes[shapeCount++] = IsoChunk.PhysicsShapes.Tree.ordinal();
                 }
 
-                if (tree != null && !tree.equals("1")
-                        && (windType == null || !windType.equals("2") || !tree.equals("2") && !tree.equals("1"))) {
+                if (tree != null && !tree.equals("1") && (windType == null || !windType.equals("2") || !tree.equals("2") && !tree.equals("1"))) {
                     shapes[shapeCount++] = IsoChunk.PhysicsShapes.Tree.ordinal();
                 }
             } else if (props.has(IsoFlagType.solid)
-                    || props.has(IsoFlagType.solidtrans)
-                    || props.has(IsoFlagType.blocksight)
-                    || sq.HasStairs()
-                    || solidThumpable) {
+                || props.has(IsoFlagType.solidtrans)
+                || props.has(IsoFlagType.blocksight)
+                || sq.HasStairs()
+                || solidThumpable) {
                 if (shapeCount == shapes.length) {
-                    DebugLog.log(DebugType.General,
-                            "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
+                    DebugLog.log(DebugType.General, "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
                     return;
                 }
 
@@ -2102,8 +2055,7 @@ public final class IsoChunk {
 
             if (sq.getProperties().has(IsoFlagType.solidfloor)) {
                 if (shapeCount == shapes.length) {
-                    DebugLog.log(DebugType.General,
-                            "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
+                    DebugLog.log(DebugType.General, "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
                     return;
                 }
 
@@ -2111,11 +2063,9 @@ public final class IsoChunk {
             }
 
             if (!sq.getProperties().has("CarSlowFactor")) {
-                if (sq.getProperties().has(IsoFlagType.DoorWallW) && sq.getProperties().has(IsoFlagType.doorW)
-                        && !props.has(IsoFlagType.open)) {
+                if (sq.getProperties().has(IsoFlagType.DoorWallW) && sq.getProperties().has(IsoFlagType.doorW) && !props.has(IsoFlagType.open)) {
                     if (shapeCount == shapes.length) {
-                        DebugLog.log(DebugType.General,
-                                "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
+                        DebugLog.log(DebugType.General, "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
                         return;
                     }
 
@@ -2129,19 +2079,16 @@ public final class IsoChunk {
 
                 if (props.has(IsoFlagType.collideW) || props.has(IsoFlagType.windowW)) {
                     if (shapeCount == shapes.length) {
-                        DebugLog.log(DebugType.General,
-                                "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
+                        DebugLog.log(DebugType.General, "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
                         return;
                     }
 
                     shapes[shapeCount++] = IsoChunk.PhysicsShapes.WallW.ordinal();
                 }
 
-                if (sq.getProperties().has(IsoFlagType.DoorWallN) && sq.getProperties().has(IsoFlagType.doorN)
-                        && !props.has(IsoFlagType.open)) {
+                if (sq.getProperties().has(IsoFlagType.DoorWallN) && sq.getProperties().has(IsoFlagType.doorN) && !props.has(IsoFlagType.open)) {
                     if (shapeCount == shapes.length) {
-                        DebugLog.log(DebugType.General,
-                                "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
+                        DebugLog.log(DebugType.General, "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
                         return;
                     }
 
@@ -2155,8 +2102,7 @@ public final class IsoChunk {
 
                 if (props.has(IsoFlagType.collideN) || props.has(IsoFlagType.windowN)) {
                     if (shapeCount == shapes.length) {
-                        DebugLog.log(DebugType.General,
-                                "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
+                        DebugLog.log(DebugType.General, "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
                         return;
                     }
 
@@ -2165,8 +2111,7 @@ public final class IsoChunk {
 
                 if (sq.has("PhysicsShape")) {
                     if (shapeCount == shapes.length) {
-                        DebugLog.log(DebugType.General,
-                                "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
+                        DebugLog.log(DebugType.General, "Error: Too many physics objects on gridsquare: " + sq.x + ", " + sq.y + ", " + sq.z);
                         return;
                     }
 
@@ -2232,7 +2177,7 @@ public final class IsoChunk {
     }
 
     public void setModifDepth(BlendDirection dir, int depth) {
-        this.setModifDepth(dir, (byte) depth);
+        this.setModifDepth(dir, (byte)depth);
     }
 
     public byte getModifDepth(BlendDirection dir) {
@@ -2268,14 +2213,11 @@ public final class IsoChunk {
     }
 
     public SquareCoord getAttachmentsPartial(int i) {
-        return this.attachmentsPartial != null && !this.attachmentsPartial.isEmpty() ? this.attachmentsPartial.get(i)
-                : null;
+        return this.attachmentsPartial != null && !this.attachmentsPartial.isEmpty() ? this.attachmentsPartial.get(i) : null;
     }
 
     public boolean hasAttachmentsPartial(SquareCoord coord) {
-        return this.attachmentsPartial != null && !this.attachmentsPartial.isEmpty()
-                ? this.attachmentsPartial.contains(coord)
-                : false;
+        return this.attachmentsPartial != null && !this.attachmentsPartial.isEmpty() ? this.attachmentsPartial.contains(coord) : false;
     }
 
     public Integer attachmentsPartialSize() {
@@ -2442,8 +2384,7 @@ public final class IsoChunk {
                 for (int x = 0; x < 8; x++) {
                     IsoGridSquare sq = this.getGridSquare(x, y, z);
                     if (sq == null && z == 0) {
-                        sq = IsoGridSquare.getNew(IsoWorld.instance.currentCell, null, this.wx * 8 + x, this.wy * 8 + y,
-                                z);
+                        sq = IsoGridSquare.getNew(IsoWorld.instance.currentCell, null, this.wx * 8 + x, this.wy * 8 + y, z);
                         this.setSquare(x, y, z, sq);
                     }
 
@@ -3134,8 +3075,7 @@ public final class IsoChunk {
         }
 
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            if (!this.ignorePathfind && bNewLevels && Thread.currentThread() == GameWindow.gameThread
-                    || Thread.currentThread() == GameServer.mainThread) {
+            if (!this.ignorePathfind && bNewLevels && Thread.currentThread() == GameWindow.gameThread || Thread.currentThread() == GameServer.mainThread) {
                 if (PathfindNative.useNativeCode) {
                     PathfindNative.instance.addChunkToWorld(this);
                 } else {
@@ -3196,8 +3136,7 @@ public final class IsoChunk {
     }
 
     public IsoGridSquare getGridSquare(int chunkSquareX, int chunkSquareY, int worldSquareZ) {
-        if (chunkSquareX >= 0 && chunkSquareX < 8 && chunkSquareY >= 0 && chunkSquareY < 8
-                && worldSquareZ <= this.maxLevel && worldSquareZ >= this.minLevel) {
+        if (chunkSquareX >= 0 && chunkSquareX < 8 && chunkSquareY >= 0 && chunkSquareY < 8 && worldSquareZ <= this.maxLevel && worldSquareZ >= this.minLevel) {
             int zz = this.squaresIndexOfLevel(worldSquareZ);
             return zz < this.squares.length && zz >= 0 ? this.squares[zz][chunkSquareY * 8 + chunkSquareX] : null;
         } else {
@@ -3210,10 +3149,6 @@ public final class IsoChunk {
     }
 
     public void removeFromWorld() {
-        this.removeFromWorldAsync();
-    }
-
-    public void removeFromWorldAsync() {
         loadGridSquare.remove(this);
         this.preventHotSave = true;
         if (GameClient.client && GameClient.instance.connected) {
@@ -3224,14 +3159,13 @@ public final class IsoChunk {
             }
         }
 
-        long apocBrGlobalDetachStart = System.nanoTime();
         try {
             MapCollisionData.instance.removeChunkFromWorld(this);
             AnimalPopulationManager.getInstance().removeChunkFromWorld(this);
             ZombiePopulationManager.instance.removeChunkFromWorld(this);
             if (!GameClient.client) {
-                int popmanCellX = (int) Math.floor(this.wx / 32.0);
-                int popmanCellY = (int) Math.floor(this.wy / 32.0);
+                int popmanCellX = (int)Math.floor(this.wx / 32.0);
+                int popmanCellY = (int)Math.floor(this.wy / 32.0);
                 ZombiePopulationManager.instance.requestSaveCell(popmanCellX, popmanCellY);
             }
 
@@ -3245,20 +3179,13 @@ public final class IsoChunk {
         } catch (Exception var9) {
             ExceptionLogger.logException(var9);
         }
-        zombie.ApocBRServerTelemetry.recordServerMapUnloadPhase(
-                "chunkGlobal", 1, System.nanoTime() - apocBrGlobalDetachStart);
 
         int to = 64;
-        int apocBrSquares = 0;
-        int apocBrMovingObjects = 0;
-        int apocBrStaticObjects = 0;
-        long apocBrSquareTeardownStart = System.nanoTime();
 
         for (int n = this.minLevel; n <= this.maxLevel; n++) {
             for (int m = 0; m < 64; m++) {
                 IsoGridSquare sq = this.squares[this.squaresIndexOfLevel(n)][m];
                 if (sq != null) {
-                    apocBrSquares++;
                     RainManager.RemoveAllOn(sq);
                     sq.clearWater();
                     sq.clearPuddles();
@@ -3271,7 +3198,6 @@ public final class IsoChunk {
                     }
 
                     ArrayList<IsoMovingObject> mov = sq.getMovingObjects();
-                    apocBrMovingObjects += mov.size();
 
                     for (int a = 0; a < mov.size(); a++) {
                         IsoMovingObject obj = mov.get(a);
@@ -3293,13 +3219,11 @@ public final class IsoChunk {
 
                     mov.clear();
 
-                    apocBrStaticObjects += sq.getObjects().size();
                     for (int i = 0; i < sq.getObjects().size(); i++) {
                         IsoObject objx = sq.getObjects().get(i);
                         objx.removeFromWorldToMeta();
                     }
 
-                    apocBrStaticObjects += sq.getStaticMovingObjects().size();
                     for (int i = 0; i < sq.getStaticMovingObjects().size(); i++) {
                         IsoMovingObject objx = sq.getStaticMovingObjects().get(i);
                         objx.removeFromWorld();
@@ -3311,23 +3235,14 @@ public final class IsoChunk {
                 }
             }
         }
-        zombie.ApocBRServerTelemetry.recordServerMapUnloadPhase(
-                "squareTeardown", apocBrSquares, System.nanoTime() - apocBrSquareTeardownStart);
-        zombie.ApocBRServerTelemetry.recordServerMapUnloadSquareCounts(apocBrMovingObjects, apocBrStaticObjects);
 
-        int apocBrVehicles = 0;
-        long apocBrVehicleDetachStart = System.nanoTime();
         for (int i = 0; i < this.vehicles.size(); i++) {
             BaseVehicle vehicle = this.vehicles.get(i);
-            if (IsoWorld.instance.currentCell.getVehicles().contains(vehicle)
-                    || IsoWorld.instance.currentCell.addVehicles.contains(vehicle)) {
+            if (IsoWorld.instance.currentCell.getVehicles().contains(vehicle) || IsoWorld.instance.currentCell.addVehicles.contains(vehicle)) {
                 DebugLog.log("IsoChunk.removeFromWorld: vehicle wasn't removed from world id=" + vehicle.vehicleId);
                 vehicle.removeFromWorld();
-                apocBrVehicles++;
             }
         }
-        zombie.ApocBRServerTelemetry.recordServerMapUnloadPhase(
-                "vehicleDetach", apocBrVehicles, System.nanoTime() - apocBrVehicleDetachStart);
 
         if (this.corpseCount != null) {
             this.corpseCount.removeFromWorld();
@@ -3347,75 +3262,63 @@ public final class IsoChunk {
     }
 
     private void disconnectFromAdjacentChunks(IsoGridSquare sq) {
-        if (sq == null) {
-            return;
-        }
-
         int lx = PZMath.coordmodulo(sq.x, 8);
         int ly = PZMath.coordmodulo(sq.y, 8);
         if (lx == 0 || lx == 7 || ly == 0 || ly == 7) {
             IsoDirections d1 = IsoDirections.N;
             IsoDirections d2 = IsoDirections.S;
-            IsoGridSquare adjacent = sq.getAdjacentSquare(d1);
-            if (adjacent != null && adjacent.chunk != sq.chunk) {
-                adjacent.setAdjacentSquare(d2, null);
-                adjacent.s = null;
+            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
+                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
+                sq.getAdjacentSquare(d1).s = null;
             }
 
             d1 = IsoDirections.NW;
             d2 = IsoDirections.SE;
-            adjacent = sq.getAdjacentSquare(d1);
-            if (adjacent != null && adjacent.chunk != sq.chunk) {
-                adjacent.setAdjacentSquare(d2, null);
-                adjacent.se = null;
+            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
+                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
+                sq.getAdjacentSquare(d1).se = null;
             }
 
             d1 = IsoDirections.W;
             d2 = IsoDirections.E;
-            adjacent = sq.getAdjacentSquare(d1);
-            if (adjacent != null && adjacent.chunk != sq.chunk) {
-                adjacent.setAdjacentSquare(d2, null);
-                adjacent.e = null;
+            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
+                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
+                sq.getAdjacentSquare(d1).e = null;
             }
 
             d1 = IsoDirections.SW;
             d2 = IsoDirections.NE;
-            adjacent = sq.getAdjacentSquare(d1);
-            if (adjacent != null && adjacent.chunk != sq.chunk) {
-                adjacent.setAdjacentSquare(d2, null);
-                adjacent.ne = null;
+            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
+                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
+                sq.getAdjacentSquare(d1).ne = null;
             }
 
             d1 = IsoDirections.S;
             d2 = IsoDirections.N;
-            adjacent = sq.getAdjacentSquare(d1);
-            if (adjacent != null && adjacent.chunk != sq.chunk) {
-                adjacent.setAdjacentSquare(d2, null);
-                adjacent.n = null;
+            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
+                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
+                sq.getAdjacentSquare(d1).n = null;
             }
 
             d1 = IsoDirections.SE;
             d2 = IsoDirections.NW;
-            adjacent = sq.getAdjacentSquare(d1);
-            if (adjacent != null && adjacent.chunk != sq.chunk) {
-                adjacent.setAdjacentSquare(d2, null);
-                adjacent.nw = null;
+            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
+                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
+                sq.getAdjacentSquare(d1).nw = null;
             }
 
             d1 = IsoDirections.E;
             d2 = IsoDirections.W;
-            adjacent = sq.getAdjacentSquare(d1);
-            if (adjacent != null && adjacent.chunk != sq.chunk) {
-                adjacent.setAdjacentSquare(d2, null);
-                adjacent.w = null;
+            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
+                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
+                sq.getAdjacentSquare(d1).w = null;
             }
 
             d1 = IsoDirections.NE;
             d2 = IsoDirections.SW;
-            adjacent = sq.getAdjacentSquare(d1);
-            if (adjacent != null && adjacent.chunk != sq.chunk) {
-                adjacent.setAdjacentSquare(d2, null);
-                adjacent.sw = null;
+            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
+                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
+                sq.getAdjacentSquare(d1).sw = null;
             }
         }
     }
@@ -3456,9 +3359,7 @@ public final class IsoChunk {
 
         assert !IsoChunkMap.chunkStore.contains(this);
 
-        if (IsoChunkMap.chunkStore.size() < 256) {
-            IsoChunkMap.chunkStore.add(this);
-        } // PATCH-B: cap chunk pool
+        IsoChunkMap.chunkStore.add(this);
     }
 
     private static int bufferSize(int size) {
@@ -3504,7 +3405,7 @@ public final class IsoChunk {
             b += (flags[i] ? 1 : 0) << i;
         }
 
-        bb.put((byte) b);
+        bb.put((byte)b);
     }
 
     public void LoadFromDisk() throws IOException {
@@ -3558,8 +3459,7 @@ public final class IsoChunk {
             }
 
             if (worldVersion > 247) {
-                throw new RuntimeException(
-                        "unknown world version " + worldVersion + " while reading chunk " + this.wx + "," + this.wy);
+                throw new RuntimeException("unknown world version " + worldVersion + " while reading chunk " + this.wx + "," + this.wy);
             }
 
             this.fixed2x = true;
@@ -3602,7 +3502,7 @@ public final class IsoChunk {
             }
 
             int bloodSplatLifespanDays = SandboxOptions.getInstance().bloodSplatLifespanDays.getValue();
-            float worldAgeHours = (float) GameTime.getInstance().getWorldAgeHours();
+            float worldAgeHours = (float)GameTime.getInstance().getWorldAgeHours();
             int minLevel;
             int maxLevel;
             if (206 <= worldVersion) {
@@ -3657,11 +3557,10 @@ public final class IsoChunk {
                             if (gs == null) {
                                 if (IsoGridSquare.loadGridSquareCache != null) {
                                     gs = IsoGridSquare.getNew(
-                                            IsoGridSquare.loadGridSquareCache, IsoWorld.instance.currentCell, null,
-                                            x + this.wx * 8, y + this.wy * 8, zz);
+                                        IsoGridSquare.loadGridSquareCache, IsoWorld.instance.currentCell, null, x + this.wx * 8, y + this.wy * 8, zz
+                                    );
                                 } else {
-                                    gs = IsoGridSquare.getNew(IsoWorld.instance.currentCell, null, x + this.wx * 8,
-                                            y + this.wy * 8, zz);
+                                    gs = IsoGridSquare.getNew(IsoWorld.instance.currentCell, null, x + this.wx * 8, y + this.wy * 8, zz);
                                 }
                             }
 
@@ -3735,7 +3634,7 @@ public final class IsoChunk {
                     if (obj != null && obj instanceof BaseVehicle baseVehicle) {
                         IsoGridSquare sq = this.getGridSquare(x, y, z);
                         obj.square = sq;
-                        ((IsoMovingObject) obj).current = sq;
+                        ((IsoMovingObject)obj).current = sq;
 
                         try {
                             obj.load(sliceBufferLoad, worldVersion, isDebugSave);
@@ -3806,8 +3705,7 @@ public final class IsoChunk {
         VehiclesDB2.instance.setChunkSeen(this.wx, this.wy);
         if (this.addZombies) {
             if (IsoWorld.instance.getTimeSinceLastSurvivorInHorde() > 0) {
-                IsoWorld.instance
-                        .setTimeSinceLastSurvivorInHorde(IsoWorld.instance.getTimeSinceLastSurvivorInHorde() - 1);
+                IsoWorld.instance.setTimeSinceLastSurvivorInHorde(IsoWorld.instance.getTimeSinceLastSurvivorInHorde() - 1);
             }
 
             this.addSurvivorInHorde(false);
@@ -3865,8 +3763,7 @@ public final class IsoChunk {
                             int maxY = minY + 8;
                             float x = PZMath.clamp(v.getX(), minX + 5.0E-4F, maxX - 5.0E-4F);
                             float y = PZMath.clamp(v.getY(), minY + 5.0E-4F, maxY - 5.0E-4F);
-                            v.square = this.getGridSquare(PZMath.fastfloor(x) - this.wx * 8,
-                                    PZMath.fastfloor(y) - this.wy * 8, 0);
+                            v.square = this.getGridSquare(PZMath.fastfloor(x) - this.wx * 8, PZMath.fastfloor(y) - this.wy * 8, 0);
                         }
 
                         VehiclesDB2.instance.addVehicle(v);
@@ -3887,13 +3784,11 @@ public final class IsoChunk {
                         for (int ix = 0; ix < square.getObjects().size(); ix++) {
                             IsoObject obj = square.getObjects().get(ix);
                             obj.addToWorld();
-                            if (obj.getSprite() != null
-                                    && obj.getSprite().getProperties().has(IsoPropertyType.FUEL_AMOUNT)) {
+                            if (obj.getSprite() != null && obj.getSprite().getProperties().has(IsoPropertyType.FUEL_AMOUNT)) {
                                 obj.getPipedFuelAmount();
                             }
 
-                            if (zz == 0 && obj.getSprite() != null
-                                    && obj.getSprite().getProperties().has(IsoFlagType.water)) {
+                            if (zz == 0 && obj.getSprite() != null && obj.getSprite().getProperties().has(IsoFlagType.water)) {
                                 this.numberOfWaterTiles++;
                             }
                         }
@@ -3970,8 +3865,7 @@ public final class IsoChunk {
         this.roomLights.clear();
         if (this.jobType != IsoChunk.JobType.SoftReset) {
             tempBuildingDefs.clear();
-            IsoWorld.instance.metaGrid.getBuildingsIntersecting(this.wx * 8 - 1, this.wy * 8 - 1, 10, 10,
-                    tempBuildingDefs);
+            IsoWorld.instance.metaGrid.getBuildingsIntersecting(this.wx * 8 - 1, this.wy * 8 - 1, 10, 10, tempBuildingDefs);
             tempBuildings.clear();
 
             for (int ixx = 0; ixx < tempBuildingDefs.size(); ixx++) {
@@ -4033,8 +3927,8 @@ public final class IsoChunk {
             }
 
             if (GameClient.client) {
-                GameClient.connection.addChunkObjectState((short) this.wx);
-                GameClient.connection.addChunkObjectState((short) this.wy);
+                GameClient.connection.addChunkObjectState((short)this.wx);
+                GameClient.connection.addChunkObjectState((short)this.wy);
             }
         } catch (Throwable var17) {
             ExceptionLogger.logException(var17);
@@ -4049,12 +3943,10 @@ public final class IsoChunk {
 
     private void addRatsAfterLoading(IsoGridSquare square) {
         Zone zone = square.getZone();
-        boolean canHaveVermin = this.addZombies && square.hasTrash() && SandboxOptions.instance.getCurrentRatIndex() > 0
-                && square.canSpawnVermin();
+        boolean canHaveVermin = this.addZombies && square.hasTrash() && SandboxOptions.instance.getCurrentRatIndex() > 0 && square.canSpawnVermin();
         boolean allowRaccoons = true;
         int ratChance = 400;
-        if (Objects.equals(square.getSquareZombiesType(), "StreetPoor")
-                || Objects.equals(square.getZoneType(), "TrailerPark")) {
+        if (Objects.equals(square.getSquareZombiesType(), "StreetPoor") || Objects.equals(square.getZoneType(), "TrailerPark")) {
             ratChance /= 2;
         }
 
@@ -4069,8 +3961,7 @@ public final class IsoChunk {
         if (canHaveVermin && Rand.Next(ratChance) < SandboxOptions.instance.getCurrentRatIndex()) {
             boolean mice = !square.isOutside() && Rand.NextBool(3);
             int max = SandboxOptions.instance.getCurrentRatIndex() / 10;
-            if (Objects.equals(square.getSquareZombiesType(), "StreetPoor")
-                    || Objects.equals(square.getZoneType(), "TrailerPark")) {
+            if (Objects.equals(square.getSquareZombiesType(), "StreetPoor") || Objects.equals(square.getZoneType(), "TrailerPark")) {
                 max *= 2;
             }
 
@@ -4091,11 +3982,13 @@ public final class IsoChunk {
             }
 
             if (square.getBuilding() != null
-                    && (square.getBuilding().hasRoom("laboratory")
-                            || square.getBuilding().hasRoom("classroom")
-                            || square.getBuilding().hasRoom("secondaryclassroom")
-                            || Objects.equals(square.getZombiesType(), "University"))
-                    && !Rand.NextBool(3)) {
+                && (
+                    square.getBuilding().hasRoom("laboratory")
+                        || square.getBuilding().hasRoom("classroom")
+                        || square.getBuilding().hasRoom("secondaryclassroom")
+                        || Objects.equals(square.getZombiesType(), "University")
+                )
+                && !Rand.NextBool(3)) {
                 breed = "white";
             }
 
@@ -4109,8 +4002,7 @@ public final class IsoChunk {
                     type2 = "mousefemale";
                 }
 
-                IsoAnimal animal = new IsoAnimal(IsoWorld.instance.getCell(), square.getX(), square.getY(),
-                        square.getZ(), type2, breed);
+                IsoAnimal animal = new IsoAnimal(IsoWorld.instance.getCell(), square.getX(), square.getY(), square.getZ(), type2, breed);
                 animal.addToWorld();
                 animal.randomizeAge();
                 IsoGridSquare sq2 = square.getAdjacentSquare(IsoDirections.getRandom());
@@ -4126,15 +4018,13 @@ public final class IsoChunk {
             for (int i = 0; i < nbrOfRats; i++) {
                 IsoGridSquare sq = square.getAdjacentSquare(IsoDirections.getRandom());
                 if (sq != null && sq.isFree(true) && sq.isSolidFloor() && !usedSquares.contains(sq)) {
-                    IsoAnimal animal = new IsoAnimal(IsoWorld.instance.getCell(), sq.getX(), sq.getY(), sq.getZ(), type,
-                            breed);
+                    IsoAnimal animal = new IsoAnimal(IsoWorld.instance.getCell(), sq.getX(), sq.getY(), sq.getZ(), type, breed);
                     animal.addToWorld();
                     animal.randomizeAge();
                     IsoGridSquare sq2 = square.getAdjacentSquare(IsoDirections.getRandom());
                     if (Rand.NextBool(3)) {
                         animal.setStateEventDelayTimer(0.0F);
-                    } else if (sq2 != null && sq2.isFree(true) && sq2.isSolidFloor() && !usedSquares.contains(sq2)
-                            && sq.canReachTo(sq2)) {
+                    } else if (sq2 != null && sq2.isFree(true) && sq2.isSolidFloor() && !usedSquares.contains(sq2) && sq.canReachTo(sq2)) {
                         animal.fleeTo(sq2);
                     } else {
                         usedSquares.add(sq);
@@ -4168,8 +4058,7 @@ public final class IsoChunk {
                     trashCan.getContainer().addItem(poop);
                 }
             }
-        } else if (canHaveVermin && square.isOutside() && Rand.Next(600) < SandboxOptions.instance.getCurrentRatIndex()
-                && !square.isVehicleIntersecting()) {
+        } else if (canHaveVermin && square.isOutside() && Rand.Next(600) < SandboxOptions.instance.getCurrentRatIndex() && !square.isVehicleIntersecting()) {
             String typex = "raccoonboar";
             if (Rand.NextBool(2)) {
                 typex = "raccoonsow";
@@ -4177,8 +4066,7 @@ public final class IsoChunk {
 
             String breedx = "grey";
             if (square.isFree(true)) {
-                IsoAnimal animal = new IsoAnimal(IsoWorld.instance.getCell(), square.getX(), square.getY(),
-                        square.getZ(), typex, "grey");
+                IsoAnimal animal = new IsoAnimal(IsoWorld.instance.getCell(), square.getX(), square.getY(), square.getZ(), typex, "grey");
                 animal.addToWorld();
                 animal.randomizeAge();
                 IsoGridSquare sq2 = square.getAdjacentSquare(IsoDirections.getRandom());
@@ -4197,24 +4085,20 @@ public final class IsoChunk {
             for (int i = 0; i < metaChunk.getZonesSize(); i++) {
                 Zone zone = metaChunk.getZone(i);
                 if ("GrassRegrowth".equals(zone.getType()) && zone.getLastActionTimestamp() > 0) {
-                    int time = Long.valueOf(GameTime.instance.getCalender().getTimeInMillis() / 1000L).intValue()
-                            - zone.getLastActionTimestamp();
+                    int time = Long.valueOf(GameTime.instance.getCalender().getTimeInMillis() / 1000L).intValue() - zone.getLastActionTimestamp();
                     time = time / 60 / 60;
                     if (time >= SandboxOptions.instance.animalGrassRegrowTime.getValue()) {
                         IsoGridSquare sq = IsoWorld.instance.getCell().getGridSquare(zone.x, zone.y, zone.z);
-                        IsoGridSquare sq2 = IsoWorld.instance.getCell().getGridSquare(zone.x + zone.getWidth(),
-                                zone.y + zone.getHeight(), zone.z);
+                        IsoGridSquare sq2 = IsoWorld.instance.getCell().getGridSquare(zone.x + zone.getWidth(), zone.y + zone.getHeight(), zone.z);
                         if (sq != null && sq2 != null) {
                             zone.setLastActionTimestamp(0);
 
                             for (int x = zone.x; x < zone.x + zone.getWidth(); x++) {
                                 for (int y = zone.y; y < zone.y + zone.getHeight(); y++) {
                                     sq = IsoWorld.instance.getCell().getGridSquare(x, y, zone.z);
-                                    if (sq != null && sq.getFloor() != null
-                                            && sq.getFloor().getAttachedAnimSprite() != null) {
+                                    if (sq != null && sq.getFloor() != null && sq.getFloor().getAttachedAnimSprite() != null) {
                                         for (int j = 0; j < sq.getFloor().getAttachedAnimSprite().size(); j++) {
-                                            IsoSprite sprite = sq.getFloor().getAttachedAnimSprite()
-                                                    .get(j).parentSprite;
+                                            IsoSprite sprite = sq.getFloor().getAttachedAnimSprite().get(j).parentSprite;
                                             if ("blends_natural_01_87".equals(sprite.getName())) {
                                                 sq.getFloor().RemoveAttachedAnim(j);
                                                 break;
@@ -4264,9 +4148,9 @@ public final class IsoChunk {
                 for (int j = 0; j < building.rooms.size(); j++) {
                     IsoRoom room = building.rooms.get(j);
                     if (room.def.doneSpawn
-                            && !this.isSpawnedRoom(room.def.id)
-                            && VirtualZombieManager.instance.shouldSpawnZombiesOnLevel(room.def.level)
-                            && room.def.intersects(this.wx * 8, this.wy * 8, 8, 8)) {
+                        && !this.isSpawnedRoom(room.def.id)
+                        && VirtualZombieManager.instance.shouldSpawnZombiesOnLevel(room.def.level)
+                        && room.def.intersects(this.wx * 8, this.wy * 8, 8, 8)) {
                         this.addSpawnedRoom(room.def.id);
                         VirtualZombieManager.instance.addIndoorZombiesToChunk(this, room);
                     }
@@ -4322,8 +4206,7 @@ public final class IsoChunk {
                 }
             }
 
-            IsoChunk.ChunkLock lock = FreeLocks.isEmpty() ? new IsoChunk.ChunkLock(wx, wy)
-                    : FreeLocks.pop().set(wx, wy);
+            IsoChunk.ChunkLock lock = FreeLocks.isEmpty() ? new IsoChunk.ChunkLock(wx, wy) : FreeLocks.pop().set(wx, wy);
             Locks.add(lock);
             return lock.ref();
         }
@@ -4426,7 +4309,7 @@ public final class IsoChunk {
             sanityCheck.beginLoadFile(inFile.getAbsolutePath());
 
             try (FileInputStream inStream = new FileInputStream(inFile)) {
-                bb = ensureCapacity(bb, (int) inFile.length());
+                bb = ensureCapacity(bb, (int)inFile.length());
                 bb.clear();
                 int len = inStream.read(bb.array());
                 bb.limit(PZMath.max(len, 0));
@@ -4453,55 +4336,52 @@ public final class IsoChunk {
         bb.rewind();
         bb = ensureCapacity(bb);
         bb.clear();
-        bb.put((byte) (IsDebugSave() ? 1 : 0));
+        bb.put((byte)(IsDebugSave() ? 1 : 0));
         bb.putInt(247);
         bb.putInt(0);
         bb.putLong(0L);
-        bb.put((byte) (this.blendingDoneFull ? 1 : 0));
+        bb.put((byte)(this.blendingDoneFull ? 1 : 0));
         this.writeFlags(bb, this.blendingModified);
-        bb.put((byte) (this.blendingDonePartial ? 1 : 0));
+        bb.put((byte)(this.blendingDonePartial ? 1 : 0));
         if (!Arrays.equals(this.blendingModified, comparatorBool4) && this.blendingDonePartial) {
             for (int i = 0; i < 4; i++) {
                 bb.put(this.blendingDepth[i]);
             }
         }
 
-        bb.put((byte) (this.attachmentsDoneFull ? 1 : 0));
+        bb.put((byte)(this.attachmentsDoneFull ? 1 : 0));
         this.writeFlags(bb, this.attachmentsState);
         if (this.attachmentsPartial == null) {
-            bb.putShort((short) 0);
+            bb.putShort((short)0);
         } else {
-            bb.putShort((short) this.attachmentsPartial.size());
+            bb.putShort((short)this.attachmentsPartial.size());
 
             for (SquareCoord coord : this.attachmentsPartial) {
                 coord.save(bb);
             }
         }
 
-        ArrayList<IsoFloorBloodSplat> apocBrFloorBloodSplats = new ArrayList<>();
+        int count;
+        int start;
         synchronized (this.floorBloodSplats) {
-            int count = Math.min(1000, this.floorBloodSplats.size());
-            int start = Math.max(0, this.floorBloodSplats.size() - count);
-            apocBrFloorBloodSplats.ensureCapacity(count);
-            for (int n = start; n < start + count; n++) {
-                try {
-                    IsoFloorBloodSplat s = this.floorBloodSplats.get(n);
-                    if (s != null) {
-                        apocBrFloorBloodSplats.add(s);
-                    }
-                } catch (NoSuchElementException ignored) {
-                }
-            }
+            count = Math.min(1000, this.floorBloodSplats.size());
+            start = Math.max(0, this.floorBloodSplats.size() - count);
         }
-
-        int count = apocBrFloorBloodSplats.size();
         int positionMinMaxLevel = bb.position();
         bb.putInt(this.maxLevel);
         bb.putInt(this.minLevel);
         bb.putInt(count);
 
-        for (IsoFloorBloodSplat s : apocBrFloorBloodSplats) {
-            s.save(bb);
+        synchronized (this.floorBloodSplats) {
+            for (int n = start; n < this.floorBloodSplats.size(); n++) {
+                try {
+                    IsoFloorBloodSplat s = this.floorBloodSplats.get(n);
+                    if (s != null) {
+                        s.save(bb);
+                    }
+                } catch (NoSuchElementException ignored) {
+                }
+            }
         }
 
         int position = bb.position();
@@ -4554,29 +4434,27 @@ public final class IsoChunk {
         bb = ensureCapacity(bb);
         this.getErosionData().save(bb);
         if (this.generatorsTouchingThisChunk == null) {
-            bb.putShort((short) 0);
+            bb.putShort((short)0);
         } else {
-            bb.putShort((short) this.generatorsTouchingThisChunk.size());
+            bb.putShort((short)this.generatorsTouchingThisChunk.size());
 
             for (int i = 0; i < this.generatorsTouchingThisChunk.size(); i++) {
                 IsoGameCharacter.Location pos = this.generatorsTouchingThisChunk.get(i);
                 bb.putInt(pos.x);
                 bb.putInt(pos.y);
-                bb.put((byte) pos.z);
+                bb.put((byte)pos.z);
             }
         }
 
-        bb.putShort((short) 0);
-        if (!bHotSave && (!GameServer.server || GameServer.softReset) && !GameClient.client
-                && !GameWindow.loadedAsClient) {
+        bb.putShort((short)0);
+        if (!bHotSave && (!GameServer.server || GameServer.softReset) && !GameClient.client && !GameWindow.loadedAsClient) {
             VehiclesDB2.instance.unloadChunk(this);
         }
 
         if (GameClient.client) {
             int respawnEveryHours = SandboxOptions.instance.hoursForLootRespawn.getValue();
             if (respawnEveryHours > 0 && !(GameTime.getInstance().getWorldAgeHours() < respawnEveryHours)) {
-                this.lootRespawnHour = 7
-                        + (int) (GameTime.getInstance().getWorldAgeHours() / respawnEveryHours) * respawnEveryHours;
+                this.lootRespawnHour = 7 + (int)(GameTime.getInstance().getWorldAgeHours() / respawnEveryHours) * respawnEveryHours;
             } else {
                 this.lootRespawnHour = -1;
             }
@@ -4586,7 +4464,7 @@ public final class IsoChunk {
 
         assert this.spawnedRooms.size() <= 32767;
 
-        bb.putShort((short) PZMath.min(this.spawnedRooms.size(), 32767));
+        bb.putShort((short)PZMath.min(this.spawnedRooms.size(), 32767));
 
         for (int i = 0; i < this.spawnedRooms.size(); i++) {
             bb.putLong(this.spawnedRooms.get(i));
@@ -4623,10 +4501,10 @@ public final class IsoChunk {
                             int pos3 = bb.position();
                             if (pos3 > pos2) {
                                 bb.position(pos1);
-                                bb.putShort((short) (x + y * 8 + z * 8 * 8));
-                                bb.putShort((short) i);
+                                bb.putShort((short)(x + y * 8 + z * 8 * 8));
+                                bb.putShort((short)i);
                                 bb.putInt(obj.getObjectName().hashCode());
-                                bb.putShort((short) (pos3 - pos2));
+                                bb.putShort((short)(pos3 - pos2));
                                 bb.position(pos3);
                                 empty = false;
                             } else {
@@ -4641,7 +4519,7 @@ public final class IsoChunk {
         if (empty) {
             return false;
         } else {
-            bb.putShort((short) -1);
+            bb.putShort((short)-1);
             return true;
         }
     }
@@ -4764,8 +4642,7 @@ public final class IsoChunk {
             HashMap<String, IsoSprite> namedMap = IsoSpriteManager.instance.namedMap;
             if (spriteID >= newtiledefinitions(140, 48) && spriteID <= newtiledefinitions(140, 51)) {
                 return -1;
-            } else if (spriteID >= newtiledefinitions(8, 14) && spriteID <= newtiledefinitions(8, 71)
-                    && spriteID % 8 >= 6) {
+            } else if (spriteID >= newtiledefinitions(8, 14) && spriteID <= newtiledefinitions(8, 71) && spriteID % 8 >= 6) {
                 return -1;
             } else if (spriteID == newtiledefinitions(92, 2)) {
                 return spriteID + 20;
@@ -4853,7 +4730,7 @@ public final class IsoChunk {
                 int id = spriteID - newtiledefinitions(148, 0);
                 return newtiledefinitions(160, id);
             } else if ((spriteID < newtiledefinitions(42, 44) || spriteID > newtiledefinitions(42, 47))
-                    && (spriteID < newtiledefinitions(42, 52) || spriteID > newtiledefinitions(42, 55))) {
+                && (spriteID < newtiledefinitions(42, 52) || spriteID > newtiledefinitions(42, 55))) {
                 if (spriteID == newtiledefinitions(43, 24)) {
                     return spriteID + 4;
                 } else if (spriteID == newtiledefinitions(43, 26)) {
@@ -4950,8 +4827,8 @@ public final class IsoChunk {
                     return namedMap.get("d_plants_1_" + id).id;
                 } else {
                     return spriteID >= newtiledefinitions(79, 24) && spriteID <= newtiledefinitions(79, 41)
-                            ? newtiledefinitions(81, spriteID - newtiledefinitions(79, 24))
-                            : spriteID;
+                        ? newtiledefinitions(81, spriteID - newtiledefinitions(79, 24))
+                        : spriteID;
                 }
             } else {
                 return -1;
@@ -5286,8 +5163,8 @@ public final class IsoChunk {
                     for (int dx = -1; dx <= 1; dx++) {
                         if (dx != 0 || dy != 0) {
                             IsoChunk adjacent = GameServer.server
-                                    ? ServerMap.instance.getChunk(this.wx + dx, this.wy + dy)
-                                    : IsoWorld.instance.currentCell.getChunk(this.wx + dx, this.wy + dy);
+                                ? ServerMap.instance.getChunk(this.wx + dx, this.wy + dy)
+                                : IsoWorld.instance.currentCell.getChunk(this.wx + dx, this.wy + dy);
                             if (adjacent != null && adjacent.treeCount >= 5) {
                                 if (++adjacentWithTrees == 8) {
                                     int chunksPerWidth = 8;
@@ -5398,14 +5275,10 @@ public final class IsoChunk {
     private void addItemOnGround(IsoGridSquare square, String type) {
         if (!SandboxOptions.instance.removeStoryLoot.getValue() || ItemPickerJava.getLootModifier(type) != 0.0F) {
             if (square != null && !StringUtils.isNullOrWhitespace(type)) {
-                InventoryItem item = ItemSpawner.spawnItem(type, square, Rand.Next(0.2F, 0.8F), Rand.Next(0.2F, 0.8F),
-                        0.0F);
-                if (item instanceof InventoryContainer inventoryContainer
-                        && ItemPickerJava.containers.containsKey(item.getType())) {
-                    ItemPickerJava.rollContainerItem(inventoryContainer, null,
-                            ItemPickerJava.getItemPickerContainers().get(item.getType()));
-                    LuaEventManager.triggerEvent("OnFillContainer", "Container", item.getType(),
-                            inventoryContainer.getItemContainer());
+                InventoryItem item = ItemSpawner.spawnItem(type, square, Rand.Next(0.2F, 0.8F), Rand.Next(0.2F, 0.8F), 0.0F);
+                if (item instanceof InventoryContainer inventoryContainer && ItemPickerJava.containers.containsKey(item.getType())) {
+                    ItemPickerJava.rollContainerItem(inventoryContainer, null, ItemPickerJava.getItemPickerContainers().get(item.getType()));
+                    LuaEventManager.triggerEvent("OnFillContainer", "Container", item.getType(), inventoryContainer.getItemContainer());
                 }
             }
         }
@@ -5433,9 +5306,9 @@ public final class IsoChunk {
     public boolean containsPoint(float x, float y) {
         int chunksPerWidth = 8;
         return Float.compare(x, this.wx * 8) >= 0
-                && Float.compare(x, (this.wx + 1) * 8) < 0
-                && Float.compare(y, this.wy * 8) >= 0
-                && Float.compare(y, (this.wy + 1) * 8) < 0;
+            && Float.compare(x, (this.wx + 1) * 8) < 0
+            && Float.compare(y, this.wy * 8) >= 0
+            && Float.compare(y, (this.wy + 1) * 8) < 0;
     }
 
     public FBORenderLevels getRenderLevels(int playerIndex) {
@@ -5705,15 +5578,13 @@ public final class IsoChunk {
             }
 
             if (this.saveChunk != null) {
-                sb.append("save wx,wy=" + this.saveChunk.wx + "," + this.saveChunk.wy + " thread=\"" + this.saveThread
-                        + "\"\n");
+                sb.append("save wx,wy=" + this.saveChunk.wx + "," + this.saveChunk.wy + " thread=\"" + this.saveThread + "\"\n");
             } else {
                 sb.append("save chunk=null\n");
             }
 
             if (this.loadChunk != null) {
-                sb.append("load wx,wy=" + this.loadChunk.wx + "," + this.loadChunk.wy + " thread=\"" + this.loadThread
-                        + "\"\n");
+                sb.append("load wx,wy=" + this.loadChunk.wx + "," + this.loadChunk.wy + " thread=\"" + this.loadThread + "\"\n");
             } else {
                 sb.append("load chunk=null\n");
             }

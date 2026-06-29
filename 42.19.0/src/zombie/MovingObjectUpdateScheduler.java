@@ -1,19 +1,7 @@
-// Patched MovingObjectUpdateScheduler.java - ApocBR NoCull patch (Build 42.19)
-//
-// Change: removed ZombieCountOptimiser.deleteZombies() call from postupdate().
-//
-// Build 42.19 added a server-side zombie cull that runs every frame in
-// postupdate(), reducing zombie populations from ~5000 to ~400 on servers
-// with many connected players. This patch restores the 42.18 behaviour by
-// removing that call. startCount() and incrementZombie() are still called in
-// startFrame() as before, but zombies are never actually deleted.
-//
-// Original: zombie.MovingObjectUpdateScheduler (Build 42.19)
+// Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie;
 
 import java.util.ArrayList;
-
-import zombie.characters.animals.IsoAnimal;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
 import zombie.core.math.PZMath;
@@ -37,11 +25,6 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void startFrame() {
-        long apocBrStartFrameNanos = System.nanoTime();
-        int apocBrObjectCount = 0;
-        int apocBrServerZombieCount = 0;
-        int apocBrServerZombieGuiUpdates = 0;
-        long apocBrServerZombieGuiNanos = 0L;
         this.frameCounter++;
         this.fullSimulation.clear();
         this.halfSimulation.clear();
@@ -49,73 +32,62 @@ public final class MovingObjectUpdateScheduler {
         this.eighthSimulation.clear();
         this.sixteenthSimulation.clear();
         float averageFps = GameWindow.averageFPS;
+        long apocBrStartFrameStart = System.nanoTime();
+        int apocBrServerZombieCount = 0;
+        int apocBrZombieGuiUpdates = 0;
+
         for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
-            apocBrObjectCount++;
             if (GameServer.server && isoMovingObject instanceof IsoZombie isoZombie) {
-                apocBrServerZombieCount++;
-                long apocBrGuiNanos = 0L;
                 if (GameServer.guiCommandline) {
-                    long apocBrGuiStart = System.nanoTime();
                     isoZombie.updateForServerGui();
-                    apocBrGuiNanos = System.nanoTime() - apocBrGuiStart;
-                    apocBrServerZombieGuiUpdates++;
-                    apocBrServerZombieGuiNanos += apocBrGuiNanos;
+                    apocBrZombieGuiUpdates++;
                 }
 
-                // The 42.19 server cull is intentionally disabled.  Do not keep
-                // running its count/candidate pass: it scans every live zombie
-                // and retains candidates until deleteZombies() clears the list.
+                apocBrServerZombieCount++;
             } else {
                 if (isoMovingObject.getCurrentSquare() == null) {
-                    long apocBrSquareStart = System.nanoTime();
+                    long apocBrSquareFixStart = System.nanoTime();
                     isoMovingObject.setCurrentSquareFromPosition();
-                    ApocBRServerTelemetry.recordMovingStartFrameSquareFix(System.nanoTime() - apocBrSquareStart);
+                    ApocBRServerTelemetry.recordMovingStartFrameSquareFix(System.nanoTime() - apocBrSquareFixStart);
                 }
 
-                String apocBrTypeName = isoMovingObject == null ? "null" : isoMovingObject.getClass().getSimpleName();
-                switch (this.getUpdateSchedulerSimulationLevelForObject(isoMovingObject, averageFps)) {
+                UpdateSchedulerSimulationLevel simulationLevel = this.getUpdateSchedulerSimulationLevelForObject(isoMovingObject, averageFps);
+                if (GameServer.server) {
+                    ApocBRServerTelemetry.recordMovingStartFrameBucket(isoMovingObject.getClass().getSimpleName(), simulationLevel.name().toLowerCase());
+                }
+
+                switch (simulationLevel) {
                     case FULL:
                         this.fullSimulation.add(isoMovingObject);
-                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "full");
                         break;
                     case HALF:
                         this.halfSimulation.add(isoMovingObject);
-                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "half");
                         break;
                     case QUARTER:
                         this.quarterSimulation.add(isoMovingObject);
-                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "quarter");
                         break;
                     case EIGHTH:
                         this.eighthSimulation.add(isoMovingObject);
-                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "eighth");
                         break;
                     case SIXTEENTH:
                         this.sixteenthSimulation.add(isoMovingObject);
-                        ApocBRServerTelemetry.recordMovingStartFrameBucket(apocBrTypeName, "sixteenth");
                     case null:
                 }
             }
         }
-        ApocBRServerTelemetry.recordMovingStartFrameServerZombies(
-            apocBrServerZombieCount, apocBrServerZombieGuiUpdates, apocBrServerZombieGuiNanos
-        );
-        ApocBRServerTelemetry.recordMovingStartFrame(apocBrObjectCount, System.nanoTime() - apocBrStartFrameNanos);
+
+        ApocBRServerTelemetry.recordMovingStartFrame(IsoWorld.instance.getCell().getObjectList().size(), System.nanoTime() - apocBrStartFrameStart);
+        ApocBRServerTelemetry.recordMovingStartFrameServerZombies(apocBrServerZombieCount, apocBrZombieGuiUpdates, 0L);
     }
+
     private UpdateSchedulerSimulationLevel getUpdateSchedulerSimulationLevelForObject(IsoMovingObject isoMovingObject, float averageFps) {
-        // Dedicated servers normally force every non-zombie object to FULL. Parked
-        // vehicles dominate that list, however, and have no per-frame work while
-        // dormant. BaseVehicle keeps all state-changing work on the main thread;
-        // this only decides how often that main-thread update is invoked.
-        if (GameServer.server && isoMovingObject instanceof BaseVehicle vehicle) {
-            return vehicle.apocBrGetServerSimulationLevel();
-        }
+        if (GameServer.server) {
+            if (isoMovingObject instanceof BaseVehicle baseVehicle) {
+                return baseVehicle.apocBrGetServerSimulationLevel();
+            }
 
-        if (GameServer.server && isoMovingObject instanceof IsoAnimal animal) {
-            return animal.apocBrGetServerSimulationLevel();
-        }
-
-        if (this.isEnabled && !GameServer.server) {
+            return isoMovingObject.getMinimumSimulationLevel();
+        } else if (this.isEnabled) {
             UpdateSchedulerSimulationLevel minSim = isoMovingObject.getMinimumSimulationLevel();
             if (minSim == UpdateSchedulerSimulationLevel.FULL) {
                 return minSim;
@@ -140,6 +112,7 @@ public final class MovingObjectUpdateScheduler {
                 }
 
                 UpdateSchedulerSimulationLevel sim = UpdateSchedulerSimulationLevel.FULL;
+                float minAlpha = 0.25F;
                 if (alpha < 0.25F && targetAlpha < 0.25F) {
                     sim = sim.less();
                     if (distance > 10.0F) {
@@ -208,10 +181,6 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void postupdate() {
-        // PATCHED (ApocBR 42.19 NoCull): removed ZombieCountOptimiser.deleteZombies() call.
-        // Build 42.19 added: if (GameServer.server) { ZombieCountOptimiser.deleteZombies(); }
-        // This was culling zombie populations from ~5000 to ~400 on populated servers.
-        // Behaviour is now identical to Build 42.18.
         GameTime.getInstance().perObjectMultiplier = 1.0F;
         this.fullSimulation.postupdate((int)this.frameCounter);
         this.halfSimulation.postupdate((int)this.frameCounter);
@@ -249,4 +218,3 @@ public final class MovingObjectUpdateScheduler {
         return this.fullSimulation.getBucket((int)this.frameCounter);
     }
 }
-
