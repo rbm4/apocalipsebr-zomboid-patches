@@ -21,8 +21,8 @@ public class ServerLOS {
     private ServerLOS.LOSThread thread;
     private final ArrayList<ServerLOS.PlayerData> playersMain = new ArrayList<>();
     private final ArrayList<ServerLOS.PlayerData> playersLos = new ArrayList<>();
-    private boolean mapLoading;
-    private boolean suspended;
+    private volatile boolean mapLoading;
+    private volatile boolean suspended;
     private static final int PD_SIZE_IN_CHUNKS = 12;
     private static final int PD_SIZE_IN_SQUARES = 96;
     // Object-level LOS is a player × candidate cost. The tile visibility grid
@@ -37,7 +37,7 @@ public class ServerLOS {
     private final HashMap<Long, ArrayList<IsoMovingObject>> objectCandidatesByChunk = new HashMap<>();
     private IsoCell candidateIndexCell;
     private long candidateIndexBuiltNanos;
-    boolean wasSuspended;
+    volatile boolean wasSuspended;
 
     private void noise(String str) {
     }

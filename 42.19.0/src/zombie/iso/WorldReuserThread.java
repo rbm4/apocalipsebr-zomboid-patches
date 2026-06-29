@@ -17,7 +17,7 @@ public final class WorldReuserThread {
     public static final WorldReuserThread instance = new WorldReuserThread();
     private final ArrayList<IsoObject> objectsToReuse = new ArrayList<>();
     private final ArrayList<IsoTree> treesToReuse = new ArrayList<>();
-    public boolean finished;
+    public volatile boolean finished;
     private Thread worldReuser;
     private final LinkedBlockingQueue<IsoChunk> reuseGridSquares = new LinkedBlockingQueue<>();
     private final IsoChunk finishLoop = new IsoChunk((WorldReuserThread)null);

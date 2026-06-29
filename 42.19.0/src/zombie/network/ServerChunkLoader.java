@@ -46,7 +46,6 @@ public class ServerChunkLoader {
     private boolean mapLoading;
     private final ServerChunkLoader.LoaderThread threadLoad;
     private final ServerChunkLoader.SaveChunkThread threadSave;
-    private final CRC32 crcSave = new CRC32();
     private final ServerChunkLoader.RecalcAllThread threadRecalc;
 
     public ServerChunkLoader() {
@@ -629,10 +628,10 @@ public class ServerChunkLoader {
         @Override
         public void save() throws Exception {
             long crc = ChunkChecksum.getChecksumIfExists(this.chunk.wx, this.chunk.wy);
-            ServerChunkLoader.this.crcSave.reset();
-            ServerChunkLoader.this.crcSave.update(this.chunk.bb.array(), 0, this.chunk.bb.position());
-            if (crc != ServerChunkLoader.this.crcSave.getValue()) {
-                ChunkChecksum.setChecksum(this.chunk.wx, this.chunk.wy, ServerChunkLoader.this.crcSave.getValue());
+            CRC32 localCrc = new CRC32();
+            localCrc.update(this.chunk.bb.array(), 0, this.chunk.bb.position());
+            if (crc != localCrc.getValue()) {
+                ChunkChecksum.setChecksum(this.chunk.wx, this.chunk.wy, localCrc.getValue());
                 IsoChunk.SafeWrite(this.chunk.wx, this.chunk.wy, this.chunk.bb);
             }
         }
