@@ -265,7 +265,7 @@ public class GameServer {
     public static String ip = "127.0.0.1";
     public static final UdpConnection[] SlotToConnection = new UdpConnection[512];
     public static final HashMap<IsoPlayer, Long> PlayerToAddressMap = new HashMap<>();
-    private static boolean done;
+    private static volatile boolean done;
     private static boolean launched;
     private static final ArrayList<String> consoleCommands = new ArrayList<>();
     private static final ConcurrentLinkedQueue<IZomboidPacket> MainLoopPlayerUpdateQ = new ConcurrentLinkedQueue<>();

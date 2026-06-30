@@ -2178,17 +2178,21 @@ public final class IsoCell {
     }
 
     private void ProcessItems(Iterator<InventoryItem> it2) {
-        for (InventoryItem i : this.processItems) {
-            i.update();
-            if (i.finishupdate()) {
-                this.processItemsRemove.add(i);
+        synchronized (this.processItems) {
+            for (InventoryItem i : this.processItems) {
+                i.update();
+                if (i.finishupdate()) {
+                    this.processItemsRemove.add(i);
+                }
             }
         }
 
-        for (IsoWorldInventoryObject i : this.processWorldItems) {
-            i.update();
-            if (i.finishupdate()) {
-                this.processWorldItemsRemove.add(i);
+        synchronized (this.processWorldItems) {
+            for (IsoWorldInventoryObject i : this.processWorldItems) {
+                i.update();
+                if (i.finishupdate()) {
+                    this.processWorldItemsRemove.add(i);
+                }
             }
         }
     }
@@ -2241,8 +2245,12 @@ public final class IsoCell {
     }
 
     private void ProcessRemoveItems(Iterator<InventoryItem> it2) {
-        this.processItems.removeAll(this.processItemsRemove);
-        this.processWorldItems.removeAll(this.processWorldItemsRemove);
+        synchronized (this.processItems) {
+            this.processItems.removeAll(this.processItemsRemove);
+        }
+        synchronized (this.processWorldItems) {
+            this.processWorldItems.removeAll(this.processWorldItemsRemove);
+        }
         this.processItemsRemove.clear();
         this.processWorldItemsRemove.clear();
     }
@@ -2295,20 +2303,24 @@ public final class IsoCell {
     public void addToProcessItems(InventoryItem item) {
         if (item != null && !GameClient.client) {
             this.processItemsRemove.remove(item);
-            if (!this.processItems.contains(item)) {
-                this.processItems.add(item);
+            synchronized (this.processItems) {
+                if (!this.processItems.contains(item)) {
+                    this.processItems.add(item);
+                }
             }
         }
     }
 
     public void addToProcessItems(ArrayList<InventoryItem> items) {
         if (items != null && !GameClient.client) {
-            for (int i = 0; i < items.size(); i++) {
-                InventoryItem item = items.get(i);
-                if (item != null) {
-                    this.processItemsRemove.remove(item);
-                    if (!this.processItems.contains(item)) {
-                        this.processItems.add(item);
+            synchronized (this.processItems) {
+                for (int i = 0; i < items.size(); i++) {
+                    InventoryItem item = items.get(i);
+                    if (item != null) {
+                        this.processItemsRemove.remove(item);
+                        if (!this.processItems.contains(item)) {
+                            this.processItems.add(item);
+                        }
                     }
                 }
             }
@@ -2337,8 +2349,10 @@ public final class IsoCell {
     public void addToProcessWorldItems(IsoWorldInventoryObject worldItem) {
         if (worldItem != null) {
             this.processWorldItemsRemove.remove(worldItem);
-            if (!this.processWorldItems.contains(worldItem)) {
-                this.processWorldItems.add(worldItem);
+            synchronized (this.processWorldItems) {
+                if (!this.processWorldItems.contains(worldItem)) {
+                    this.processWorldItems.add(worldItem);
+                }
             }
         }
     }

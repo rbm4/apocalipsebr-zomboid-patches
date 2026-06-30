@@ -232,6 +232,9 @@ public class ServerLOS {
         this.wasSuspended = this.suspended;
 
         while (!this.suspended) {
+            if (!this.thread.isAlive()) {
+                break;
+            }
             try {
                 Thread.sleep(1L);
             } catch (InterruptedException var2) {
@@ -268,7 +271,7 @@ public class ServerLOS {
             while (true) {
                 try {
                     this.runInner();
-                } catch (Exception var2) {
+                } catch (Throwable var2) {
                     DebugType.General.printException(var2, LogSeverity.Error);
                 }
             }

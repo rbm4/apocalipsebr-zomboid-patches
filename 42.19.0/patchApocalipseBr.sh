@@ -129,7 +129,6 @@ SOURCES=(
     "$SRC_ROOT/zombie/characters/animals/VirtualAnimal.java"
     "$SRC_ROOT/zombie/characters/animals/VirtualAnimalState.java"
     "$SRC_ROOT/zombie/characters/IsoGameCharacter.java"
-    "$SRC_ROOT/zombie/characters/action/ActionStateContainer.java"
     "$SRC_ROOT/zombie/characters/IsoPlayer.java"
     "$SRC_ROOT/zombie/network/ServerLOS.java"
 )
@@ -289,7 +288,6 @@ CLASSES=(
     'zombie/characters/animals/VirtualAnimalState$StateMoveToSleep.class'
     'zombie/characters/animals/VirtualAnimalState$StateSleep.class'
     "zombie/characters/IsoGameCharacter.class"
-    "zombie/characters/action/ActionStateContainer.class"
     "zombie/characters/IsoPlayer.class"
     "zombie/characters/IsoPlayer\$LOSRecord.class"
     "zombie/network/ServerLOS.class"
