@@ -88,7 +88,7 @@ public class ServerMap {
     ArrayList<ServerMap.ServerCell> toLoad = new ArrayList<>();
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
-    private static final long DEFERRED_UNLOAD_GRACE_MS = 20000L;
+    private static final long DEFERRED_UNLOAD_GRACE_MS = 60000L;
     private static final int MAX_DEFERRED_UNLOADS_PER_TICK = 1;
     private static final long MAIN_THREAD_LOAD_BUDGET_NANOS = 50_000_000L;
     private static final long FINALIZE_BUDGET_NORMAL_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
