@@ -9,6 +9,8 @@ import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
 import zombie.vehicles.BaseVehicle;
+import zombie.characters.animals.IsoAnimal;
+import zombie.core.raknet.UdpConnection;
 
 public final class MovingObjectUpdateScheduler {
     public static final MovingObjectUpdateScheduler instance = new MovingObjectUpdateScheduler();
