@@ -145,6 +145,8 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\characters\animals\VirtualAnimalState.java"),
     # IsoGameCharacter null-safety patch
     (Join-Path $SrcRoot "zombie\characters\IsoGameCharacter.java"),
+    # ActionStateContainer log-noise reduction
+    (Join-Path $SrcRoot "zombie\characters\action\ActionStateContainer.java"),
     # Parallel Player LOS (split-phase compute, chunk-parallel)
     (Join-Path $SrcRoot "zombie\characters\IsoPlayer.java"),
     (Join-Path $SrcRoot "zombie\network\ServerLOS.java")
@@ -302,6 +304,8 @@ $ClassFiles = @(
     "zombie\characters\animals\VirtualAnimalState`$StateSleep.class",
     # IsoGameCharacter null-safety patch
     "zombie\characters\IsoGameCharacter.class",
+    # ActionStateContainer log-noise reduction
+    "zombie\characters\action\ActionStateContainer.class",
     # Parallel Player LOS
     "zombie\characters\IsoPlayer.class",
     "zombie\characters\IsoPlayer`$LOSRecord.class",
