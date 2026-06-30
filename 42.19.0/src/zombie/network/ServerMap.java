@@ -90,11 +90,9 @@ public class ServerMap {
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
     private static final long DEFERRED_UNLOAD_GRACE_MS = 60000L;
     private static final int MAX_DEFERRED_UNLOADS_PER_TICK = 1;
-    private static final long MAIN_THREAD_LOAD_BUDGET_NANOS = 50_000_000L;
-    private static final long FINALIZE_BUDGET_NORMAL_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
-    private static final long FINALIZE_BUDGET_ELEVATED_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
-    private static final long FINALIZE_BUDGET_HIGH_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
-    private static final long FINALIZE_BUDGET_CRITICAL_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
+    private static final long FINALIZE_BUDGET_ELEVATED_NANOS = 30_000_000L;
+    private static final long FINALIZE_BUDGET_HIGH_NANOS = 20_000_000L;
+    private static final long FINALIZE_BUDGET_CRITICAL_NANOS = 10_000_000L;
     private static final long FINALIZE_FRAME_ELEVATED_NANOS = 110_000_000L;
     private static final long FINALIZE_FRAME_HIGH_NANOS = 140_000_000L;
     private static final long FINALIZE_FRAME_CRITICAL_NANOS = 250_000_000L;
