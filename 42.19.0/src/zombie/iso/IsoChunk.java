@@ -176,6 +176,9 @@ public final class IsoChunk {
     private static final int maxFrameDelay = 5;
     public boolean requiresHotSave;
     public boolean preventHotSave;
+    private boolean removeFromWorldStarted;
+    private int removeFromWorldLevel;
+    private int removeFromWorldSquareIndex;
     private boolean ignorePathfind;
     public IsoChunk.JobType jobType = IsoChunk.JobType.None;
     public LotHeader lotheader;
@@ -3149,8 +3152,23 @@ public final class IsoChunk {
     }
 
     public void removeFromWorld() {
+        this.beginRemoveFromWorld();
+        while (!this.processRemoveFromWorldSquares(Integer.MAX_VALUE)) {
+        }
+
+        this.finishRemoveFromWorld();
+    }
+
+    public void beginRemoveFromWorld() {
+        if (this.removeFromWorldStarted) {
+            return;
+        }
+
         loadGridSquare.remove(this);
         this.preventHotSave = true;
+        this.removeFromWorldStarted = true;
+        this.removeFromWorldLevel = this.minLevel;
+        this.removeFromWorldSquareIndex = 0;
         if (GameClient.client && GameClient.instance.connected) {
             try {
                 GameClient.instance.sendAddedRemovedItems(true);
@@ -3179,61 +3197,92 @@ public final class IsoChunk {
         } catch (Exception var9) {
             ExceptionLogger.logException(var9);
         }
+    }
 
-        int to = 64;
+    public boolean isRemoveFromWorldStarted() {
+        return this.removeFromWorldStarted;
+    }
 
-        for (int n = this.minLevel; n <= this.maxLevel; n++) {
-            for (int m = 0; m < 64; m++) {
-                IsoGridSquare sq = this.squares[this.squaresIndexOfLevel(n)][m];
+    public boolean processRemoveFromWorldSquares(int maxSquares) {
+        if (!this.removeFromWorldStarted) {
+            this.beginRemoveFromWorld();
+        }
+
+        int processed = 0;
+
+        while (this.removeFromWorldLevel <= this.maxLevel && processed < maxSquares) {
+            int squaresIndexOfLevel = this.squaresIndexOfLevel(this.removeFromWorldLevel);
+            while (this.removeFromWorldSquareIndex < 64 && processed < maxSquares) {
+                IsoGridSquare sq = this.squares[squaresIndexOfLevel][this.removeFromWorldSquareIndex];
                 if (sq != null) {
-                    RainManager.RemoveAllOn(sq);
-                    sq.clearWater();
-                    sq.clearPuddles();
-                    if (sq.getRoom() != null) {
-                        sq.getRoom().removeSquare(sq);
-                    }
-
-                    if (sq.zone != null) {
-                        sq.zone.removeSquare(sq);
-                    }
-
-                    ArrayList<IsoMovingObject> mov = sq.getMovingObjects();
-
-                    for (int a = 0; a < mov.size(); a++) {
-                        IsoMovingObject obj = mov.get(a);
-                        if (obj instanceof IsoSurvivor) {
-                            IsoWorld.instance.currentCell.getSurvivorList().remove(obj);
-                            obj.Despawn();
-                        }
-
-                        if (obj instanceof IsoAnimal isoAnimal && GameClient.client) {
-                            AnimalInstanceManager.getInstance().remove(isoAnimal);
-                        }
-
-                        obj.removeFromWorld();
-                        obj.current = obj.last = null;
-                        if (!mov.contains(obj)) {
-                            a--;
-                        }
-                    }
-
-                    mov.clear();
-
-                    for (int i = 0; i < sq.getObjects().size(); i++) {
-                        IsoObject objx = sq.getObjects().get(i);
-                        objx.removeFromWorldToMeta();
-                    }
-
-                    for (int i = 0; i < sq.getStaticMovingObjects().size(); i++) {
-                        IsoMovingObject objx = sq.getStaticMovingObjects().get(i);
-                        objx.removeFromWorld();
-                    }
-
-                    this.disconnectFromAdjacentChunks(sq);
-                    sq.softClear();
-                    sq.chunk = null;
+                    this.removeSquareFromWorld(sq);
                 }
+
+                this.removeFromWorldSquareIndex++;
+                processed++;
             }
+
+            if (this.removeFromWorldSquareIndex >= 64) {
+                this.removeFromWorldLevel++;
+                this.removeFromWorldSquareIndex = 0;
+            }
+        }
+
+        return this.removeFromWorldLevel > this.maxLevel;
+    }
+
+    private void removeSquareFromWorld(IsoGridSquare sq) {
+        RainManager.RemoveAllOn(sq);
+        sq.clearWater();
+        sq.clearPuddles();
+        if (sq.getRoom() != null) {
+            sq.getRoom().removeSquare(sq);
+        }
+
+        if (sq.zone != null) {
+            sq.zone.removeSquare(sq);
+        }
+
+        ArrayList<IsoMovingObject> mov = sq.getMovingObjects();
+
+        for (int a = 0; a < mov.size(); a++) {
+            IsoMovingObject obj = mov.get(a);
+            if (obj instanceof IsoSurvivor) {
+                IsoWorld.instance.currentCell.getSurvivorList().remove(obj);
+                obj.Despawn();
+            }
+
+            if (obj instanceof IsoAnimal isoAnimal && GameClient.client) {
+                AnimalInstanceManager.getInstance().remove(isoAnimal);
+            }
+
+            obj.removeFromWorld();
+            obj.current = obj.last = null;
+            if (!mov.contains(obj)) {
+                a--;
+            }
+        }
+
+        mov.clear();
+
+        for (int i = 0; i < sq.getObjects().size(); i++) {
+            IsoObject objx = sq.getObjects().get(i);
+            objx.removeFromWorldToMeta();
+        }
+
+        for (int i = 0; i < sq.getStaticMovingObjects().size(); i++) {
+            IsoMovingObject objx = sq.getStaticMovingObjects().get(i);
+            objx.removeFromWorld();
+        }
+
+        this.disconnectFromAdjacentChunks(sq);
+        sq.softClear();
+        sq.chunk = null;
+    }
+
+    public void finishRemoveFromWorld() {
+        if (!this.removeFromWorldStarted) {
+            return;
         }
 
         for (int i = 0; i < this.vehicles.size(); i++) {
@@ -3259,6 +3308,9 @@ public final class IsoChunk {
         }
 
         this.preventHotSave = false;
+        this.removeFromWorldStarted = false;
+        this.removeFromWorldLevel = this.minLevel;
+        this.removeFromWorldSquareIndex = 0;
     }
 
     private void disconnectFromAdjacentChunks(IsoGridSquare sq) {
