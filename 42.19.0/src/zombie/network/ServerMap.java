@@ -46,6 +46,7 @@ import zombie.iso.RoomDef;
 import zombie.iso.Vector2;
 import zombie.iso.Vector3;
 import zombie.iso.WorldGenerate;
+import zombie.iso.WorldReuserThread;
 import zombie.iso.worldgen.WorldGenParams;
 import zombie.network.id.ObjectIDManager;
 import zombie.network.packets.INetworkPacket;
@@ -99,6 +100,8 @@ public class ServerMap {
     private static final long FINALIZE_FRAME_HIGH_NANOS = 140_000_000L;
     private static final long FINALIZE_FRAME_CRITICAL_NANOS = 250_000_000L;
     private static final long FINALIZE_MAX_WAIT_MS = 1500L;
+    private static final long GRID_WAIT_TIMEOUT_MS = 5000L;
+    private static final long GRID_WAIT_SLEEP_MS = 100L;
     private final LinkedHashMap<ServerMap.ServerCell, Long> pendingUnloads = new LinkedHashMap<>();
     private final IdentityHashMap<ServerMap.ServerCell, Long> finalizeReadySince = new IdentityHashMap<>();
     long lastTick;
@@ -238,6 +241,27 @@ public class ServerMap {
         return x < 0 || y < 0 || x >= this.width || y >= this.height;
     }
 
+    private boolean waitForGrid(String caller) {
+        long startMs = System.currentTimeMillis();
+
+        while (this.grid == null) {
+            if (System.currentTimeMillis() - startMs >= GRID_WAIT_TIMEOUT_MS) {
+                DebugType.General.println("ServerMap." + caller + " timed out waiting for grid");
+                return false;
+            }
+
+            try {
+                Thread.sleep(GRID_WAIT_SLEEP_MS);
+            } catch (InterruptedException e) {
+                DebugType.General.printException(e, LogSeverity.Error);
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public void loadOrKeepRelevent(int x, int y) {
         if (!this.isInvalidCell(x, y)) {
             ServerMap.ServerCell cell = this.getCell(x, y);
@@ -258,19 +282,26 @@ public class ServerMap {
                 this.toLoad.add(cell);
                 this.loadedCells.add(cell);
                 this.releventNow.add(cell);
-            } else if (!this.releventNow.contains(cell)) {
-                this.releventNow.add(cell);
+            } else {
+                if (!cell.isLoaded && cell.cancelLoading && !cell.loadingWasCancelled) {
+                    if (mapLoading) {
+                        DebugType.MapLoading.debugln("MainThread: reviving cancelled load " + cell.wx + "," + cell.wy);
+                    }
+
+                    cell.cancelLoading = false;
+                }
+
+                this.pendingUnloads.remove(cell);
+                if (!this.releventNow.contains(cell)) {
+                    this.releventNow.add(cell);
+                }
             }
         }
     }
 
     public void characterIn(IsoPlayer p) {
-        while (this.grid == null) {
-            try {
-                Thread.sleep(1000L);
-            } catch (InterruptedException var9) {
-                DebugType.General.printException(var9, LogSeverity.Error);
-            }
+        if (!this.waitForGrid("characterIn(player)")) {
+            return;
         }
 
         int dist = p.onlineChunkGridWidth / 2 * 8;
@@ -287,12 +318,8 @@ public class ServerMap {
     }
 
     public void characterIn(int wx, int wy, int chunkGridWidth) {
-        while (this.grid == null) {
-            try {
-                Thread.sleep(1000L);
-            } catch (InterruptedException var17) {
-                DebugType.General.printException(var17, LogSeverity.Error);
-            }
+        if (!this.waitForGrid("characterIn(coords)")) {
+            return;
         }
 
         int x = wx * 8;
@@ -334,12 +361,8 @@ public class ServerMap {
     }
 
     public void importantAreaIn(int sx, int sy) {
-        while (this.grid == null) {
-            try {
-                Thread.sleep(1000L);
-            } catch (InterruptedException var4) {
-                DebugType.General.printException(var4, LogSeverity.Error);
-            }
+        if (!this.waitForGrid("importantAreaIn")) {
+            return;
         }
 
         this.loadOrKeepRelevent(sx - this.getMinX(), sy - this.getMinY());
@@ -503,6 +526,7 @@ public class ServerMap {
                 this.cellMap[cx + cy * this.width] = null;
                 this.loadedCells.remove(cell);
                 this.releventNow.remove(cell);
+                cell.discardLoadedChunksAfterCancelledLoad();
                 ServerMap.ServerCell.loaded2.remove(ixx);
                 this.finalizeReadySince.remove(cell);
                 this.pendingUnloads.remove(cell);
@@ -557,6 +581,7 @@ public class ServerMap {
             for (int i = ServerMap.ServerCell.loaded2.size() - 1; i >= 0; i--) {
                 ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(i);
                 if (cell.cancelLoading) {
+                    cell.discardLoadedChunksAfterCancelledLoad();
                     ServerMap.ServerCell.loaded2.remove(i);
                     this.finalizeReadySince.remove(cell);
                 }
@@ -741,20 +766,25 @@ public class ServerMap {
             }
         }
 
-        int attempts = 0;
-        while (attempts < MAX_DEFERRED_UNLOADS_PER_TICK && !this.pendingUnloads.isEmpty()) {
-            ServerMap.ServerCell cell = this.pendingUnloads.keySet().iterator().next();
-            Long queuedAt = this.pendingUnloads.get(cell);
-            if (queuedAt == null || now - queuedAt < DEFERRED_UNLOAD_GRACE_MS) {
-                break;
-            }
+        ArrayList<ServerMap.ServerCell> readyUnloads = new ArrayList<>();
 
-            if (!cell.isLoaded || !this.loadedCells.contains(cell)) {
+        for (ServerMap.ServerCell cell : new ArrayList<>(this.pendingUnloads.keySet())) {
+            Long queuedAt = this.pendingUnloads.get(cell);
+            if (queuedAt == null || !cell.isLoaded || !this.loadedCells.contains(cell)) {
                 this.pendingUnloads.remove(cell);
                 continue;
             }
 
-            attempts++;
+            if (now - queuedAt >= DEFERRED_UNLOAD_GRACE_MS) {
+                readyUnloads.add(cell);
+                if (readyUnloads.size() >= MAX_DEFERRED_UNLOADS_PER_TICK) {
+                    break;
+                }
+            }
+        }
+
+        for (int attempts = 0; attempts < readyUnloads.size(); attempts++) {
+            ServerMap.ServerCell cell = readyUnloads.get(attempts);
             boolean losSuspended = false;
             long unloadStart = System.nanoTime();
 
@@ -1005,6 +1035,24 @@ public class ServerMap {
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
+
+        void deferLoadingForPendingSave() {
+            this.startedLoading = false;
+        }
+
+        private void discardLoadedChunksAfterCancelledLoad() {
+            for (int x = 0; x < 8; x++) {
+                for (int y = 0; y < 8; y++) {
+                    IsoChunk chunk = this.chunks[x][y];
+                    if (chunk != null) {
+                        this.chunks[x][y] = null;
+                        WorldReuserThread.instance.addReuseChunk(chunk);
+                    }
+                }
+            }
+
+            this.isLoaded = false;
+        }
 
         public boolean Load2() {
             long start = System.nanoTime();

@@ -13,7 +13,7 @@
 // main thread modifies+saves at T2, SaveChunkThread writes T1's stale buffer
 // at T3 over T2's correct file) is mitigated by the per-call CRC32: it ensures
 // the CRC inside the stale buffer is at least self-consistent, so the stale
-// file won't cause a CRC mismatch on next load — only lost data.
+// file won't cause a CRC mismatch on next load - only lost data.
 //
 // Original: zombie.network.ServerChunkLoader (Build 42.19)
 package zombie.network;
@@ -24,7 +24,9 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.zip.CRC32;
 import zombie.GameTime;
@@ -212,6 +214,23 @@ public class ServerChunkLoader {
                         cell.loadingWasCancelled = true;
                     } else {
                         long start = System.nanoTime();
+
+                        boolean deferredForSave = false;
+                        for (int x = 0; x < 8 && !deferredForSave; x++) {
+                            for (int y = 0; y < 8; y++) {
+                                int wx = cell.wx * 8 + x;
+                                int wy = cell.wy * 8 + y;
+                                if (IsoWorld.instance.metaGrid.isValidChunk(wx, wy) && ServerChunkLoader.this.threadSave.hasPendingOrRunningSave(wx, wy)) {
+                                    deferredForSave = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (deferredForSave) {
+                            cell.deferLoadingForPendingSave();
+                            continue;
+                        }
 
                         for (int x = 0; x < 8; x++) {
                             for (int y = 0; y < 8; y++) {
@@ -463,6 +482,7 @@ public class ServerChunkLoader {
         private final ClientChunkRequest ccr;
         private final ArrayList<ServerChunkLoader.SaveTask> toSaveChunk;
         private final ArrayList<ServerChunkLoader.SaveTask> savedChunks;
+        private final Set<Long> runningSaves;
 
         private SaveChunkThread() {
             Objects.requireNonNull(ServerChunkLoader.this);
@@ -473,15 +493,26 @@ public class ServerChunkLoader {
             this.ccr = new ClientChunkRequest();
             this.toSaveChunk = new ArrayList<>();
             this.savedChunks = new ArrayList<>();
+            this.runningSaves = new HashSet<>();
         }
 
         @Override
         public void run() {
             do {
                 ServerChunkLoader.SaveTask task = null;
+                long saveKey = 0L;
+                boolean trackingSave = false;
 
                 try {
                     task = this.toThread.take();
+                    if (task.isChunkSave()) {
+                        saveKey = this.chunkKey(task.wx(), task.wy());
+                        synchronized (this.runningSaves) {
+                            this.runningSaves.add(saveKey);
+                        }
+                        trackingSave = true;
+                    }
+
                     task.save();
                     this.fromThread.add(task);
                 } catch (InterruptedException var3) {
@@ -492,8 +523,35 @@ public class ServerChunkLoader {
                     }
 
                     LoggerManager.getLogger("map").write(var4);
+                } finally {
+                    if (trackingSave) {
+                        synchronized (this.runningSaves) {
+                            this.runningSaves.remove(saveKey);
+                        }
+                    }
                 }
             } while (!this.quit || !this.toThread.isEmpty());
+        }
+
+        private long chunkKey(int wx, int wy) {
+            return ((long)wx << 32) ^ (wy & 0xFFFFFFFFL);
+        }
+
+        public boolean hasPendingOrRunningSave(int wx, int wy) {
+            long key = this.chunkKey(wx, wy);
+            synchronized (this.runningSaves) {
+                if (this.runningSaves.contains(key)) {
+                    return true;
+                }
+            }
+
+            for (ServerChunkLoader.SaveTask task : this.toThread) {
+                if (task.isChunkSave() && task.wx() == wx && task.wy() == wy) {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public void addUnloadedJob(IsoChunk chunk) {
@@ -650,6 +708,11 @@ public class ServerChunkLoader {
         public int wy() {
             return this.chunk.wy;
         }
+
+        @Override
+        public boolean isChunkSave() {
+            return true;
+        }
     }
 
     private interface SaveTask {
@@ -660,6 +723,10 @@ public class ServerChunkLoader {
         int wx();
 
         int wy();
+
+        default boolean isChunkSave() {
+            return false;
+        }
     }
 
     private class SaveUnloadedTask implements ServerChunkLoader.SaveTask {
@@ -689,6 +756,11 @@ public class ServerChunkLoader {
         @Override
         public int wy() {
             return this.chunk.wy;
+        }
+
+        @Override
+        public boolean isChunkSave() {
+            return true;
         }
     }
 }

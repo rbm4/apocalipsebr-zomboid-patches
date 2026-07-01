@@ -147,7 +147,8 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\characters\IsoGameCharacter.java"),
     # Parallel Player LOS (split-phase compute, chunk-parallel)
     (Join-Path $SrcRoot "zombie\characters\IsoPlayer.java"),
-    (Join-Path $SrcRoot "zombie\network\ServerLOS.java")
+    (Join-Path $SrcRoot "zombie\network\ServerLOS.java"),
+    (Join-Path $SrcRoot "zombie\characters\action\ActionStateContainer.java")
 )
 
 # --- All expected class files (relative to deploy root) ---
@@ -155,6 +156,7 @@ $ClassFiles = @(
     # AsyncSaveTelemetry + NoCull
     "zombie\ApocBRServerTelemetry.class",
     "zombie\GameTime.class",
+    "zombie\characters\action\ActionStateContainer.class",
     "zombie\MovingObjectUpdateScheduler.class",
     "zombie\MovingObjectUpdateSchedulerUpdateBucket.class",
     "zombie\popman\NetworkZombiePacker.class",
