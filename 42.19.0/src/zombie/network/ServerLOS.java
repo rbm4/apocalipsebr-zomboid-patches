@@ -23,6 +23,7 @@ public class ServerLOS {
     private final ArrayList<ServerLOS.PlayerData> playersLos = new ArrayList<>();
     private volatile boolean mapLoading;
     private volatile boolean suspended;
+    private static final long SUSPEND_WAIT_TIMEOUT_MS = 500L;
     private static final int PD_SIZE_IN_CHUNKS = 12;
     private static final int PD_SIZE_IN_SQUARES = 96;
     // Object-level LOS is a player × candidate cost. The tile visibility grid
@@ -230,14 +231,24 @@ public class ServerLOS {
     public void suspend() {
         this.mapLoading = true;
         this.wasSuspended = this.suspended;
+        long start = System.currentTimeMillis();
 
         while (!this.suspended) {
-            if (!this.thread.isAlive()) {
+            if (this.thread == null || !this.thread.isAlive()) {
+                DebugType.General.println("ServerLOS.suspend timeout: LOS thread is not alive");
                 break;
             }
+
+            if (System.currentTimeMillis() - start >= SUSPEND_WAIT_TIMEOUT_MS) {
+                DebugType.General.println("ServerLOS.suspend timeout after " + SUSPEND_WAIT_TIMEOUT_MS + "ms");
+                break;
+            }
+
             try {
                 Thread.sleep(1L);
             } catch (InterruptedException var2) {
+                Thread.currentThread().interrupt();
+                break;
             }
         }
 

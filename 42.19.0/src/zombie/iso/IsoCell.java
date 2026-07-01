@@ -146,6 +146,7 @@ public final class IsoCell {
     private final Set<InventoryItem> processItemsRemove = ConcurrentHashMap.newKeySet();
     private final ArrayList<IsoWorldInventoryObject> processWorldItems = new ArrayList<>();
     public final Set<IsoWorldInventoryObject> processWorldItemsRemove = ConcurrentHashMap.newKeySet();
+    private final Object processItemsLock = new Object();
     private final IsoGridSquare[][] gridSquares = GameServer.server
         ? null
         : new IsoGridSquare[4][IsoChunkMap.chunkWidthInTiles * IsoChunkMap.chunkWidthInTiles * 64];
@@ -2178,20 +2179,29 @@ public final class IsoCell {
     }
 
     private void ProcessItems(Iterator<InventoryItem> it2) {
-        synchronized (this.processItems) {
-            for (InventoryItem i : this.processItems) {
+        InventoryItem[] items;
+        IsoWorldInventoryObject[] worldItems;
+        synchronized (this.processItemsLock) {
+            items = this.processItems.toArray(new InventoryItem[0]);
+            worldItems = this.processWorldItems.toArray(new IsoWorldInventoryObject[0]);
+        }
+
+        for (int n = 0; n < items.length; n++) {
+            InventoryItem i = items[n];
+            if (i != null) {
                 i.update();
                 if (i.finishupdate()) {
-                    this.processItemsRemove.add(i);
+                    this.addToProcessItemsRemove(i);
                 }
             }
         }
 
-        synchronized (this.processWorldItems) {
-            for (IsoWorldInventoryObject i : this.processWorldItems) {
+        for (int nx = 0; nx < worldItems.length; nx++) {
+            IsoWorldInventoryObject i = worldItems[nx];
+            if (i != null) {
                 i.update();
                 if (i.finishupdate()) {
-                    this.processWorldItemsRemove.add(i);
+                    this.addToProcessWorldItemsRemove(i);
                 }
             }
         }
@@ -2245,14 +2255,12 @@ public final class IsoCell {
     }
 
     private void ProcessRemoveItems(Iterator<InventoryItem> it2) {
-        synchronized (this.processItems) {
+        synchronized (this.processItemsLock) {
             this.processItems.removeAll(this.processItemsRemove);
-        }
-        synchronized (this.processWorldItems) {
             this.processWorldItems.removeAll(this.processWorldItemsRemove);
+            this.processItemsRemove.clear();
+            this.processWorldItemsRemove.clear();
         }
-        this.processItemsRemove.clear();
-        this.processWorldItemsRemove.clear();
     }
 
     private void ProcessStaticUpdaters() {
@@ -2302,8 +2310,8 @@ public final class IsoCell {
 
     public void addToProcessItems(InventoryItem item) {
         if (item != null && !GameClient.client) {
-            this.processItemsRemove.remove(item);
-            synchronized (this.processItems) {
+            synchronized (this.processItemsLock) {
+                this.processItemsRemove.remove(item);
                 if (!this.processItems.contains(item)) {
                     this.processItems.add(item);
                 }
@@ -2313,7 +2321,7 @@ public final class IsoCell {
 
     public void addToProcessItems(ArrayList<InventoryItem> items) {
         if (items != null && !GameClient.client) {
-            synchronized (this.processItems) {
+            synchronized (this.processItemsLock) {
                 for (int i = 0; i < items.size(); i++) {
                     InventoryItem item = items.get(i);
                     if (item != null) {
@@ -2329,18 +2337,22 @@ public final class IsoCell {
 
     public void addToProcessItemsRemove(InventoryItem item) {
         if (item != null) {
-            if (!this.processItemsRemove.contains(item)) {
-                this.processItemsRemove.add(item);
+            synchronized (this.processItemsLock) {
+                if (!this.processItemsRemove.contains(item)) {
+                    this.processItemsRemove.add(item);
+                }
             }
         }
     }
 
     public void addToProcessItemsRemove(ArrayList<InventoryItem> items) {
         if (items != null) {
-            for (int i = 0; i < items.size(); i++) {
-                InventoryItem item = items.get(i);
-                if (item != null && !this.processItemsRemove.contains(item)) {
-                    this.processItemsRemove.add(item);
+            synchronized (this.processItemsLock) {
+                for (int i = 0; i < items.size(); i++) {
+                    InventoryItem item = items.get(i);
+                    if (item != null && !this.processItemsRemove.contains(item)) {
+                        this.processItemsRemove.add(item);
+                    }
                 }
             }
         }
@@ -2348,8 +2360,8 @@ public final class IsoCell {
 
     public void addToProcessWorldItems(IsoWorldInventoryObject worldItem) {
         if (worldItem != null) {
-            this.processWorldItemsRemove.remove(worldItem);
-            synchronized (this.processWorldItems) {
+            synchronized (this.processItemsLock) {
+                this.processWorldItemsRemove.remove(worldItem);
                 if (!this.processWorldItems.contains(worldItem)) {
                     this.processWorldItems.add(worldItem);
                 }
@@ -2359,8 +2371,10 @@ public final class IsoCell {
 
     public void addToProcessWorldItemsRemove(IsoWorldInventoryObject worldItem) {
         if (worldItem != null) {
-            if (!this.processWorldItemsRemove.contains(worldItem)) {
-                this.processWorldItemsRemove.add(worldItem);
+            synchronized (this.processItemsLock) {
+                if (!this.processWorldItemsRemove.contains(worldItem)) {
+                    this.processWorldItemsRemove.add(worldItem);
+                }
             }
         }
     }
@@ -2646,6 +2660,7 @@ public final class IsoCell {
     public float DistanceFromSupport(int x, int y, int z) {
         return 0.0F;
     }
+
 
     /**
      * @return the BuildingList
@@ -3235,10 +3250,12 @@ public final class IsoCell {
         LuaEventManager.clear();
         LuaHookManager.clear();
         this.lamppostPositions.clear();
-        this.processItems.clear();
-        this.processItemsRemove.clear();
-        this.processWorldItems.clear();
-        this.processWorldItemsRemove.clear();
+        synchronized (this.processItemsLock) {
+            this.processItems.clear();
+            this.processItemsRemove.clear();
+            this.processWorldItems.clear();
+            this.processWorldItemsRemove.clear();
+        }
         this.buildingScores.clear();
         this.buildingList.clear();
         this.windowList.clear();
