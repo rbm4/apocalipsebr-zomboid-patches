@@ -101,6 +101,9 @@ public class ServerMap {
     private static final int UNLOAD_PENDING_STRESS = 256;
     private static final long UNLOAD_OLDEST_WARNING_MS = DEFERRED_UNLOAD_GRACE_MS * 2L;
     private static final long UNLOAD_OLDEST_STRESS_MS = DEFERRED_UNLOAD_GRACE_MS * 3L;
+    private static final int DEFERRED_UNLOAD_MODE_NORMAL = 0;
+    private static final int DEFERRED_UNLOAD_MODE_WARNING = 1;
+    private static final int DEFERRED_UNLOAD_MODE_STRESS = 2;
     private static final long MAIN_THREAD_LOAD_BUDGET_NANOS = 50_000_000L;
     private static final long FINALIZE_BUDGET_NORMAL_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
     private static final long FINALIZE_BUDGET_ELEVATED_NANOS = 30_000_000L;
@@ -755,33 +758,33 @@ public class ServerMap {
         return FINALIZE_BUDGET_NORMAL_NANOS;
     }
 
-    private DeferredUnloadMode getDeferredUnloadMode(long oldestAgeMs) {
+    private int getDeferredUnloadMode(long oldestAgeMs) {
         int pending = this.pendingUnloads.size();
         if (pending >= UNLOAD_PENDING_STRESS || oldestAgeMs >= UNLOAD_OLDEST_STRESS_MS) {
-            return DeferredUnloadMode.STRESS;
+            return DEFERRED_UNLOAD_MODE_STRESS;
         }
 
         if (pending >= UNLOAD_PENDING_WARNING || oldestAgeMs >= UNLOAD_OLDEST_WARNING_MS) {
-            return DeferredUnloadMode.WARNING;
+            return DEFERRED_UNLOAD_MODE_WARNING;
         }
 
-        return DeferredUnloadMode.NORMAL;
+        return DEFERRED_UNLOAD_MODE_NORMAL;
     }
 
-    private int getDeferredUnloadCellsPerTick(DeferredUnloadMode mode) {
-        return switch (mode) {
-            case WARNING -> UNLOAD_CELLS_WARNING;
-            case STRESS -> UNLOAD_CELLS_STRESS;
-            default -> UNLOAD_CELLS_NORMAL;
-        };
+    private int getDeferredUnloadCellsPerTick(int mode) {
+        if (mode == DEFERRED_UNLOAD_MODE_STRESS) {
+            return UNLOAD_CELLS_STRESS;
+        } else {
+            return mode == DEFERRED_UNLOAD_MODE_WARNING ? UNLOAD_CELLS_WARNING : UNLOAD_CELLS_NORMAL;
+        }
     }
 
-    private int getDeferredUnloadSlicesPerTick(DeferredUnloadMode mode) {
-        return switch (mode) {
-            case WARNING -> UNLOAD_SLICES_WARNING;
-            case STRESS -> UNLOAD_SLICES_STRESS;
-            default -> UNLOAD_SLICES_NORMAL;
-        };
+    private int getDeferredUnloadSlicesPerTick(int mode) {
+        if (mode == DEFERRED_UNLOAD_MODE_STRESS) {
+            return UNLOAD_SLICES_STRESS;
+        } else {
+            return mode == DEFERRED_UNLOAD_MODE_WARNING ? UNLOAD_SLICES_WARNING : UNLOAD_SLICES_NORMAL;
+        }
     }
 
     private long getPendingUnloadOldestAgeMs(long now) {
@@ -818,7 +821,7 @@ public class ServerMap {
         }
 
         long oldestAgeMs = this.getPendingUnloadOldestAgeMs(now);
-        DeferredUnloadMode unloadMode = this.getDeferredUnloadMode(oldestAgeMs);
+        int unloadMode = this.getDeferredUnloadMode(oldestAgeMs);
         int maxDeferredUnloadsPerTick = this.getDeferredUnloadCellsPerTick(unloadMode);
         int unloadSlicesPerTick = this.getDeferredUnloadSlicesPerTick(unloadMode);
         ArrayList<ServerMap.ServerCell> readyUnloads = new ArrayList<>();
@@ -1524,9 +1527,5 @@ public class ServerMap {
         ServerMap.ServerCell cell;
     }
 
-    private enum DeferredUnloadMode {
-        NORMAL,
-        WARNING,
-        STRESS
-    }
 }
+
