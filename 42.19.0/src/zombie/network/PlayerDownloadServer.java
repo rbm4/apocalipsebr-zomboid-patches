@@ -303,6 +303,12 @@ public final class PlayerDownloadServer {
                 } else {
                     File inFile = ChunkMapFilenames.instance.getFilename(wx, wy);
                     if (inFile.exists()) {
+                        if (ServerMap.ServerCell.chunkLoader.hasPendingOrRunningSave(wx, wy)) {
+                            if (PlayerDownloadServer.this.networkFileDebug) {
+                                DebugType.NetworkFileDebug.debugln(wx + "," + wy + ": deferred - chunk being saved");
+                            }
+                            continue;
+                        }
                         ccr.getByteBuffer(reqChunk);
                         reqChunk.bb = IsoChunk.SafeRead(wx, wy, reqChunk.bb);
                         this.sendChunk(reqChunk);
@@ -364,6 +370,12 @@ public final class PlayerDownloadServer {
 
                                 this.sendNotRequired(reqChunk, true);
                             } else {
+                                if (ServerMap.ServerCell.chunkLoader.hasPendingOrRunningSave(wx, wy)) {
+                                    if (PlayerDownloadServer.this.networkFileDebug) {
+                                        DebugType.NetworkFileDebug.debugln(wx + "," + wy + ": deferred - chunk being saved");
+                                    }
+                                    continue;
+                                }
                                 ccr.getByteBuffer(reqChunk);
                                 reqChunk.bb = IsoChunk.SafeRead(wx, wy, reqChunk.bb);
                                 boolean addx = true;

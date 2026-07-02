@@ -722,69 +722,126 @@ public final class ApocBRServerTelemetry {
         if (!ENABLED) return;
         long now = System.currentTimeMillis();
         if (now < nextLogMs) return;
-        DebugLog.log("[ApocBRTelemetry] intervalMs=" + INTERVAL_MS
-            + " queues{high=" + highQueueLast + ",player=" + playerQueueLast + ",normal=" + normalQueueLast + "}"
-            + " world{ticks=" + worldTicks + ",avgMs=" + avgMs(worldNanos, worldTicks) + ",maxMs=" + ms(worldMaxNanos)
-            + ",serverMapPreAvgMs=" + avgMs(serverMapPreNanos, worldTicks) + ",serverMapPreMaxMs=" + ms(serverMapPreMaxNanos)
-            + ",coreAvgMs=" + avgMs(coreWorldNanos, worldTicks) + ",coreMaxMs=" + ms(coreWorldMaxNanos)
-            + ",mapCollisionAvgMs=" + avgMs(mapCollisionNanos, worldTicks) + ",mapCollisionMaxMs=" + ms(mapCollisionMaxNanos)
-            + ",stateUpdateAvgMs=" + avgMs(stateUpdateNanos, worldTicks) + ",stateUpdateMaxMs=" + ms(stateUpdateMaxNanos)
-            + ",vehicleAvgMs=" + avgMs(vehicleUpdateNanos, worldTicks) + ",vehicleMaxMs=" + ms(vehicleUpdateMaxNanos)
-            + ",objectIdAvgMs=" + avgMs(objectIdNanos, worldTicks) + ",objectIdMaxMs=" + ms(objectIdMaxNanos)
-            + ",connChunkAvgMs=" + avgMs(connectionChunkNanos, worldTicks) + ",connChunkMaxMs=" + ms(connectionChunkMaxNanos)
-            + ",serverMapPostAvgMs=" + avgMs(serverMapPostNanos, worldTicks) + ",serverMapPostMaxMs=" + ms(serverMapPostMaxNanos)
-            + ",serverMapPartitionAvgMs=" + avgMs(serverMapPartitionNanos, worldTicks) + ",serverMapPartitionMaxMs=" + ms(serverMapPartitionMaxNanos)
-            + ",serverMapCellTasksAvgMs=" + avgMs(serverMapCellTasksNanos, worldTicks) + ",serverMapCellTasksMaxMs=" + ms(serverMapCellTasksMaxNanos)
-            + ",serverMapMiscTasksAvgMs=" + avgMs(serverMapMiscTasksNanos, worldTicks) + ",serverMapMiscTasksMaxMs=" + ms(serverMapMiscTasksMaxNanos)
-            + ",serverMapWaitAvgMs=" + avgMs(serverMapWaitNanos, worldTicks) + ",serverMapWaitMaxMs=" + ms(serverMapWaitMaxNanos)
-            + ",serverMapCellsUpdated=" + serverMapCellsUpdated + ",serverMapWorkers=" + serverMapNumWorkersLast
-            + ",playerLOS=" + playerLOSCalls + ",playerLOSObjects=" + playerLOSObjects
-            + ",playerLOSParallel=" + playerLOSParallel + ",playerLOSSequential=" + playerLOSSequential
-            + ",playerLOSComputeAvgMs=" + avgMs(playerLOSComputeNanos, playerLOSCalls) + ",playerLOSComputeMaxMs=" + ms(playerLOSComputeMaxNanos)
-            + ",playerLOSApplyAvgMs=" + avgMs(playerLOSApplyNanos, playerLOSCalls) + ",playerLOSApplyMaxMs=" + ms(playerLOSApplyMaxNanos) + "}"
-            + " serverMapUnload{pending=" + serverMapUnloadPendingLast + ",queued=" + serverMapUnloadQueued
-            + ",revalidated=" + serverMapUnloadRevalidated + ",unloaded=" + serverMapUnloadCells
-            + ",avgMs=" + avgMs(serverMapUnloadNanos, serverMapUnloadCells) + ",maxMs=" + ms(serverMapUnloadMaxNanos)
-            + ",oldestMs=" + serverMapUnloadOldestAgeMsLast + "}"
-            + serverMapUnloadDetailLog()
-            + " serverMapLoadFinalize{pending=" + serverMapLoadFinalizePendingLast + ",received=" + serverMapLoadFinalizeReceived
-            + ",finalized=" + serverMapLoadFinalizeCells + ",avgMs=" + avgMs(serverMapLoadFinalizeNanos, serverMapLoadFinalizeCells)
-            + ",maxMs=" + ms(serverMapLoadFinalizeMaxNanos) + ",oldestMs=" + serverMapLoadFinalizeOldestAgeMsLast
-            + ",budgetMs=" + ms(serverMapLoadFinalizeBudgetNanosLast) + ",previousFrameMs=" + ms(serverMapLoadFinalizePreviousFrameNanosLast) + "}"
-            + serverMapLoadCommitLog()
-            + " zombieNetwork{live=" + zombieNetworkLiveLast + ",postCalls=" + zombieNetworkPostCalls
-            + ",postAvgMs=" + avgMs(zombieNetworkPostNanos, zombieNetworkPostCalls)
-            + ",postMaxMs=" + ms(zombieNetworkPostMaxNanos)
-            + ",authLive=" + zombieNetworkAuthLive + ",authScanned=" + zombieNetworkAuthScanned
-            + ",authUrgent=" + zombieNetworkAuthUrgent + ",authDeferred=" + zombieNetworkAuthDeferred
-            + ",ownerChanges=" + zombieNetworkAuthOwnerChanges
-            + ",unowned=" + zombieNetworkAuthUnowned + ",connections=" + zombieNetworkConnections
-            + ",hashAvgMs=" + avgMs(zombieNetworkHashNanos, zombieNetworkPostCalls)
-            + ",hashMaxMs=" + ms(zombieNetworkHashMaxNanos) + ",listPackets=" + zombieNetworkListPackets
-            + ",sendAvgMs=" + avgMs(zombieNetworkSendNanos, zombieNetworkPostCalls)
-            + ",sendMaxMs=" + ms(zombieNetworkSendMaxNanos) + ",syncPackets=" + zombieNetworkSyncPackets
-            + ",syncZombies=" + zombieNetworkSyncZombies + ",deletePackets=" + zombieNetworkDeletePackets + "}"
-            + " packets{high=" + highPackets + "/" + ms(highNanos) + "ms max=" + ms(highMaxNanos)
-            + ",player=" + playerPackets + "/" + ms(playerNanos) + "ms max=" + ms(playerMaxNanos)
-            + ",normal=" + normalPackets + "/" + ms(normalNanos) + "ms max=" + ms(normalMaxNanos) + "}"
-            + " chunks{mainCalls=" + chunkMainCalls + ",mainAvgMs=" + avgMs(chunkMainNanos, chunkMainCalls) + ",mainMaxMs=" + ms(chunkMainMaxNanos)
-            + ",requests=" + chunkMainRequests + ",prepared=" + chunkMainPrepared + ",maxWaiting=" + chunkMainMaxWaiting
-            + ",workerCalls=" + chunkWorkerCalls + ",workerAvgMs=" + avgMs(chunkWorkerNanos, chunkWorkerCalls) + ",workerMaxMs=" + ms(chunkWorkerMaxNanos)
-            + ",workerChunks=" + chunkWorkerChunks + ",downloadConnections=" + downloadConnections + "}"
-            + stateSectionsLog()
-            + isoWorldSectionsLog()
-            + isoCellSectionsLog()
-            + parallelWorldLog()
-            + movingBucketLog()
-            + movingTypeLog()
-            + movingStartFrameLog()
-            + movingStartTypeLog()
-            + movingVirtualAnimalLog()
-            + movingAnimalBucketLog()
-            + vehicleLog()
-            + " state{connections=" + connectionsLast + ",players=" + playersLast + ",zombies=" + zombiesLast + "}");
+        DebugLog.log(buildJsonLog());
         resetCounters();
         nextLogMs = now + INTERVAL_MS;
+    }
+
+    private static String buildJsonLog() {
+        StringBuilder json = new StringBuilder();
+        json.append("{\"telemetry\":{\"intervalMs\":").append(INTERVAL_MS);
+        json.append(",\"queues\":{\"high\":").append(highQueueLast)
+            .append(",\"player\":").append(playerQueueLast)
+            .append(",\"normal\":").append(normalQueueLast).append("}");
+        json.append(",\"world\":{\"ticks\":").append(worldTicks)
+            .append(",\"avgMs\":").append(avgMs(worldNanos, worldTicks))
+            .append(",\"maxMs\":").append(ms(worldMaxNanos))
+            .append(",\"serverMapPreAvgMs\":").append(avgMs(serverMapPreNanos, worldTicks))
+            .append(",\"serverMapPreMaxMs\":").append(ms(serverMapPreMaxNanos))
+            .append(",\"coreAvgMs\":").append(avgMs(coreWorldNanos, worldTicks))
+            .append(",\"coreMaxMs\":").append(ms(coreWorldMaxNanos))
+            .append(",\"mapCollisionAvgMs\":").append(avgMs(mapCollisionNanos, worldTicks))
+            .append(",\"mapCollisionMaxMs\":").append(ms(mapCollisionMaxNanos))
+            .append(",\"stateUpdateAvgMs\":").append(avgMs(stateUpdateNanos, worldTicks))
+            .append(",\"stateUpdateMaxMs\":").append(ms(stateUpdateMaxNanos))
+            .append(",\"vehicleAvgMs\":").append(avgMs(vehicleUpdateNanos, worldTicks))
+            .append(",\"vehicleMaxMs\":").append(ms(vehicleUpdateMaxNanos))
+            .append(",\"objectIdAvgMs\":").append(avgMs(objectIdNanos, worldTicks))
+            .append(",\"objectIdMaxMs\":").append(ms(objectIdMaxNanos))
+            .append(",\"connChunkAvgMs\":").append(avgMs(connectionChunkNanos, worldTicks))
+            .append(",\"connChunkMaxMs\":").append(ms(connectionChunkMaxNanos))
+            .append(",\"serverMapPostAvgMs\":").append(avgMs(serverMapPostNanos, worldTicks))
+            .append(",\"serverMapPostMaxMs\":").append(ms(serverMapPostMaxNanos))
+            .append(",\"serverMapPartitionAvgMs\":").append(avgMs(serverMapPartitionNanos, worldTicks))
+            .append(",\"serverMapPartitionMaxMs\":").append(ms(serverMapPartitionMaxNanos))
+            .append(",\"serverMapCellTasksAvgMs\":").append(avgMs(serverMapCellTasksNanos, worldTicks))
+            .append(",\"serverMapCellTasksMaxMs\":").append(ms(serverMapCellTasksMaxNanos))
+            .append(",\"serverMapMiscTasksAvgMs\":").append(avgMs(serverMapMiscTasksNanos, worldTicks))
+            .append(",\"serverMapMiscTasksMaxMs\":").append(ms(serverMapMiscTasksMaxNanos))
+            .append(",\"serverMapWaitAvgMs\":").append(avgMs(serverMapWaitNanos, worldTicks))
+            .append(",\"serverMapWaitMaxMs\":").append(ms(serverMapWaitMaxNanos))
+            .append(",\"serverMapCellsUpdated\":").append(serverMapCellsUpdated)
+            .append(",\"serverMapWorkers\":").append(serverMapNumWorkersLast)
+            .append(",\"playerLOS\":").append(playerLOSCalls)
+            .append(",\"playerLOSObjects\":").append(playerLOSObjects)
+            .append(",\"playerLOSParallel\":").append(playerLOSParallel)
+            .append(",\"playerLOSSequential\":").append(playerLOSSequential)
+            .append(",\"playerLOSComputeAvgMs\":").append(avgMs(playerLOSComputeNanos, playerLOSCalls))
+            .append(",\"playerLOSComputeMaxMs\":").append(ms(playerLOSComputeMaxNanos))
+            .append(",\"playerLOSApplyAvgMs\":").append(avgMs(playerLOSApplyNanos, playerLOSCalls))
+            .append(",\"playerLOSApplyMaxMs\":").append(ms(playerLOSApplyMaxNanos)).append("}");
+        json.append(",\"serverMapUnload\":{\"pending\":").append(serverMapUnloadPendingLast)
+            .append(",\"queued\":").append(serverMapUnloadQueued)
+            .append(",\"revalidated\":").append(serverMapUnloadRevalidated)
+            .append(",\"unloaded\":").append(serverMapUnloadCells)
+            .append(",\"avgMs\":").append(avgMs(serverMapUnloadNanos, serverMapUnloadCells))
+            .append(",\"maxMs\":").append(ms(serverMapUnloadMaxNanos))
+            .append(",\"oldestMs\":").append(serverMapUnloadOldestAgeMsLast).append("}");
+        json.append(serverMapUnloadDetailLogJson());
+        json.append(",\"serverMapLoadFinalize\":{\"pending\":").append(serverMapLoadFinalizePendingLast)
+            .append(",\"received\":").append(serverMapLoadFinalizeReceived)
+            .append(",\"finalized\":").append(serverMapLoadFinalizeCells)
+            .append(",\"avgMs\":").append(avgMs(serverMapLoadFinalizeNanos, serverMapLoadFinalizeCells))
+            .append(",\"maxMs\":").append(ms(serverMapLoadFinalizeMaxNanos))
+            .append(",\"oldestMs\":").append(serverMapLoadFinalizeOldestAgeMsLast)
+            .append(",\"budgetMs\":").append(ms(serverMapLoadFinalizeBudgetNanosLast))
+            .append(",\"previousFrameMs\":").append(ms(serverMapLoadFinalizePreviousFrameNanosLast)).append("}");
+        json.append(serverMapLoadCommitLogJson());
+        json.append(",\"zombieNetwork\":{\"live\":").append(zombieNetworkLiveLast)
+            .append(",\"postCalls\":").append(zombieNetworkPostCalls)
+            .append(",\"postAvgMs\":").append(avgMs(zombieNetworkPostNanos, zombieNetworkPostCalls))
+            .append(",\"postMaxMs\":").append(ms(zombieNetworkPostMaxNanos))
+            .append(",\"authLive\":").append(zombieNetworkAuthLive)
+            .append(",\"authScanned\":").append(zombieNetworkAuthScanned)
+            .append(",\"authUrgent\":").append(zombieNetworkAuthUrgent)
+            .append(",\"authDeferred\":").append(zombieNetworkAuthDeferred)
+            .append(",\"ownerChanges\":").append(zombieNetworkAuthOwnerChanges)
+            .append(",\"unowned\":").append(zombieNetworkAuthUnowned)
+            .append(",\"connections\":").append(zombieNetworkConnections)
+            .append(",\"hashAvgMs\":").append(avgMs(zombieNetworkHashNanos, zombieNetworkPostCalls))
+            .append(",\"hashMaxMs\":").append(ms(zombieNetworkHashMaxNanos))
+            .append(",\"listPackets\":").append(zombieNetworkListPackets)
+            .append(",\"sendAvgMs\":").append(avgMs(zombieNetworkSendNanos, zombieNetworkPostCalls))
+            .append(",\"sendMaxMs\":").append(ms(zombieNetworkSendMaxNanos))
+            .append(",\"syncPackets\":").append(zombieNetworkSyncPackets)
+            .append(",\"syncZombies\":").append(zombieNetworkSyncZombies)
+            .append(",\"deletePackets\":").append(zombieNetworkDeletePackets).append("}");
+        json.append(",\"packets\":{\"high\":{\"count\":").append(highPackets)
+            .append(",\"totalMs\":").append(ms(highNanos))
+            .append(",\"maxMs\":").append(ms(highMaxNanos)).append("}")
+            .append(",\"player\":{\"count\":").append(playerPackets)
+            .append(",\"totalMs\":").append(ms(playerNanos))
+            .append(",\"maxMs\":").append(ms(playerMaxNanos)).append("}")
+            .append(",\"normal\":{\"count\":").append(normalPackets)
+            .append(",\"totalMs\":").append(ms(normalNanos))
+            .append(",\"maxMs\":").append(ms(normalMaxNanos)).append("}}");
+        json.append(",\"chunks\":{\"mainCalls\":").append(chunkMainCalls)
+            .append(",\"mainAvgMs\":").append(avgMs(chunkMainNanos, chunkMainCalls))
+            .append(",\"mainMaxMs\":").append(ms(chunkMainMaxNanos))
+            .append(",\"requests\":").append(chunkMainRequests)
+            .append(",\"prepared\":").append(chunkMainPrepared)
+            .append(",\"maxWaiting\":").append(chunkMainMaxWaiting)
+            .append(",\"workerCalls\":").append(chunkWorkerCalls)
+            .append(",\"workerAvgMs\":").append(avgMs(chunkWorkerNanos, chunkWorkerCalls))
+            .append(",\"workerMaxMs\":").append(ms(chunkWorkerMaxNanos))
+            .append(",\"workerChunks\":").append(chunkWorkerChunks)
+            .append(",\"downloadConnections\":").append(downloadConnections).append("}");
+        json.append(stateSectionsLogJson());
+        json.append(isoWorldSectionsLogJson());
+        json.append(isoCellSectionsLogJson());
+        json.append(parallelWorldLogJson());
+        json.append(movingBucketLogJson());
+        json.append(movingTypeLogJson());
+        json.append(movingStartFrameLogJson());
+        json.append(movingStartTypeLogJson());
+        json.append(movingVirtualAnimalLogJson());
+        json.append(movingAnimalBucketLogJson());
+        json.append(vehicleLogJson());
+        json.append(",\"state\":{\"connections\":").append(connectionsLast)
+            .append(",\"players\":").append(playersLast)
+            .append(",\"zombies\":").append(zombiesLast).append("}")
+            .append("}}");
+        return json.toString();
     }
 
     private static void resetCounters() {
@@ -894,50 +951,50 @@ public final class ApocBRServerTelemetry {
         }
     }
 
-    private static String stateSectionsLog() {
-        StringBuilder builder = new StringBuilder(" stateUpdate{");
+    private static String stateSectionsLogJson() {
+        StringBuilder builder = new StringBuilder(",\"stateUpdate\":{");
         for (int i = 0; i < STATE_SECTION_KEYS.length; i++) {
             if (i > 0) builder.append(",");
-            builder.append(STATE_SECTION_KEYS[i]).append("AvgMs=").append(avgMs(stateSectionNanos[i], worldTicks));
-            builder.append(",").append(STATE_SECTION_KEYS[i]).append("MaxMs=").append(ms(stateSectionMaxNanos[i]));
+            builder.append("\"").append(STATE_SECTION_KEYS[i]).append("\":{\"avgMs\":").append(avgMs(stateSectionNanos[i], worldTicks));
+            builder.append(",\"maxMs\":").append(ms(stateSectionMaxNanos[i])).append("}");
         }
         builder.append("}");
         return builder.toString();
     }
 
-    private static String isoWorldSectionsLog() {
-        StringBuilder builder = new StringBuilder(" isoWorld{");
+    private static String isoWorldSectionsLogJson() {
+        StringBuilder builder = new StringBuilder(",\"isoWorld\":{");
         for (int i = 0; i < ISO_WORLD_SECTION_KEYS.length; i++) {
             if (i > 0) builder.append(",");
-            builder.append(ISO_WORLD_SECTION_KEYS[i]).append("AvgMs=").append(avgMs(isoWorldSectionNanos[i], worldTicks));
-            builder.append(",").append(ISO_WORLD_SECTION_KEYS[i]).append("MaxMs=").append(ms(isoWorldSectionMaxNanos[i]));
+            builder.append("\"").append(ISO_WORLD_SECTION_KEYS[i]).append("\":{\"avgMs\":").append(avgMs(isoWorldSectionNanos[i], worldTicks));
+            builder.append(",\"maxMs\":").append(ms(isoWorldSectionMaxNanos[i])).append("}");
         }
         builder.append("}");
         return builder.toString();
     }
 
-    private static String isoCellSectionsLog() {
-        StringBuilder builder = new StringBuilder(" isoCell{");
+    private static String isoCellSectionsLogJson() {
+        StringBuilder builder = new StringBuilder(",\"isoCell\":{");
         for (int i = 0; i < ISO_CELL_SECTION_KEYS.length; i++) {
             if (i > 0) builder.append(",");
-            builder.append(ISO_CELL_SECTION_KEYS[i]).append("AvgMs=").append(avgMs(isoCellSectionNanos[i], worldTicks));
-            builder.append(",").append(ISO_CELL_SECTION_KEYS[i]).append("MaxMs=").append(ms(isoCellSectionMaxNanos[i]));
+            builder.append("\"").append(ISO_CELL_SECTION_KEYS[i]).append("\":{\"avgMs\":").append(avgMs(isoCellSectionNanos[i], worldTicks));
+            builder.append(",\"maxMs\":").append(ms(isoCellSectionMaxNanos[i])).append("}");
         }
         builder.append("}");
         return builder.toString();
     }
 
-    private static String parallelWorldLog() {
-        return " parallelWorld{enabled=" + PARALLEL_ISO_WORLD_SAFE
-            + ",skipIfBacklogged=" + PARALLEL_SKIP_IF_BACKLOGGED
-            + ",workers=" + PARALLEL_ISO_WORLD_WORKERS
-            + ",submitted=" + parallelWorldSubmitted
-            + ",skipped=" + parallelWorldSkipped
-            + ",waitAvgMs=" + avgMs(parallelWorldWaitNanos, parallelWorldWaitCalls)
-            + ",waitMaxMs=" + ms(parallelWorldWaitMaxNanos)
-            + ",taskAvgMs=" + avgMs(parallelWorldTaskNanos, parallelWorldTaskCalls)
-            + ",taskMaxMs=" + ms(parallelWorldTaskMaxNanos)
-            + ",errors=" + parallelWorldErrors + "}";
+    private static String parallelWorldLogJson() {
+        return ",\"parallelWorld\":{\"enabled\":" + PARALLEL_ISO_WORLD_SAFE
+            + ",\"skipIfBacklogged\":" + PARALLEL_SKIP_IF_BACKLOGGED
+            + ",\"workers\":\"" + PARALLEL_ISO_WORLD_WORKERS + "\""
+            + ",\"submitted\":" + parallelWorldSubmitted
+            + ",\"skipped\":" + parallelWorldSkipped
+            + ",\"waitAvgMs\":" + avgMs(parallelWorldWaitNanos, parallelWorldWaitCalls)
+            + ",\"waitMaxMs\":" + ms(parallelWorldWaitMaxNanos)
+            + ",\"taskAvgMs\":" + avgMs(parallelWorldTaskNanos, parallelWorldTaskCalls)
+            + ",\"taskMaxMs\":" + ms(parallelWorldTaskMaxNanos)
+            + ",\"errors\":" + parallelWorldErrors + "}";
     }
 
     private static int movingTypeSlot(String typeName) {
@@ -984,150 +1041,149 @@ public final class ApocBRServerTelemetry {
         return otherSlot;
     }
 
-    private static String movingStartFrameLog() {
-        return " movingStartFrame{calls=" + movingStartFrameCalls
-            + ",objects=" + movingStartFrameObjects
-            + ",avgObjects=" + avgCount(movingStartFrameObjects, movingStartFrameCalls)
-            + ",avgMs=" + avgMs(movingStartFrameNanos, movingStartFrameCalls)
-            + ",maxMs=" + ms(movingStartFrameMaxNanos)
-            + ",serverZombies=" + movingStartFrameServerZombies
-            + ",zombieGuiUpdates=" + movingStartFrameZombieGuiUpdates
-            + ",zombieGuiAvgMs=" + avgMs(movingStartFrameZombieGuiNanos, movingStartFrameZombieGuiUpdates)
-            + ",zombieGuiMaxMs=" + ms(movingStartFrameZombieGuiMaxNanos)
-            + ",zombieOptimiserAvgMs=" + avgMs(movingStartFrameZombieOptimiserNanos, movingStartFrameServerZombies)
-            + ",zombieOptimiserMaxMs=" + ms(movingStartFrameZombieOptimiserMaxNanos)
-            + ",squareFixes=" + movingStartFrameSquareFixes
-            + ",squareFixAvgMs=" + avgMs(movingStartFrameSquareFixNanos, movingStartFrameSquareFixes)
-            + ",squareFixMaxMs=" + ms(movingStartFrameSquareFixMaxNanos)
-            + ",bucketed=" + movingStartFrameBucketed
-            + ",full=" + movingStartFrameFull
-            + ",half=" + movingStartFrameHalf
-            + ",quarter=" + movingStartFrameQuarter
-            + ",eighth=" + movingStartFrameEighth
-            + ",sixteenth=" + movingStartFrameSixteenth + "}";
+    private static String movingStartFrameLogJson() {
+        return ",\"movingStartFrame\":{\"calls\":" + movingStartFrameCalls
+            + ",\"objects\":" + movingStartFrameObjects
+            + ",\"avgObjects\":" + avgCount(movingStartFrameObjects, movingStartFrameCalls)
+            + ",\"avgMs\":" + avgMs(movingStartFrameNanos, movingStartFrameCalls)
+            + ",\"maxMs\":" + ms(movingStartFrameMaxNanos)
+            + ",\"serverZombies\":" + movingStartFrameServerZombies
+            + ",\"zombieGuiUpdates\":" + movingStartFrameZombieGuiUpdates
+            + ",\"zombieGuiAvgMs\":" + avgMs(movingStartFrameZombieGuiNanos, movingStartFrameZombieGuiUpdates)
+            + ",\"zombieGuiMaxMs\":" + ms(movingStartFrameZombieGuiMaxNanos)
+            + ",\"zombieOptimiserAvgMs\":" + avgMs(movingStartFrameZombieOptimiserNanos, movingStartFrameServerZombies)
+            + ",\"zombieOptimiserMaxMs\":" + ms(movingStartFrameZombieOptimiserMaxNanos)
+            + ",\"squareFixes\":" + movingStartFrameSquareFixes
+            + ",\"squareFixAvgMs\":" + avgMs(movingStartFrameSquareFixNanos, movingStartFrameSquareFixes)
+            + ",\"squareFixMaxMs\":" + ms(movingStartFrameSquareFixMaxNanos)
+            + ",\"bucketed\":" + movingStartFrameBucketed
+            + ",\"full\":" + movingStartFrameFull
+            + ",\"half\":" + movingStartFrameHalf
+            + ",\"quarter\":" + movingStartFrameQuarter
+            + ",\"eighth\":" + movingStartFrameEighth
+            + ",\"sixteenth\":" + movingStartFrameSixteenth + "}";
     }
 
-    private static String movingStartTypeLog() {
-        StringBuilder builder = new StringBuilder(" movingStartTypes{");
+    private static String movingStartTypeLogJson() {
+        StringBuilder builder = new StringBuilder(",\"movingStartTypes\":{");
         for (int i = 0; i < MOVING_START_TYPE_SLOTS; i++) {
             if (i > 0) builder.append(",");
             String name = movingStartTypeNames[i] == null ? "none" : movingStartTypeNames[i];
-            builder.append("type").append(i).append("=").append(name);
-            builder.append(",count").append(i).append("=").append(movingStartTypeCounts[i]);
+            builder.append("\"type").append(i).append("\":{\"name\":\"").append(name).append("\"");
+            builder.append(",\"count\": ").append(movingStartTypeCounts[i]).append("}");
         }
         builder.append("}");
         return builder.toString();
     }
 
-    private static String serverMapUnloadDetailLog() {
-        StringBuilder builder = new StringBuilder(" serverMapUnloadDetail{");
+    private static String serverMapUnloadDetailLogJson() {
+        StringBuilder builder = new StringBuilder(",\"serverMapUnloadDetail\":{");
         for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
             if (i > 0) builder.append(",");
-            builder.append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("Calls=").append(serverMapUnloadPhaseCalls[i]);
-            builder.append(",").append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("Units=").append(serverMapUnloadPhaseUnits[i]);
-            builder.append(",").append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("AvgMs=")
-                    .append(avgMs(serverMapUnloadPhaseNanos[i], serverMapUnloadPhaseCalls[i]));
-            builder.append(",").append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("MaxMs=")
-                    .append(ms(serverMapUnloadPhaseMaxNanos[i]));
+            builder.append("\"").append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("\":{\"calls\":").append(serverMapUnloadPhaseCalls[i]);
+            builder.append(",\"units\":").append(serverMapUnloadPhaseUnits[i]);
+            builder.append(",\"avgMs\":").append(avgMs(serverMapUnloadPhaseNanos[i], serverMapUnloadPhaseCalls[i]));
+            builder.append(",\"maxMs\":").append(ms(serverMapUnloadPhaseMaxNanos[i])).append("}");
         }
-        builder.append(",movingObjects=").append(serverMapUnloadMovingObjects);
-        builder.append(",staticObjects=").append(serverMapUnloadStaticObjects);
-        builder.append(",animalJobsCompleted=").append(animalUnloadJobsCompleted);
-        builder.append(",animalJobsFailed=").append(animalUnloadJobsFailed);
-        builder.append(",animalSeen=").append(animalUnloadSeen);
-        builder.append(",animalVirtualized=").append(animalUnloadVirtualized);
-        builder.append(",animalSkipped=").append(animalUnloadSkipped);
-        builder.append(",animalVirtualizeCalls=").append(animalUnloadVirtualizeCalls);
-        builder.append(",animalVirtualizeAvgMs=").append(avgMs(animalUnloadVirtualizeNanos, animalUnloadVirtualizeCalls));
-        builder.append(",animalVirtualizeMaxMs=").append(ms(animalUnloadVirtualizeMaxNanos));
+        builder.append(",\"movingObjects\":").append(serverMapUnloadMovingObjects);
+        builder.append(",\"staticObjects\":").append(serverMapUnloadStaticObjects);
+        builder.append(",\"animalJobsCompleted\":").append(animalUnloadJobsCompleted);
+        builder.append(",\"animalJobsFailed\":").append(animalUnloadJobsFailed);
+        builder.append(",\"animalSeen\":").append(animalUnloadSeen);
+        builder.append(",\"animalVirtualized\":").append(animalUnloadVirtualized);
+        builder.append(",\"animalSkipped\":").append(animalUnloadSkipped);
+        builder.append(",\"animalVirtualizeCalls\":").append(animalUnloadVirtualizeCalls);
+        builder.append(",\"animalVirtualizeAvgMs\":").append(avgMs(animalUnloadVirtualizeNanos, animalUnloadVirtualizeCalls));
+        builder.append(",\"animalVirtualizeMaxMs\":").append(ms(animalUnloadVirtualizeMaxNanos));
         builder.append("}");
         return builder.toString();
     }
 
-    private static String serverMapLoadCommitLog() {
-        StringBuilder builder = new StringBuilder(" serverMapLoadCommit{");
+    private static String serverMapLoadCommitLogJson() {
+        StringBuilder builder = new StringBuilder(",\"serverMapLoadCommit\":{");
         for (int i = 0; i < SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length; i++) {
             if (i > 0) builder.append(",");
-            builder.append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("Calls=").append(serverMapLoadCommitPhaseCalls[i]);
-            builder.append(",").append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("Units=").append(serverMapLoadCommitPhaseUnits[i]);
-            builder.append(",").append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("AvgMs=")
-                .append(avgMs(serverMapLoadCommitPhaseNanos[i], serverMapLoadCommitPhaseCalls[i]));
-            builder.append(",").append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("MaxMs=")
-                .append(ms(serverMapLoadCommitPhaseMaxNanos[i]));
+            builder.append("\"").append(SERVER_MAP_LOAD_COMMIT_PHASE_KEYS[i]).append("\":{\"calls\":").append(serverMapLoadCommitPhaseCalls[i]);
+            builder.append(",\"units\":").append(serverMapLoadCommitPhaseUnits[i]);
+            builder.append(",\"avgMs\":").append(avgMs(serverMapLoadCommitPhaseNanos[i], serverMapLoadCommitPhaseCalls[i]));
+            builder.append(",\"maxMs\":").append(ms(serverMapLoadCommitPhaseMaxNanos[i])).append("}");
         }
+        builder.append(",\"yields\":").append(serverMapLoadCommitYields);
+        builder.append(",\"cancelled\":").append(serverMapLoadCommitCancelled);
+        builder.append(",\"invariantFailures\":").append(serverMapLoadCommitInvariantFailures);
         builder.append("}");
         return builder.toString();
     }
 
-    private static String movingAnimalBucketLog() {
-        return " movingAnimalBuckets{full=" + movingAnimalFull
-            + ",half=" + movingAnimalHalf
-            + ",quarter=" + movingAnimalQuarter
-            + ",eighth=" + movingAnimalEighth
-            + ",sixteenth=" + movingAnimalSixteenth + "}";
+    private static String movingAnimalBucketLogJson() {
+        return ",\"movingAnimalBuckets\":{\"full\":" + movingAnimalFull
+            + ",\"half\":" + movingAnimalHalf
+            + ",\"quarter\":" + movingAnimalQuarter
+            + ",\"eighth\":" + movingAnimalEighth
+            + ",\"sixteenth\":" + movingAnimalSixteenth + "}";
     }
 
-    private static String movingVirtualAnimalLog() {
-        return " virtualAnimalSim{chunks=" + virtualAnimalChunks
-            + ",chunksWithAnimals=" + virtualAnimalChunksWithAnimals
-            + ",chunksWithTracksOnly=" + virtualAnimalChunksWithTracksOnly
-            + ",updated=" + virtualAnimalUpdated
-            + ",skipped=" + virtualAnimalSkipped
-            + ",follow=" + virtualAnimalStateFollow
-            + ",move=" + virtualAnimalStateMove
-            + ",eat=" + virtualAnimalStateEat
-            + ",sleep=" + virtualAnimalStateSleep
-            + ",unknown=" + virtualAnimalStateUnknown
-            + ",trackAdds=" + virtualAnimalTrackAdds
-            + ",trackSkips=" + virtualAnimalTrackSkips
-            + ",trackCleanupRuns=" + virtualAnimalTrackCleanupRuns
-            + ",tracksRemoved=" + virtualAnimalTracksRemoved + "}";
+    private static String movingVirtualAnimalLogJson() {
+        return ",\"virtualAnimalSim\":{\"chunks\":" + virtualAnimalChunks
+            + ",\"chunksWithAnimals\":" + virtualAnimalChunksWithAnimals
+            + ",\"chunksWithTracksOnly\":" + virtualAnimalChunksWithTracksOnly
+            + ",\"updated\":" + virtualAnimalUpdated
+            + ",\"skipped\":" + virtualAnimalSkipped
+            + ",\"follow\":" + virtualAnimalStateFollow
+            + ",\"move\":" + virtualAnimalStateMove
+            + ",\"eat\":" + virtualAnimalStateEat
+            + ",\"sleep\":" + virtualAnimalStateSleep
+            + ",\"unknown\":" + virtualAnimalStateUnknown
+            + ",\"trackAdds\":" + virtualAnimalTrackAdds
+            + ",\"trackSkips\":" + virtualAnimalTrackSkips
+            + ",\"trackCleanupRuns\":" + virtualAnimalTrackCleanupRuns
+            + ",\"tracksRemoved\":" + virtualAnimalTracksRemoved + "}";
     }
 
-    private static String movingTypeLog() {
-        StringBuilder builder = new StringBuilder(" movingTypes{");
+    private static String movingTypeLogJson() {
+        StringBuilder builder = new StringBuilder(",\"movingTypes\":{");
         for (int i = 0; i < MOVING_TYPE_SLOTS; i++) {
             if (i > 0) builder.append(",");
             String name = movingTypeNames[i] == null ? "none" : movingTypeNames[i];
-            builder.append("type").append(i).append("=").append(name);
-            builder.append(",count").append(i).append("=").append(movingTypeCounts[i]);
-            builder.append(",avgMs").append(i).append("=").append(avgMs(movingTypeUpdateNanos[i], movingTypeCounts[i]));
-            builder.append(",maxMs").append(i).append("=").append(ms(movingTypeUpdateMaxNanos[i]));
+            builder.append("\"type").append(i).append("\":{\"name\":\"").append(name).append("\"");
+            builder.append(",\"count\":").append(movingTypeCounts[i]);
+            builder.append(",\"avgMs\":").append(avgMs(movingTypeUpdateNanos[i], movingTypeCounts[i]));
+            builder.append(",\"maxMs\":").append(ms(movingTypeUpdateMaxNanos[i])).append("}");
         }
         builder.append("}");
         return builder.toString();
     }
 
-    private static String vehicleLog() {
-        return " vehicle{partsCalls=" + vehiclePartsCalls
-            + ",partsAvgMs=" + avgMs(vehiclePartsNanos, vehiclePartsCalls)
-            + ",partsMaxMs=" + ms(vehiclePartsMaxNanos)
-            + ",partCalls=" + vehiclePartCalls
-            + ",partAvgMs=" + avgMs(vehiclePartNanos, vehiclePartCalls)
-            + ",partMaxMs=" + ms(vehiclePartMaxNanos)
-            + ",luaCalls=" + vehiclePartLuaCalls
-            + ",luaAvgMs=" + avgMs(vehiclePartLuaNanos, vehiclePartLuaCalls)
-            + ",luaMaxMs=" + ms(vehiclePartLuaMaxNanos)
-            + ",luaSlowCalls=" + vehiclePartLuaSlowCalls + "}";
+    private static String vehicleLogJson() {
+        return ",\"vehicle\":{\"partsCalls\":" + vehiclePartsCalls
+            + ",\"partsAvgMs\":" + avgMs(vehiclePartsNanos, vehiclePartsCalls)
+            + ",\"partsMaxMs\":" + ms(vehiclePartsMaxNanos)
+            + ",\"partCalls\":" + vehiclePartCalls
+            + ",\"partAvgMs\":" + avgMs(vehiclePartNanos, vehiclePartCalls)
+            + ",\"partMaxMs\":" + ms(vehiclePartMaxNanos)
+            + ",\"luaCalls\":" + vehiclePartLuaCalls
+            + ",\"luaAvgMs\":" + avgMs(vehiclePartLuaNanos, vehiclePartLuaCalls)
+            + ",\"luaMaxMs\":" + ms(vehiclePartLuaMaxNanos)
+            + ",\"luaSlowCalls\":" + vehiclePartLuaSlowCalls + "}";
     }
-    private static String movingBucketLog() {
-        return " movingBucket{calls=" + movingBucketCalls
-            + ",objects=" + movingBucketObjects
-            + ",avgObjects=" + avgCount(movingBucketObjects, movingBucketCalls)
-            + ",zombies=" + movingBucketZombies
-            + ",nonZombies=" + movingBucketNonZombies
-            + ",deadBodies=" + movingBucketDeadBodies
-            + ",reusedZombies=" + movingBucketReusedZombies
-            + ",preupdateAvgMs=" + avgMs(movingBucketPreupdateNanos, movingBucketObjects)
-            + ",preupdateMaxMs=" + ms(movingBucketPreupdateMaxNanos)
-            + ",frameStepAvgMs=" + avgMs(movingBucketFrameStepNanos, movingBucketObjects)
-            + ",frameStepMaxMs=" + ms(movingBucketFrameStepMaxNanos)
-            + ",updateAvgMs=" + avgMs(movingBucketUpdateNanos, movingBucketZombies + movingBucketNonZombies)
-            + ",updateMaxMs=" + ms(movingBucketUpdateMaxNanos)
-            + ",zombieUpdateAvgMs=" + avgMs(movingBucketZombieUpdateNanos, movingBucketZombies)
-            + ",zombieUpdateMaxMs=" + ms(movingBucketZombieUpdateMaxNanos)
-            + ",nonZombieUpdateAvgMs=" + avgMs(movingBucketNonZombieUpdateNanos, movingBucketNonZombies)
-            + ",nonZombieUpdateMaxMs=" + ms(movingBucketNonZombieUpdateMaxNanos) + "}";
+    private static String movingBucketLogJson() {
+        return ",\"movingBucket\":{\"calls\":" + movingBucketCalls
+            + ",\"objects\":" + movingBucketObjects
+            + ",\"avgObjects\":" + avgCount(movingBucketObjects, movingBucketCalls)
+            + ",\"zombies\":" + movingBucketZombies
+            + ",\"nonZombies\":" + movingBucketNonZombies
+            + ",\"deadBodies\":" + movingBucketDeadBodies
+            + ",\"reusedZombies\":" + movingBucketReusedZombies
+            + ",\"preupdateAvgMs\":" + avgMs(movingBucketPreupdateNanos, movingBucketObjects)
+            + ",\"preupdateMaxMs\":" + ms(movingBucketPreupdateMaxNanos)
+            + ",\"frameStepAvgMs\":" + avgMs(movingBucketFrameStepNanos, movingBucketObjects)
+            + ",\"frameStepMaxMs\":" + ms(movingBucketFrameStepMaxNanos)
+            + ",\"updateAvgMs\":" + avgMs(movingBucketUpdateNanos, movingBucketZombies + movingBucketNonZombies)
+            + ",\"updateMaxMs\":" + ms(movingBucketUpdateMaxNanos)
+            + ",\"zombieUpdateAvgMs\":" + avgMs(movingBucketZombieUpdateNanos, movingBucketZombies)
+            + ",\"zombieUpdateMaxMs\":" + ms(movingBucketZombieUpdateMaxNanos)
+            + ",\"nonZombieUpdateAvgMs\":" + avgMs(movingBucketNonZombieUpdateNanos, movingBucketNonZombies)
+            + ",\"nonZombieUpdateMaxMs\":" + ms(movingBucketNonZombieUpdateMaxNanos) + "}";
     }
 
     private static long ms(long nanos) { return nanos / 1000000L; }
