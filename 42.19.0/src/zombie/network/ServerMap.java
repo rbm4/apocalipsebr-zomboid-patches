@@ -94,16 +94,21 @@ public class ServerMap {
     private static final int UNLOAD_SLICES_NORMAL = 1;
     private static final int UNLOAD_SLICES_WARNING = 4;
     private static final int UNLOAD_SLICES_STRESS = 8;
+    private static final int UNLOAD_SLICES_EMERGENCY = 12;
     private static final int UNLOAD_CELLS_NORMAL = 1;
     private static final int UNLOAD_CELLS_WARNING = 1;
     private static final int UNLOAD_CELLS_STRESS = 2;
+    private static final int UNLOAD_CELLS_EMERGENCY = 3;
     private static final int UNLOAD_PENDING_WARNING = 64;
     private static final int UNLOAD_PENDING_STRESS = 256;
+    private static final int UNLOAD_PENDING_EMERGENCY = 384;
     private static final long UNLOAD_OLDEST_WARNING_MS = DEFERRED_UNLOAD_GRACE_MS * 2L;
     private static final long UNLOAD_OLDEST_STRESS_MS = DEFERRED_UNLOAD_GRACE_MS * 3L;
+    private static final long UNLOAD_OLDEST_EMERGENCY_MS = DEFERRED_UNLOAD_GRACE_MS * 4L;
     private static final int DEFERRED_UNLOAD_MODE_NORMAL = 0;
     private static final int DEFERRED_UNLOAD_MODE_WARNING = 1;
     private static final int DEFERRED_UNLOAD_MODE_STRESS = 2;
+    private static final int DEFERRED_UNLOAD_MODE_EMERGENCY = 3;
     private static final long MAIN_THREAD_LOAD_BUDGET_NANOS = 50_000_000L;
     private static final long FINALIZE_BUDGET_NORMAL_NANOS = MAIN_THREAD_LOAD_BUDGET_NANOS;
     private static final long FINALIZE_BUDGET_ELEVATED_NANOS = 30_000_000L;
@@ -760,6 +765,10 @@ public class ServerMap {
 
     private int getDeferredUnloadMode(long oldestAgeMs) {
         int pending = this.pendingUnloads.size();
+        if (pending >= UNLOAD_PENDING_EMERGENCY || oldestAgeMs >= UNLOAD_OLDEST_EMERGENCY_MS) {
+            return DEFERRED_UNLOAD_MODE_EMERGENCY;
+        }
+
         if (pending >= UNLOAD_PENDING_STRESS || oldestAgeMs >= UNLOAD_OLDEST_STRESS_MS) {
             return DEFERRED_UNLOAD_MODE_STRESS;
         }
@@ -772,7 +781,9 @@ public class ServerMap {
     }
 
     private int getDeferredUnloadCellsPerTick(int mode) {
-        if (mode == DEFERRED_UNLOAD_MODE_STRESS) {
+        if (mode == DEFERRED_UNLOAD_MODE_EMERGENCY) {
+            return UNLOAD_CELLS_EMERGENCY;
+        } else if (mode == DEFERRED_UNLOAD_MODE_STRESS) {
             return UNLOAD_CELLS_STRESS;
         } else {
             return mode == DEFERRED_UNLOAD_MODE_WARNING ? UNLOAD_CELLS_WARNING : UNLOAD_CELLS_NORMAL;
@@ -780,7 +791,9 @@ public class ServerMap {
     }
 
     private int getDeferredUnloadSlicesPerTick(int mode) {
-        if (mode == DEFERRED_UNLOAD_MODE_STRESS) {
+        if (mode == DEFERRED_UNLOAD_MODE_EMERGENCY) {
+            return UNLOAD_SLICES_EMERGENCY;
+        } else if (mode == DEFERRED_UNLOAD_MODE_STRESS) {
             return UNLOAD_SLICES_STRESS;
         } else {
             return mode == DEFERRED_UNLOAD_MODE_WARNING ? UNLOAD_SLICES_WARNING : UNLOAD_SLICES_NORMAL;
@@ -1528,4 +1541,5 @@ public class ServerMap {
     }
 
 }
+
 
