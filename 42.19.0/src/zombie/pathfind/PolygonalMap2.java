@@ -48,6 +48,7 @@ import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.Clipper;
 
 public final class PolygonalMap2 {
+    private static final int MAX_SUPERCOVER_CELLS = 10000;
     public static final PolygonalMap2 instance = new PolygonalMap2();
     public static final float RADIUS = 0.3F;
     public static final boolean CLOSE_TO_WALLS = true;
@@ -2071,6 +2072,10 @@ public final class PolygonalMap2 {
     }
 
     public void supercover(float x0, float y0, float x1, float y1, int z, PointPool pointPool, ArrayList<Point> pts) {
+        if (!Float.isFinite(x0) || !Float.isFinite(y0) || !Float.isFinite(x1) || !Float.isFinite(y1)) {
+            return;
+        }
+
         double dx = Math.abs(x1 - x0);
         double dy = Math.abs(y1 - y0);
         int x = PZMath.fastfloor(x0);
@@ -2105,10 +2110,13 @@ public final class PolygonalMap2 {
             error -= (y0 - PZMath.fastfloor(y0)) * dx;
         }
 
+        if (n <= 0 || n > MAX_SUPERCOVER_CELLS) {
+            return;
+        }
+
         // PATCH: Safety counter and O(1) duplicate detection. This method is hot during
         // animal network sync, so avoid ArrayList.contains() on the shared output list.
         int iterationCount = 0;
-        int maxIterations = 10000;
         HashSet<Long> visitedPoints = new HashSet<>();
         for (int i = 0; i < pts.size(); i++) {
             Point existing = pts.get(i);
@@ -2116,13 +2124,8 @@ public final class PolygonalMap2 {
         }
 
         for (; n > 0; n--) {
-            if (++iterationCount > maxIterations) {
-                ExceptionLogger.logException(new RuntimeException(
-                    String.format("PolygonalMap2.supercover() exceeded max iterations (%d). " +
-                                  "Line: (%.2f,%.2f) to (%.2f,%.2f) z=%d, n=%d, pts.size=%d",
-                                  maxIterations, x0, y0, x1, y1, z, n, pts.size())
-                ));
-                break;
+            if (++iterationCount > MAX_SUPERCOVER_CELLS) {
+                return;
             }
 
             long pointKey = ((long)x << 32) | (y & 0xFFFFFFFFL);

@@ -18,6 +18,7 @@ import zombie.network.ServerMap;
 import zombie.vehicles.BaseVehicle;
 
 final class LineClearCollideMain {
+    private static final int MAX_LINE_CLEAR_CELLS = 4096;
     final Vector2 perp = new Vector2();
     final ArrayList<Point> pts = new ArrayList<>();
     final VehicleRect sweepAabb = new VehicleRect();
@@ -35,6 +36,16 @@ final class LineClearCollideMain {
         }
     }
 
+
+    private boolean isLineQueryInvalid(float fromX, float fromY, float toX, float toY) {
+        if (!Float.isFinite(fromX) || !Float.isFinite(fromY) || !Float.isFinite(toX) || !Float.isFinite(toY)) {
+            return true;
+        }
+
+        double cells = Math.abs((double)PZMath.fastfloor(toX) - PZMath.fastfloor(fromX))
+            + Math.abs((double)PZMath.fastfloor(toY) - PZMath.fastfloor(fromY));
+        return cells > MAX_LINE_CLEAR_CELLS;
+    }
     private float clamp(float f1, float min, float max) {
         if (f1 < min) {
             f1 = min;
@@ -650,10 +661,18 @@ final class LineClearCollideMain {
      * must serialize access to this query.
      */
     synchronized boolean isNotClear(PolygonalMap2 map, float fromX, float fromY, float toX, float toY, int z, BaseVehicle ignoreVehicle, int flags) {
+        if (this.isLineQueryInvalid(fromX, fromY, toX, toY)) {
+            return true;
+        }
+
         return this.isNotClearOld(map, fromX, fromY, toX, toY, z, ignoreVehicle, flags);
     }
 
     synchronized Vector2 getCollidepoint(PolygonalMap2 map, float fromX, float fromY, float toX, float toY, int z, BaseVehicle ignoreVehicle, int flags) {
+        if (this.isLineQueryInvalid(fromX, fromY, toX, toY)) {
+            return PolygonalMap2.temp.set(fromX, fromY);
+        }
+
         boolean ignoreDoors = (flags & 1) != 0;
         boolean closeToWalls = (flags & 2) != 0;
         boolean checkCost = (flags & 4) != 0;
