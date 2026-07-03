@@ -6,21 +6,21 @@
 .DESCRIPTION
     Combined deploy script for all ApocBR patches targeting Build 42.19:
 
-    1. Zombie NoCull Fix   â€“ MovingObjectUpdateScheduler.postupdate()
+    1. Zombie NoCull Fix   Ã¢â‚¬â€œ MovingObjectUpdateScheduler.postupdate()
        Removes ZombieCountOptimiser.deleteZombies() call that aggressively
        culls zombie populations on servers with many connected players.
 
-    2. Pathfind Safety     â€“ PathfindNative + ChunkUpdateTask
+    2. Pathfind Safety     Ã¢â‚¬â€œ PathfindNative + ChunkUpdateTask
        Stale-chunk guard that prevents SIGSEGV crashes in libPZPathFind64.so
        when a ChunkUpdateTask executes after its chunk has been removed or
        reloaded in native pathfind state.
 
-    3. NullCraft Fix       â€“ CompressIdenticalItems.save() Null Guard
+    3. NullCraft Fix       Ã¢â‚¬â€œ CompressIdenticalItems.save() Null Guard
        Adds a null guard in save(ByteBuffer, InventoryItem) to prevent NPE
        when a drying/curing craft item becomes null, which would corrupt
        chunk saves and cause vehicles to vanish.
 
-    4. Async Save Telemetry â€“ ServerMap, ApocBRServerTelemetry, etc.
+    4. Async Save Telemetry Ã¢â‚¬â€œ ServerMap, ApocBRServerTelemetry, etc.
        Async background save (ServerMap) + ApocBR server telemetry +
        guarded IsoWorld parallelism + vehicle hit-field optimizations.
 
@@ -129,6 +129,7 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\network\ServerMap.java"),
     # PathfindSafety
     (Join-Path $SrcRoot "zombie\pathfind\PathFindBehavior2.java"),
+    (Join-Path $SrcRoot "zombie\pathfind\PolygonalMap2.java"),
     (Join-Path $SrcRoot "zombie\pathfind\nativeCode\PathfindNative.java"),
     (Join-Path $SrcRoot "zombie\pathfind\nativeCode\ChunkUpdateTask.java"),
     (Join-Path $SrcRoot "zombie\pathfind\LineClearCollideMain.java"),
@@ -278,6 +279,7 @@ $ClassFiles = @(
     "zombie\network\ServerMap`$WorkerThreadCommand.class",
     # PathfindSafety
     "zombie\pathfind\PathFindBehavior2.class",
+    "zombie\pathfind\PolygonalMap2.class",
     "zombie\pathfind\nativeCode\PathfindNative.class",
     "zombie\pathfind\nativeCode\ChunkUpdateTask.class",
     "zombie\pathfind\LineClearCollideMain.class",
@@ -612,6 +614,7 @@ Write-Host ""
 Write-Host "To revert:" -ForegroundColor Yellow
 Write-Host "  .\patchApocalipseBr.ps1 -Revert" -ForegroundColor Yellow
 Write-Host ""
+
 
 
 

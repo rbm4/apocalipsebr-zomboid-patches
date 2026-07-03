@@ -1036,7 +1036,7 @@ public final class PolygonalMap2 {
                             this.adjustGoalData.graph.edges.remove(this.adjustGoalData.newEdge);
                         }
 
-                        return (boolean)adjusted;
+                        return adjusted != 0;
                     }
 
                     if (render) {
@@ -2105,13 +2105,17 @@ public final class PolygonalMap2 {
             error -= (y0 - PZMath.fastfloor(y0)) * dx;
         }
 
-        // PATCH: Add safety counter and HashSet for duplicate detection to prevent infinite loops
+        // PATCH: Safety counter and O(1) duplicate detection. This method is hot during
+        // animal network sync, so avoid ArrayList.contains() on the shared output list.
         int iterationCount = 0;
         int maxIterations = 10000;
         HashSet<Long> visitedPoints = new HashSet<>();
-        
+        for (int i = 0; i < pts.size(); i++) {
+            Point existing = pts.get(i);
+            visitedPoints.add(((long)existing.x << 32) | (existing.y & 0xFFFFFFFFL));
+        }
+
         for (; n > 0; n--) {
-            // PATCH: Safety check - break if too many iterations
             if (++iterationCount > maxIterations) {
                 ExceptionLogger.logException(new RuntimeException(
                     String.format("PolygonalMap2.supercover() exceeded max iterations (%d). " +
@@ -2120,26 +2124,10 @@ public final class PolygonalMap2 {
                 ));
                 break;
             }
-            
-            // PATCH: Use HashSet for O(1) duplicate detection instead of ArrayList.contains() O(n)
+
             long pointKey = ((long)x << 32) | (y & 0xFFFFFFFFL);
-            if (!visitedPoints.add(pointKey)) {
-                // Point already visited, skip it but continue algorithm
-                if (error > 0.0) {
-                    y += yInc;
-                    error -= dx;
-                } else {
-                    x += xInc;
-                    error += dy;
-                }
-                continue;
-            }
-            
-            Point pt = pointPool.alloc().init(x, y);
-            if (pts.contains(pt)) {
-                pointPool.release(pt);
-            } else {
-                pts.add(pt);
+            if (visitedPoints.add(pointKey)) {
+                pts.add(pointPool.alloc().init(x, y));
             }
 
             if (error > 0.0) {
