@@ -111,6 +111,10 @@ public class ServerChunkLoader {
         this.threadSave.update();
     }
 
+    public boolean hasPendingOrRunningSave(int wx, int wy) {
+        return this.threadSave.hasPendingOrRunningSave(wx, wy);
+    }
+
     public void addRecalcJob(ServerMap.ServerCell cell) {
         this.threadRecalc.toThread.add(cell);
     }
