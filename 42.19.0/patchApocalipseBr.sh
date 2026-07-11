@@ -131,7 +131,7 @@ SOURCES=(
     "$SRC_ROOT/zombie/characters/animals/AnimalZones.java"
     "$SRC_ROOT/zombie/characters/animals/VirtualAnimal.java"
     "$SRC_ROOT/zombie/characters/animals/VirtualAnimalState.java"
-    "$SRC_ROOT/zombie/characters/BodyDamage.java"
+    "$SRC_ROOT/zombie/characters/BodyDamage/BodyDamage.java"
     "$SRC_ROOT/zombie/characters/IsoGameCharacter.java"
     "$SRC_ROOT/zombie/characters/IsoPlayer.java"
     "$SRC_ROOT/zombie/network/ServerLOS.java"
