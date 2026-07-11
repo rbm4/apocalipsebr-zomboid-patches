@@ -71,12 +71,14 @@ OUTPUT_DIR="$WORK_DIR/classes"
 DEPLOY_ZOMBIE="$DEPLOY_BASE/zombie"
 DEPLOY_POPMAN="$DEPLOY_BASE/zombie/popman"
 DEPLOY_NET="$DEPLOY_BASE/zombie/network"
+DEPLOY_NETWORK_PACKETS="$DEPLOY_BASE/zombie/network/packets"
 DEPLOY_GAMESTATES="$DEPLOY_BASE/zombie/gameStates"
 DEPLOY_ISO="$DEPLOY_BASE/zombie/iso"
 DEPLOY_VEHICLES="$DEPLOY_BASE/zombie/vehicles"
 DEPLOY_PATHFIND="$DEPLOY_BASE/zombie/pathfind/nativeCode"
 DEPLOY_INVENTORY="$DEPLOY_BASE/zombie/inventory"
 DEPLOY_LUA="$DEPLOY_BASE/zombie/Lua"
+DEPLOY_CHARACTERS_BODYDAMAGE="$DEPLOY_BASE/zombie/characters/BodyDamage"
 DEPLOY_CHARACTERS_ANIMALS="$DEPLOY_BASE/zombie/characters/animals"
 
 REQUIRED_MAJOR=25
@@ -129,9 +131,11 @@ SOURCES=(
     "$SRC_ROOT/zombie/characters/animals/AnimalZones.java"
     "$SRC_ROOT/zombie/characters/animals/VirtualAnimal.java"
     "$SRC_ROOT/zombie/characters/animals/VirtualAnimalState.java"
+    "$SRC_ROOT/zombie/characters/BodyDamage.java"
     "$SRC_ROOT/zombie/characters/IsoGameCharacter.java"
     "$SRC_ROOT/zombie/characters/IsoPlayer.java"
     "$SRC_ROOT/zombie/network/ServerLOS.java"
+    "$SRC_ROOT/zombie/network/packets/ExtraInfoPacket.java"
 )
 
 # --- All expected class files (relative to deploy base) ---
@@ -289,9 +293,11 @@ CLASSES=(
     'zombie/characters/animals/VirtualAnimalState$StateMoveToEat.class'
     'zombie/characters/animals/VirtualAnimalState$StateMoveToSleep.class'
     'zombie/characters/animals/VirtualAnimalState$StateSleep.class'
+    "zombie/characters/BodyDamage/BodyDamage.class"
     "zombie/characters/IsoGameCharacter.class"
     "zombie/characters/IsoPlayer.class"
     "zombie/characters/IsoPlayer\$LOSRecord.class"
+    "zombie/network/packets/ExtraInfoPacket.class"
     "zombie/network/ServerLOS.class"
     'zombie/network/ServerLOS$LOSThread.class'
     'zombie/network/ServerLOS$PlayerData.class'
@@ -406,7 +412,7 @@ if [[ "$DRY_RUN" == "true" ]]; then
 else
     echo "[*] Deploying..."
     mkdir -p "$DEPLOY_ZOMBIE" "$DEPLOY_POPMAN" "$DEPLOY_NET" "$DEPLOY_GAMESTATES" "$DEPLOY_ISO" \
-             "$DEPLOY_VEHICLES" "$DEPLOY_PATHFIND" "$DEPLOY_INVENTORY" "$DEPLOY_CHARACTERS_ANIMALS" "$BACKUP_DIR"
+             "$DEPLOY_NETWORK_PACKETS" "$DEPLOY_VEHICLES" "$DEPLOY_PATHFIND" "$DEPLOY_INVENTORY" "$DEPLOY_CHARACTERS_BODYDAMAGE" "$DEPLOY_CHARACTERS_ANIMALS" "$BACKUP_DIR"
 
     for class_file in "${LEGACY_CLASSES[@]}"; do
         stale="$DEPLOY_BASE/$class_file"
@@ -466,4 +472,3 @@ echo ""
 echo "To revert:"
 echo "  ./patchApocalipseBr.sh --revert"
 echo ""
-

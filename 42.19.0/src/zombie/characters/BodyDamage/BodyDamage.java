@@ -2129,8 +2129,8 @@ public final class BodyDamage {
                 boolean isAdmin = false;
                 if (this.parentChar instanceof IsoPlayer) {
                     IsoPlayer player = (IsoPlayer)this.parentChar;
-                    if (player.getRole() != null) {
-                        isAdmin = player.getRole().hasAdminPower();
+                    if (player.getAccessLevel() != null) {
+                        isAdmin = player.getAccessLevel() == "admin";
                     }
                 }
 

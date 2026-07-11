@@ -145,11 +145,13 @@ $Sources = @(
     (Join-Path $SrcRoot "zombie\characters\animals\VirtualAnimal.java"),
     (Join-Path $SrcRoot "zombie\characters\animals\VirtualAnimalState.java"),
     # IsoGameCharacter null-safety patch
+    (Join-Path $SrcRoot "zombie\characters\BodyDamage\BodyDamage.java"),
     (Join-Path $SrcRoot "zombie\characters\IsoGameCharacter.java"),
     # Parallel Player LOS (split-phase compute, chunk-parallel)
     (Join-Path $SrcRoot "zombie\characters\IsoPlayer.java"),
     (Join-Path $SrcRoot "zombie\network\ServerLOS.java"),
-    (Join-Path $SrcRoot "zombie\characters\action\ActionStateContainer.java")
+    (Join-Path $SrcRoot "zombie\characters\action\ActionStateContainer.java"),
+    (Join-Path $SrcRoot "zombie\network\packets\ExtraInfoPacket.java")
 )
 
 # --- All expected class files (relative to deploy root) ---
@@ -305,10 +307,12 @@ $ClassFiles = @(
     "zombie\characters\animals\VirtualAnimalState`$StateMoveToSleep.class",
     "zombie\characters\animals\VirtualAnimalState`$StateSleep.class",
     # IsoGameCharacter null-safety patch
+    "zombie\characters\BodyDamage\BodyDamage.class",
     "zombie\characters\IsoGameCharacter.class",
     # Parallel Player LOS
     "zombie\characters\IsoPlayer.class",
     "zombie\characters\IsoPlayer`$LOSRecord.class",
+    "zombie\network\packets\ExtraInfoPacket.class",
     "zombie\network\ServerLOS.class",
     "zombie\network\ServerLOS`$LOSThread.class",
     "zombie\network\ServerLOS`$PlayerData.class",
@@ -542,6 +546,7 @@ if ($DryRun) {
     # Create all necessary deploy directories
     New-Item -Path (Join-Path $DeployRoot "zombie") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\network") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $DeployRoot "zombie\network\packets") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\gameStates") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\iso") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\iso\objects") -ItemType Directory -Force | Out-Null
@@ -549,6 +554,7 @@ if ($DryRun) {
     New-Item -Path (Join-Path $DeployRoot "zombie\pathfind\nativeCode") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\inventory") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\Lua") -ItemType Directory -Force | Out-Null
+    New-Item -Path (Join-Path $DeployRoot "zombie\characters\BodyDamage") -ItemType Directory -Force | Out-Null
     New-Item -Path (Join-Path $DeployRoot "zombie\characters\animals") -ItemType Directory -Force | Out-Null
     New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
 
