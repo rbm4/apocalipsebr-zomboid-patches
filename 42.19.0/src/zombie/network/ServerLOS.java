@@ -4,6 +4,7 @@ package zombie.network;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Objects;
+import zombie.ApocBRServerTelemetry;
 import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
 import zombie.characters.VisibilityData;
@@ -265,6 +266,43 @@ public class ServerLOS {
 
         if (!this.wasSuspended) {
             this.noise("resume **********");
+        }
+    }
+
+    public void invalidateNear(ServerMap.ServerCell cell) {
+        if (cell == null) {
+            return;
+        }
+
+        int minX = cell.wx * 64 - PD_SIZE_IN_SQUARES / 2;
+        int minY = cell.wy * 64 - PD_SIZE_IN_SQUARES / 2;
+        int maxX = cell.wx * 64 + 64 + PD_SIZE_IN_SQUARES / 2;
+        int maxY = cell.wy * 64 + 64 + PD_SIZE_IN_SQUARES / 2;
+        int invalidated = 0;
+        synchronized (this.playersMain) {
+            for (int i = 0; i < this.playersMain.size(); i++) {
+                ServerLOS.PlayerData data = this.playersMain.get(i);
+                if (data == null || data.player == null) {
+                    continue;
+                }
+
+                int px = PZMath.fastfloor(data.player.getX());
+                int py = PZMath.fastfloor(data.player.getY());
+                if (px >= minX && px < maxX && py >= minY && py < maxY) {
+                    // A stationary player can otherwise keep the pre-finalize LOS sample forever.
+                    data.px = Integer.MIN_VALUE;
+                    data.py = Integer.MIN_VALUE;
+                    data.pz = Integer.MIN_VALUE;
+                    invalidated++;
+                }
+            }
+        }
+
+        if (invalidated > 0) {
+            synchronized (this.thread.notifier) {
+                this.thread.notifier.notify();
+            }
+            ApocBRServerTelemetry.recordServerLOSFinalizeInvalidation(invalidated);
         }
     }
 

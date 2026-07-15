@@ -79,6 +79,8 @@ public final class ApocBRServerTelemetry {
     private static long serverMapLoadFinalizeOldestAgeMsLast;
     private static long serverMapLoadFinalizeBudgetNanosLast;
     private static long serverMapLoadFinalizePreviousFrameNanosLast;
+    private static long serverMapLoadFinalizeBoundaryBypass;
+    private static long serverLOSFinalizeInvalidations;
     private static final String[] SERVER_MAP_LOAD_COMMIT_PHASE_KEYS = new String[] {
         "publish", "borderSurround", "borderRecalc", "chunkFlags", "gridLoad", "indoorZombies", "vehicles"
     };
@@ -545,6 +547,18 @@ public final class ApocBRServerTelemetry {
         serverMapLoadFinalizePreviousFrameNanosLast = previousFrameNanos;
     }
 
+    public static synchronized void recordServerMapLoadFinalizeBoundaryBypass() {
+        if (!ENABLED) return;
+        // Counts server finalize lookups where neighbor chunk data existed behind isLoaded=false.
+        serverMapLoadFinalizeBoundaryBypass++;
+    }
+
+    public static synchronized void recordServerLOSFinalizeInvalidation(int players) {
+        if (!ENABLED) return;
+        // Counts players forced to resample LOS after a nearby server cell finalized.
+        serverLOSFinalizeInvalidations += players;
+    }
+
     public static synchronized void recordServerMapLoadCommitPhase(String phase, int units, long nanos) {
         if (!ENABLED) return;
         for (int i = 0; i < SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length; i++) {
@@ -785,7 +799,9 @@ public final class ApocBRServerTelemetry {
             .append(",\"maxMs\":").append(ms(serverMapLoadFinalizeMaxNanos))
             .append(",\"oldestMs\":").append(serverMapLoadFinalizeOldestAgeMsLast)
             .append(",\"budgetMs\":").append(ms(serverMapLoadFinalizeBudgetNanosLast))
-            .append(",\"previousFrameMs\":").append(ms(serverMapLoadFinalizePreviousFrameNanosLast)).append("}");
+            .append(",\"previousFrameMs\":").append(ms(serverMapLoadFinalizePreviousFrameNanosLast))
+            .append(",\"boundaryBypass\":").append(serverMapLoadFinalizeBoundaryBypass)
+            .append(",\"losInvalidations\":").append(serverLOSFinalizeInvalidations).append("}");
         json.append(serverMapLoadCommitLogJson());
         json.append(",\"zombieNetwork\":{\"live\":").append(zombieNetworkLiveLast)
             .append(",\"postCalls\":").append(zombieNetworkPostCalls)
@@ -880,6 +896,7 @@ public final class ApocBRServerTelemetry {
         serverMapLoadFinalizeNanos = serverMapLoadFinalizeMaxNanos = 0L;
         serverMapLoadFinalizeOldestAgeMsLast = 0L;
         serverMapLoadFinalizeBudgetNanosLast = serverMapLoadFinalizePreviousFrameNanosLast = 0L;
+        serverMapLoadFinalizeBoundaryBypass = serverLOSFinalizeInvalidations = 0L;
         for (int i = 0; i < SERVER_MAP_LOAD_COMMIT_PHASE_KEYS.length; i++) {
             serverMapLoadCommitPhaseCalls[i] = 0L;
             serverMapLoadCommitPhaseUnits[i] = 0L;

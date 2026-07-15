@@ -88,6 +88,7 @@ public class ServerMap {
     IsoMetaGrid grid;
     ArrayList<ServerMap.ServerCell> toLoad = new ArrayList<>();
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
+    private static final ServerMap.FinalizeBoundaryGetSquare finalizeBoundaryGetSquare = new ServerMap.FinalizeBoundaryGetSquare();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
     private static final long DEFERRED_UNLOAD_GRACE_MS = 30000L;
     private static final int UNLOAD_SQUARES_PER_SLICE = 254;
@@ -646,6 +647,8 @@ public class ServerMap {
                             finalizeMaxNanos = Math.max(finalizeMaxNanos, cellNanos);
                             this.finalizeReadySince.remove(cell);
                             this.toLoad.remove(cell);
+                            // Server-side safety net: a player may have sampled LOS while this cell boundary was only partially reconciled.
+                            ServerLOS.instance.invalidateNear(cell);
                             finalized++;
                         }
                     }
@@ -1228,24 +1231,28 @@ public class ServerMap {
                 for (int x = 0; x < 64; x++) {
                     IsoGridSquare sqxx = ServerMap.instance.getGridSquare(sx + x, sy, z);
                     if (sqxx != null) {
-                        sqxx.RecalcAllWithNeighbours(true);
+                        // Boundary finalize must see adjacent ready cells even before their public isLoaded gate opens.
+                        sqxx.RecalcAllWithNeighbours(true, ServerMap.finalizeBoundaryGetSquare);
                     }
 
                     sqxx = ServerMap.instance.getGridSquare(sx + x, ey - 1, z);
                     if (sqxx != null) {
-                        sqxx.RecalcAllWithNeighbours(true);
+                        // Same server-only getter keeps south-edge links from depending on neighbor finalize order.
+                        sqxx.RecalcAllWithNeighbours(true, ServerMap.finalizeBoundaryGetSquare);
                     }
                 }
 
                 for (int y = 0; y < 64; y++) {
                     IsoGridSquare sqxxx = ServerMap.instance.getGridSquare(sx, sy + y, z);
                     if (sqxxx != null) {
-                        sqxxx.RecalcAllWithNeighbours(true);
+                        // Same server-only getter keeps west-edge links from depending on neighbor finalize order.
+                        sqxxx.RecalcAllWithNeighbours(true, ServerMap.finalizeBoundaryGetSquare);
                     }
 
                     sqxxx = ServerMap.instance.getGridSquare(ex - 1, sy + y, z);
                     if (sqxxx != null) {
-                        sqxxx.RecalcAllWithNeighbours(true);
+                        // Same server-only getter keeps east-edge links from depending on neighbor finalize order.
+                        sqxxx.RecalcAllWithNeighbours(true, ServerMap.finalizeBoundaryGetSquare);
                     }
                 }
             }
@@ -1485,6 +1492,44 @@ public class ServerMap {
 
         public int getWY() {
             return this.wy;
+        }
+    }
+
+    private static final class FinalizeBoundaryGetSquare implements IsoGridSquare.GetSquare {
+        @Override
+        public IsoGridSquare getGridSquare(int x, int y, int z) {
+            IsoGridSquare sq = ServerMap.instance.getGridSquare(x, y, z);
+            if (sq != null) {
+                return sq;
+            }
+
+            if (!IsoWorld.instance.isValidSquare(x, y, z)) {
+                return null;
+            }
+
+            int cellX = ServerMap.instance.worldSquareToServerCellXY(x);
+            int cellY = ServerMap.instance.worldSquareToServerCellXY(y);
+            int localX = x - cellX * 64;
+            int localY = y - cellY * 64;
+            if (localX < 0 || localX >= 64 || localY < 0 || localY >= 64) {
+                return null;
+            }
+
+            int mapCellX = cellX - ServerMap.instance.getMinX();
+            int mapCellY = cellY - ServerMap.instance.getMinY();
+            ServerMap.ServerCell cell = ServerMap.instance.getCell(mapCellX, mapCellY);
+            if (cell == null || cell.isLoaded) {
+                return null;
+            }
+
+            IsoChunk chunk = cell.chunks[localX / 8][localY / 8];
+            if (chunk == null) {
+                return null;
+            }
+
+            // During server finalize, neighbor chunk data may be present before its cell is publicly isLoaded.
+            ApocBRServerTelemetry.recordServerMapLoadFinalizeBoundaryBypass();
+            return chunk.getGridSquare(localX % 8, localY % 8, z);
         }
     }
 
