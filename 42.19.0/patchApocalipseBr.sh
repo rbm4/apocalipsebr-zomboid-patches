@@ -256,6 +256,7 @@ CLASSES=(
     "zombie/network/ServerMap.class"
     'zombie/network/ServerMap$DistToCellComparator.class'
     'zombie/network/ServerMap$EThreadCommand.class'
+    'zombie/network/ServerMap$FinalizeBoundaryGetSquare.class'
     'zombie/network/ServerMap$PhaseAResult.class'
     'zombie/network/ServerMap$ServerCell.class'
     'zombie/network/ServerMap$ServerCell$LoadState.class'
