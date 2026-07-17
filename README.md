@@ -109,6 +109,55 @@ To remove a patch and go back to the original game behavior:
 
 ---
 
+## Distributing the Client Patch to Players
+
+The `patch-client.ps1` script handles the heavy lifting for players: it finds the Project Zomboid installation through Steam, downloads a Java compiler if needed, and deploys the patched `.class` files as classpath overrides. However, Windows blocks `.ps1` files by default, so players cannot simply double-click the script.
+
+### Option 1: Batch file wrapper (simplest)
+
+A `patch-client.bat` wrapper is included. It runs the PowerShell script with the execution policy bypassed, so players can double-click it like a normal program.
+
+**What to distribute:**
+- The whole `apocalipsebr-zomboid-patches` folder (or just the `patch-client.ps1`, `patch-client.bat`, and `42.19.0-client` folder).
+
+**Instructions for players:**
+1. Close Project Zomboid.
+2. Double-click `patch-client.bat`.
+3. Wait for the script to download and use the Azul Zulu JDK, compile the patch, and deploy it. Restart the game when it finishes.
+
+> The client patch ignores any `javac` already installed on the player's machine and always uses the bundled or downloaded Zulu JDK. This avoids compatibility issues with pre-installed Java versions.
+
+### Option 2: Formal Windows installer (recommended)
+
+For a more professional distribution, build an installer using the included Inno Setup script. Inno Setup is a free Windows tool that turns the `.iss` file into a standalone `.exe` installer. You download it once, build the installer, and then give that `.exe` to players.
+
+1. Download and install [Inno Setup 6](https://jrsoftware.org/isdl.php).
+2. Open `installer\ApocBRClientPatch.iss` in the Inno Setup Compiler.
+3. Click **Build** to produce an installer in `dist\`.
+4. Distribute the resulting `dist\ApocBR_ClientPatch_42.19.0_Installer.exe` to players.
+
+The installer will:
+- Install the patch tools to a standard program folder (`C:\Program Files\ApocBR\ClientPatch`).
+- Find the player's Steam Project Zomboid installation automatically.
+- Apply the patch during installation.
+- Revert the patch when uninstalled.
+
+### Avoiding Windows security warnings
+
+Unsigned scripts and unsigned `.exe` installers will both trigger Windows security warnings:
+- `.ps1` files are blocked by PowerShell's **Execution Policy** (the `.bat` wrapper bypasses this only for the patch script).
+- `.exe` and `.msi` installers are checked by **Windows SmartScreen** and antivirus heuristics.
+
+To distribute without warnings, you need a **code signing certificate** from a trusted Certificate Authority (CA). Options:
+- **Standard (OV) code signing certificate** (~$200-$400/year): Signs the installer EXE, but SmartScreen may still warn until the certificate builds reputation.
+- **Extended Validation (EV) code signing certificate** (~$700+/year): Gives immediate SmartScreen trust on Windows. This is the only option that fully eliminates the "unknown publisher" warnings from day one.
+
+Popular providers: DigiCert, Sectigo, Certum, SSL.com. Once you have the certificate, configure it in Inno Setup via **Tools > Configure Sign Tools** and uncomment the `SignTool` line in `installer\ApocBRClientPatch.iss`.
+
+> **Important:** Client-side Java patches modify which game classes the JVM loads. Make sure players understand this is a third-party modification, and consider whether it aligns with their use case.
+
+---
+
 ## How to Use - Linux
 
 > These steps are for Linux dedicated servers. All commands are run in a **terminal / SSH session**.
