@@ -6,12 +6,16 @@
     Client-only patch script. It compiles every patched Java source under
     .\src\zombie and deploys the generated .class files as loose classpath
     overrides next to projectzomboid.jar. No interactive prompts are used.
+
+    Use -ForceJdk to always use the bundled/downloaded Azul Zulu JDK and ignore
+    any javac that may be installed on the player's machine.
 #>
 param(
     [string]$PZDir = "Z:\SteamLibrary\steamapps\common\ProjectZomboid",
     [string]$ToolsDir = $PSScriptRoot,
     [switch]$DryRun,
-    [switch]$Revert
+    [switch]$Revert,
+    [switch]$ForceJdk
 )
 
 $ErrorActionPreference = "Stop"
@@ -62,6 +66,11 @@ function Find-Javac {
             Write-Host "    Found local JDK: javac $ver at $localJavac" -ForegroundColor Green
             return $localJavac
         }
+    }
+
+    if ($ForceJdk) {
+        Write-Host "    ForceJdk is set: skipping system javac, will download/use bundled Zulu JDK" -ForegroundColor Yellow
+        return $null
     }
 
     $pathJavac = Get-Command javac -ErrorAction SilentlyContinue

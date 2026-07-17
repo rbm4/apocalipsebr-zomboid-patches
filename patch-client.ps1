@@ -141,13 +141,13 @@ Write-Host "[*] Client tools:    $clientToolsDir" -ForegroundColor Cyan
 Write-Host "[*] Client patch:    $clientPatch" -ForegroundColor Cyan
 
 if ($DryRun -and $Revert) {
-    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -DryRun -Revert
+    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -DryRun -Revert -ForceJdk
 } elseif ($DryRun) {
-    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -DryRun
+    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -DryRun -ForceJdk
 } elseif ($Revert) {
-    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -Revert
+    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -Revert -ForceJdk
 } else {
-    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir
+    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -ForceJdk
 }
 exit $LASTEXITCODE
 
