@@ -5,7 +5,8 @@
 .DESCRIPTION
     Client-only patch script. It compiles every patched Java source under
     .\src\zombie and deploys the generated .class files as loose classpath
-    overrides next to projectzomboid.jar. No interactive prompts are used.
+    overrides next to projectzomboid.jar. Before compiling/deploying, it shows
+    a Portuguese feature summary and waits for the player to press a key.
 
     Use -ForceJdk to always use the bundled/downloaded Azul Zulu JDK and ignore
     any javac that may be installed on the player's machine.
@@ -185,6 +186,68 @@ function Remove-DeployedClassFamily {
     return $removed
 }
 
+function Show-ClientPatchFeatureBanner {
+    param(
+        [int]$SourceCount,
+        [int]$ClassCount
+    )
+
+    Write-Host ""
+    Write-Host "===============================================================================" -ForegroundColor DarkCyan
+    Write-Host "  O QUE ESTE PATCH CLIENTE ENTREGA" -ForegroundColor White
+    Write-Host "===============================================================================" -ForegroundColor DarkCyan
+    Write-Host ""
+    Write-Host "Este patch nao muda regras do servidor, loot, dano, spawn ou balanceamento." -ForegroundColor Yellow
+    Write-Host "Ele troca classes do cliente para reduzir trabalho repetido que pesa no FPS." -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "Nesta execucao foram compilados $ClassCount arquivos .class a partir de $SourceCount fontes Java." -ForegroundColor Green
+    Write-Host ""
+    Write-Host "Principais otimizacoes:" -ForegroundColor Cyan
+    Write-Host ""
+    Write-Host "  1. Objetos distantes atualizam com menos frequencia" -ForegroundColor White
+    Write-Host "     O jogo passa a simular objetos longe, invisiveis ou em outro andar em ritmo menor." -ForegroundColor Gray
+    Write-Host "     Jogadores, objetos perto da camera e coisas importantes continuam em ritmo alto." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  2. Zumbis custam menos quando estao parados ou longe" -ForegroundColor White
+    Write-Host "     Zumbis mortos, caindo ou em ragdoll continuam completos. Zumbis ativos continuam completos." -ForegroundColor Gray
+    Write-Host "     Zumbis parados podem atualizar menos vezes e a checagem de visao e distribuida entre frames." -ForegroundColor Gray
+    Write-Host "     Em multiplayer, zumbis remotos evitam repetir trabalho que ja vem decidido pela rede." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  3. Sons/vocais de zumbis sao distribuidos" -ForegroundColor White
+    Write-Host "     Em vez de recalcular vocal de todos os zumbis no mesmo frame, o trabalho e dividido em 4 partes." -ForegroundColor Gray
+    Write-Host "     O resultado esperado e menos travadinhas em hordas grandes." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  4. Animais parados pesam menos" -ForegroundColor White
+    Write-Host "     Animais calmos em idle/zone atualizam bem menos no cliente." -ForegroundColor Gray
+    Write-Host "     Animais andando, atacando, alertas, sendo puxados, presos, em combate ou em veiculo continuam priorizados." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  5. Veiculos estacionados pesam menos" -ForegroundColor White
+    Write-Host "     Carros parados, vazios e sem sirene/alarme/reboque passam para simulacao reduzida." -ForegroundColor Gray
+    Write-Host "     Carros dirigidos, com ocupantes, mecanica aberta, fisica ativa, luzes especiais ou animais continuam completos." -ForegroundColor Gray
+    Write-Host "     Luzes de veiculos parados e distantes tambem sao atualizadas com menos frequencia." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  6. Renderizacao e GPU fazem menos chamadas repetidas" -ForegroundColor White
+    Write-Host "     O patch aumenta buffers de renderizacao e evita reenviar estados, shaders e matrizes iguais." -ForegroundColor Gray
+    Write-Host "     Isso tende a ajudar quando ha muitos modelos, veiculos, zumbis, sombras e efeitos na tela." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "  7. Colisoes e linha de visao/pathfinding ficam mais defensivos" -ForegroundColor White
+    Write-Host "     Algumas checagens usam distancia ao quadrado, descartam diferenca de andar cedo e evitam buscas absurdas." -ForegroundColor Gray
+    Write-Host "     Tambem ha protecoes contra loop/travamento em consultas de caminho usadas pelo jogo." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "O que esperar:" -ForegroundColor Cyan
+    Write-Host "  - Mais estabilidade de FPS em cidade, horda, muitos carros ou muitos animais." -ForegroundColor Gray
+    Write-Host "  - Menos microtravadas quando o cliente esta sobrecarregado." -ForegroundColor Gray
+    Write-Host "  - Nao e milagre: se a GPU/CPU ja estiver no limite, o ganho depende da cena e das opcoes graficas." -ForegroundColor Gray
+    Write-Host ""
+    Write-Host "Pressione qualquer tecla para continuar..." -ForegroundColor Yellow
+    if ([System.Console]::IsInputRedirected) {
+        [void][System.Console]::In.ReadLine()
+    } else {
+        [void][System.Console]::ReadKey($true)
+    }
+    Write-Host ""
+}
+
 Write-Host ""
 Write-Host "=== $PatchName ===" -ForegroundColor White
 Write-Host ""
@@ -317,4 +380,6 @@ Write-Host ""
 Write-Host "To revert:" -ForegroundColor Yellow
 Write-Host "  .\patchApocalipseBr.ps1 -Revert" -ForegroundColor Yellow
 Write-Host ""
+
+Show-ClientPatchFeatureBanner -SourceCount $Sources.Count -ClassCount $CompiledClasses.Count
 

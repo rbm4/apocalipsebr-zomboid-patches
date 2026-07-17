@@ -118,6 +118,10 @@ import zombie.util.StringUtils;
 import zombie.util.Type;
 import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehiclePart;
+import org.joml.Vector3f;
+import org.joml.Matrix4f;
+import zombie.core.logger.ExceptionLogger;
+import se.krka.kahlua.j2se.KahluaTableImpl;
 
 @UsedFromLua
 public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
@@ -701,7 +705,6 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         }
     }
 
-    @Override
     public void updateStress() {
         if (!this.isWild()) {
             boolean incStress = true;
@@ -896,7 +899,6 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         }
     }
 
-    @Override
     public void initializeStates() {
         this.clearAIStateMap();
         this.registerAIState("idle", AnimalIdleState.instance());

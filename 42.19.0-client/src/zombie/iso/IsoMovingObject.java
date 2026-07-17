@@ -1257,7 +1257,8 @@ public class IsoMovingObject extends IsoObject implements Mover {
                             IsoPlayer objPlyr = Type.tryCastTo(obj, IsoPlayer.class);
                             
                             // Spear charge logic
-                            if (thisPlyr != null && thisPlyr.getBumpedChr() != obj && !thisPlyr.getPrimaryHandItem().hasTag(ItemTag.FAKE_SPEAR)) {
+                            var primaryHandItem = thisPlyr != null ? thisPlyr.getPrimaryHandItem() : null;
+                            if (thisPlyr != null && primaryHandItem != null && thisPlyr.getBumpedChr() != obj && !primaryHandItem.hasTag(ItemTag.FAKE_SPEAR)) {
                                 float fwdX = thisPlyr.getForwardDirectionX();
                                 float fwdY = thisPlyr.getForwardDirectionY();
                                 float dot = (fwdX * dx) + (fwdY * dy);

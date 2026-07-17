@@ -5,6 +5,27 @@
 
 $ErrorActionPreference = "Stop"
 
+function Show-ApocalipseBanner {
+    $bannerPath = Join-Path -Path $PSScriptRoot -ChildPath "APOCALIPSE-BANNER.md"
+
+    if (Test-Path -LiteralPath $bannerPath) {
+        Write-Host ""
+        Get-Content -LiteralPath $bannerPath -Encoding UTF8 | ForEach-Object {
+            Write-Host $_ -ForegroundColor Yellow
+        }
+        Write-Host ""
+    } else {
+        Write-Host "APOCALIPSE - http://apocalipse.cloud/" -ForegroundColor Yellow
+        Write-Host "AVISO: este patch pode baixar Java e compilar classes dentro da pasta do Project Zomboid." -ForegroundColor Yellow
+        Write-Host "Para desinstalar: powershell -ExecutionPolicy Bypass -File .\patch-client.ps1 -Revert" -ForegroundColor Yellow
+        Write-Host ""
+    }
+
+    Write-Host "Pressione qualquer tecla para continuar..." -ForegroundColor Green
+    [void][System.Console]::ReadKey($true)
+    Write-Host ""
+}
+
 function Get-SteamPath {
     $keys = @(
         "HKCU:\Software\Valve\Steam",
@@ -127,6 +148,8 @@ function Get-ProjectZomboidPath {
     $checkedText = $checkedManifests -join "`n"
     throw "Project Zomboid was not found. Checked manifests:`n$checkedText"
 }
+
+Show-ApocalipseBanner
 
 $projectZomboidPath = Get-ProjectZomboidPath
 $clientToolsDir = Join-Path -Path $PSScriptRoot -ChildPath "42.19.0-client"
