@@ -20,6 +20,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+$ForceJdk = $true
 
 $PatchName = "ApocBR Client FPS Patch (Build 42.19)"
 $RequiredMajor = 25
@@ -150,6 +151,16 @@ function Install-Jdk {
 
     Write-Host "ERROR: javac not found in downloaded JDK." -ForegroundColor Red
     exit 1
+}
+
+function ConvertTo-JavacArgFileLine {
+    param([string]$Argument)
+
+    if ($Argument -match '[\s"]') {
+        return '"' + $Argument.Replace('\', '\\').Replace('"', '\"') + '"'
+    }
+
+    return $Argument
 }
 
 function Get-RelativeClassPathForSource {
@@ -297,6 +308,7 @@ New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 
 $JavacOut = Join-Path $WorkDir "javac.out.log"
 $JavacErr = Join-Path $WorkDir "javac.err.log"
+$JavacArgsFile = Join-Path $WorkDir "javac.args"
 $JavacArgs = @(
     "--release", "25",
     "-Xlint:none",
@@ -308,14 +320,19 @@ $JavacArgs = @(
 ) + $Sources
 
 Write-Host "    javac invocation with $($Sources.Count) source files..." -ForegroundColor Gray
-$JavacProcess = Start-Process -FilePath $javac -ArgumentList $JavacArgs -Wait -NoNewWindow -PassThru -RedirectStandardOutput $JavacOut -RedirectStandardError $JavacErr
+$JavacArgFileLines = @($JavacArgs | ForEach-Object { ConvertTo-JavacArgFileLine $_ })
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllLines($JavacArgsFile, [string[]]$JavacArgFileLines, $utf8NoBom)
+$JavacArgFileRef = "@`"$JavacArgsFile`""
+$JavacProcess = Start-Process -FilePath $javac -ArgumentList $JavacArgFileRef -Wait -NoNewWindow -PassThru -RedirectStandardOutput $JavacOut -RedirectStandardError $JavacErr
+$JavacExitCode = $JavacProcess.ExitCode
 $javacOutput = @()
 if (Test-Path -LiteralPath $JavacOut) { $javacOutput += Get-Content -LiteralPath $JavacOut }
 if (Test-Path -LiteralPath $JavacErr) { $javacOutput += Get-Content -LiteralPath $JavacErr }
-if ($JavacProcess.ExitCode -ne 0) {
+if ($JavacExitCode -ne 0) {
     $javacOutput | ForEach-Object { Write-Host $_ -ForegroundColor Red }
     Write-Host ""
-    Write-Host "ERROR: Compilation failed (exit code $($JavacProcess.ExitCode))." -ForegroundColor Red
+    Write-Host "ERROR: Compilation failed (exit code $JavacExitCode)." -ForegroundColor Red
     Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
     exit 1
 }
