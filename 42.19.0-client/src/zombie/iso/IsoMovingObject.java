@@ -862,7 +862,9 @@ public class IsoMovingObject extends IsoObject implements Mover {
                     float oldNx = this.getNextX();
                     float oldNy = this.getNextY();
                     this.collidedWithVehicle = false;
-                    if (thisChr != null
+                    boolean apocbrIsStationary = this.getNextX() == this.getX() && this.getNextY() == this.getY();
+                    if (!apocbrIsStationary
+                        && thisChr != null
                         && !this.isOnFloor()
                         && thisChr.getVehicle() == null
                         && this.isCollidable()
@@ -887,7 +889,7 @@ public class IsoMovingObject extends IsoObject implements Mover {
                     float ony = this.getNextY();
                     float len = 0.0F;
                     boolean bDidCollide = false;
-                    if (this.collidable) {
+                    if (!apocbrIsStationary && this.collidable) {
                         if (this.altCollide) {
                             this.DoCollide(2);
                         } else {
@@ -1076,7 +1078,9 @@ public class IsoMovingObject extends IsoObject implements Mover {
     public void preupdate() {
         this.setNextX(this.getX());
         this.setNextY(this.getY());
-        this.updateAnimationRecorder();
+        if (!this.isSceneCulled()) {
+            this.updateAnimationRecorder();
+        }
     }
 
     @Override

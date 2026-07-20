@@ -687,6 +687,32 @@ public final class IsoCell {
     public void flattenAnyFoliage(IsoCell.PerPlayerRender perPlayerRender, int playerIndex) {
         boolean[][] flattenGrassEtc = perPlayerRender.flattenGrassEtc;
 
+        int visibleVehicleCount = 0;
+        long vehicleHash = 0L;
+        for (BaseVehicle vehicle : this.vehicles) {
+            if (!(vehicle.getAlpha(playerIndex) <= 0.0F)) {
+                visibleVehicleCount++;
+                vehicleHash = vehicleHash * 31L + (long)Float.floatToIntBits(vehicle.getX());
+                vehicleHash = vehicleHash * 31L + (long)Float.floatToIntBits(vehicle.getY());
+                vehicleHash = vehicleHash * 31L + (long)vehicle.getID();
+            }
+        }
+
+        if (perPlayerRender.cachedFlattenValid
+            && this.minX == perPlayerRender.cachedFlattenMinX
+            && this.minY == perPlayerRender.cachedFlattenMinY
+            && this.maxX == perPlayerRender.cachedFlattenMaxX
+            && this.maxY == perPlayerRender.cachedFlattenMaxY
+            && visibleVehicleCount == perPlayerRender.cachedFlattenVehicleCount
+            && vehicleHash == perPlayerRender.cachedFlattenVehicleHash) {
+            for (int y = this.minY; y <= this.maxY; y++) {
+                for (int x = this.minX; x <= this.maxX; x++) {
+                    flattenGrassEtc[x - this.minX][y - this.minY] = perPlayerRender.cachedFlattenGrassEtc[x - this.minX][y - this.minY];
+                }
+            }
+            return;
+        }
+
         for (int y = this.minY; y <= this.maxY; y++) {
             for (int x = this.minX; x <= this.maxX; x++) {
                 flattenGrassEtc[x - this.minX][y - this.minY] = false;
@@ -704,6 +730,19 @@ public final class IsoCell {
                         }
                     }
                 }
+            }
+        }
+
+        perPlayerRender.cachedFlattenValid = true;
+        perPlayerRender.cachedFlattenMinX = this.minX;
+        perPlayerRender.cachedFlattenMinY = this.minY;
+        perPlayerRender.cachedFlattenMaxX = this.maxX;
+        perPlayerRender.cachedFlattenMaxY = this.maxY;
+        perPlayerRender.cachedFlattenVehicleCount = visibleVehicleCount;
+        perPlayerRender.cachedFlattenVehicleHash = vehicleHash;
+        for (int y = this.minY; y <= this.maxY; y++) {
+            for (int x = this.minX; x <= this.maxX; x++) {
+                perPlayerRender.cachedFlattenGrassEtc[x - this.minX][y - this.minY] = flattenGrassEtc[x - this.minX][y - this.minY];
             }
         }
     }
@@ -2209,10 +2248,14 @@ public final class IsoCell {
     private void ProcessObjects(Iterator<IsoMovingObject> it) {
         MovingObjectUpdateScheduler.instance.update();
 
+        int animalAudioOffset = apocbrAnimalAudioFrameCounter % 4;
+        apocbrAnimalAudioFrameCounter++;
         for (IsoMovingObject obj : this.objectList) {
             if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
-                animal.updateVocalProperties();
-                animal.updateLoopingSounds();
+                if (animal.getID() % 4 == animalAudioOffset) {
+                    animal.updateVocalProperties();
+                    animal.updateLoopingSounds();
+                }
             }
         }
 
@@ -2222,6 +2265,7 @@ public final class IsoCell {
     }
 
     private static int apocbrVocalsFrameCounter = 0;
+    private static int apocbrAnimalAudioFrameCounter = 0;
 
     private void updateZombieVocals() {
         int offset = apocbrVocalsFrameCounter % 4;
@@ -2240,10 +2284,18 @@ public final class IsoCell {
         this.processWorldItemsRemove.clear();
     }
 
+    private static int apocbrStaticUpdaterFrameCounter = 0;
+    private static int apocbrCellFrameCounter = 0;
+
     private void ProcessStaticUpdaters() {
+        int frame = apocbrStaticUpdaterFrameCounter++;
         int size = this.staticUpdaterObjectList.size();
 
         for (int n = 0; n < size; n++) {
+            if ((n + frame) % 4 != 0) {
+                continue;
+            }
+
             try {
                 this.staticUpdaterObjectList.get(n).update();
             } catch (Exception var4) {
@@ -4106,6 +4158,7 @@ public final class IsoCell {
     }
 
     private void updateInternal() {
+        apocbrCellFrameCounter++;
         MovingObjectUpdateScheduler.instance.startFrame();
         IsoSprite.alphaStep = 0.075F * GameTime.getInstance().getThirtyFPSMultiplier();
         IsoGridSquare.gridSquareCacheEmptyTimer++;
@@ -4131,14 +4184,18 @@ public final class IsoCell {
             this.lastServerItemsUpdate = System.currentTimeMillis();
 
             try (GameProfiler.ProfileArea var3 = profiler.profile("Items")) {
-                this.ProcessItems(null);
+                if (GameServer.server || apocbrCellFrameCounter % 2 == 0) {
+                    this.ProcessItems(null);
+                }
             }
         }
 
         this.ProcessRemoveItems(null);
 
         try (GameProfiler.ProfileArea var26 = profiler.profile("IsoObject")) {
-            this.ProcessIsoObject();
+            if (apocbrCellFrameCounter % 2 == 0) {
+                this.ProcessIsoObject();
+            }
         }
 
         this.safeToAdd = false;
@@ -4172,11 +4229,15 @@ public final class IsoCell {
         this.ObjectDeletionAddition();
 
         try (GameProfiler.ProfileArea var30 = profiler.profile("Update Dead Bodies")) {
-            IsoDeadBody.updateBodies();
+            if (apocbrCellFrameCounter % 2 == 0) {
+                IsoDeadBody.updateBodies();
+            }
         }
 
         try (GameProfiler.ProfileArea var31 = profiler.profile("Update Fish")) {
-            FishSchoolManager.getInstance().update();
+            if (apocbrCellFrameCounter % 3 == 0) {
+                FishSchoolManager.getInstance().update();
+            }
         }
 
         IsoGridSquare.setLightcache(IsoGridSquare.getLightcache() - 1);
@@ -4187,15 +4248,19 @@ public final class IsoCell {
         }
 
         if (!GameTime.isGamePaused()) {
-            this.rainScroll = this.rainScroll + this.rainSpeed / 10.0F * 0.075F * (30.0F / PerformanceSettings.getLockFPS());
-            if (this.rainScroll > 1.0F) {
-                this.rainScroll = 0.0F;
+            if (apocbrCellFrameCounter % 2 == 0) {
+                this.rainScroll = this.rainScroll + this.rainSpeed / 10.0F * 0.075F * (30.0F / PerformanceSettings.getLockFPS());
+                if (this.rainScroll > 1.0F) {
+                    this.rainScroll = 0.0F;
+                }
             }
         }
 
         if (!GameServer.server) {
             try (GameProfiler.ProfileArea var32 = profiler.profile("Update Weather")) {
-                this.updateWeatherFx();
+                if (apocbrCellFrameCounter % 2 == 0) {
+                    this.updateWeatherFx();
+                }
             }
         }
     }
@@ -4743,6 +4808,14 @@ public final class IsoCell {
         public boolean[][][] visiOccludedFlags;
         public boolean[][] visiCulledFlags;
         public boolean[][] flattenGrassEtc;
+        public boolean[][] cachedFlattenGrassEtc;
+        public int cachedFlattenMinX;
+        public int cachedFlattenMinY;
+        public int cachedFlattenMaxX;
+        public int cachedFlattenMaxY;
+        public int cachedFlattenVehicleCount;
+        public long cachedFlattenVehicleHash;
+        public boolean cachedFlattenValid;
         public int minX;
         public int minY;
         public int maxX;
@@ -4753,6 +4826,8 @@ public final class IsoCell {
                 this.visiOccludedFlags = new boolean[w][h][2];
                 this.visiCulledFlags = new boolean[w][h];
                 this.flattenGrassEtc = new boolean[w][h];
+                this.cachedFlattenGrassEtc = new boolean[w][h];
+                this.cachedFlattenValid = false;
             }
         }
     }
