@@ -357,6 +357,17 @@ public final class IsoChunk {
         }
     }
 
+    public void checkLightingLater_OnePlayer_LevelRange(int playerIndex, int minLevel, int maxLevel) {
+        this.lightCheck[playerIndex] = true;
+
+        for (int z = minLevel; z <= maxLevel; z++) {
+            IsoChunkLevel chunkLevel = this.getLevelData(z);
+            if (chunkLevel != null) {
+                chunkLevel.lightCheck[playerIndex] = true;
+            }
+        }
+    }
+
     public void addBloodSplat(float x, float y, float z, int type) {
         if (!(x < this.wx * 8) && !(x >= (this.wx + 1) * 8)) {
             if (!(y < this.wy * 8) && !(y >= (this.wy + 1) * 8)) {
@@ -2849,36 +2860,42 @@ public final class IsoChunk {
         IsoChunk chunkSE = cell.getChunk(this.wx + 1, this.wy + 1);
         IsoChunk chunkSW = cell.getChunk(this.wx - 1, this.wy + 1);
 
-        if (chunkW != null) {
-            chunkW.checkLightingLater_AllPlayers_AllLevels();
+        this.apocBrMarkChunkForLighting(chunkW);
+        this.apocBrMarkChunkForLighting(chunkN);
+        this.apocBrMarkChunkForLighting(chunkE);
+        this.apocBrMarkChunkForLighting(chunkS);
+        this.apocBrMarkChunkForLighting(chunkNW);
+        this.apocBrMarkChunkForLighting(chunkNE);
+        this.apocBrMarkChunkForLighting(chunkSE);
+        this.apocBrMarkChunkForLighting(chunkSW);
+    }
+
+    private void apocBrMarkChunkForLighting(IsoChunk neighbor) {
+        if (neighbor == null) {
+            return;
         }
 
-        if (chunkN != null) {
-            chunkN.checkLightingLater_AllPlayers_AllLevels();
+        int minZ = this.getMinLevel() - 1;
+        int maxZ = this.getMaxLevel() + 1;
+        int neighborMinZ = neighbor.getMinLevel();
+        int neighborMaxZ = neighbor.getMaxLevel();
+        if (minZ < neighborMinZ) {
+            minZ = neighborMinZ;
         }
 
-        if (chunkE != null) {
-            chunkE.checkLightingLater_AllPlayers_AllLevels();
+        if (maxZ > neighborMaxZ) {
+            maxZ = neighborMaxZ;
         }
 
-        if (chunkS != null) {
-            chunkS.checkLightingLater_AllPlayers_AllLevels();
+        if (minZ > maxZ) {
+            return;
         }
 
-        if (chunkNW != null) {
-            chunkNW.checkLightingLater_AllPlayers_AllLevels();
-        }
-
-        if (chunkNE != null) {
-            chunkNE.checkLightingLater_AllPlayers_AllLevels();
-        }
-
-        if (chunkSE != null) {
-            chunkSE.checkLightingLater_AllPlayers_AllLevels();
-        }
-
-        if (chunkSW != null) {
-            chunkSW.checkLightingLater_AllPlayers_AllLevels();
+        for (int i = 0; i < neighbor.refs.size(); i++) {
+            IsoChunkMap cm = neighbor.refs.get(i);
+            if (cm != null) {
+                neighbor.checkLightingLater_OnePlayer_LevelRange(cm.playerId, minZ, maxZ);
+            }
         }
     }
 

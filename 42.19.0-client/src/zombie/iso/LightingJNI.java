@@ -3,7 +3,9 @@ package zombie.iso;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
+import java.util.PriorityQueue;
 import java.util.Stack;
 import java.util.concurrent.CompletableFuture;
 import zombie.GameProfiler;
@@ -70,6 +72,7 @@ public final class LightingJNI {
     private static boolean wasElecShut;
     private static boolean wasNight;
     private static final Vector2 tempVector2 = new Vector2();
+    private static final long LIGHTING_BUDGET_NANOS = 2_000_000L;
     private static final int MAX_PLAYERS = 256;
     private static final int MAX_LIGHTS_PER_PLAYER = 4;
     private static final int MAX_LIGHTS_PER_VEHICLE = 10;
@@ -878,6 +881,12 @@ public final class LightingJNI {
         chunkEndUpdate();
     }
 
+    private static int apocBrChunkDistanceSq(IsoChunk chunk, int playerChunkX, int playerChunkY) {
+        int dx = chunk.wx - playerChunkX;
+        int dy = chunk.wy - playerChunkY;
+        return dx * dx + dy * dy;
+    }
+
     public static void preUpdate() {
         if (DebugOptions.instance.threadLighting.getValue()) {
             checkLightsFuture = CompletableFuture.runAsync(LightingJNI::checkLights, PZForkJoinPool.commonPool());
@@ -936,15 +945,46 @@ public final class LightingJNI {
                         IsoWorld.instance.currentCell.invalidatePeekedRoom(playerIndex);
                     }
 
+                    IsoPlayer player = IsoPlayer.players[playerIndex];
+                    int playerChunkX;
+                    int playerChunkY;
+                    if (player != null) {
+                        playerChunkX = PZMath.fastfloor(player.getX() / 8.0F);
+                        playerChunkY = PZMath.fastfloor(player.getY() / 8.0F);
+                    } else {
+                        playerChunkX = cm.getWorldXMin() + IsoChunkMap.chunkGridWidth / 2;
+                        playerChunkY = cm.getWorldYMin() + IsoChunkMap.chunkGridWidth / 2;
+                    }
+
+                    PriorityQueue<IsoChunk> flagged = new PriorityQueue<>(IsoChunkMap.chunkGridWidth * IsoChunkMap.chunkGridWidth, new Comparator<IsoChunk>() {
+                        public int compare(IsoChunk a, IsoChunk b) {
+                            return Integer.compare(apocBrChunkDistanceSq(a, playerChunkX, playerChunkY), apocBrChunkDistanceSq(b, playerChunkX, playerChunkY));
+                        }
+                    });
+
+                    for (int cy = 0; cy < IsoChunkMap.chunkGridWidth; cy++) {
+                        for (int cx = 0; cx < IsoChunkMap.chunkGridWidth; cx++) {
+                            IsoChunk mchunk = cm.getChunk(cx, cy);
+                            if (mchunk != null && mchunk.loaded && mchunk.lightCheck[playerIndex]) {
+                                flagged.add(mchunk);
+                            }
+                        }
+                    }
+
+                    long startNanos = System.nanoTime();
+                    while (!flagged.isEmpty()) {
+                        IsoChunk mchunk = flagged.poll();
+                        updateChunk(playerIndex, mchunk);
+                        mchunk.lightCheck[playerIndex] = false;
+                        if (System.nanoTime() - startNanos >= LIGHTING_BUDGET_NANOS) {
+                            break;
+                        }
+                    }
+
                     for (int cy = 0; cy < IsoChunkMap.chunkGridWidth; cy++) {
                         for (int cx = 0; cx < IsoChunkMap.chunkGridWidth; cx++) {
                             IsoChunk mchunk = cm.getChunk(cx, cy);
                             if (mchunk != null && mchunk.loaded) {
-                                if (mchunk.lightCheck[playerIndex]) {
-                                    updateChunk(playerIndex, mchunk);
-                                    mchunk.lightCheck[playerIndex] = false;
-                                }
-
                                 mchunk.lightingNeverDone[playerIndex] = !chunkLightingDone(mchunk.wx, mchunk.wy);
                             }
                         }
