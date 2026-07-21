@@ -4176,6 +4176,8 @@ public final class IsoCell {
                     this.chunkMap[n].update();
                 }
             }
+
+            ApocBRClientChunkLoadScheduler.instance.process();
         }
 
         CompletableFuture<Void> itemsFuture = null;

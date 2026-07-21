@@ -146,59 +146,61 @@ public final class IsoChunkMap {
 
     private void updateInternal() {
         boolean bChanged = false;
-        int count = IsoChunk.loadGridSquare.size();
-        if (count != 0) {
-            count = 1 + count * 3 / chunkGridWidth;
-        }
+        long budgetStart = System.nanoTime();
+        boolean processedOne = false;
 
-        while (count > 0) {
+        while (true) {
+            if (processedOne && System.nanoTime() - budgetStart >= 4_000_000L) {
+                break;
+            }
+
             IsoChunk chunk = IsoChunk.loadGridSquare.poll();
-            if (chunk != null) {
-                boolean loaded = false;
+            if (chunk == null) {
+                break;
+            }
 
-                for (int n = 0; n < IsoPlayer.numPlayers; n++) {
-                    IsoChunkMap cm = IsoWorld.instance.currentCell.chunkMap[n];
-                    if (!cm.ignore && cm.setChunkDirect(chunk, false)) {
-                        loaded = true;
-                    }
-                }
+            boolean loaded = false;
 
-                if (!loaded) {
-                    WorldReuserThread.instance.addReuseChunk(chunk);
-                    count--;
-                    continue;
-                }
-
-                chunk.loaded = true;
-                bSettingChunk.lock();
-
-                try {
-                    try (GameProfiler.ProfileArea var17 = GameProfiler.getInstance().profile("IsoChunk.doLoadGridsquare")) {
-                        chunk.doLoadGridsquare();
-                        bChanged = true;
-                    }
-
-                    if (GameClient.client) {
-                        List<VehicleCache> vehicles = VehicleCache.vehicleGet(chunk.wx, chunk.wy);
-                        if (vehicles != null) {
-                            for (VehicleCache vehicle : vehicles) {
-                                VehicleManager.instance.sendVehicleRequest(vehicle.id, (short)1);
-                            }
-                        }
-                    }
-                } finally {
-                    bSettingChunk.unlock();
-                }
-
-                for (int var19 = 0; var19 < IsoPlayer.numPlayers; var19++) {
-                    IsoPlayer player = IsoPlayer.players[var19];
-                    if (player != null) {
-                        player.dirtyRecalcGridStackTime = 20.0F;
-                    }
+            for (int n = 0; n < IsoPlayer.numPlayers; n++) {
+                IsoChunkMap cm = IsoWorld.instance.currentCell.chunkMap[n];
+                if (!cm.ignore && cm.setChunkDirect(chunk, false)) {
+                    loaded = true;
                 }
             }
 
-            count--;
+            if (!loaded) {
+                WorldReuserThread.instance.addReuseChunk(chunk);
+                continue;
+            }
+
+            chunk.loaded = true;
+            bSettingChunk.lock();
+
+            try {
+                try (GameProfiler.ProfileArea var17 = GameProfiler.getInstance().profile("IsoChunk.doLoadGridsquare")) {
+                    chunk.doLoadGridsquare();
+                    bChanged = true;
+                    processedOne = true;
+                }
+
+                if (GameClient.client) {
+                    List<VehicleCache> vehicles = VehicleCache.vehicleGet(chunk.wx, chunk.wy);
+                    if (vehicles != null) {
+                        for (VehicleCache vehicle : vehicles) {
+                            VehicleManager.instance.sendVehicleRequest(vehicle.id, (short)1);
+                        }
+                    }
+                }
+            } finally {
+                bSettingChunk.unlock();
+            }
+
+            for (int var19 = 0; var19 < IsoPlayer.numPlayers; var19++) {
+                IsoPlayer player = IsoPlayer.players[var19];
+                if (player != null) {
+                    player.dirtyRecalcGridStackTime = 20.0F;
+                }
+            }
         }
 
         if (bChanged) {
