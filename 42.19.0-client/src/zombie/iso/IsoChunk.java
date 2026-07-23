@@ -984,6 +984,7 @@ public final class IsoChunk {
                     int chance = type.spawnRate;
 
                     chance = switch (SandboxOptions.instance.carSpawnRate.getValue()) {
+                        default -> 2;
                         case 2 -> (int)Math.ceil(chance / 10.0F);
                         case 3 -> (int)Math.ceil(chance / 1.5F);
                         case 5 -> 2;

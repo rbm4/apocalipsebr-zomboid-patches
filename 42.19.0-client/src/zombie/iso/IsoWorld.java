@@ -1977,10 +1977,10 @@ public final class IsoWorld {
             DebugType.General.println("ItemConfigurator.Preprocess() start");
             ItemConfigurator.Preprocess();
             DebugType.General.println("ItemConfigurator.Preprocess() end");
-            boolean isPlayerAlive = (boolean)0;
+            boolean isPlayerAlive = false;
             if (GameClient.client) {
                 if (ClientPlayerDB.getInstance().clientLoadNetworkPlayer() && ClientPlayerDB.getInstance().isAliveMainNetworkPlayer()) {
-                    isPlayerAlive = (boolean)1;
+                    isPlayerAlive = true;
                 }
             } else {
                 isPlayerAlive = PlayerDBHelper.isPlayerAlive(ZomboidFileSystem.instance.getCurrentSaveDir(), 1);
@@ -1996,7 +1996,7 @@ public final class IsoWorld {
 
             boolean bLoadCharacter;
             if (isPlayerAlive) {
-                bLoadCharacter = (boolean)1;
+                bLoadCharacter = true;
                 if (!this.LoadPlayerForInfo()) {
                     return;
                 }
@@ -2004,7 +2004,7 @@ public final class IsoWorld {
                 worldX = IsoChunkMap.SWorldX[IsoPlayer.getPlayerIndex()];
                 worldY = IsoChunkMap.SWorldY[IsoPlayer.getPlayerIndex()];
             } else {
-                bLoadCharacter = (boolean)0;
+                bLoadCharacter = false;
                 if (GameClient.client && !ServerOptions.instance.spawnPoint.getValue().isEmpty()) {
                     String[] spawnPoint = ServerOptions.instance.spawnPoint.getValue().split(",");
                     if (spawnPoint.length == 3) {
@@ -2300,12 +2300,12 @@ public final class IsoWorld {
             ReanimatedPlayers.instance.loadReanimatedPlayers();
             if (IsoPlayer.getInstance() != null) {
                 if (GameClient.client) {
-                    isPlayerAlive = (boolean)PZMath.fastfloor(IsoPlayer.getInstance().getX());
-                    bLoadCharacter = (boolean)PZMath.fastfloor(IsoPlayer.getInstance().getY());
+                    int playerX = PZMath.fastfloor(IsoPlayer.getInstance().getX());
+                    int playerY = PZMath.fastfloor(IsoPlayer.getInstance().getY());
                     int z = PZMath.fastfloor(IsoPlayer.getInstance().getZ());
 
                     while (z > 0) {
-                        IsoGridSquare sqx = this.currentCell.getGridSquare(isPlayerAlive, bLoadCharacter, PZMath.fastfloor((float)z));
+                        IsoGridSquare sqx = this.currentCell.getGridSquare(playerX, playerY, z);
                         if (sqx != null && sqx.TreatAsSolidFloor()) {
                             break;
                         }

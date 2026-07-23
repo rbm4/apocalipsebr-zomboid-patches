@@ -167,7 +167,6 @@ public final class GameWindow {
     public static boolean gameThreadExited;
     public static Thread gameThread;
     private static long updateTime;
-    private static int apocbrUIManagerFrameCounter = 0;
     private static int apocbrSoundFrameCounter = 0;
     public static final ArrayList<GameWindow.TexturePack> texturePacks = new ArrayList<>();
     public static final FileSystem.TexturePackTextures texturePackTextures = new FileSystem.TexturePackTextures();
@@ -321,11 +320,7 @@ public final class GameWindow {
         }
 
         try (GameProfiler.ProfileArea var28 = profiler.profile("UI")) {
-            if (apocbrUIManagerFrameCounter % 2 == 0) {
-                UIManager.update();
-            }
-
-            apocbrUIManagerFrameCounter++;
+            UIManager.update();
         }
 
         CompletableFuture<Void> uiVoice = null;
