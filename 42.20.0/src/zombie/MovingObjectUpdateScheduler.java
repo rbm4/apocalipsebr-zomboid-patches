@@ -161,7 +161,6 @@ public final class MovingObjectUpdateScheduler {
             || baseVehicle.getVehicleTowedBy() != null
             || baseVehicle.getVehicleTowing() != null
             || !baseVehicle.isAtRest()
-            || baseVehicle.isPhysicsActive()
             || !baseVehicle.getAnimals().isEmpty()) {
             return UpdateSchedulerSimulationLevel.FULL;
         }
@@ -188,16 +187,6 @@ public final class MovingObjectUpdateScheduler {
             || isoAnimal.getVehicle() != null
             || isoAnimal.isOnHook()) {
             return UpdateSchedulerSimulationLevel.HALF;
-        }
-
-        float x = isoAnimal.getX();
-        float y = isoAnimal.getY();
-        if (GameServer.udpEngine != null) {
-            for (UdpConnection connection : GameServer.udpEngine.connections) {
-                if (connection != null && connection.isRelevantTo(x, y)) {
-                    return UpdateSchedulerSimulationLevel.HALF;
-                }
-            }
         }
 
         return UpdateSchedulerSimulationLevel.SIXTEENTH;
