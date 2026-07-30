@@ -153,7 +153,6 @@ import zombie.network.ServerMap;
 import zombie.network.packets.character.ZombiePacket;
 import zombie.network.statistics.data.ConnectionQueueStatistic;
 import zombie.network.statistics.data.GameStatistic;
-import zombie.pathfind.PathFindBehavior2;
 import zombie.pathfind.PolygonalMap2;
 import zombie.pathfind.nativeCode.PathfindNative;
 import zombie.popman.NetworkZombieManager;
@@ -328,7 +327,6 @@ public final class IsoZombie extends IsoGameCharacter implements IHumanVisual {
     public int bloodSplatAmount = 1000;
     private static final Vector2 lastPosition = new Vector2();
     private static final Vector2 currentPosition = new Vector2();
-    private static final Vector2 serverMovementFallback = new Vector2();
     public BodyPartType lastHitPart;
     public float timeSinceRespondToSound = 1000000.0F;
     private static final SharedSkeleAnimationRepository m_sharedSkeleRepo = new SharedSkeleAnimationRepository();
@@ -548,9 +546,7 @@ public final class IsoZombie extends IsoGameCharacter implements IHumanVisual {
         super(cell, 0.0F, 0.0F, 0.0F);
         this.getWrappedGrappleable().setOnGrappledEndCallback(this::onZombieGrappleEnded);
         this.addOnDiedListener(this::onDied, false);
-        if (!GameServer.server) {
-            this.registerVariableCallbacks();
-        }
+        this.registerVariableCallbacks();
 
         this.health = 1.8F + Rand.Next(0.0F, 0.3F);
         this.weight = 0.7F;
@@ -3295,7 +3291,6 @@ public final class IsoZombie extends IsoGameCharacter implements IHumanVisual {
         }
 
         this.doDeferredMovement();
-        this.applyServerZombieMovementFallback();
         this.updateEmitter();
         if (this.spotSoundDelay > 0) {
             this.spotSoundDelay--;
@@ -3645,34 +3640,6 @@ public final class IsoZombie extends IsoGameCharacter implements IHumanVisual {
         } else {
             this.checkForCorpseTimer = 10000.0F;
             this.bodyToEat = null;
-        }
-    }
-
-    private void applyServerZombieMovementFallback() {
-        if (!GameServer.server || this.isRemoteZombie() || this.isDead() || !this.isCanWalk()) {
-            return;
-        }
-
-        if (Math.abs(this.getNextX() - this.getX()) > 1.0E-4F || Math.abs(this.getNextY() - this.getY()) > 1.0E-4F) {
-            return;
-        }
-
-        PathFindBehavior2 behavior = this.getPathFindBehavior2();
-        if (behavior == null) {
-            return;
-        }
-
-        if (this.isCurrentState(WalkTowardState.instance())) {
-            WalkTowardState.instance().calculateTargetLocation(this, serverMovementFallback);
-            behavior.moveToPoint(serverMovementFallback.x, serverMovementFallback.y, 1.0F);
-        } else if (this.isCurrentState(PathFindState.instance())) {
-            if (behavior.pathNextIsSet) {
-                behavior.moveToPoint(behavior.pathNextX, behavior.pathNextY, 1.0F);
-            } else {
-                behavior.moveToPoint(behavior.getTargetX(), behavior.getTargetY(), 1.0F);
-            }
-        } else if (this.isCurrentState(LungeState.instance()) && this.target != null) {
-            behavior.moveToPoint(this.target.getX(), this.target.getY(), 1.0F);
         }
     }
 

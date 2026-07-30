@@ -933,12 +933,6 @@ public final class PathFindBehavior2 implements IPathfinder {
                     }
 
                     float distTo = IsoUtils.DistanceTo(this.pathNextX, this.pathNextY, this.chr.getX(), this.chr.getY());
-                    if (speed <= 0.0F && GameServer.server && zombie != null && !zombie.isRemoteZombie()) {
-                        tempVector2_2.set(dir);
-                        zombie.getZombieWalkTowardSpeed(0.035F, distTo, tempVector2_2);
-                        speed = tempVector2_2.getLength();
-                    }
-
                     float mult = 1.0F;
                     float dist = speed * 1.0F;
                     if (dist > 0.0F && dist >= distTo) {
@@ -1040,12 +1034,6 @@ public final class PathFindBehavior2 implements IPathfinder {
                         && zombie.isRemoteZombie()
                         && zombie.getTarget() != null
                         && zombie.isCurrentState(LungeNetworkState.instance());
-                }
-
-                if (speed <= 0.0F && GameServer.server && zombie != null && !zombie.isRemoteZombie()) {
-                    tempVector2_2.set(dir);
-                    zombie.getZombieWalkTowardSpeed(0.035F, dist, tempVector2_2);
-                    speed = tempVector2_2.getLength() * speedMul;
                 }
 
                 if (!(speed <= 0.0F)) {
@@ -1288,11 +1276,6 @@ public final class PathFindBehavior2 implements IPathfinder {
     }
 
     public boolean shouldBeMoving() {
-        IsoZombie zombie = Type.tryCastTo(this.chr, IsoZombie.class);
-        if (GameServer.server && zombie != null && !zombie.isRemoteZombie()) {
-            return !this.stopping;
-        }
-
         return this.stopping ? false : !this.allowTurnAnimation() || !this.chr.shouldBeTurning();
     }
 

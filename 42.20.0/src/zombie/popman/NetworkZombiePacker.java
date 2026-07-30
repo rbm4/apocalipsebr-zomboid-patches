@@ -41,6 +41,7 @@ public class NetworkZombiePacker {
     public final NetworkZombieList zombiesRequest = new NetworkZombieList();
     private final ZombiePacket packet = new ZombiePacket();
     private final HashSet<IConnection> extraUpdate = new HashSet<>();
+    private final Map<Short, NetworkZombiePacker.ZombiePacketProbe> packetProbe = new HashMap<>();
     public final Map<IConnection, List<Short>> zombiesToSend = new HashMap<>();
     UpdateLimit zombieSynchronizationReliableLimit = new UpdateLimit(5000L);
 
@@ -67,9 +68,6 @@ public class NetworkZombiePacker {
         this.packet.parse(bb, connection);
         if (this.packet.id == -1) {
             DebugType.General.error("NetworkZombiePacker.parseZombie id=" + this.packet.id);
-        } else {
-            NetworkZombieManager.getInstance().recheck(connection);
-            this.extraUpdate.add(connection);
         }
     }
 
@@ -128,7 +126,7 @@ public class NetworkZombiePacker {
         }
     }
 
-    public int getZombieData(UdpConnection connection, ZombieSynchronizationPacket packet) {
+    public int getZombieData(UdpConnection connection, ZombieSynchronizationPacket packet, boolean fullRefresh) {
         packet.sendQueue.clear();
         int realCount = 0;
 
@@ -138,6 +136,7 @@ public class NetworkZombiePacker {
             while (!nzr.zombies.isEmpty()) {
                 IsoZombie z = nzr.zombies.poll();
                 z.zombiePacket.set(z);
+                this.probeZombiePacket(z);
                 if (z.onlineId != -1) {
                     packet.sendQueue.add(z);
                     z.zombiePacketUpdated = false;
@@ -147,16 +146,19 @@ public class NetworkZombiePacker {
                 }
             }
 
-            ArrayList<IsoZombie> zl = IsoWorld.instance.currentCell.getZombieList();
-            for (int k = 0; k < zl.size(); k++) {
-                IsoZombie z = zl.get(k);
-                if (z.onlineId != -1 && connection.RelevantTo(z.getX(), z.getY(), (connection.getRelevantRange() - 2) * 10)) {
-                    z.zombiePacket.set(z);
-                    packet.sendQueue.add(z);
-                    this.zombiesToSend.get(connection).add(z.getOnlineID());
-                    z.zombiePacketUpdated = false;
-                    if (++realCount >= 300) {
-                        break;
+            if (fullRefresh) {
+                ArrayList<IsoZombie> zl = IsoWorld.instance.currentCell.getZombieList();
+                for (int k = 0; k < zl.size(); k++) {
+                    IsoZombie z = zl.get(k);
+                    if (z.onlineId != -1 && connection.RelevantTo(z.getX(), z.getY(), (connection.getRelevantRange() - 2) * 10)) {
+                        z.zombiePacket.set(z);
+                        this.probeZombiePacket(z);
+                        packet.sendQueue.add(z);
+                        this.zombiesToSend.get(connection).add(z.getOnlineID());
+                        z.zombiePacketUpdated = false;
+                        if (++realCount >= 300) {
+                            break;
+                        }
                     }
                 }
             }
@@ -167,17 +169,61 @@ public class NetworkZombiePacker {
         return realCount;
     }
 
+    private void probeZombiePacket(IsoZombie z) {
+        if (z.onlineId == -1) {
+            return;
+        }
+
+        ZombiePacket packet = z.zombiePacket;
+        NetworkZombiePacker.ZombiePacketProbe probe = this.packetProbe.computeIfAbsent(
+            z.onlineId,
+            id -> new NetworkZombiePacker.ZombiePacketProbe(packet.realX, packet.realY)
+        );
+        float realDx = packet.realX - probe.lastRealX;
+        float realDy = packet.realY - probe.lastRealY;
+        float realDeltaSq = realDx * realDx + realDy * realDy;
+        float targetDx = packet.x - packet.realX;
+        float targetDy = packet.y - packet.realY;
+        float targetDeltaSq = targetDx * targetDx + targetDy * targetDy;
+        long now = System.currentTimeMillis();
+        if (packet.predictionType == 0 && realDeltaSq > 1.0E-4F && now - probe.lastLogTime > 1000L) {
+            probe.lastLogTime = now;
+            DebugType.Multiplayer.error(
+                "ApocBR zombie packet probe id=%d pred=%d real=(%.3f,%.3f) last=(%.3f,%.3f) target=(%.3f,%.3f) dReal=%.4f dTarget=%.4f realState=%s moving=%s bMoving=%s bPathfind=%s state=%s",
+                z.onlineId,
+                packet.predictionType,
+                packet.realX,
+                packet.realY,
+                probe.lastRealX,
+                probe.lastRealY,
+                packet.x,
+                packet.y,
+                realDeltaSq,
+                targetDeltaSq,
+                packet.realState,
+                z.isMoving(),
+                z.getVariableBoolean("bMoving"),
+                z.getVariableBoolean("bPathfind"),
+                z.getCurrentState() == null ? "null" : z.getCurrentState().getClass().getSimpleName()
+            );
+        }
+
+        probe.lastRealX = packet.realX;
+        probe.lastRealY = packet.realY;
+    }
+
     public void send(UdpConnection connection) {
         if (!this.zombiesDeletedForSending.isEmpty()) {
             INetworkPacket.send(connection, PacketTypes.PacketType.ZombieDeleteOnClient, connection, this.zombiesDeletedForSending);
         }
 
         ZombieSynchronizationPacket packet = (ZombieSynchronizationPacket)connection.getPacket(PacketTypes.PacketType.ZombieSynchronizationReliable);
-        packet.hasNeighborPlayer = connection.isNeighborPlayer();
-        int countData = this.getZombieData(connection, packet);
-        if (countData > 0 || connection.timerSendZombie.check() || this.extraUpdate.contains(connection)) {
+        packet.hasNeighborPlayer = false;
+        boolean fullRefresh = connection.timerSendZombie.check() || this.extraUpdate.contains(connection);
+        int countData = this.getZombieData(connection, packet, fullRefresh);
+        if (countData > 0 || fullRefresh) {
             this.extraUpdate.remove(connection);
-            connection.timerSendZombie.reset(3800L);
+            connection.timerSendZombie.reset(200L);
             ByteBufferWriter b = connection.startPacket();
             PacketTypes.PacketType packetType;
             if (this.zombieSynchronizationReliableLimit.Check()) {
@@ -235,6 +281,17 @@ public class NetworkZombiePacker {
         zombie.setWalkType(this.packet.walkType.toString());
         zombie.setSpeedTypeFromWalkType();
         zombie.realState = this.packet.realState;
+    }
+
+    private static final class ZombiePacketProbe {
+        float lastRealX;
+        float lastRealY;
+        long lastLogTime;
+
+        ZombiePacketProbe(float realX, float realY) {
+            this.lastRealX = realX;
+            this.lastRealY = realY;
+        }
     }
 
     public class DeletedZombie {
