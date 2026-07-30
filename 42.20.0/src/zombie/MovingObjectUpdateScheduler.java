@@ -41,24 +41,24 @@ public final class MovingObjectUpdateScheduler {
         }
 
         for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
-            if (GameServer.server && isoMovingObject instanceof IsoZombie isoZombie) {
-                if (GameServer.guiCommandline) {
-                    isoZombie.updateForServerGui();
-                }
-            } else {
-                if (isoMovingObject.getCurrentSquare() == null) {
-                    isoMovingObject.setCurrentSquareFromPosition();
-                }
-
-                UpdateSchedulerSimulationLevel sim = this.getUpdateSchedulerSimulationLevelForObject(isoMovingObject, averageFps);
-                this.simulationLevels[sim.getUpdateOrderIndex()].add(isoMovingObject);
+            if (GameServer.server && isoMovingObject instanceof IsoZombie isoZombie && GameServer.guiCommandline) {
+                isoZombie.updateForServerGui();
             }
+
+            if (isoMovingObject.getCurrentSquare() == null) {
+                isoMovingObject.setCurrentSquareFromPosition();
+            }
+
+            UpdateSchedulerSimulationLevel sim = this.getUpdateSchedulerSimulationLevelForObject(isoMovingObject, averageFps);
+            this.simulationLevels[sim.getUpdateOrderIndex()].add(isoMovingObject);
         }
     }
 
     private UpdateSchedulerSimulationLevel getUpdateSchedulerSimulationLevelForObject(IsoMovingObject isoMovingObject, float averageFps) {
         if (GameServer.server) {
-            if (isoMovingObject instanceof BaseVehicle baseVehicle) {
+            if (isoMovingObject instanceof IsoZombie) {
+                return isoMovingObject.getMinimumSimulationLevel();
+            } else if (isoMovingObject instanceof BaseVehicle baseVehicle) {
                 return getServerSimulationLevelForVehicle(baseVehicle);
             } else if (isoMovingObject instanceof IsoAnimal isoAnimal) {
                 return getServerSimulationLevelForAnimal(isoAnimal);
