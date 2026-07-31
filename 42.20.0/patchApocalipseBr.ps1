@@ -22,7 +22,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ForceJdk = $true
 
-$PatchName = "ApocBR Client FPS Patch (Build 42.19)"
+$PatchName = "ApocBR Server optimization Patch (Build 42.20.0)"
 $RequiredMajor = 25
 
 if ([string]::IsNullOrWhiteSpace($ToolsDir)) {
