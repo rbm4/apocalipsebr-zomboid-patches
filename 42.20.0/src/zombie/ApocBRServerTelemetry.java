@@ -1,15 +1,19 @@
 package zombie;
 
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.LongAdder;
 import zombie.debug.DebugLog;
 
 /**
  * Minimal server-side telemetry for ApocBR patches on build 42.20.0.
  *
  * Deliberately narrow in scope: players online, zombie count, server tick rate,
- * packet queue depth, and deferred cell-unload cost. Do not add fields for
- * subsystems that have not been ported/patched yet (LOS throttling, zombie
- * network tiering, moving-object buckets, vehicle Lua) - an always-zero
- * telemetry field is worse than no field, since it looks like a healthy signal.
+ * packet queue depth, deferred cell-unload cost, and the parallel ServerLOS
+ * dispatcher. Do not add fields for subsystems that have not been
+ * ported/patched yet (zombie network tiering, moving-object buckets, vehicle
+ * Lua) - an always-zero telemetry field is worse than no field, since it
+ * looks like a healthy signal.
  *
  * State (players/zombies/queues) is populated by {@link ApocBRTelemetrySampler}
  * via reflection against unmodified vanilla classes, on its own background
@@ -28,6 +32,21 @@ import zombie.debug.DebugLog;
  * has been waiting, which is what drives escalation to WARNING/STRESS/
  * EMERGENCY mode. These are real per-tick/per-call measurements, not sampled
  * estimates.
+ *
+ * "los" is recorded directly at the instrumented call sites in the patched
+ * {@code zombie.network.ServerLOS} (LOSDispatcher.runInner()/dispatch()).
+ * Unlike the other sections above, these calc/nanos counters are written
+ * concurrently from multiple PZForkJoinPool worker threads (one per LOS
+ * slot), so they use lock-free {@link LongAdder}/{@link AtomicLong}/
+ * {@link AtomicInteger} instead of the {@code synchronized} pattern used
+ * elsewhere in this class, to avoid contending a shared lock on that hot
+ * path. "slots" is the resolved concurrency ceiling (see
+ * ServerLOS.LOS_SLOT_COUNT); "busyMax" is the highest number of slots seen
+ * occupied at once during the interval, i.e. how close the dispatcher got to
+ * saturating the pool; "starved" counts WaitingInLOS players that found no
+ * free slot on a given dispatch pass (sustained non-zero starved is the
+ * signal that this ceiling is now the bottleneck, not the vanilla local
+ * co-op cap it replaced).
  */
 public final class ApocBRServerTelemetry {
     private static final boolean ENABLED = getBoolean("apocbr.telemetry.enabled", true);
@@ -60,6 +79,15 @@ public final class ApocBRServerTelemetry {
     private static int highQueueLast;
     private static int playerQueueLast;
     private static int normalQueueLast;
+
+    private static volatile int losSlotCount;
+    private static final AtomicInteger losSlotsBusy = new AtomicInteger();
+    private static final AtomicInteger losSlotsBusyMax = new AtomicInteger();
+    private static final LongAdder losCalcs = new LongAdder();
+    private static final LongAdder losSkipped = new LongAdder();
+    private static final LongAdder losStarved = new LongAdder();
+    private static final LongAdder losNanos = new LongAdder();
+    private static final AtomicLong losMaxNanos = new AtomicLong();
 
     private ApocBRServerTelemetry() {
     }
@@ -120,6 +148,52 @@ public final class ApocBRServerTelemetry {
         normalQueueLast = normalQueue;
     }
 
+    /**
+     * Resolved LOS concurrency ceiling (see ServerLOS.LOS_SLOT_COUNT). Called once from
+     * ServerLOS.start() - a plain volatile write is enough since this never changes again.
+     */
+    public static void recordServerLosSlotCount(int slotCount) {
+        losSlotCount = slotCount;
+    }
+
+    /**
+     * Called from the LOS dispatcher thread right after it successfully claims a free slot
+     * for a WaitingInLOS player, before handing the calc off to PZForkJoinPool.
+     */
+    public static void recordServerLosDispatch() {
+        if (!ENABLED) return;
+        int busy = losSlotsBusy.incrementAndGet();
+        losSlotsBusyMax.accumulateAndGet(busy, Math::max);
+    }
+
+    /**
+     * Called from the LOS dispatcher thread when a WaitingInLOS player found no free slot on
+     * this pass (the pool is fully saturated). Sustained non-zero values mean LOS_SLOT_COUNT
+     * is the current bottleneck.
+     */
+    public static void recordServerLosStarved() {
+        if (!ENABLED) return;
+        losStarved.increment();
+    }
+
+    /**
+     * Called from a PZForkJoinPool worker thread once a single player's calcLOS() call
+     * finishes (in ServerLOS.dispatch()'s finally block). skipped mirrors calcLOS()'s own
+     * fast path (player hasn't moved grid cell since last calc) - nanos is 0 in that case
+     * since no square work was done.
+     */
+    public static void recordServerLosCalc(boolean skipped, long nanos) {
+        if (!ENABLED) return;
+        losSlotsBusy.decrementAndGet();
+        if (skipped) {
+            losSkipped.increment();
+        } else {
+            losCalcs.increment();
+            losNanos.add(nanos);
+            losMaxNanos.accumulateAndGet(nanos, Math::max);
+        }
+    }
+
     public static synchronized void maybeLog() {
         if (!ENABLED) return;
         long now = System.currentTimeMillis();
@@ -161,6 +235,15 @@ public final class ApocBRServerTelemetry {
             .append(",\"player\":").append(playerQueueLast)
             .append(",\"normal\":").append(normalQueueLast)
             .append("}");
+        long losCalcsCount = losCalcs.sum();
+        json.append(",\"los\":{\"slots\":").append(losSlotCount)
+            .append(",\"busyMax\":").append(losSlotsBusyMax.get())
+            .append(",\"calcs\":").append(losCalcsCount)
+            .append(",\"skipped\":").append(losSkipped.sum())
+            .append(",\"starved\":").append(losStarved.sum())
+            .append(",\"avgMs\":").append(avgMs(losNanos.sum(), losCalcsCount))
+            .append(",\"maxMs\":").append(ms(losMaxNanos.get()))
+            .append("}");
         json.append("}");
         return json.toString();
     }
@@ -183,6 +266,16 @@ public final class ApocBRServerTelemetry {
         // state/queue "last" values are intentionally left as-is: they get
         // overwritten by the next sampler snapshot regardless, and showing the
         // last known value between snapshots is more useful than resetting to 0.
+        losCalcs.reset();
+        losSkipped.reset();
+        losStarved.reset();
+        losNanos.reset();
+        losMaxNanos.set(0L);
+        // Reset the "max busy" watermark to the current busy count rather than 0 - LOS calc
+        // tasks dispatched just before this reset may still be in flight, and reporting 0
+        // busy while N are actually running would be a false "idle" signal for the next
+        // interval's peak.
+        losSlotsBusyMax.set(losSlotsBusy.get());
     }
 
     private static double avgMs(long nanos, long count) {
