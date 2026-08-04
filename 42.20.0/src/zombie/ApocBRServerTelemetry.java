@@ -6,9 +6,9 @@ import zombie.debug.DebugLog;
  * Minimal server-side telemetry for ApocBR patches on build 42.20.0.
  *
  * Deliberately narrow in scope: players online, zombie count, server tick rate,
- * packet queue depth, and cell-unload cost. Do not add fields for subsystems
- * that have not been ported/patched yet (deferred unload, LOS throttling,
- * zombie network tiering, moving-object buckets, vehicle Lua) - an always-zero
+ * packet queue depth, and deferred cell-unload cost. Do not add fields for
+ * subsystems that have not been ported/patched yet (LOS throttling, zombie
+ * network tiering, moving-object buckets, vehicle Lua) - an always-zero
  * telemetry field is worse than no field, since it looks like a healthy signal.
  *
  * State (players/zombies/queues) is populated by {@link ApocBRTelemetrySampler}
@@ -17,14 +17,17 @@ import zombie.debug.DebugLog;
  * {@code zombie.network.GameServer} main loop, since there is no vanilla field
  * that can be sampled externally to reconstruct real tick duration.
  *
- * Cell-unload timing ("unload" section) is recorded directly at the
- * instrumented call site in the patched {@code zombie.network.ServerMap}
- * ({@code ServerCell.Unload()}), which on 42.20.0 still runs synchronously on
- * the main server tick (the deferred/async unload optimization from 42.19 has
- * not been ported here). This is a real per-call measurement, not a sampled
- * estimate, so a high "unload" maxMs correlating with a high "world" maxMs in
- * the same interval is a strong signal (not just a suspicion) that chunk
- * unload is the source of tick spikes.
+ * Unload timing ("unload"/"unloadPhases" sections) is recorded directly at
+ * the instrumented call sites in the patched {@code zombie.network.ServerMap}
+ * ({@code processDeferredUnloads()}, {@code ServerCell.Unload(int)}) and the
+ * patched {@code zombie.iso.IsoChunk} teardown split. Cell unload on 42.20.0
+ * is time-sliced across ticks (ported from 42.19), bounded by a per-tick
+ * cell/slice budget that escalates under backlog pressure - see the
+ * DEFERRED_UNLOAD_MODE_* constants in ServerMap. "pending" tracks the current
+ * unload backlog size; "oldestAgeMs" tracks how long the oldest queued cell
+ * has been waiting, which is what drives escalation to WARNING/STRESS/
+ * EMERGENCY mode. These are real per-tick/per-call measurements, not sampled
+ * estimates.
  */
 public final class ApocBRServerTelemetry {
     private static final boolean ENABLED = getBoolean("apocbr.telemetry.enabled", true);
@@ -36,9 +39,20 @@ public final class ApocBRServerTelemetry {
     private static long worldNanos;
     private static long worldMaxNanos;
 
-    private static long cellUnloadCalls;
-    private static long cellUnloadNanos;
-    private static long cellUnloadMaxNanos;
+    private static int serverMapUnloadPendingLast;
+    private static long serverMapUnloadQueued;
+    private static long serverMapUnloadRevalidated;
+    private static long serverMapUnloadCells;
+    private static long serverMapUnloadNanos;
+    private static long serverMapUnloadMaxNanos;
+    private static long serverMapUnloadOldestAgeMsLast;
+    private static final String[] SERVER_MAP_UNLOAD_PHASE_KEYS = new String[] {
+        "chunkGlobal", "squareTeardown", "vehicleSave", "saveEnqueue"
+    };
+    private static final long[] serverMapUnloadPhaseCalls = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
+    private static final long[] serverMapUnloadPhaseUnits = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
+    private static final long[] serverMapUnloadPhaseNanos = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
+    private static final long[] serverMapUnloadPhaseMaxNanos = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
 
     private static int playersLast;
     private static int zombiesLast;
@@ -58,17 +72,40 @@ public final class ApocBRServerTelemetry {
     }
 
     /**
-     * Real per-call timing for {@code ServerMap.ServerCell.Unload()}, recorded
-     * directly at the instrumented call site (not sampled). Cell unload runs
-     * synchronously inside {@code ServerMap.postupdate()} on the main server
-     * tick, so a slow unload directly inflates that tick's {@code maxMs}; this
-     * field lets us confirm/rule that out instead of guessing.
+     * Real per-tick accounting for the deferred/time-sliced cell unload
+     * mechanism in the patched {@code zombie.network.ServerMap}. Called once
+     * per {@code postupdate()} tick from {@code processDeferredUnloads()}.
      */
-    public static synchronized void recordCellUnload(long nanos) {
+    public static synchronized void recordServerMapDeferredUnload(
+        int pending, int queued, int revalidated, int unloaded, long unloadNanos, long oldestAgeMs
+    ) {
         if (!ENABLED) return;
-        cellUnloadCalls++;
-        cellUnloadNanos += nanos;
-        cellUnloadMaxNanos = Math.max(cellUnloadMaxNanos, nanos);
+        serverMapUnloadPendingLast = pending;
+        serverMapUnloadQueued += queued;
+        serverMapUnloadRevalidated += revalidated;
+        serverMapUnloadCells += unloaded;
+        serverMapUnloadNanos += unloadNanos;
+        serverMapUnloadMaxNanos = Math.max(serverMapUnloadMaxNanos, unloadNanos);
+        serverMapUnloadOldestAgeMsLast = oldestAgeMs;
+    }
+
+    /**
+     * Per-phase breakdown of unload cost (chunkGlobal = collision/pathfind
+     * removal done once per chunk; squareTeardown = the time-sliced per-square
+     * loop; vehicleSave/saveEnqueue = post-teardown bookkeeping). Lets us see
+     * which phase dominates instead of only the aggregate unload cost.
+     */
+    public static synchronized void recordServerMapUnloadPhase(String phase, int units, long nanos) {
+        if (!ENABLED) return;
+        for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
+            if (SERVER_MAP_UNLOAD_PHASE_KEYS[i].equals(phase)) {
+                serverMapUnloadPhaseCalls[i]++;
+                serverMapUnloadPhaseUnits[i] += units;
+                serverMapUnloadPhaseNanos[i] += nanos;
+                serverMapUnloadPhaseMaxNanos[i] = Math.max(serverMapUnloadPhaseMaxNanos[i], nanos);
+                return;
+            }
+        }
     }
 
     public static synchronized void recordStateSnapshot(
@@ -99,10 +136,23 @@ public final class ApocBRServerTelemetry {
             .append(",\"avgMs\":").append(avgMs(worldNanos, worldTicks))
             .append(",\"maxMs\":").append(ms(worldMaxNanos))
             .append("}");
-        json.append(",\"unload\":{\"calls\":").append(cellUnloadCalls)
-            .append(",\"avgMs\":").append(avgMs(cellUnloadNanos, cellUnloadCalls))
-            .append(",\"maxMs\":").append(ms(cellUnloadMaxNanos))
+        json.append(",\"unload\":{\"pending\":").append(serverMapUnloadPendingLast)
+            .append(",\"queued\":").append(serverMapUnloadQueued)
+            .append(",\"revalidated\":").append(serverMapUnloadRevalidated)
+            .append(",\"cells\":").append(serverMapUnloadCells)
+            .append(",\"avgMs\":").append(avgMs(serverMapUnloadNanos, serverMapUnloadCells))
+            .append(",\"maxMs\":").append(ms(serverMapUnloadMaxNanos))
+            .append(",\"oldestAgeMs\":").append(serverMapUnloadOldestAgeMsLast)
             .append("}");
+        json.append(",\"unloadPhases\":{");
+        for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
+            if (i > 0) json.append(",");
+            json.append("\"").append(SERVER_MAP_UNLOAD_PHASE_KEYS[i]).append("\":{\"calls\":").append(serverMapUnloadPhaseCalls[i])
+                .append(",\"units\":").append(serverMapUnloadPhaseUnits[i])
+                .append(",\"avgMs\":").append(avgMs(serverMapUnloadPhaseNanos[i], serverMapUnloadPhaseCalls[i]))
+                .append(",\"maxMs\":").append(ms(serverMapUnloadPhaseMaxNanos[i])).append("}");
+        }
+        json.append("}");
         json.append(",\"state\":{\"players\":").append(playersLast)
             .append(",\"zombies\":").append(zombiesLast)
             .append(",\"connections\":").append(connectionsLast)
@@ -119,9 +169,17 @@ public final class ApocBRServerTelemetry {
         worldTicks = 0L;
         worldNanos = 0L;
         worldMaxNanos = 0L;
-        cellUnloadCalls = 0L;
-        cellUnloadNanos = 0L;
-        cellUnloadMaxNanos = 0L;
+        serverMapUnloadQueued = 0L;
+        serverMapUnloadRevalidated = 0L;
+        serverMapUnloadCells = 0L;
+        serverMapUnloadNanos = 0L;
+        serverMapUnloadMaxNanos = 0L;
+        for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
+            serverMapUnloadPhaseCalls[i] = 0L;
+            serverMapUnloadPhaseUnits[i] = 0L;
+            serverMapUnloadPhaseNanos[i] = 0L;
+            serverMapUnloadPhaseMaxNanos[i] = 0L;
+        }
         // state/queue "last" values are intentionally left as-is: they get
         // overwritten by the next sampler snapshot regardless, and showing the
         // last known value between snapshots is more useful than resetting to 0.
