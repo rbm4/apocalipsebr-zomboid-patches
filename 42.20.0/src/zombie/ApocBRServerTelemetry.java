@@ -6,16 +6,25 @@ import zombie.debug.DebugLog;
  * Minimal server-side telemetry for ApocBR patches on build 42.20.0.
  *
  * Deliberately narrow in scope: players online, zombie count, server tick rate,
- * and packet queue depth. Do not add fields for subsystems that have not been
- * ported/patched yet (deferred unload, LOS throttling, zombie network tiering,
- * moving-object buckets, vehicle Lua) - an always-zero telemetry field is worse
- * than no field, since it looks like a healthy signal.
+ * packet queue depth, and cell-unload cost. Do not add fields for subsystems
+ * that have not been ported/patched yet (deferred unload, LOS throttling,
+ * zombie network tiering, moving-object buckets, vehicle Lua) - an always-zero
+ * telemetry field is worse than no field, since it looks like a healthy signal.
  *
  * State (players/zombies/queues) is populated by {@link ApocBRTelemetrySampler}
  * via reflection against unmodified vanilla classes, on its own background
  * thread. World tick timing is recorded directly from the patched
  * {@code zombie.network.GameServer} main loop, since there is no vanilla field
  * that can be sampled externally to reconstruct real tick duration.
+ *
+ * Cell-unload timing ("unload" section) is recorded directly at the
+ * instrumented call site in the patched {@code zombie.network.ServerMap}
+ * ({@code ServerCell.Unload()}), which on 42.20.0 still runs synchronously on
+ * the main server tick (the deferred/async unload optimization from 42.19 has
+ * not been ported here). This is a real per-call measurement, not a sampled
+ * estimate, so a high "unload" maxMs correlating with a high "world" maxMs in
+ * the same interval is a strong signal (not just a suspicion) that chunk
+ * unload is the source of tick spikes.
  */
 public final class ApocBRServerTelemetry {
     private static final boolean ENABLED = getBoolean("apocbr.telemetry.enabled", true);
@@ -26,6 +35,10 @@ public final class ApocBRServerTelemetry {
     private static long worldTicks;
     private static long worldNanos;
     private static long worldMaxNanos;
+
+    private static long cellUnloadCalls;
+    private static long cellUnloadNanos;
+    private static long cellUnloadMaxNanos;
 
     private static int playersLast;
     private static int zombiesLast;
@@ -42,6 +55,20 @@ public final class ApocBRServerTelemetry {
         worldTicks++;
         worldNanos += nanos;
         worldMaxNanos = Math.max(worldMaxNanos, nanos);
+    }
+
+    /**
+     * Real per-call timing for {@code ServerMap.ServerCell.Unload()}, recorded
+     * directly at the instrumented call site (not sampled). Cell unload runs
+     * synchronously inside {@code ServerMap.postupdate()} on the main server
+     * tick, so a slow unload directly inflates that tick's {@code maxMs}; this
+     * field lets us confirm/rule that out instead of guessing.
+     */
+    public static synchronized void recordCellUnload(long nanos) {
+        if (!ENABLED) return;
+        cellUnloadCalls++;
+        cellUnloadNanos += nanos;
+        cellUnloadMaxNanos = Math.max(cellUnloadMaxNanos, nanos);
     }
 
     public static synchronized void recordStateSnapshot(
@@ -72,6 +99,10 @@ public final class ApocBRServerTelemetry {
             .append(",\"avgMs\":").append(avgMs(worldNanos, worldTicks))
             .append(",\"maxMs\":").append(ms(worldMaxNanos))
             .append("}");
+        json.append(",\"unload\":{\"calls\":").append(cellUnloadCalls)
+            .append(",\"avgMs\":").append(avgMs(cellUnloadNanos, cellUnloadCalls))
+            .append(",\"maxMs\":").append(ms(cellUnloadMaxNanos))
+            .append("}");
         json.append(",\"state\":{\"players\":").append(playersLast)
             .append(",\"zombies\":").append(zombiesLast)
             .append(",\"connections\":").append(connectionsLast)
@@ -88,6 +119,9 @@ public final class ApocBRServerTelemetry {
         worldTicks = 0L;
         worldNanos = 0L;
         worldMaxNanos = 0L;
+        cellUnloadCalls = 0L;
+        cellUnloadNanos = 0L;
+        cellUnloadMaxNanos = 0L;
         // state/queue "last" values are intentionally left as-is: they get
         // overwritten by the next sampler snapshot regardless, and showing the
         // last known value between snapshots is more useful than resetting to 0.

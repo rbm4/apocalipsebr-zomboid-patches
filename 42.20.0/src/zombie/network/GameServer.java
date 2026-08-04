@@ -30,6 +30,7 @@ import se.krka.kahlua.vm.KahluaTable;
 import se.krka.kahlua.vm.KahluaTableIterator;
 import zombie.AmbientSoundManager;
 import zombie.AmbientStreamManager;
+import zombie.ApocBRServerTelemetry;
 import zombie.DebugFileWatcher;
 import zombie.GameProfiler;
 import zombie.GameTime;
