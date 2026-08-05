@@ -28,8 +28,8 @@ public class ServerLOS {
     // equals()/hashCode() override, so an IdentityHashMap keyed by player gives the same
     // identity-based lookup in O(1).
     private final IdentityHashMap<IsoPlayer, ServerLOS.PlayerData> playersMainByPlayer = new IdentityHashMap<>();
-    private boolean mapLoading;
-    private boolean suspended;
+    private volatile boolean mapLoading;
+    private volatile boolean suspended;
     private static final int PD_SIZE_IN_CHUNKS = 12;
     private static final int PD_SIZE_IN_SQUARES = 96;
     boolean wasSuspended;
@@ -150,6 +150,9 @@ public class ServerLOS {
     public void suspend() {
         this.mapLoading = true;
         this.wasSuspended = this.suspended;
+        synchronized (this.thread.notifier) {
+            this.thread.notifier.notify();
+        }
 
         while (!this.suspended) {
             try {

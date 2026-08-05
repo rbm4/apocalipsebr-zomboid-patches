@@ -3,6 +3,8 @@ package zombie;
 import java.lang.reflect.Field;
 import java.util.Collection;
 import java.util.concurrent.atomic.AtomicBoolean;
+import zombie.characters.IsoPlayer;
+import zombie.core.raknet.UdpConnection;
 import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.iso.IsoWorld;
@@ -67,8 +69,23 @@ public final class ApocBRTelemetrySampler {
     }
 
     private static void sampleOnce() {
-        int players = GameServer.Players.size();
-        int connections = GameServer.udpEngine != null ? GameServer.udpEngine.connections.size() : 0;
+        int players = Math.max(GameServer.IDToPlayerMap.size(), GameServer.Players.size());
+        int connections = 0;
+        int connectionPlayers = 0;
+        if (GameServer.udpEngine != null) {
+            connections = GameServer.udpEngine.connections.size();
+            for (int i = 0; i < connections; i++) {
+                UdpConnection connection = GameServer.udpEngine.connections.get(i);
+                if (connection != null) {
+                    for (IsoPlayer player : connection.players) {
+                        if (player != null && player.onlineId != -1) {
+                            connectionPlayers++;
+                        }
+                    }
+                }
+            }
+        }
+        players = Math.max(players, connectionPlayers);
         int zombies = IsoWorld.instance != null && IsoWorld.instance.currentCell != null
             ? IsoWorld.instance.currentCell.getZombieList().size()
             : 0;

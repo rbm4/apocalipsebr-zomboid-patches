@@ -2,7 +2,7 @@
 package zombie.popman;
 
 import java.util.IdentityHashMap;
-import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import zombie.characters.IsoZombie;
 import zombie.network.IConnection;
 
@@ -31,13 +31,9 @@ public class NetworkZombieList {
     }
 
     public static class NetworkZombie {
-        // ApocBR: was a LinkedList<IsoZombie> - contains()/remove() calls against it (see
-        // NetworkZombiePacker.postupdate() and NetworkZombieManager) are O(n) per call, and
-        // NetworkZombiePacker calls contains() once per zombie in the auth delta per connection
-        // per tick, i.e. O(m*n). IsoZombie has no equals()/hashCode() override (identity
-        // semantics), so a LinkedHashSet preserves the exact same add/remove/contains/iteration
-        // behavior (including insertion-order iteration) while making contains()/remove() O(1).
-        public final LinkedHashSet<IsoZombie> zombies = new LinkedHashSet<>();
+        // Keep this field's erased type as LinkedList for binary compatibility with vanilla
+        // NetworkZombieManager/NetworkZombiePacker classes that are not patched in this pack.
+        public final LinkedList<IsoZombie> zombies = new LinkedList<>();
         final IConnection connection;
 
         public NetworkZombie(IConnection connection) {
