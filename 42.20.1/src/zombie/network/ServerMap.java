@@ -96,24 +96,29 @@ public class ServerMap {
     private static final int UNLOAD_SLICES_STRESS = 24;
     private static final int UNLOAD_SLICES_EMERGENCY = 32;
     private static final int UNLOAD_SLICES_CRITICAL = 48;
+    private static final int UNLOAD_SLICES_OVERLOADED = 96;
     private static final int UNLOAD_CELLS_NORMAL = 2;
     private static final int UNLOAD_CELLS_WARNING = 2;
     private static final int UNLOAD_CELLS_STRESS = 3;
     private static final int UNLOAD_CELLS_EMERGENCY = 4;
     private static final int UNLOAD_CELLS_CRITICAL = 6;
+    private static final int UNLOAD_CELLS_OVERLOADED = 12;
     private static final int UNLOAD_PENDING_WARNING = 40;
     private static final int UNLOAD_PENDING_STRESS = 70;
     private static final int UNLOAD_PENDING_EMERGENCY = 90;
     private static final int UNLOAD_PENDING_CRITICAL = 100;
+    private static final int UNLOAD_PENDING_OVERLOADED = 150;
     private static final long UNLOAD_OLDEST_WARNING_MS = DEFERRED_UNLOAD_GRACE_MS * 3L / 2L;
     private static final long UNLOAD_OLDEST_STRESS_MS = DEFERRED_UNLOAD_GRACE_MS * 2L;
     private static final long UNLOAD_OLDEST_EMERGENCY_MS = DEFERRED_UNLOAD_GRACE_MS * 9L / 4L;
-    private static final long UNLOAD_OLDEST_CRITICAL_MS = 50000L;
+    private static final long UNLOAD_OLDEST_CRITICAL_MS = 40000L;
+    private static final long UNLOAD_OLDEST_OVERLOADED_MS = 50000L;
     private static final int DEFERRED_UNLOAD_MODE_NORMAL = 0;
     private static final int DEFERRED_UNLOAD_MODE_WARNING = 1;
     private static final int DEFERRED_UNLOAD_MODE_STRESS = 2;
     private static final int DEFERRED_UNLOAD_MODE_EMERGENCY = 3;
     private static final int DEFERRED_UNLOAD_MODE_CRITICAL = 4;
+    private static final int DEFERRED_UNLOAD_MODE_OVERLOADED = 5;
     private final LinkedHashMap<ServerMap.ServerCell, Long> pendingUnloads = new LinkedHashMap<>();
     long lastTick;
 
@@ -655,6 +660,10 @@ public class ServerMap {
 
     private int getDeferredUnloadMode(long oldestAgeMs) {
         int pending = this.pendingUnloads.size();
+        if (pending >= UNLOAD_PENDING_OVERLOADED || oldestAgeMs >= UNLOAD_OLDEST_OVERLOADED_MS) {
+            return DEFERRED_UNLOAD_MODE_OVERLOADED;
+        }
+
         if (pending >= UNLOAD_PENDING_CRITICAL || oldestAgeMs >= UNLOAD_OLDEST_CRITICAL_MS) {
             return DEFERRED_UNLOAD_MODE_CRITICAL;
         }
@@ -675,7 +684,9 @@ public class ServerMap {
     }
 
     private int getDeferredUnloadCellsPerTick(int mode) {
-        if (mode == DEFERRED_UNLOAD_MODE_CRITICAL) {
+        if (mode == DEFERRED_UNLOAD_MODE_OVERLOADED) {
+            return UNLOAD_CELLS_OVERLOADED;
+        } else if (mode == DEFERRED_UNLOAD_MODE_CRITICAL) {
             return UNLOAD_CELLS_CRITICAL;
         } else if (mode == DEFERRED_UNLOAD_MODE_EMERGENCY) {
             return UNLOAD_CELLS_EMERGENCY;
@@ -687,7 +698,9 @@ public class ServerMap {
     }
 
     private int getDeferredUnloadSlicesPerTick(int mode) {
-        if (mode == DEFERRED_UNLOAD_MODE_CRITICAL) {
+        if (mode == DEFERRED_UNLOAD_MODE_OVERLOADED) {
+            return UNLOAD_SLICES_OVERLOADED;
+        } else if (mode == DEFERRED_UNLOAD_MODE_CRITICAL) {
             return UNLOAD_SLICES_CRITICAL;
         } else if (mode == DEFERRED_UNLOAD_MODE_EMERGENCY) {
             return UNLOAD_SLICES_EMERGENCY;
