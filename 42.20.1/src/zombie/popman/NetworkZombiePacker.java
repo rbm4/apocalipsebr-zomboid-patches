@@ -169,6 +169,7 @@ public class NetworkZombiePacker {
     public int getZombieData(UdpConnection connection, ZombieSynchronizationPacket packet) {
         packet.sendQueue.clear();
         int realCount = 0;
+        int initialSent = 0;
         int relaySent = 0;
 
         try {
@@ -180,6 +181,7 @@ public class NetworkZombiePacker {
                 if (z.onlineId != -1) {
                     packet.sendQueue.add(z);
                     z.zombiePacketUpdated = false;
+                    initialSent++;
                     if (++realCount >= 300) {
                         break;
                     }
@@ -199,6 +201,7 @@ public class NetworkZombiePacker {
                     relaySent++;
                 }
             }
+            ApocBRServerTelemetry.recordZombieRelayInitial(initialSent);
             ApocBRServerTelemetry.recordZombieRelayQuery(this.relayCellsVisited, relayCandidates.size(), relaySent);
         } catch (BufferOverflowException var7) {
             DebugType.General.printException(var7, LogSeverity.Error);

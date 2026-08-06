@@ -98,6 +98,11 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder zombieAuthQueries = new LongAdder();
     private static final LongAdder zombieAuthQueryCandidates = new LongAdder();
     private static final LongAdder zombieAuthFallbacks = new LongAdder();
+    private static final LongAdder zombieAuthAreaFallbacks = new LongAdder();
+    private static final LongAdder zombieAuthRejects = new LongAdder();
+    private static final LongAdder zombieAuthRejectDistance = new LongAdder();
+    private static final LongAdder zombieAuthRejectRadius = new LongAdder();
+    private static final LongAdder zombieAuthRepairs = new LongAdder();
     private static final LongAdder zombieAuthMoves = new LongAdder();
 
     private static final LongAdder zombieRelayGridBuilds = new LongAdder();
@@ -108,6 +113,7 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder zombieRelayQueries = new LongAdder();
     private static final LongAdder zombieRelayCellsVisited = new LongAdder();
     private static final LongAdder zombieRelayCandidates = new LongAdder();
+    private static final LongAdder zombieRelayInitialSent = new LongAdder();
     private static final LongAdder zombieRelaySent = new LongAdder();
     private static final LongAdder zombieRelayPackets = new LongAdder();
     private static final LongAdder zombieRelayExtraAllMarks = new LongAdder();
@@ -128,6 +134,16 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder zombieServerUpdateRemote = new LongAdder();
     private static final LongAdder zombieServerUpdateNanos = new LongAdder();
     private static final AtomicLong zombieServerUpdateMaxNanos = new AtomicLong();
+    private static final LongAdder zombiePopUpdates = new LongAdder();
+    private static final LongAdder zombiePopNativeRequested = new LongAdder();
+    private static final LongAdder zombiePopBatches = new LongAdder();
+    private static final LongAdder zombiePopRecordsRead = new LongAdder();
+    private static final LongAdder zombiePopSkippedNewIndoor = new LongAdder();
+    private static final LongAdder zombiePopEdgeForcedStanding = new LongAdder();
+    private static final LongAdder zombiePopStanding = new LongAdder();
+    private static final LongAdder zombiePopMoving = new LongAdder();
+    private static final LongAdder zombiePopNanos = new LongAdder();
+    private static final AtomicLong zombiePopMaxNanos = new AtomicLong();
 
     private ApocBRServerTelemetry() {
     }
@@ -255,6 +271,23 @@ public final class ApocBRServerTelemetry {
         zombieAuthFallbacks.increment();
     }
 
+    public static void recordZombieAuthAreaFallback() {
+        if (!ENABLED) return;
+        zombieAuthAreaFallbacks.increment();
+    }
+
+    public static void recordZombieAuthReject(float distance, float radius) {
+        if (!ENABLED) return;
+        zombieAuthRejects.increment();
+        zombieAuthRejectDistance.add((long)(distance * 100.0F));
+        zombieAuthRejectRadius.add((long)(radius * 100.0F));
+    }
+
+    public static void recordZombieAuthRepair() {
+        if (!ENABLED) return;
+        zombieAuthRepairs.increment();
+    }
+
     public static void recordZombieAuthMove() {
         if (!ENABLED) return;
         zombieAuthMoves.increment();
@@ -275,6 +308,11 @@ public final class ApocBRServerTelemetry {
         zombieRelayCellsVisited.add(cellsVisited);
         zombieRelayCandidates.add(candidates);
         zombieRelaySent.add(sent);
+    }
+
+    public static void recordZombieRelayInitial(int sent) {
+        if (!ENABLED) return;
+        zombieRelayInitialSent.add(sent);
     }
 
     public static void recordZombieRelayPacket(boolean extraAll) {
@@ -322,6 +360,29 @@ public final class ApocBRServerTelemetry {
         }
         zombieServerUpdateNanos.add(nanos);
         zombieServerUpdateMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordZombiePopulationUpdate(
+        int nativeRequested,
+        int batches,
+        int recordsRead,
+        int skippedNewIndoor,
+        int edgeForcedStanding,
+        int standing,
+        int moving,
+        long nanos
+    ) {
+        if (!ENABLED) return;
+        zombiePopUpdates.increment();
+        zombiePopNativeRequested.add(nativeRequested);
+        zombiePopBatches.add(batches);
+        zombiePopRecordsRead.add(recordsRead);
+        zombiePopSkippedNewIndoor.add(skippedNewIndoor);
+        zombiePopEdgeForcedStanding.add(edgeForcedStanding);
+        zombiePopStanding.add(standing);
+        zombiePopMoving.add(moving);
+        zombiePopNanos.add(nanos);
+        zombiePopMaxNanos.accumulateAndGet(nanos, Math::max);
     }
 
     public static synchronized void maybeLog() {
@@ -391,6 +452,11 @@ public final class ApocBRServerTelemetry {
             .append(",\"queries\":").append(authQueries)
             .append(",\"avgQueryCandidates\":").append(avg(zombieAuthQueryCandidates.sum(), authQueries))
             .append(",\"fallbacks\":").append(zombieAuthFallbacks.sum())
+            .append(",\"areaFallbacks\":").append(zombieAuthAreaFallbacks.sum())
+            .append(",\"rejects\":").append(zombieAuthRejects.sum())
+            .append(",\"avgRejectDist\":").append(avg(zombieAuthRejectDistance.sum(), zombieAuthRejects.sum()) / 100.0)
+            .append(",\"avgRejectRadius\":").append(avg(zombieAuthRejectRadius.sum(), zombieAuthRejects.sum()) / 100.0)
+            .append(",\"repairs\":").append(zombieAuthRepairs.sum())
             .append(",\"moves\":").append(zombieAuthMoves.sum())
             .append("},\"relay\":{\"gridBuilds\":").append(relayGridBuilds)
             .append(",\"avgActive\":").append(avg(zombieRelayGridActive.sum(), relayGridBuilds))
@@ -400,6 +466,7 @@ public final class ApocBRServerTelemetry {
             .append(",\"queries\":").append(relayQueries)
             .append(",\"avgCellsVisited\":").append(avg(zombieRelayCellsVisited.sum(), relayQueries))
             .append(",\"avgCandidates\":").append(avg(zombieRelayCandidates.sum(), relayQueries))
+            .append(",\"initialSent\":").append(zombieRelayInitialSent.sum())
             .append(",\"sent\":").append(zombieRelaySent.sum())
             .append(",\"packets\":").append(relayPackets)
             .append(",\"extraAllMarks\":").append(zombieRelayExtraAllMarks.sum())
@@ -420,6 +487,18 @@ public final class ApocBRServerTelemetry {
             .append(",\"remote\":").append(zombieServerUpdateRemote.sum())
             .append(",\"avgMs\":").append(avgMs(zombieServerUpdateNanos.sum(), zombieUpdates))
             .append(",\"maxMs\":").append(ms(zombieServerUpdateMaxNanos.get()))
+            .append("}");
+        long popUpdates = zombiePopUpdates.sum();
+        json.append(",\"zombiePop\":{\"updates\":").append(popUpdates)
+            .append(",\"nativeRequested\":").append(zombiePopNativeRequested.sum())
+            .append(",\"batches\":").append(zombiePopBatches.sum())
+            .append(",\"recordsRead\":").append(zombiePopRecordsRead.sum())
+            .append(",\"skippedNewIndoor\":").append(zombiePopSkippedNewIndoor.sum())
+            .append(",\"edgeForcedStanding\":").append(zombiePopEdgeForcedStanding.sum())
+            .append(",\"standing\":").append(zombiePopStanding.sum())
+            .append(",\"moving\":").append(zombiePopMoving.sum())
+            .append(",\"avgMs\":").append(avgMs(zombiePopNanos.sum(), popUpdates))
+            .append(",\"maxMs\":").append(ms(zombiePopMaxNanos.get()))
             .append("}");
         json.append("}");
         return json.toString();
@@ -462,6 +541,11 @@ public final class ApocBRServerTelemetry {
         zombieAuthQueries.reset();
         zombieAuthQueryCandidates.reset();
         zombieAuthFallbacks.reset();
+        zombieAuthAreaFallbacks.reset();
+        zombieAuthRejects.reset();
+        zombieAuthRejectDistance.reset();
+        zombieAuthRejectRadius.reset();
+        zombieAuthRepairs.reset();
         zombieAuthMoves.reset();
         zombieRelayGridBuilds.reset();
         zombieRelayGridActive.reset();
@@ -471,6 +555,7 @@ public final class ApocBRServerTelemetry {
         zombieRelayQueries.reset();
         zombieRelayCellsVisited.reset();
         zombieRelayCandidates.reset();
+        zombieRelayInitialSent.reset();
         zombieRelaySent.reset();
         zombieRelayPackets.reset();
         zombieRelayExtraAllMarks.reset();
@@ -489,6 +574,16 @@ public final class ApocBRServerTelemetry {
         zombieServerUpdateRemote.reset();
         zombieServerUpdateNanos.reset();
         zombieServerUpdateMaxNanos.set(0L);
+        zombiePopUpdates.reset();
+        zombiePopNativeRequested.reset();
+        zombiePopBatches.reset();
+        zombiePopRecordsRead.reset();
+        zombiePopSkippedNewIndoor.reset();
+        zombiePopEdgeForcedStanding.reset();
+        zombiePopStanding.reset();
+        zombiePopMoving.reset();
+        zombiePopNanos.reset();
+        zombiePopMaxNanos.set(0L);
     }
 
     private static double avgMs(long nanos, long count) {

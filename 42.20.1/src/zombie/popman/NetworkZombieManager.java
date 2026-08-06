@@ -3,6 +3,7 @@ package zombie.popman;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import zombie.ApocBRServerTelemetry;
@@ -35,6 +36,7 @@ public class NetworkZombieManager {
     private static final float NospottedDistanceSquared = 16.0F;
     private static final int AUTH_GRID_CELL_SIZE = 64;
     private final Map<Long, ArrayList<NetworkZombieManager.AuthCandidate>> authGrid = new HashMap<>();
+    private final Map<IConnection, Long> authRepairScanMs = new HashMap<>();
     private boolean authGridBuilt;
 
     public static NetworkZombieManager getInstance() {
@@ -147,11 +149,20 @@ public class NetworkZombieManager {
                             IsoPlayer p = candidate.player;
                             if (!GameServer.isDelayedDisconnect(c)) {
                                 float d = p.getRelevantAndDistance(zombie.getX(), zombie.getY(), candidate.relevantRange);
+                                float fallbackDistance = IsoUtils.DistanceTo(p.getX(), p.getY(), zombie.getX(), zombie.getY());
+                                if (Float.isInfinite(d)
+                                    && c.RelevantTo(zombie.getX(), zombie.getY(), (c.getRelevantRange() - 2) * 10)) {
+                                    d = fallbackDistance;
+                                    ApocBRServerTelemetry.recordZombieAuthAreaFallback();
+                                }
+
                                 if (!Float.isInfinite(d)) {
                                     connection = c;
                                     distance = d;
                                     player = p;
                                     break;
+                                } else {
+                                    ApocBRServerTelemetry.recordZombieAuthReject(fallbackDistance, candidate.relevantRange * 8.0F);
                                 }
                             }
                         }
@@ -242,6 +253,7 @@ public class NetworkZombieManager {
         NetworkZombieList.NetworkZombie nz = this.owns.getNetworkZombie(connection);
         packet.zombiesAuth.clear();
         synchronized (this.owns.lock) {
+            this.repairOwnedZombieList(connection, nz);
             nz.zombies.removeIf(zombiex -> zombiex.onlineId == -1);
 
             for (IsoZombie zombie : nz.zombies) {
@@ -312,6 +324,26 @@ public class NetworkZombieManager {
         }
     }
 
+    private void repairOwnedZombieList(IConnection connection, NetworkZombieList.NetworkZombie nz) {
+        long now = System.currentTimeMillis();
+        Long lastScanMs = this.authRepairScanMs.get(connection);
+        if (lastScanMs != null && now - lastScanMs < 2000L) {
+            return;
+        }
+
+        this.authRepairScanMs.put(connection, now);
+        HashSet<IsoZombie> known = new HashSet<>(nz.zombies);
+        ArrayList<IsoZombie> zombies = IsoWorld.instance.currentCell.getZombieList();
+        for (int i = 0; i < zombies.size(); i++) {
+            IsoZombie zombie = zombies.get(i);
+            if (zombie.getOwner() == connection && zombie.onlineId != -1 && !known.contains(zombie)) {
+                nz.zombies.add(zombie);
+                known.add(zombie);
+                ApocBRServerTelemetry.recordZombieAuthRepair();
+            }
+        }
+    }
+
     private void rebuildAuthGrid() {
         long startNanos = System.nanoTime();
         this.authGrid.clear();
@@ -321,7 +353,7 @@ public class NetworkZombieManager {
             UdpConnection c = GameServer.udpEngine.connections.get(n);
             if (c != null && c.isFullyConnected() && !GameServer.isDelayedDisconnect(c)) {
                 int relevantRange = c.getRelevantRange() - 2;
-                int radius = relevantRange * 10;
+                int radius = relevantRange * 8;
                 for (IsoPlayer p : c.players) {
                     if (p != null && p.isAlive()) {
                         candidates++;
