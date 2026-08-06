@@ -97,12 +97,6 @@ public final class ApocBRServerTelemetry {
     private static final AtomicLong zombieAuthGridMaxNanos = new AtomicLong();
     private static final LongAdder zombieAuthQueries = new LongAdder();
     private static final LongAdder zombieAuthQueryCandidates = new LongAdder();
-    private static final LongAdder zombieAuthFallbacks = new LongAdder();
-    private static final LongAdder zombieAuthAreaFallbacks = new LongAdder();
-    private static final LongAdder zombieAuthRejects = new LongAdder();
-    private static final LongAdder zombieAuthRejectDistance = new LongAdder();
-    private static final LongAdder zombieAuthRejectRadius = new LongAdder();
-    private static final LongAdder zombieAuthRepairs = new LongAdder();
     private static final LongAdder zombieAuthMoves = new LongAdder();
 
     private static final LongAdder zombieRelayGridBuilds = new LongAdder();
@@ -264,28 +258,6 @@ public final class ApocBRServerTelemetry {
         if (!ENABLED) return;
         zombieAuthQueries.increment();
         zombieAuthQueryCandidates.add(candidates);
-    }
-
-    public static void recordZombieAuthFallback() {
-        if (!ENABLED) return;
-        zombieAuthFallbacks.increment();
-    }
-
-    public static void recordZombieAuthAreaFallback() {
-        if (!ENABLED) return;
-        zombieAuthAreaFallbacks.increment();
-    }
-
-    public static void recordZombieAuthReject(float distance, float radius) {
-        if (!ENABLED) return;
-        zombieAuthRejects.increment();
-        zombieAuthRejectDistance.add((long)(distance * 100.0F));
-        zombieAuthRejectRadius.add((long)(radius * 100.0F));
-    }
-
-    public static void recordZombieAuthRepair() {
-        if (!ENABLED) return;
-        zombieAuthRepairs.increment();
     }
 
     public static void recordZombieAuthMove() {
@@ -451,12 +423,6 @@ public final class ApocBRServerTelemetry {
             .append(",\"maxBuildMs\":").append(ms(zombieAuthGridMaxNanos.get()))
             .append(",\"queries\":").append(authQueries)
             .append(",\"avgQueryCandidates\":").append(avg(zombieAuthQueryCandidates.sum(), authQueries))
-            .append(",\"fallbacks\":").append(zombieAuthFallbacks.sum())
-            .append(",\"areaFallbacks\":").append(zombieAuthAreaFallbacks.sum())
-            .append(",\"rejects\":").append(zombieAuthRejects.sum())
-            .append(",\"avgRejectDist\":").append(avg(zombieAuthRejectDistance.sum(), zombieAuthRejects.sum()) / 100.0)
-            .append(",\"avgRejectRadius\":").append(avg(zombieAuthRejectRadius.sum(), zombieAuthRejects.sum()) / 100.0)
-            .append(",\"repairs\":").append(zombieAuthRepairs.sum())
             .append(",\"moves\":").append(zombieAuthMoves.sum())
             .append("},\"relay\":{\"gridBuilds\":").append(relayGridBuilds)
             .append(",\"avgActive\":").append(avg(zombieRelayGridActive.sum(), relayGridBuilds))
@@ -540,12 +506,6 @@ public final class ApocBRServerTelemetry {
         zombieAuthGridMaxNanos.set(0L);
         zombieAuthQueries.reset();
         zombieAuthQueryCandidates.reset();
-        zombieAuthFallbacks.reset();
-        zombieAuthAreaFallbacks.reset();
-        zombieAuthRejects.reset();
-        zombieAuthRejectDistance.reset();
-        zombieAuthRejectRadius.reset();
-        zombieAuthRepairs.reset();
         zombieAuthMoves.reset();
         zombieRelayGridBuilds.reset();
         zombieRelayGridActive.reset();
