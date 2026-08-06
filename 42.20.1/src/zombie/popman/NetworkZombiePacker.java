@@ -43,6 +43,7 @@ public class NetworkZombiePacker {
     public final NetworkZombieList zombiesRequest = new NetworkZombieList();
     private final ZombiePacket packet = new ZombiePacket();
     private final HashSet<IConnection> extraUpdate = new HashSet<>();
+    private boolean extraUpdateAll;
     public final Map<IConnection, List<Short>> zombiesToSend = new HashMap<>();
     UpdateLimit zombieSynchronizationReliableLimit = new UpdateLimit(5000L);
     private static final int RELAY_GRID_CELL_SIZE = 64;
@@ -52,12 +53,7 @@ public class NetworkZombiePacker {
     }
 
     public void setExtraUpdate() {
-        for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
-            UdpConnection c = GameServer.udpEngine.connections.get(n);
-            if (c.isFullyConnected()) {
-                this.extraUpdate.add(c);
-            }
-        }
+        this.extraUpdateAll = true;
     }
 
     public void deleteZombie(IsoZombie z) {
@@ -153,6 +149,8 @@ public class NetworkZombiePacker {
                 this.send(connection);
             }
         }
+
+        this.extraUpdateAll = false;
     }
 
     private void updateAuth() {
@@ -208,7 +206,7 @@ public class NetworkZombiePacker {
         for (int i = 0; i < this.zombiesProcessing.size(); i++) {
             IsoZombie z = this.zombiesProcessing.get(i);
             if (z.getOwner() != null && z.onlineId != -1) {
-                this.zombiesProcessingByCell.computeIfAbsent(key(cellFor(z.getX()), cellFor(z.getY()), PZMath.fastfloor(z.getZ())), ignored -> new ArrayList<>()).add(z);
+                this.zombiesProcessingByCell.computeIfAbsent(key(cellFor(z.getX()), cellFor(z.getY())), ignored -> new ArrayList<>()).add(z);
             }
         }
     }
@@ -219,31 +217,45 @@ public class NetworkZombiePacker {
 
         for (IsoPlayer player : connection.players) {
             if (player != null && player.isAlive()) {
-                int z = PZMath.fastfloor(player.getZ());
                 int minCellX = cellFor(player.getX() - radius);
                 int maxCellX = cellFor(player.getX() + radius);
                 int minCellY = cellFor(player.getY() - radius);
                 int maxCellY = cellFor(player.getY() + radius);
-                for (int cx = minCellX; cx <= maxCellX; cx++) {
-                    for (int cy = minCellY; cy <= maxCellY; cy++) {
-                        ArrayList<IsoZombie> zombies = this.zombiesProcessingByCell.get(key(cx, cy, z));
-                        if (zombies != null) {
-                            this.relayCandidateScratch.addAll(zombies);
-                        }
-                    }
-                }
+                this.addRelayCells(minCellX, maxCellX, minCellY, maxCellY);
+            }
+        }
+
+        for (int n = 0; n < connection.connectArea.length; n++) {
+            if (connection.connectArea[n] != null) {
+                int chunkMapWidth = (int)connection.connectArea[n].z;
+                int minX = PZMath.fastfloor(connection.connectArea[n].x - chunkMapWidth / 2) * 8;
+                int minY = PZMath.fastfloor(connection.connectArea[n].y - chunkMapWidth / 2) * 8;
+                int maxX = minX + chunkMapWidth * 8;
+                int maxY = minY + chunkMapWidth * 8;
+                this.addRelayCells(cellFor(minX), cellFor(maxX), cellFor(minY), cellFor(maxY));
             }
         }
 
         return this.relayCandidateScratch;
     }
 
+    private void addRelayCells(int minCellX, int maxCellX, int minCellY, int maxCellY) {
+        for (int cx = minCellX; cx <= maxCellX; cx++) {
+            for (int cy = minCellY; cy <= maxCellY; cy++) {
+                ArrayList<IsoZombie> zombies = this.zombiesProcessingByCell.get(key(cx, cy));
+                if (zombies != null) {
+                    this.relayCandidateScratch.addAll(zombies);
+                }
+            }
+        }
+    }
+
     private static int cellFor(float value) {
         return PZMath.fastfloor(value / RELAY_GRID_CELL_SIZE);
     }
 
-    private static long key(int cellX, int cellY, int z) {
-        return ((long)z & 255L) << 56 | ((long)cellX & 268435455L) << 28 | (long)cellY & 268435455L;
+    private static long key(int cellX, int cellY) {
+        return ((long)cellX & 4294967295L) << 32 | (long)cellY & 4294967295L;
     }
 
     public void send(UdpConnection connection) {
@@ -254,7 +266,7 @@ public class NetworkZombiePacker {
         ZombieSynchronizationPacket packet = (ZombieSynchronizationPacket)connection.getPacket(PacketTypes.PacketType.ZombieSynchronizationReliable);
         packet.hasNeighborPlayer = connection.isNeighborPlayer();
         int countData = this.getZombieData(connection, packet);
-        if (countData > 0 || connection.timerSendZombie.check() || this.extraUpdate.contains(connection)) {
+        if (countData > 0 || connection.timerSendZombie.check() || this.extraUpdateAll || this.extraUpdate.contains(connection)) {
             this.extraUpdate.remove(connection);
             connection.timerSendZombie.reset(3800L);
             ByteBufferWriter b = connection.startPacket();

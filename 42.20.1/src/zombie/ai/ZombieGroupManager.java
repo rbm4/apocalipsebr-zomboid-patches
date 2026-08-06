@@ -195,6 +195,7 @@ public final class ZombieGroupManager {
         ZombieGroup nearest = null;
         float minDist = Float.MAX_VALUE;
         int rallyDist = SandboxOptions.instance.zombieConfig.rallyTravelDistance.getValue();
+        boolean removedEmptyGroups = false;
 
         for (ZombieGroup group : this.getGroupsNear(x, y, z, rallyDist)) {
             int idealSize = (int)(SandboxOptions.instance.zombieConfig.rallyGroupSize.getValue() * group.idealSizeFactor);
@@ -204,6 +205,7 @@ public final class ZombieGroupManager {
 
             if (group.isEmpty()) {
                 this.groups.remove(group);
+                removedEmptyGroups = true;
             } else if (PZMath.fastfloor(group.getLeader().getZ()) == PZMath.fastfloor(z) && group.size() < idealSize) {
                 float dist = IsoUtils.DistanceToSquared(x, y, group.getLeader().getX(), group.getLeader().getY());
                 if (dist < rallyDist * rallyDist && dist < minDist) {
@@ -211,6 +213,10 @@ public final class ZombieGroupManager {
                     nearest = group;
                 }
             }
+        }
+
+        if (removedEmptyGroups) {
+            this.rebuildGroupGrid();
         }
 
         return nearest;

@@ -239,6 +239,7 @@ public class NetworkZombieManager {
         }
 
         if (GameServer.server) {
+            this.beginAuthUpdate();
             for (int i = 0; i < IsoWorld.instance.currentCell.getZombieList().size(); i++) {
                 IsoZombie zombie = IsoWorld.instance.currentCell.getZombieList().get(i);
                 if (zombie.target == player) {
@@ -297,14 +298,13 @@ public class NetworkZombieManager {
                 for (IsoPlayer p : c.players) {
                     if (p != null && p.isAlive()) {
                         AuthCandidate candidate = new AuthCandidate(c, p, relevantRange);
-                        int z = PZMath.fastfloor(p.getZ());
                         int minCellX = cellFor(p.getX() - radius);
                         int maxCellX = cellFor(p.getX() + radius);
                         int minCellY = cellFor(p.getY() - radius);
                         int maxCellY = cellFor(p.getY() + radius);
                         for (int cx = minCellX; cx <= maxCellX; cx++) {
                             for (int cy = minCellY; cy <= maxCellY; cy++) {
-                                this.authGrid.computeIfAbsent(key(cx, cy, z), ignored -> new ArrayList<>()).add(candidate);
+                                this.authGrid.computeIfAbsent(key(cx, cy), ignored -> new ArrayList<>()).add(candidate);
                             }
                         }
                     }
@@ -316,7 +316,7 @@ public class NetworkZombieManager {
     }
 
     private List<AuthCandidate> getAuthCandidates(IsoZombie zombie) {
-        List<AuthCandidate> candidates = this.authGrid.get(key(cellFor(zombie.getX()), cellFor(zombie.getY()), PZMath.fastfloor(zombie.getZ())));
+        List<AuthCandidate> candidates = this.authGrid.get(key(cellFor(zombie.getX()), cellFor(zombie.getY())));
         return candidates == null ? List.of() : candidates;
     }
 
@@ -324,8 +324,8 @@ public class NetworkZombieManager {
         return PZMath.fastfloor(value / AUTH_GRID_CELL_SIZE);
     }
 
-    private static long key(int cellX, int cellY, int z) {
-        return ((long)z & 255L) << 56 | ((long)cellX & 268435455L) << 28 | (long)cellY & 268435455L;
+    private static long key(int cellX, int cellY) {
+        return ((long)cellX & 4294967295L) << 32 | (long)cellY & 4294967295L;
     }
 
     private static final class AuthCandidate {
