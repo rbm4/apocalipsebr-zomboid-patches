@@ -226,8 +226,21 @@ public class ServerLOS {
             LosUtil.PerPlayerData ppd = LosUtil.cachedresults[slotIndex];
             ppd.checkSize();
 
-            for (int x = 0; x < LosUtil.sizeX; x++) {
-                for (int y = 0; y < LosUtil.sizeY; y++) {
+            // ApocBR: cachedresults is sized sizeX x sizeY x sizeZ (200x200x16 by default) to
+            // cover the whole map, but a single calc only ever reads/writes the
+            // PD_SIZE_IN_SQUARES (96) window centered on the player - lineClearCached's cache
+            // index is (targetCoord - playerCoord) + size/2, and every target square scanned
+            // below is within +-48 of the player in X/Y (Z already matches sizeZ exactly). The
+            // old loop zeroed all 200x200x16 cells every real calc, ~4.3x more than the window
+            // that is actually touched. Clipping the zero-fill to that same window is a pure
+            // perf fix with no behavior change, since cells outside it are never read this pass.
+            int zeroMinX = LosUtil.sizeX / 2 - PD_SIZE_IN_SQUARES / 2;
+            int zeroMaxX = zeroMinX + PD_SIZE_IN_SQUARES;
+            int zeroMinY = LosUtil.sizeY / 2 - PD_SIZE_IN_SQUARES / 2;
+            int zeroMaxY = zeroMinY + PD_SIZE_IN_SQUARES;
+
+            for (int x = zeroMinX; x < zeroMaxX; x++) {
+                for (int y = zeroMinY; y < zeroMaxY; y++) {
                     for (int z = 0; z < LosUtil.sizeZ; z++) {
                         ppd.cachedresults[x][y][z] = 0;
                     }
@@ -267,6 +280,13 @@ public class ServerLOS {
 
     private class LOSDispatcher extends Thread {
         public final Object notifier;
+        // ApocBR: runInner() used to always scan playersMain starting at index 0. Once slots
+        // are saturated (busyMax == LOS_SLOT_COUNT every pass, as seen in production telemetry),
+        // that meant players earlier in playersMain were dispatched almost every pass while
+        // players later in the list absorbed most of the "starved" count. Rotating the scan
+        // start index forward past the last player actually dispatched spreads slot-claim
+        // priority round-robin across all waiting players instead of favoring list order.
+        private int nextScanIndex;
 
         private LOSDispatcher() {
             Objects.requireNonNull(ServerLOS.this);
@@ -293,22 +313,29 @@ public class ServerLOS {
                     snapshot = new ArrayList<>(ServerLOS.this.playersMain);
                 }
 
-                for (int i = 0; i < snapshot.size(); i++) {
-                    if (ServerLOS.this.mapLoading) {
-                        break;
-                    }
+                int size = snapshot.size();
+                if (size > 0) {
+                    int start = Math.floorMod(this.nextScanIndex, size);
 
-                    ServerLOS.PlayerData data = snapshot.get(i);
-                    if (data.status == ServerLOS.UpdateStatus.WaitingInLOS) {
-                        Integer slot = ServerLOS.this.freeSlots.poll();
-                        if (slot != null) {
-                            data.status = ServerLOS.UpdateStatus.BusyInLOS;
-                            ServerLOS.this.noise("BusyInLOS playerID=" + data.player.onlineId);
-                            ApocBRServerTelemetry.recordServerLosDispatch();
-                            this.dispatch(data, slot);
-                        } else {
-                            starvedThisPass = true;
+                    for (int offset = 0; offset < size; offset++) {
+                        if (ServerLOS.this.mapLoading) {
                             break;
+                        }
+
+                        int i = (start + offset) % size;
+                        ServerLOS.PlayerData data = snapshot.get(i);
+                        if (data.status == ServerLOS.UpdateStatus.WaitingInLOS) {
+                            Integer slot = ServerLOS.this.freeSlots.poll();
+                            if (slot != null) {
+                                data.status = ServerLOS.UpdateStatus.BusyInLOS;
+                                ServerLOS.this.noise("BusyInLOS playerID=" + data.player.onlineId);
+                                ApocBRServerTelemetry.recordServerLosDispatch();
+                                this.dispatch(data, slot);
+                                this.nextScanIndex = i + 1;
+                            } else {
+                                starvedThisPass = true;
+                                break;
+                            }
                         }
                     }
                 }
