@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import zombie.ApocBRServerTelemetry;
 import zombie.ai.states.ZombieTurnAlerted;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
@@ -40,6 +41,7 @@ public class NetworkZombiePacker {
     private final ArrayList<IsoZombie> zombiesProcessing = new ArrayList<>();
     private final Map<Long, ArrayList<IsoZombie>> zombiesProcessingByCell = new HashMap<>();
     private final HashSet<IsoZombie> relayCandidateScratch = new HashSet<>();
+    private int relayCellsVisited;
     public final NetworkZombieList zombiesRequest = new NetworkZombieList();
     private final ZombiePacket packet = new ZombiePacket();
     private final HashSet<IConnection> extraUpdate = new HashSet<>();
@@ -54,6 +56,7 @@ public class NetworkZombiePacker {
 
     public void setExtraUpdate() {
         this.extraUpdateAll = true;
+        ApocBRServerTelemetry.recordZombieRelayExtraAllMark();
     }
 
     public void deleteZombie(IsoZombie z) {
@@ -166,6 +169,7 @@ public class NetworkZombiePacker {
     public int getZombieData(UdpConnection connection, ZombieSynchronizationPacket packet) {
         packet.sendQueue.clear();
         int realCount = 0;
+        int relaySent = 0;
 
         try {
             NetworkZombieList.NetworkZombie nzr = this.zombiesRequest.getNetworkZombie(connection);
@@ -182,7 +186,8 @@ public class NetworkZombiePacker {
                 }
             }
 
-            for (IsoZombie z : this.getRelayCandidates(connection)) {
+            HashSet<IsoZombie> relayCandidates = this.getRelayCandidates(connection);
+            for (IsoZombie z : relayCandidates) {
                 if (z.getOwner() != null
                     && z.getOwner() != connection
                     && connection.RelevantTo(z.getX(), z.getY(), (connection.getRelevantRange() - 2) * 10)
@@ -191,8 +196,10 @@ public class NetworkZombiePacker {
                     this.zombiesToSend.get(connection).add(z.getOnlineID());
                     z.zombiePacketUpdated = false;
                     realCount++;
+                    relaySent++;
                 }
             }
+            ApocBRServerTelemetry.recordZombieRelayQuery(this.relayCellsVisited, relayCandidates.size(), relaySent);
         } catch (BufferOverflowException var7) {
             DebugType.General.printException(var7, LogSeverity.Error);
         }
@@ -201,18 +208,24 @@ public class NetworkZombiePacker {
     }
 
     private void rebuildZombiesProcessingGrid() {
+        long startNanos = System.nanoTime();
         this.zombiesProcessingByCell.clear();
+        int active = 0;
 
         for (int i = 0; i < this.zombiesProcessing.size(); i++) {
             IsoZombie z = this.zombiesProcessing.get(i);
             if (z.getOwner() != null && z.onlineId != -1) {
+                active++;
                 this.zombiesProcessingByCell.computeIfAbsent(key(cellFor(z.getX()), cellFor(z.getY())), ignored -> new ArrayList<>()).add(z);
             }
         }
+
+        ApocBRServerTelemetry.recordZombieRelayGrid(active, this.zombiesProcessingByCell.size(), System.nanoTime() - startNanos);
     }
 
     private HashSet<IsoZombie> getRelayCandidates(UdpConnection connection) {
         this.relayCandidateScratch.clear();
+        this.relayCellsVisited = 0;
         int radius = (connection.getRelevantRange() - 2) * 10;
 
         for (IsoPlayer player : connection.players) {
@@ -242,6 +255,7 @@ public class NetworkZombiePacker {
     private void addRelayCells(int minCellX, int maxCellX, int minCellY, int maxCellY) {
         for (int cx = minCellX; cx <= maxCellX; cx++) {
             for (int cy = minCellY; cy <= maxCellY; cy++) {
+                this.relayCellsVisited++;
                 ArrayList<IsoZombie> zombies = this.zombiesProcessingByCell.get(key(cx, cy));
                 if (zombies != null) {
                     this.relayCandidateScratch.addAll(zombies);
@@ -267,6 +281,7 @@ public class NetworkZombiePacker {
         packet.hasNeighborPlayer = connection.isNeighborPlayer();
         int countData = this.getZombieData(connection, packet);
         if (countData > 0 || connection.timerSendZombie.check() || this.extraUpdateAll || this.extraUpdate.contains(connection)) {
+            ApocBRServerTelemetry.recordZombieRelayPacket(this.extraUpdateAll);
             this.extraUpdate.remove(connection);
             connection.timerSendZombie.reset(3800L);
             ByteBufferWriter b = connection.startPacket();

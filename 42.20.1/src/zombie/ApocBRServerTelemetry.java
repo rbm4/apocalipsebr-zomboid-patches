@@ -89,6 +89,45 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder losNanos = new LongAdder();
     private static final AtomicLong losMaxNanos = new AtomicLong();
 
+    private static final LongAdder zombieAuthGridBuilds = new LongAdder();
+    private static final LongAdder zombieAuthGridCells = new LongAdder();
+    private static final LongAdder zombieAuthGridCandidates = new LongAdder();
+    private static final LongAdder zombieAuthGridCellWrites = new LongAdder();
+    private static final LongAdder zombieAuthGridNanos = new LongAdder();
+    private static final AtomicLong zombieAuthGridMaxNanos = new AtomicLong();
+    private static final LongAdder zombieAuthQueries = new LongAdder();
+    private static final LongAdder zombieAuthQueryCandidates = new LongAdder();
+    private static final LongAdder zombieAuthMoves = new LongAdder();
+
+    private static final LongAdder zombieRelayGridBuilds = new LongAdder();
+    private static final LongAdder zombieRelayGridActive = new LongAdder();
+    private static final LongAdder zombieRelayGridCells = new LongAdder();
+    private static final LongAdder zombieRelayGridNanos = new LongAdder();
+    private static final AtomicLong zombieRelayGridMaxNanos = new AtomicLong();
+    private static final LongAdder zombieRelayQueries = new LongAdder();
+    private static final LongAdder zombieRelayCellsVisited = new LongAdder();
+    private static final LongAdder zombieRelayCandidates = new LongAdder();
+    private static final LongAdder zombieRelaySent = new LongAdder();
+    private static final LongAdder zombieRelayPackets = new LongAdder();
+    private static final LongAdder zombieRelayExtraAllMarks = new LongAdder();
+    private static final LongAdder zombieRelayExtraAllPackets = new LongAdder();
+
+    private static final LongAdder zombieGroupGridBuilds = new LongAdder();
+    private static final LongAdder zombieGroupGridGroups = new LongAdder();
+    private static final LongAdder zombieGroupGridCells = new LongAdder();
+    private static final LongAdder zombieGroupGridNanos = new LongAdder();
+    private static final AtomicLong zombieGroupGridMaxNanos = new AtomicLong();
+    private static final LongAdder zombieGroupQueries = new LongAdder();
+    private static final LongAdder zombieGroupCandidates = new LongAdder();
+    private static final LongAdder zombieGroupEmptyRemoved = new LongAdder();
+
+    private static final LongAdder zombieServerUpdateCalls = new LongAdder();
+    private static final LongAdder zombieServerUpdateOwned = new LongAdder();
+    private static final LongAdder zombieServerUpdateTarget = new LongAdder();
+    private static final LongAdder zombieServerUpdateRemote = new LongAdder();
+    private static final LongAdder zombieServerUpdateNanos = new LongAdder();
+    private static final AtomicLong zombieServerUpdateMaxNanos = new AtomicLong();
+
     private ApocBRServerTelemetry() {
     }
 
@@ -194,6 +233,91 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static void recordZombieAuthGrid(int cells, int candidates, int cellWrites, long nanos) {
+        if (!ENABLED) return;
+        zombieAuthGridBuilds.increment();
+        zombieAuthGridCells.add(cells);
+        zombieAuthGridCandidates.add(candidates);
+        zombieAuthGridCellWrites.add(cellWrites);
+        zombieAuthGridNanos.add(nanos);
+        zombieAuthGridMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordZombieAuthQuery(int candidates) {
+        if (!ENABLED) return;
+        zombieAuthQueries.increment();
+        zombieAuthQueryCandidates.add(candidates);
+    }
+
+    public static void recordZombieAuthMove() {
+        if (!ENABLED) return;
+        zombieAuthMoves.increment();
+    }
+
+    public static void recordZombieRelayGrid(int activeZombies, int cells, long nanos) {
+        if (!ENABLED) return;
+        zombieRelayGridBuilds.increment();
+        zombieRelayGridActive.add(activeZombies);
+        zombieRelayGridCells.add(cells);
+        zombieRelayGridNanos.add(nanos);
+        zombieRelayGridMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordZombieRelayQuery(int cellsVisited, int candidates, int sent) {
+        if (!ENABLED) return;
+        zombieRelayQueries.increment();
+        zombieRelayCellsVisited.add(cellsVisited);
+        zombieRelayCandidates.add(candidates);
+        zombieRelaySent.add(sent);
+    }
+
+    public static void recordZombieRelayPacket(boolean extraAll) {
+        if (!ENABLED) return;
+        zombieRelayPackets.increment();
+        if (extraAll) {
+            zombieRelayExtraAllPackets.increment();
+        }
+    }
+
+    public static void recordZombieRelayExtraAllMark() {
+        if (!ENABLED) return;
+        zombieRelayExtraAllMarks.increment();
+    }
+
+    public static void recordZombieGroupGrid(int groups, int cells, long nanos) {
+        if (!ENABLED) return;
+        zombieGroupGridBuilds.increment();
+        zombieGroupGridGroups.add(groups);
+        zombieGroupGridCells.add(cells);
+        zombieGroupGridNanos.add(nanos);
+        zombieGroupGridMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordZombieGroupQuery(int candidates, boolean removedEmptyGroups) {
+        if (!ENABLED) return;
+        zombieGroupQueries.increment();
+        zombieGroupCandidates.add(candidates);
+        if (removedEmptyGroups) {
+            zombieGroupEmptyRemoved.increment();
+        }
+    }
+
+    public static void recordZombieServerUpdate(long nanos, boolean owned, boolean hasTarget, boolean remote) {
+        if (!ENABLED) return;
+        zombieServerUpdateCalls.increment();
+        if (owned) {
+            zombieServerUpdateOwned.increment();
+        }
+        if (hasTarget) {
+            zombieServerUpdateTarget.increment();
+        }
+        if (remote) {
+            zombieServerUpdateRemote.increment();
+        }
+        zombieServerUpdateNanos.add(nanos);
+        zombieServerUpdateMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
     public static synchronized void maybeLog() {
         if (!ENABLED) return;
         long now = System.currentTimeMillis();
@@ -244,6 +368,52 @@ public final class ApocBRServerTelemetry {
             .append(",\"avgMs\":").append(avgMs(losNanos.sum(), losCalcsCount))
             .append(",\"maxMs\":").append(ms(losMaxNanos.get()))
             .append("}");
+        long authGridBuilds = zombieAuthGridBuilds.sum();
+        long authQueries = zombieAuthQueries.sum();
+        long relayGridBuilds = zombieRelayGridBuilds.sum();
+        long relayQueries = zombieRelayQueries.sum();
+        long relayPackets = zombieRelayPackets.sum();
+        long groupGridBuilds = zombieGroupGridBuilds.sum();
+        long groupQueries = zombieGroupQueries.sum();
+        long zombieUpdates = zombieServerUpdateCalls.sum();
+        json.append(",\"zombieNet\":{\"auth\":{\"gridBuilds\":").append(authGridBuilds)
+            .append(",\"avgCells\":").append(avg(zombieAuthGridCells.sum(), authGridBuilds))
+            .append(",\"avgCandidates\":").append(avg(zombieAuthGridCandidates.sum(), authGridBuilds))
+            .append(",\"avgCellWrites\":").append(avg(zombieAuthGridCellWrites.sum(), authGridBuilds))
+            .append(",\"avgBuildMs\":").append(avgMs(zombieAuthGridNanos.sum(), authGridBuilds))
+            .append(",\"maxBuildMs\":").append(ms(zombieAuthGridMaxNanos.get()))
+            .append(",\"queries\":").append(authQueries)
+            .append(",\"avgQueryCandidates\":").append(avg(zombieAuthQueryCandidates.sum(), authQueries))
+            .append(",\"moves\":").append(zombieAuthMoves.sum())
+            .append("},\"relay\":{\"gridBuilds\":").append(relayGridBuilds)
+            .append(",\"avgActive\":").append(avg(zombieRelayGridActive.sum(), relayGridBuilds))
+            .append(",\"avgCells\":").append(avg(zombieRelayGridCells.sum(), relayGridBuilds))
+            .append(",\"avgBuildMs\":").append(avgMs(zombieRelayGridNanos.sum(), relayGridBuilds))
+            .append(",\"maxBuildMs\":").append(ms(zombieRelayGridMaxNanos.get()))
+            .append(",\"queries\":").append(relayQueries)
+            .append(",\"avgCellsVisited\":").append(avg(zombieRelayCellsVisited.sum(), relayQueries))
+            .append(",\"avgCandidates\":").append(avg(zombieRelayCandidates.sum(), relayQueries))
+            .append(",\"sent\":").append(zombieRelaySent.sum())
+            .append(",\"packets\":").append(relayPackets)
+            .append(",\"extraAllMarks\":").append(zombieRelayExtraAllMarks.sum())
+            .append(",\"extraAllPackets\":").append(zombieRelayExtraAllPackets.sum())
+            .append("}}");
+        json.append(",\"zombieGroups\":{\"gridBuilds\":").append(groupGridBuilds)
+            .append(",\"avgGroups\":").append(avg(zombieGroupGridGroups.sum(), groupGridBuilds))
+            .append(",\"avgCells\":").append(avg(zombieGroupGridCells.sum(), groupGridBuilds))
+            .append(",\"avgBuildMs\":").append(avgMs(zombieGroupGridNanos.sum(), groupGridBuilds))
+            .append(",\"maxBuildMs\":").append(ms(zombieGroupGridMaxNanos.get()))
+            .append(",\"queries\":").append(groupQueries)
+            .append(",\"avgCandidates\":").append(avg(zombieGroupCandidates.sum(), groupQueries))
+            .append(",\"emptyRemoved\":").append(zombieGroupEmptyRemoved.sum())
+            .append("}");
+        json.append(",\"zombieUpdate\":{\"serverCalls\":").append(zombieUpdates)
+            .append(",\"owned\":").append(zombieServerUpdateOwned.sum())
+            .append(",\"target\":").append(zombieServerUpdateTarget.sum())
+            .append(",\"remote\":").append(zombieServerUpdateRemote.sum())
+            .append(",\"avgMs\":").append(avgMs(zombieServerUpdateNanos.sum(), zombieUpdates))
+            .append(",\"maxMs\":").append(ms(zombieServerUpdateMaxNanos.get()))
+            .append("}");
         json.append("}");
         return json.toString();
     }
@@ -276,6 +446,41 @@ public final class ApocBRServerTelemetry {
         // busy while N are actually running would be a false "idle" signal for the next
         // interval's peak.
         losSlotsBusyMax.set(losSlotsBusy.get());
+        zombieAuthGridBuilds.reset();
+        zombieAuthGridCells.reset();
+        zombieAuthGridCandidates.reset();
+        zombieAuthGridCellWrites.reset();
+        zombieAuthGridNanos.reset();
+        zombieAuthGridMaxNanos.set(0L);
+        zombieAuthQueries.reset();
+        zombieAuthQueryCandidates.reset();
+        zombieAuthMoves.reset();
+        zombieRelayGridBuilds.reset();
+        zombieRelayGridActive.reset();
+        zombieRelayGridCells.reset();
+        zombieRelayGridNanos.reset();
+        zombieRelayGridMaxNanos.set(0L);
+        zombieRelayQueries.reset();
+        zombieRelayCellsVisited.reset();
+        zombieRelayCandidates.reset();
+        zombieRelaySent.reset();
+        zombieRelayPackets.reset();
+        zombieRelayExtraAllMarks.reset();
+        zombieRelayExtraAllPackets.reset();
+        zombieGroupGridBuilds.reset();
+        zombieGroupGridGroups.reset();
+        zombieGroupGridCells.reset();
+        zombieGroupGridNanos.reset();
+        zombieGroupGridMaxNanos.set(0L);
+        zombieGroupQueries.reset();
+        zombieGroupCandidates.reset();
+        zombieGroupEmptyRemoved.reset();
+        zombieServerUpdateCalls.reset();
+        zombieServerUpdateOwned.reset();
+        zombieServerUpdateTarget.reset();
+        zombieServerUpdateRemote.reset();
+        zombieServerUpdateNanos.reset();
+        zombieServerUpdateMaxNanos.set(0L);
     }
 
     private static double avgMs(long nanos, long count) {
@@ -284,6 +489,10 @@ public final class ApocBRServerTelemetry {
 
     private static double ms(long nanos) {
         return round2((double) nanos / 1000000.0);
+    }
+
+    private static double avg(long value, long count) {
+        return count <= 0L ? 0.0 : round2((double)value / (double)count);
     }
 
     private static double round2(double value) {

@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import zombie.ApocBRServerTelemetry;
 import zombie.ai.State;
 import zombie.ai.states.GenericDefaultState;
 import zombie.ai.states.ZombieEatBodyState;
@@ -122,7 +123,9 @@ public class NetworkZombieManager {
                         distance = connection.getRelevantAndDistance(zombie.getX(), zombie.getY(), zombie.getZ());
                     }
 
-                    for (AuthCandidate candidate : this.getAuthCandidates(zombie)) {
+                    List<AuthCandidate> authCandidates = this.getAuthCandidates(zombie);
+                    ApocBRServerTelemetry.recordZombieAuthQuery(authCandidates.size());
+                    for (AuthCandidate candidate : authCandidates) {
                         UdpConnection c = candidate.connection;
                         IsoPlayer p = candidate.player;
                         if (c != connection && !GameServer.isDelayedDisconnect(c)) {
@@ -170,6 +173,7 @@ public class NetworkZombieManager {
                     zombie.getNetworkCharacterAI().resetSpeedLimiter();
                 }
 
+                ApocBRServerTelemetry.recordZombieAuthMove();
                 NetworkZombiePacker.getInstance().setExtraUpdate();
             }
         } else {
@@ -208,6 +212,7 @@ public class NetworkZombieManager {
                 }
 
                 zombie.lastChangeOwner = System.currentTimeMillis();
+                ApocBRServerTelemetry.recordZombieAuthMove();
                 NetworkZombiePacker.getInstance().setExtraUpdate();
             }
         }
@@ -289,7 +294,10 @@ public class NetworkZombieManager {
     }
 
     private void rebuildAuthGrid() {
+        long startNanos = System.nanoTime();
         this.authGrid.clear();
+        int candidates = 0;
+        int cellWrites = 0;
         for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
             UdpConnection c = GameServer.udpEngine.connections.get(n);
             if (c != null && c.isFullyConnected() && !GameServer.isDelayedDisconnect(c)) {
@@ -297,6 +305,7 @@ public class NetworkZombieManager {
                 int radius = relevantRange * 10;
                 for (IsoPlayer p : c.players) {
                     if (p != null && p.isAlive()) {
+                        candidates++;
                         AuthCandidate candidate = new AuthCandidate(c, p, relevantRange);
                         int minCellX = cellFor(p.getX() - radius);
                         int maxCellX = cellFor(p.getX() + radius);
@@ -305,6 +314,7 @@ public class NetworkZombieManager {
                         for (int cx = minCellX; cx <= maxCellX; cx++) {
                             for (int cy = minCellY; cy <= maxCellY; cy++) {
                                 this.authGrid.computeIfAbsent(key(cx, cy), ignored -> new ArrayList<>()).add(candidate);
+                                cellWrites++;
                             }
                         }
                     }
@@ -313,6 +323,7 @@ public class NetworkZombieManager {
         }
 
         this.authGridBuilt = true;
+        ApocBRServerTelemetry.recordZombieAuthGrid(this.authGrid.size(), candidates, cellWrites, System.nanoTime() - startNanos);
     }
 
     private List<AuthCandidate> getAuthCandidates(IsoZombie zombie) {

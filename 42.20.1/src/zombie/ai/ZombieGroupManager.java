@@ -5,6 +5,7 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
+import zombie.ApocBRServerTelemetry;
 import zombie.GameTime;
 import zombie.SandboxOptions;
 import zombie.VirtualZombieManager;
@@ -122,7 +123,9 @@ public final class ZombieGroupManager {
                             int groupSeparationDistance = SandboxOptions.instance.zombieConfig.rallyGroupSeparation.getValue();
                             Vector2 c = this.tempVec2.set(0.0F, 0.0F);
 
-                            for (ZombieGroup other : this.getGroupsNear(zombie.getX(), zombie.getY(), zombie.getZ(), groupSeparationDistance)) {
+                            ArrayList<ZombieGroup> spreadCandidates = this.getGroupsNear(zombie.getX(), zombie.getY(), zombie.getZ(), groupSeparationDistance);
+                            ApocBRServerTelemetry.recordZombieGroupQuery(spreadCandidates.size(), false);
+                            for (ZombieGroup other : spreadCandidates) {
                                 if (other.getLeader() != null
                                     && other != zombie.group
                                     && PZMath.fastfloor(other.getLeader().getZ()) == PZMath.fastfloor(zombie.getZ())) {
@@ -218,15 +221,18 @@ public final class ZombieGroupManager {
         if (removedEmptyGroups) {
             this.rebuildGroupGrid();
         }
+        ApocBRServerTelemetry.recordZombieGroupQuery(this.groupCandidates.size(), removedEmptyGroups);
 
         return nearest;
     }
 
     private void rebuildGroupGrid() {
+        long startNanos = System.nanoTime();
         this.groupGrid.clear();
         for (ZombieGroup group : this.groups) {
             this.indexGroup(group);
         }
+        ApocBRServerTelemetry.recordZombieGroupGrid(this.groups.size(), this.groupGrid.size(), System.nanoTime() - startNanos);
     }
 
     private void indexGroup(ZombieGroup group) {

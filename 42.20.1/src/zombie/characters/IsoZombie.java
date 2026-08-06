@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Stack;
 import org.joml.Vector3f;
+import zombie.ApocBRServerTelemetry;
 import zombie.CombatManager;
 import zombie.GameTime;
 import zombie.GameWindow;
@@ -3236,8 +3237,22 @@ public final class IsoZombie extends IsoGameCharacter implements IHumanVisual {
 
     @Override
     public void update() {
-        try (AbstractPerformanceProfileProbe var1 = IsoZombie.s_performance.update.profile()) {
-            this.updateInternal();
+        if (GameServer.server) {
+            long apocStartNanos = System.nanoTime();
+            try (AbstractPerformanceProfileProbe var1 = IsoZombie.s_performance.update.profile()) {
+                this.updateInternal();
+            } finally {
+                ApocBRServerTelemetry.recordZombieServerUpdate(
+                    System.nanoTime() - apocStartNanos,
+                    this.getOwner() != null,
+                    this.target != null,
+                    this.isRemoteZombie()
+                );
+            }
+        } else {
+            try (AbstractPerformanceProfileProbe var1 = IsoZombie.s_performance.update.profile()) {
+                this.updateInternal();
+            }
         }
     }
 
