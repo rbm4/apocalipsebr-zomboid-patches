@@ -15,6 +15,7 @@ import zombie.core.math.PZMath;
 import zombie.core.textures.ColorInfo;
 import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
+import zombie.iso.IsoCamera;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.LosUtil;
 
@@ -44,6 +45,11 @@ public class ServerLOS {
     // same formula to stay in sync with those slot index spaces.
     private static final int LOS_SLOT_COUNT = Math.max(4, PZForkJoinPool.commonPool().getParallelism());
     private final ConcurrentLinkedQueue<Integer> freeSlots = new ConcurrentLinkedQueue<>();
+    private static final int LOS_THROTTLE_PHASES = 3;
+    private static final int LOS_THROTTLE_SKIP_PHASE = 0;
+    private static final int LOS_THROTTLE_MAX_DEFER_ROUNDS = 3;
+    private int losThrottleRound;
+    private long losThrottleFrame = -1L;
 
     private void noise(String str) {
     }
@@ -108,21 +114,49 @@ public class ServerLOS {
 
     public void doServerZombieLOS(IsoPlayer player) {
         if (ServerMap.instance.updateLosThisFrame) {
+            this.updateThrottleRound();
             ServerLOS.PlayerData data = this.findData(player);
             if (data != null) {
+                boolean forceSchedule = data.status == ServerLOS.UpdateStatus.NeverDone || this.isLosThrottleExpired(data);
                 if (data.status == ServerLOS.UpdateStatus.NeverDone) {
                     data.status = ServerLOS.UpdateStatus.ReadyInMain;
                 }
 
                 if (data.status == ServerLOS.UpdateStatus.ReadyInMain) {
-                    data.status = ServerLOS.UpdateStatus.WaitingInLOS;
-                    this.noise("WaitingInLOS playerID=" + player.onlineId);
-                    synchronized (this.thread.notifier) {
-                        this.thread.notifier.notify();
+                    if (!forceSchedule && this.shouldThrottleLos(player)) {
+                        ApocBRServerTelemetry.recordServerLosPhased();
+                    } else {
+                        if (forceSchedule) {
+                            ApocBRServerTelemetry.recordServerLosForced();
+                        }
+
+                        data.lastQueuedLosRound = this.losThrottleRound;
+                        data.status = ServerLOS.UpdateStatus.WaitingInLOS;
+                        this.noise("WaitingInLOS playerID=" + player.onlineId);
+                        synchronized (this.thread.notifier) {
+                            this.thread.notifier.notify();
+                        }
                     }
                 }
             }
         }
+    }
+
+    private void updateThrottleRound() {
+        long frame = IsoCamera.frameState.frameCount;
+        if (frame != this.losThrottleFrame) {
+            this.losThrottleFrame = frame;
+            this.losThrottleRound++;
+        }
+    }
+
+    private boolean shouldThrottleLos(IsoPlayer player) {
+        return Math.floorMod(this.losThrottleRound + player.onlineId, LOS_THROTTLE_PHASES) == LOS_THROTTLE_SKIP_PHASE;
+    }
+
+    private boolean isLosThrottleExpired(ServerLOS.PlayerData data) {
+        return data.lastQueuedLosRound == Integer.MIN_VALUE
+            || this.losThrottleRound - data.lastQueuedLosRound >= LOS_THROTTLE_MAX_DEFER_ROUNDS;
     }
 
     public void updateLOS(IsoPlayer player) {
@@ -356,6 +390,7 @@ public class ServerLOS {
         public int px;
         public int py;
         public int pz;
+        public int lastQueuedLosRound = Integer.MIN_VALUE;
         public boolean[][][] visible = new boolean[96][96][LosUtil.sizeZ];
 
         public PlayerData(IsoPlayer player) {

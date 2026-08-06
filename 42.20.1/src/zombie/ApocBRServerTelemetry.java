@@ -46,7 +46,9 @@ import zombie.debug.DebugLog;
  * saturating the pool; "starved" counts WaitingInLOS players that found no
  * free slot on a given dispatch pass (sustained non-zero starved is the
  * signal that this ceiling is now the bottleneck, not the vanilla local
- * co-op cap it replaced).
+ * co-op cap it replaced). "phased" is the deterministic 1-in-3 scheduler
+ * throttle before a player enters WaitingInLOS; "forced" counts first-run or
+ * max-age escape hatches that bypass that throttle.
  */
 public final class ApocBRServerTelemetry {
     private static final boolean ENABLED = getBoolean("apocbr.telemetry.enabled", true);
@@ -85,6 +87,8 @@ public final class ApocBRServerTelemetry {
     private static final AtomicInteger losSlotsBusyMax = new AtomicInteger();
     private static final LongAdder losCalcs = new LongAdder();
     private static final LongAdder losSkipped = new LongAdder();
+    private static final LongAdder losPhased = new LongAdder();
+    private static final LongAdder losForced = new LongAdder();
     private static final LongAdder losStarved = new LongAdder();
     private static final LongAdder losNanos = new LongAdder();
     private static final AtomicLong losMaxNanos = new AtomicLong();
@@ -224,6 +228,16 @@ public final class ApocBRServerTelemetry {
     public static void recordServerLosStarved() {
         if (!ENABLED) return;
         losStarved.increment();
+    }
+
+    public static void recordServerLosPhased() {
+        if (!ENABLED) return;
+        losPhased.increment();
+    }
+
+    public static void recordServerLosForced() {
+        if (!ENABLED) return;
+        losForced.increment();
     }
 
     /**
@@ -403,6 +417,8 @@ public final class ApocBRServerTelemetry {
             .append(",\"busyMax\":").append(losSlotsBusyMax.get())
             .append(",\"calcs\":").append(losCalcsCount)
             .append(",\"skipped\":").append(losSkipped.sum())
+            .append(",\"phased\":").append(losPhased.sum())
+            .append(",\"forced\":").append(losForced.sum())
             .append(",\"starved\":").append(losStarved.sum())
             .append(",\"avgMs\":").append(avgMs(losNanos.sum(), losCalcsCount))
             .append(",\"maxMs\":").append(ms(losMaxNanos.get()))
@@ -490,6 +506,8 @@ public final class ApocBRServerTelemetry {
         // last known value between snapshots is more useful than resetting to 0.
         losCalcs.reset();
         losSkipped.reset();
+        losPhased.reset();
+        losForced.reset();
         losStarved.reset();
         losNanos.reset();
         losMaxNanos.set(0L);
