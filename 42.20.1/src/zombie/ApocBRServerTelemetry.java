@@ -97,6 +97,7 @@ public final class ApocBRServerTelemetry {
     private static final AtomicLong zombieAuthGridMaxNanos = new AtomicLong();
     private static final LongAdder zombieAuthQueries = new LongAdder();
     private static final LongAdder zombieAuthQueryCandidates = new LongAdder();
+    private static final LongAdder zombieAuthFallbacks = new LongAdder();
     private static final LongAdder zombieAuthMoves = new LongAdder();
 
     private static final LongAdder zombieRelayGridBuilds = new LongAdder();
@@ -249,6 +250,11 @@ public final class ApocBRServerTelemetry {
         zombieAuthQueryCandidates.add(candidates);
     }
 
+    public static void recordZombieAuthFallback() {
+        if (!ENABLED) return;
+        zombieAuthFallbacks.increment();
+    }
+
     public static void recordZombieAuthMove() {
         if (!ENABLED) return;
         zombieAuthMoves.increment();
@@ -384,6 +390,7 @@ public final class ApocBRServerTelemetry {
             .append(",\"maxBuildMs\":").append(ms(zombieAuthGridMaxNanos.get()))
             .append(",\"queries\":").append(authQueries)
             .append(",\"avgQueryCandidates\":").append(avg(zombieAuthQueryCandidates.sum(), authQueries))
+            .append(",\"fallbacks\":").append(zombieAuthFallbacks.sum())
             .append(",\"moves\":").append(zombieAuthMoves.sum())
             .append("},\"relay\":{\"gridBuilds\":").append(relayGridBuilds)
             .append(",\"avgActive\":").append(avg(zombieRelayGridActive.sum(), relayGridBuilds))
@@ -454,6 +461,7 @@ public final class ApocBRServerTelemetry {
         zombieAuthGridMaxNanos.set(0L);
         zombieAuthQueries.reset();
         zombieAuthQueryCandidates.reset();
+        zombieAuthFallbacks.reset();
         zombieAuthMoves.reset();
         zombieRelayGridBuilds.reset();
         zombieRelayGridActive.reset();

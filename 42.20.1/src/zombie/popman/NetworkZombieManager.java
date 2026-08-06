@@ -138,6 +138,25 @@ public class NetworkZombieManager {
                         }
                     }
 
+                    if (connection == null) {
+                        ApocBRServerTelemetry.recordZombieAuthFallback();
+                        List<AuthCandidate> fallbackCandidates = this.getAllAuthCandidates();
+                        ApocBRServerTelemetry.recordZombieAuthQuery(fallbackCandidates.size());
+                        for (AuthCandidate candidate : fallbackCandidates) {
+                            UdpConnection c = candidate.connection;
+                            IsoPlayer p = candidate.player;
+                            if (!GameServer.isDelayedDisconnect(c)) {
+                                float d = p.getRelevantAndDistance(zombie.getX(), zombie.getY(), candidate.relevantRange);
+                                if (!Float.isInfinite(d)) {
+                                    connection = c;
+                                    distance = d;
+                                    player = p;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
                     if (connection == null && zombie.isReanimatedPlayer()) {
                         for (int nx = 0; nx < GameServer.udpEngine.connections.size(); nx++) {
                             UdpConnection c = GameServer.udpEngine.connections.get(nx);
@@ -329,6 +348,23 @@ public class NetworkZombieManager {
     private List<AuthCandidate> getAuthCandidates(IsoZombie zombie) {
         List<AuthCandidate> candidates = this.authGrid.get(key(cellFor(zombie.getX()), cellFor(zombie.getY())));
         return candidates == null ? List.of() : candidates;
+    }
+
+    private List<AuthCandidate> getAllAuthCandidates() {
+        ArrayList<AuthCandidate> candidates = new ArrayList<>();
+        for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
+            UdpConnection c = GameServer.udpEngine.connections.get(n);
+            if (c != null && c.isFullyConnected() && !GameServer.isDelayedDisconnect(c)) {
+                int relevantRange = c.getRelevantRange() - 2;
+                for (IsoPlayer p : c.players) {
+                    if (p != null && p.isAlive()) {
+                        candidates.add(new AuthCandidate(c, p, relevantRange));
+                    }
+                }
+            }
+        }
+
+        return candidates;
     }
 
     private static int cellFor(float value) {
