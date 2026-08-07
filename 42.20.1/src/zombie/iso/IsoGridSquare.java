@@ -225,7 +225,7 @@ public final class IsoGridSquare {
     // Only server-side squares get the larger array - client squares (local co-op, up to 4
     // players) keep the original size so we don't waste memory on unused Lighting objects
     // (see the allocation loop further down, and IsoGridSquare.ResetVisiFlag()'s reset loop).
-    private static final int SERVER_LOS_SLOT_COUNT = Math.max(4, PZForkJoinPool.commonPool().getParallelism());
+    private static final int SERVER_LOS_SLOT_COUNT = 4;
     public final IsoGridSquare.ILighting[] lighting = new IsoGridSquare.ILighting[GameServer.server ? SERVER_LOS_SLOT_COUNT : 4];
     // ApocBR: was a single static Vector2 scratch buffer, only ever used inside CalcVisibility()
     // (written then consumed within the same call, nothing persists across calls). It was static

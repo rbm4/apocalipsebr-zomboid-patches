@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.LongAdder;
 import zombie.debug.DebugLog;
 
 /**
- * Minimal server-side telemetry for ApocBR patches on build 42.20.0.
+ * Minimal server-side telemetry for ApocBR patches on build 42.20.1.
  *
  * Deliberately narrow in scope: players online, zombie count, server tick rate,
  * packet queue depth, deferred cell-unload cost, and the parallel ServerLOS
@@ -42,13 +42,13 @@ import zombie.debug.DebugLog;
  * elsewhere in this class, to avoid contending a shared lock on that hot
  * path. "slots" is the resolved concurrency ceiling (see
  * ServerLOS.LOS_SLOT_COUNT); "busyMax" is the highest number of slots seen
- * occupied at once during the interval, i.e. how close the dispatcher got to
+     * occupied at once during the interval, i.e. how close the dispatcher got to
  * saturating the pool; "starved" counts WaitingInLOS players that found no
  * free slot on a given dispatch pass (sustained non-zero starved is the
- * signal that this ceiling is now the bottleneck, not the vanilla local
- * co-op cap it replaced). "phased" is the deterministic 1-in-3 scheduler
- * throttle before a player enters WaitingInLOS; "forced" counts first-run or
- * max-age escape hatches that bypass that throttle.
+     * signal that this ceiling is now the bottleneck, not the vanilla local
+     * co-op cap it replaced). "phased" is the deterministic 9-in-10 scheduler
+     * delay before a player enters WaitingInLOS; "forced" counts first-run or
+     * max-age escape hatches that bypass that throttle.
  */
 public final class ApocBRServerTelemetry {
     private static final boolean ENABLED = getBoolean("apocbr.telemetry.enabled", true);
@@ -67,6 +67,12 @@ public final class ApocBRServerTelemetry {
     private static long serverMapUnloadNanos;
     private static long serverMapUnloadMaxNanos;
     private static long serverMapUnloadOldestAgeMsLast;
+    private static int serverMapUnloadModeLast;
+    private static int serverMapUnloadReadyLast;
+    private static int serverMapUnloadMaxCellsLast;
+    private static int serverMapUnloadSlicesLast;
+    private static long serverMapUnloadAttempts;
+    private static long serverMapUnloadPartialCells;
     private static final String[] SERVER_MAP_UNLOAD_PHASE_KEYS = new String[] {
         "chunkGlobal", "squareTeardown", "vehicleSave", "saveEnqueue"
     };
@@ -74,6 +80,16 @@ public final class ApocBRServerTelemetry {
     private static final long[] serverMapUnloadPhaseUnits = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
     private static final long[] serverMapUnloadPhaseNanos = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
     private static final long[] serverMapUnloadPhaseMaxNanos = new long[SERVER_MAP_UNLOAD_PHASE_KEYS.length];
+    private static final String[] SERVER_MAP_UNLOAD_DETAIL_KEYS = new String[] {
+        "chunkMapCollision", "chunkAnimalPop", "chunkZombiePop", "chunkPathfind", "chunkCollisionClear",
+        "squareRainWater", "squareRoomZone", "squareMoving", "squareObjects", "squareStatic",
+        "squareAdjacent", "squareSoftClear", "finishVehicles", "finishChunkMeta", "saveUnloadedWrite",
+        "reuseGridsquares"
+    };
+    private static final LongAdder[] serverMapUnloadDetailCalls = newLongAdders(SERVER_MAP_UNLOAD_DETAIL_KEYS.length);
+    private static final LongAdder[] serverMapUnloadDetailUnits = newLongAdders(SERVER_MAP_UNLOAD_DETAIL_KEYS.length);
+    private static final LongAdder[] serverMapUnloadDetailNanos = newLongAdders(SERVER_MAP_UNLOAD_DETAIL_KEYS.length);
+    private static final AtomicLong[] serverMapUnloadDetailMaxNanos = newAtomicLongs(SERVER_MAP_UNLOAD_DETAIL_KEYS.length);
 
     private static int playersLast;
     private static int zombiesLast;
@@ -171,6 +187,18 @@ public final class ApocBRServerTelemetry {
         serverMapUnloadOldestAgeMsLast = oldestAgeMs;
     }
 
+    public static synchronized void recordServerMapDeferredUnloadBudget(
+        int mode, int ready, int maxCells, int slicesPerTick, int attempts, int partialCells
+    ) {
+        if (!ENABLED) return;
+        serverMapUnloadModeLast = mode;
+        serverMapUnloadReadyLast = ready;
+        serverMapUnloadMaxCellsLast = maxCells;
+        serverMapUnloadSlicesLast = slicesPerTick;
+        serverMapUnloadAttempts += attempts;
+        serverMapUnloadPartialCells += partialCells;
+    }
+
     /**
      * Per-phase breakdown of unload cost (chunkGlobal = collision/pathfind
      * removal done once per chunk; squareTeardown = the time-sliced per-square
@@ -185,6 +213,19 @@ public final class ApocBRServerTelemetry {
                 serverMapUnloadPhaseUnits[i] += units;
                 serverMapUnloadPhaseNanos[i] += nanos;
                 serverMapUnloadPhaseMaxNanos[i] = Math.max(serverMapUnloadPhaseMaxNanos[i], nanos);
+                return;
+            }
+        }
+    }
+
+    public static void recordServerMapUnloadDetail(String detail, int units, long nanos) {
+        if (!ENABLED) return;
+        for (int i = 0; i < SERVER_MAP_UNLOAD_DETAIL_KEYS.length; i++) {
+            if (SERVER_MAP_UNLOAD_DETAIL_KEYS[i].equals(detail)) {
+                serverMapUnloadDetailCalls[i].increment();
+                serverMapUnloadDetailUnits[i].add(units);
+                serverMapUnloadDetailNanos[i].add(nanos);
+                serverMapUnloadDetailMaxNanos[i].accumulateAndGet(nanos, Math::max);
                 return;
             }
         }
@@ -395,6 +436,13 @@ public final class ApocBRServerTelemetry {
             .append(",\"maxMs\":").append(ms(serverMapUnloadMaxNanos))
             .append(",\"oldestAgeMs\":").append(serverMapUnloadOldestAgeMsLast)
             .append("}");
+        json.append(",\"unloadBudget\":{\"mode\":").append(serverMapUnloadModeLast)
+            .append(",\"ready\":").append(serverMapUnloadReadyLast)
+            .append(",\"maxCells\":").append(serverMapUnloadMaxCellsLast)
+            .append(",\"slices\":").append(serverMapUnloadSlicesLast)
+            .append(",\"attempts\":").append(serverMapUnloadAttempts)
+            .append(",\"partial\":").append(serverMapUnloadPartialCells)
+            .append("}");
         json.append(",\"unloadPhases\":{");
         for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
             if (i > 0) json.append(",");
@@ -402,6 +450,16 @@ public final class ApocBRServerTelemetry {
                 .append(",\"units\":").append(serverMapUnloadPhaseUnits[i])
                 .append(",\"avgMs\":").append(avgMs(serverMapUnloadPhaseNanos[i], serverMapUnloadPhaseCalls[i]))
                 .append(",\"maxMs\":").append(ms(serverMapUnloadPhaseMaxNanos[i])).append("}");
+        }
+        json.append("}");
+        json.append(",\"unloadDetails\":{");
+        for (int i = 0; i < SERVER_MAP_UNLOAD_DETAIL_KEYS.length; i++) {
+            long calls = serverMapUnloadDetailCalls[i].sum();
+            if (i > 0) json.append(",");
+            json.append("\"").append(SERVER_MAP_UNLOAD_DETAIL_KEYS[i]).append("\":{\"calls\":").append(calls)
+                .append(",\"units\":").append(serverMapUnloadDetailUnits[i].sum())
+                .append(",\"avgMs\":").append(avgMs(serverMapUnloadDetailNanos[i].sum(), calls))
+                .append(",\"maxMs\":").append(ms(serverMapUnloadDetailMaxNanos[i].get())).append("}");
         }
         json.append("}");
         json.append(",\"state\":{\"players\":").append(playersLast)
@@ -495,11 +553,19 @@ public final class ApocBRServerTelemetry {
         serverMapUnloadCells = 0L;
         serverMapUnloadNanos = 0L;
         serverMapUnloadMaxNanos = 0L;
+        serverMapUnloadAttempts = 0L;
+        serverMapUnloadPartialCells = 0L;
         for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
             serverMapUnloadPhaseCalls[i] = 0L;
             serverMapUnloadPhaseUnits[i] = 0L;
             serverMapUnloadPhaseNanos[i] = 0L;
             serverMapUnloadPhaseMaxNanos[i] = 0L;
+        }
+        for (int i = 0; i < SERVER_MAP_UNLOAD_DETAIL_KEYS.length; i++) {
+            serverMapUnloadDetailCalls[i].reset();
+            serverMapUnloadDetailUnits[i].reset();
+            serverMapUnloadDetailNanos[i].reset();
+            serverMapUnloadDetailMaxNanos[i].set(0L);
         }
         // state/queue "last" values are intentionally left as-is: they get
         // overwritten by the next sampler snapshot regardless, and showing the
@@ -597,5 +663,21 @@ public final class ApocBRServerTelemetry {
 
     private static long clamp(long value, long min, long max) {
         return Math.max(min, Math.min(max, value));
+    }
+
+    private static LongAdder[] newLongAdders(int count) {
+        LongAdder[] adders = new LongAdder[count];
+        for (int i = 0; i < count; i++) {
+            adders[i] = new LongAdder();
+        }
+        return adders;
+    }
+
+    private static AtomicLong[] newAtomicLongs(int count) {
+        AtomicLong[] atomics = new AtomicLong[count];
+        for (int i = 0; i < count; i++) {
+            atomics[i] = new AtomicLong();
+        }
+        return atomics;
     }
 }

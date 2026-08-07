@@ -40,14 +40,16 @@ public class ServerLOS {
     // computationally heavy per-square visibility scan). IsoGridSquare.lighting[] and
     // LosUtil.cachedresults[] were both fixed-size arrays of 4 - a legacy local co-op
     // splitscreen limit that has nothing to do with dedicated server capacity. Both have been
-    // resized on the server side to match the game's existing PZForkJoinPool parallelism (see
-    // IsoGridSquare.SERVER_LOS_SLOT_COUNT and LosUtil.SLOT_COUNT), so this must use the exact
-    // same formula to stay in sync with those slot index spaces.
-    private static final int LOS_SLOT_COUNT = Math.max(4, PZForkJoinPool.commonPool().getParallelism());
+    // resized on the server side to a bounded subset of the game's existing PZForkJoinPool
+    // parallelism (see IsoGridSquare.SERVER_LOS_SLOT_COUNT and LosUtil.SLOT_COUNT), so this
+    // must use the exact same formula to stay in sync with those slot index spaces. Reserve a
+    // couple of common-pool workers for other async server work; telemetry showed LOS keeping
+    // all 7 slots busy even with fewer than 30 players online.
+    private static final int LOS_SLOT_COUNT = Math.max(4, PZForkJoinPool.commonPool().getParallelism() - 2);
     private final ConcurrentLinkedQueue<Integer> freeSlots = new ConcurrentLinkedQueue<>();
-    private static final int LOS_THROTTLE_PHASES = 3;
-    private static final int LOS_THROTTLE_SKIP_PHASE = 0;
-    private static final int LOS_THROTTLE_MAX_DEFER_ROUNDS = 3;
+    private static final int LOS_THROTTLE_PHASES = 10;
+    private static final int LOS_THROTTLE_RUN_PHASE = 0;
+    private static final int LOS_THROTTLE_MAX_DEFER_ROUNDS = 10;
     private int losThrottleRound;
     private long losThrottleFrame = -1L;
 
@@ -151,7 +153,7 @@ public class ServerLOS {
     }
 
     private boolean shouldThrottleLos(IsoPlayer player) {
-        return Math.floorMod(this.losThrottleRound + player.onlineId, LOS_THROTTLE_PHASES) == LOS_THROTTLE_SKIP_PHASE;
+        return Math.floorMod(this.losThrottleRound + player.onlineId, LOS_THROTTLE_PHASES) != LOS_THROTTLE_RUN_PHASE;
     }
 
     private boolean isLosThrottleExpired(ServerLOS.PlayerData data) {

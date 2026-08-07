@@ -36,6 +36,7 @@ import zombie.ReanimatedPlayers;
 import zombie.SandboxOptions;
 import zombie.SystemDisabler;
 import zombie.UsedFromLua;
+import zombie.ApocBRServerTelemetry;
 import zombie.VirtualZombieManager;
 import zombie.WorldSoundManager;
 import zombie.ZombieSpawnRecorder;
@@ -3209,22 +3210,32 @@ public final class IsoChunk {
         }
 
         try {
+            long detailStart = System.nanoTime();
             MapCollisionData.instance.removeChunkFromWorld(this);
+            ApocBRServerTelemetry.recordServerMapUnloadDetail("chunkMapCollision", 1, System.nanoTime() - detailStart);
+            detailStart = System.nanoTime();
             AnimalPopulationManager.getInstance().removeChunkFromWorld(this);
+            ApocBRServerTelemetry.recordServerMapUnloadDetail("chunkAnimalPop", 1, System.nanoTime() - detailStart);
+            detailStart = System.nanoTime();
             ZombiePopulationManager.instance.removeChunkFromWorld(this);
             if (!GameClient.client) {
                 int popmanCellX = (int)Math.floor(this.wx / 32.0);
                 int popmanCellY = (int)Math.floor(this.wy / 32.0);
                 ZombiePopulationManager.instance.requestSaveCell(popmanCellX, popmanCellY);
             }
+            ApocBRServerTelemetry.recordServerMapUnloadDetail("chunkZombiePop", 1, System.nanoTime() - detailStart);
 
+            detailStart = System.nanoTime();
             if (PathfindNative.useNativeCode) {
                 PathfindNative.instance.removeChunkFromWorld(this);
             } else {
                 PolygonalMap2.instance.removeChunkFromWorld(this);
             }
+            ApocBRServerTelemetry.recordServerMapUnloadDetail("chunkPathfind", 1, System.nanoTime() - detailStart);
 
+            detailStart = System.nanoTime();
             this.collision.clear();
+            ApocBRServerTelemetry.recordServerMapUnloadDetail("chunkCollisionClear", 1, System.nanoTime() - detailStart);
         } catch (Exception var9) {
             ExceptionLogger.logException(var9);
         }
@@ -3260,9 +3271,12 @@ public final class IsoChunk {
     }
 
     private void removeSquareFromWorld(IsoGridSquare sq) {
+        long detailStart = System.nanoTime();
         RainManager.RemoveAllOn(sq);
         sq.clearWater();
         sq.clearPuddles();
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("squareRainWater", 1, System.nanoTime() - detailStart);
+        detailStart = System.nanoTime();
         if (sq.getRoom() != null) {
             sq.getRoom().removeSquare(sq);
         }
@@ -3270,8 +3284,11 @@ public final class IsoChunk {
         if (sq.zone != null) {
             sq.zone.removeSquare(sq);
         }
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("squareRoomZone", 1, System.nanoTime() - detailStart);
 
         ArrayList<IsoMovingObject> mov = sq.getMovingObjects();
+        int movingCount = mov.size();
+        detailStart = System.nanoTime();
 
         for (int a = 0; a < mov.size(); a++) {
             IsoMovingObject obj = mov.get(a);
@@ -3298,20 +3315,31 @@ public final class IsoChunk {
         }
 
         mov.clear();
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("squareMoving", movingCount, System.nanoTime() - detailStart);
 
+        int objectCount = sq.getObjects().size();
+        detailStart = System.nanoTime();
         for (int i = 0; i < sq.getObjects().size(); i++) {
             IsoObject objx = sq.getObjects().get(i);
             objx.removeFromWorldToMeta();
         }
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("squareObjects", objectCount, System.nanoTime() - detailStart);
 
+        int staticCount = sq.getStaticMovingObjects().size();
+        detailStart = System.nanoTime();
         for (int i = 0; i < sq.getStaticMovingObjects().size(); i++) {
             IsoMovingObject objx = sq.getStaticMovingObjects().get(i);
             objx.removeFromWorld();
         }
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("squareStatic", staticCount, System.nanoTime() - detailStart);
 
+        detailStart = System.nanoTime();
         this.disconnectFromAdjacentChunks(sq);
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("squareAdjacent", 1, System.nanoTime() - detailStart);
+        detailStart = System.nanoTime();
         sq.softClear();
         sq.chunk = null;
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("squareSoftClear", 1, System.nanoTime() - detailStart);
     }
 
     public void finishRemoveFromWorld() {
@@ -3319,6 +3347,8 @@ public final class IsoChunk {
             return;
         }
 
+        long detailStart = System.nanoTime();
+        int vehicleCount = this.vehicles.size();
         for (int i = 0; i < this.vehicles.size(); i++) {
             BaseVehicle vehicle = this.vehicles.get(i);
             if (IsoWorld.instance.currentCell.getVehicles().contains(vehicle) || IsoWorld.instance.currentCell.addVehicles.contains(vehicle)) {
@@ -3326,7 +3356,9 @@ public final class IsoChunk {
                 vehicle.removeFromWorld();
             }
         }
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("finishVehicles", vehicleCount, System.nanoTime() - detailStart);
 
+        detailStart = System.nanoTime();
         if (this.corpseCount != null) {
             this.corpseCount.removeFromWorld();
         }
@@ -3343,6 +3375,7 @@ public final class IsoChunk {
 
         this.preventHotSave = false;
         this.removeFromWorldStarted = false;
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("finishChunkMeta", 1, System.nanoTime() - detailStart);
         this.removeFromWorldLevel = this.minLevel;
         this.removeFromWorldSquareIndex = 0;
     }
@@ -3410,6 +3443,8 @@ public final class IsoChunk {
     }
 
     public void doReuseGridsquares() {
+        long detailStart = System.nanoTime();
+        int reusedSquares = 0;
         ObjectCache<IsoObject>.ObjectCacheList cacheListObject = CellLoader.isoObjectCache.popList();
         ObjectCache<IsoTree>.ObjectCacheList cacheListTree = CellLoader.isoTreeCache.popList();
         int to = 64;
@@ -3418,6 +3453,7 @@ public final class IsoChunk {
             for (int m = 0; m < 64; m++) {
                 IsoGridSquare sq = this.squares[n][m];
                 if (sq != null) {
+                    reusedSquares++;
                     LuaEventManager.triggerEvent("ReuseGridsquare", sq);
 
                     for (int a = 0; a < sq.getObjects().size(); a++) {
@@ -3446,6 +3482,7 @@ public final class IsoChunk {
         assert !IsoChunkMap.chunkStore.contains(this);
 
         IsoChunkMap.chunkStore.add(this);
+        ApocBRServerTelemetry.recordServerMapUnloadDetail("reuseGridsquares", reusedSquares, System.nanoTime() - detailStart);
     }
 
     private static int bufferSize(int size) {

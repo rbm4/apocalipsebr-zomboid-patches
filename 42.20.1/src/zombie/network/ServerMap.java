@@ -725,6 +725,7 @@ public class ServerMap {
         int queued = 0;
         int revalidated = 0;
         int unloaded = 0;
+        int partial = 0;
         long unloadNanos = 0L;
 
         for (int i = toUpdate.size() - 1; i >= 0; i--) {
@@ -781,6 +782,8 @@ public class ServerMap {
                     this.toLoad.remove(mapCell);
                     this.pendingUnloads.remove(cell);
                     unloaded++;
+                } else {
+                    partial++;
                 }
             } catch (Exception e) {
                 DebugType.General.printException(e, LogSeverity.Error);
@@ -792,6 +795,9 @@ public class ServerMap {
         oldestAgeMs = this.getPendingUnloadOldestAgeMs(now);
 
         ApocBRServerTelemetry.recordServerMapDeferredUnload(this.pendingUnloads.size(), queued, revalidated, unloaded, unloadNanos, oldestAgeMs);
+        ApocBRServerTelemetry.recordServerMapDeferredUnloadBudget(
+            unloadMode, readyUnloads.size(), maxDeferredUnloadsPerTick, unloadSlicesPerTick, readyUnloads.size(), partial
+        );
     }
 
     public void physicsCheck(int x, int y) {

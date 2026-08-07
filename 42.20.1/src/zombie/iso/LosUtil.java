@@ -14,7 +14,7 @@ public final class LosUtil {
     // at least that many slots. PerPlayerData's actual byte[][][] payload is allocated lazily
     // (see checkSize()), so sizing this generously costs only a handful of unused wrapper
     // objects on the client, which only ever touches indices 0-3.
-    public static final int SLOT_COUNT = Math.max(4, PZForkJoinPool.commonPool().getParallelism());
+    public static final int SLOT_COUNT = Math.max(4, PZForkJoinPool.commonPool().getParallelism() - 2);
     public static int sizeX = 200;
     public static int sizeY = 200;
     public static int sizeZ = 16;
