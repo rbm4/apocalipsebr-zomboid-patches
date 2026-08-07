@@ -45,7 +45,6 @@ import zombie.characters.animals.IsoAnimal;
 import zombie.characters.animals.datas.AnimalBreed;
 import zombie.core.Color;
 import zombie.core.Core;
-import zombie.core.PZForkJoinPool;
 import zombie.core.PerformanceSettings;
 import zombie.core.SceneShaderStore;
 import zombie.core.SpriteRenderer;
@@ -219,12 +218,8 @@ public final class IsoGridSquare {
     public static final byte PCF_WEST = 2;
     private static final ThreadLocal<ArrayList<Zone>> threadLocalZones = ThreadLocal.withInitial(ArrayList::new);
     private static final IsoDirections[] DIRECTIONS = IsoDirections.values();
-    // ApocBR: 4 was the local co-op splitscreen limit (one lighting slot per local player).
-    // Dedicated servers have no such limit and can have far more concurrent players, so
-    // ServerLOS now runs one calc per PZForkJoinPool worker instead of being capped at 4.
-    // Only server-side squares get the larger array - client squares (local co-op, up to 4
-    // players) keep the original size so we don't waste memory on unused Lighting objects
-    // (see the allocation loop further down, and IsoGridSquare.ResetVisiFlag()'s reset loop).
+    // ApocBR: keep this aligned with ServerLOS.LOS_SLOT_COUNT and LosUtil.SLOT_COUNT.
+    // 42.20.1 visibility state is still a fixed 4-slot player/worker index space.
     private static final int SERVER_LOS_SLOT_COUNT = 4;
     public final IsoGridSquare.ILighting[] lighting = new IsoGridSquare.ILighting[GameServer.server ? SERVER_LOS_SLOT_COUNT : 4];
     // ApocBR: was a single static Vector2 scratch buffer, only ever used inside CalcVisibility()
@@ -1167,9 +1162,8 @@ public final class IsoGridSquare {
         this.nav[6] = null;
         this.nav[7] = null;
 
-        // ApocBR: lighting[] may now be larger than 4 on server squares (see
-        // SERVER_LOS_SLOT_COUNT), so iterate its actual length instead of a hardcoded 4 to
-        // make sure every slot gets reset. lightInfo[] is client-only and stays fixed at 4.
+        // ApocBR: iterate the actual lighting length so reset remains aligned with
+        // SERVER_LOS_SLOT_COUNT if the fixed slot space is revisited later.
         for (int n = 0; n < this.lighting.length; n++) {
             if (this.lighting[n] != null) {
                 this.lighting[n].reset();
@@ -4826,10 +4820,8 @@ public final class IsoGridSquare {
         this.visionMatrix = 0;
 
         // ApocBR: previously only slot 0 was ever allocated, since a single LOS thread always
-        // wrote through IsoPlayer.players[0]. ServerLOS now runs multiple worker threads
-        // concurrently (one per lighting[] slot), so every slot needs its own ServerLighting
-        // instance. Iterate this.lighting.length (not a hardcoded 4) since server squares now
-        // size that array to SERVER_LOS_SLOT_COUNT while client squares stay at 4.
+        // wrote through IsoPlayer.players[0]. ServerLOS can use all fixed lighting slots, so
+        // every slot needs its own ServerLighting instance.
         for (int i = 0; i < this.lighting.length; i++) {
             if (GameServer.server) {
                 this.lighting[i] = new ServerLOS.ServerLighting();

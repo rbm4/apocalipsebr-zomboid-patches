@@ -35,17 +35,9 @@ public class ServerLOS {
     private static final int PD_SIZE_IN_SQUARES = 96;
     boolean wasSuspended;
 
-    // ApocBR: LOS calc used to run entirely on a single dedicated thread, one player at a
-    // time, which does not scale with player count (~70 players each waiting their turn for a
-    // computationally heavy per-square visibility scan). IsoGridSquare.lighting[] and
-    // LosUtil.cachedresults[] were both fixed-size arrays of 4 - a legacy local co-op
-    // splitscreen limit that has nothing to do with dedicated server capacity. Both have been
-    // resized on the server side to a bounded subset of the game's existing PZForkJoinPool
-    // parallelism (see IsoGridSquare.SERVER_LOS_SLOT_COUNT and LosUtil.SLOT_COUNT), so this
-    // must use the exact same formula to stay in sync with those slot index spaces. Reserve a
-    // couple of common-pool workers for other async server work; telemetry showed LOS keeping
-    // all 7 slots busy even with fewer than 30 players online.
-    private static final int LOS_SLOT_COUNT = Math.max(4, PZForkJoinPool.commonPool().getParallelism() - 2);
+    // ApocBR: IsoGridSquare.lighting[] is still a fixed 4-slot array on 42.20.1.
+    // Keep ServerLOS inside that slot space; higher indexes crash in CalcVisibility().
+    private static final int LOS_SLOT_COUNT = 4;
     private final ConcurrentLinkedQueue<Integer> freeSlots = new ConcurrentLinkedQueue<>();
     private static final int LOS_THROTTLE_PHASES = 10;
     private static final int LOS_THROTTLE_RUN_PHASE = 0;

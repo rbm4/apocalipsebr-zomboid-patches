@@ -3,18 +3,13 @@ package zombie.iso;
 
 import zombie.UsedFromLua;
 import zombie.characters.IsoGameCharacter;
-import zombie.core.PZForkJoinPool;
 import zombie.core.math.PZMath;
 
 @UsedFromLua
 public final class LosUtil {
-    // ApocBR: was hardcoded to 4, matching the local co-op splitscreen limit of the same
-    // per-player-index slot concept used by IsoGridSquare.lighting[]. On a dedicated server
-    // ServerLOS can run one concurrent calc per PZForkJoinPool worker, so this needs to cover
-    // at least that many slots. PerPlayerData's actual byte[][][] payload is allocated lazily
-    // (see checkSize()), so sizing this generously costs only a handful of unused wrapper
-    // objects on the client, which only ever touches indices 0-3.
-    public static final int SLOT_COUNT = Math.max(4, PZForkJoinPool.commonPool().getParallelism() - 2);
+    // ApocBR: keep this aligned with IsoGridSquare.lighting[] and ServerLOS.LOS_SLOT_COUNT.
+    // 42.20.1 visibility state is indexed by a fixed 4-slot player/worker index space.
+    public static final int SLOT_COUNT = 4;
     public static int sizeX = 200;
     public static int sizeY = 200;
     public static int sizeZ = 16;
