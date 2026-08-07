@@ -849,6 +849,7 @@ public class GameServer {
                     long startServerCycle = System.nanoTime();
                     MainLoopNetData2.clear();
 
+                    long apocBrNetPhaseStart = System.nanoTime();
                     for (IZomboidPacket data = MainLoopNetDataHighPriorityQ.poll(); data != null; data = MainLoopNetDataHighPriorityQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
@@ -879,9 +880,11 @@ public class GameServer {
                             mainLoopDealWithNetData((ZomboidNetData)data);
                         }
                     }
+                    ApocBRServerTelemetry.recordMainLoopNetHigh(MainLoopNetData2.size(), System.nanoTime() - apocBrNetPhaseStart);
 
                     MainLoopNetData2.clear();
 
+                    apocBrNetPhaseStart = System.nanoTime();
                     for (IZomboidPacket data = MainLoopPlayerUpdateQ.poll(); data != null; data = MainLoopPlayerUpdateQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
@@ -895,13 +898,17 @@ public class GameServer {
                             mainLoopDealWithNetData((ZomboidNetData)data);
                         }
                     }
+                    ApocBRServerTelemetry.recordMainLoopNetPlayer(MainLoopNetData2.size(), System.nanoTime() - apocBrNetPhaseStart);
 
                     MainLoopNetData2.clear();
 
+                    apocBrNetPhaseStart = System.nanoTime();
                     for (IZomboidPacket data = MainLoopNetDataQ.poll(); data != null; data = MainLoopNetDataQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
 
+                    int apocBrNormalProcessed = 0;
+                    int apocBrNormalDropped = 0;
                     for (int nxxx = 0; nxxx < MainLoopNetData2.size(); nxxx++) {
                         if (nxxx % 10 == 0 && (System.nanoTime() - startServerCycle) / 1000000L > 70L) {
                             if (droppedPackets == 0) {
@@ -917,6 +924,7 @@ public class GameServer {
 
                             droppedPackets += 2;
                             countOfDroppedPackets = countOfDroppedPackets + (MainLoopNetData2.size() - nxxx);
+                            apocBrNormalDropped = MainLoopNetData2.size() - nxxx;
                             break;
                         }
 
@@ -925,7 +933,11 @@ public class GameServer {
                         try (AbstractPerformanceProfileProbe var117 = GameServer.s_performance.mainLoopDealWithNetData.profile()) {
                             mainLoopDealWithNetData((ZomboidNetData)data);
                         }
+                        apocBrNormalProcessed++;
                     }
+                    ApocBRServerTelemetry.recordMainLoopNetNormal(
+                        MainLoopNetData2.size(), apocBrNormalProcessed, apocBrNormalDropped, System.nanoTime() - apocBrNetPhaseStart
+                    );
 
                     MainLoopNetData2.clear();
                     if (droppedPackets == 1) {

@@ -108,6 +108,7 @@ public class NetworkZombiePacker {
     }
 
     public void postupdate() {
+        long apocBrPostStart = System.nanoTime();
         this.updateAuth();
         synchronized (this.zombiesReceived) {
             this.zombiesProcessing.clear();
@@ -124,8 +125,11 @@ public class NetworkZombiePacker {
 
         for (UdpConnection connection : GameServer.udpEngine.connections) {
             if (connection != null && connection.isFullyConnected()) {
+                long apocBrConnectionStart = System.nanoTime();
                 ZombieListPacket packet = (ZombieListPacket)connection.getPacket(PacketTypes.PacketType.ZombieList);
+                long apocBrAuthListStart = System.nanoTime();
                 int newHash = NetworkZombieManager.getInstance().getZombieAuth(connection, packet);
+                ApocBRServerTelemetry.recordZombieAuthList(System.nanoTime() - apocBrAuthListStart);
                 boolean hashChanged = connection.getZombieListHash() != newHash;
                 boolean overdue = !packet.zombiesAuth.isEmpty() && connection.zombieListRefresh.Check();
                 this.zombiesToSend.computeIfAbsent(connection, k -> new ArrayList<>()).clear();
@@ -150,13 +154,16 @@ public class NetworkZombiePacker {
                 }
 
                 this.send(connection);
+                ApocBRServerTelemetry.recordZombieRelayConnection(System.nanoTime() - apocBrConnectionStart);
             }
         }
 
         this.extraUpdateAll = false;
+        ApocBRServerTelemetry.recordZombieRelayPost(System.nanoTime() - apocBrPostStart);
     }
 
     private void updateAuth() {
+        long apocBrAuthStart = System.nanoTime();
         ArrayList<IsoZombie> zl = IsoWorld.instance.currentCell.getZombieList();
         NetworkZombieManager.getInstance().beginAuthUpdate();
 
@@ -164,6 +171,7 @@ public class NetworkZombiePacker {
             IsoZombie z = zl.get(i);
             NetworkZombieManager.getInstance().updateAuth(z);
         }
+        ApocBRServerTelemetry.recordZombieAuthUpdate(zl.size(), System.nanoTime() - apocBrAuthStart);
     }
 
     public int getZombieData(UdpConnection connection, ZombieSynchronizationPacket packet) {
@@ -276,13 +284,16 @@ public class NetworkZombiePacker {
     }
 
     public void send(UdpConnection connection) {
+        long apocBrSendStart = System.nanoTime();
         if (!this.zombiesDeletedForSending.isEmpty()) {
             INetworkPacket.send(connection, PacketTypes.PacketType.ZombieDeleteOnClient, connection, this.zombiesDeletedForSending);
         }
 
         ZombieSynchronizationPacket packet = (ZombieSynchronizationPacket)connection.getPacket(PacketTypes.PacketType.ZombieSynchronizationReliable);
         packet.hasNeighborPlayer = connection.isNeighborPlayer();
+        long apocBrGetDataStart = System.nanoTime();
         int countData = this.getZombieData(connection, packet);
+        ApocBRServerTelemetry.recordZombieRelayGetData(System.nanoTime() - apocBrGetDataStart);
         if (countData > 0 || connection.timerSendZombie.check() || this.extraUpdateAll || this.extraUpdate.contains(connection)) {
             ApocBRServerTelemetry.recordZombieRelayPacket(this.extraUpdateAll);
             this.extraUpdate.remove(connection);
@@ -299,6 +310,7 @@ public class NetworkZombiePacker {
             packet.write(b);
             packetType.send(connection);
         }
+        ApocBRServerTelemetry.recordZombieRelaySend(System.nanoTime() - apocBrSendStart);
     }
 
     private void applyZombie(IsoZombie zombie) {

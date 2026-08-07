@@ -98,6 +98,18 @@ public final class ApocBRServerTelemetry {
     private static int playerQueueLast;
     private static int normalQueueLast;
 
+    private static final LongAdder netHighPackets = new LongAdder();
+    private static final LongAdder netHighNanos = new LongAdder();
+    private static final AtomicLong netHighMaxNanos = new AtomicLong();
+    private static final LongAdder netPlayerPackets = new LongAdder();
+    private static final LongAdder netPlayerNanos = new LongAdder();
+    private static final AtomicLong netPlayerMaxNanos = new AtomicLong();
+    private static final LongAdder netNormalPackets = new LongAdder();
+    private static final LongAdder netNormalProcessed = new LongAdder();
+    private static final LongAdder netNormalDropped = new LongAdder();
+    private static final LongAdder netNormalNanos = new LongAdder();
+    private static final AtomicLong netNormalMaxNanos = new AtomicLong();
+
     private static volatile int losSlotCount;
     private static final AtomicInteger losSlotsBusy = new AtomicInteger();
     private static final AtomicInteger losSlotsBusyMax = new AtomicInteger();
@@ -118,6 +130,13 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder zombieAuthQueries = new LongAdder();
     private static final LongAdder zombieAuthQueryCandidates = new LongAdder();
     private static final LongAdder zombieAuthMoves = new LongAdder();
+    private static final LongAdder zombieAuthUpdateCalls = new LongAdder();
+    private static final LongAdder zombieAuthUpdateZombies = new LongAdder();
+    private static final LongAdder zombieAuthUpdateNanos = new LongAdder();
+    private static final AtomicLong zombieAuthUpdateMaxNanos = new AtomicLong();
+    private static final LongAdder zombieAuthListCalls = new LongAdder();
+    private static final LongAdder zombieAuthListNanos = new LongAdder();
+    private static final AtomicLong zombieAuthListMaxNanos = new AtomicLong();
 
     private static final LongAdder zombieRelayGridBuilds = new LongAdder();
     private static final LongAdder zombieRelayGridActive = new LongAdder();
@@ -132,6 +151,16 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder zombieRelayPackets = new LongAdder();
     private static final LongAdder zombieRelayExtraAllMarks = new LongAdder();
     private static final LongAdder zombieRelayExtraAllPackets = new LongAdder();
+    private static final LongAdder zombieRelayPostCalls = new LongAdder();
+    private static final LongAdder zombieRelayPostNanos = new LongAdder();
+    private static final AtomicLong zombieRelayPostMaxNanos = new AtomicLong();
+    private static final LongAdder zombieRelayConnectionCalls = new LongAdder();
+    private static final LongAdder zombieRelayConnectionNanos = new LongAdder();
+    private static final AtomicLong zombieRelayConnectionMaxNanos = new AtomicLong();
+    private static final LongAdder zombieRelayGetDataNanos = new LongAdder();
+    private static final AtomicLong zombieRelayGetDataMaxNanos = new AtomicLong();
+    private static final LongAdder zombieRelaySendNanos = new LongAdder();
+    private static final AtomicLong zombieRelaySendMaxNanos = new AtomicLong();
 
     private static final LongAdder zombieGroupGridBuilds = new LongAdder();
     private static final LongAdder zombieGroupGridGroups = new LongAdder();
@@ -243,6 +272,29 @@ public final class ApocBRServerTelemetry {
         normalQueueLast = normalQueue;
     }
 
+    public static void recordMainLoopNetHigh(int packets, long nanos) {
+        if (!ENABLED) return;
+        netHighPackets.add(packets);
+        netHighNanos.add(nanos);
+        netHighMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordMainLoopNetPlayer(int packets, long nanos) {
+        if (!ENABLED) return;
+        netPlayerPackets.add(packets);
+        netPlayerNanos.add(nanos);
+        netPlayerMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordMainLoopNetNormal(int packets, int processed, int dropped, long nanos) {
+        if (!ENABLED) return;
+        netNormalPackets.add(packets);
+        netNormalProcessed.add(processed);
+        netNormalDropped.add(dropped);
+        netNormalNanos.add(nanos);
+        netNormalMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
     /**
      * Resolved LOS concurrency ceiling (see ServerLOS.LOS_SLOT_COUNT). Called once from
      * ServerLOS.start() - a plain volatile write is enough since this never changes again.
@@ -320,6 +372,21 @@ public final class ApocBRServerTelemetry {
         zombieAuthMoves.increment();
     }
 
+    public static void recordZombieAuthUpdate(int zombies, long nanos) {
+        if (!ENABLED) return;
+        zombieAuthUpdateCalls.increment();
+        zombieAuthUpdateZombies.add(zombies);
+        zombieAuthUpdateNanos.add(nanos);
+        zombieAuthUpdateMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordZombieAuthList(long nanos) {
+        if (!ENABLED) return;
+        zombieAuthListCalls.increment();
+        zombieAuthListNanos.add(nanos);
+        zombieAuthListMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
     public static void recordZombieRelayGrid(int activeZombies, int cells, long nanos) {
         if (!ENABLED) return;
         zombieRelayGridBuilds.increment();
@@ -353,6 +420,32 @@ public final class ApocBRServerTelemetry {
     public static void recordZombieRelayExtraAllMark() {
         if (!ENABLED) return;
         zombieRelayExtraAllMarks.increment();
+    }
+
+    public static void recordZombieRelayPost(long nanos) {
+        if (!ENABLED) return;
+        zombieRelayPostCalls.increment();
+        zombieRelayPostNanos.add(nanos);
+        zombieRelayPostMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordZombieRelayConnection(long nanos) {
+        if (!ENABLED) return;
+        zombieRelayConnectionCalls.increment();
+        zombieRelayConnectionNanos.add(nanos);
+        zombieRelayConnectionMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordZombieRelayGetData(long nanos) {
+        if (!ENABLED) return;
+        zombieRelayGetDataNanos.add(nanos);
+        zombieRelayGetDataMaxNanos.accumulateAndGet(nanos, Math::max);
+    }
+
+    public static void recordZombieRelaySend(long nanos) {
+        if (!ENABLED) return;
+        zombieRelaySendNanos.add(nanos);
+        zombieRelaySendMaxNanos.accumulateAndGet(nanos, Math::max);
     }
 
     public static void recordZombieGroupGrid(int groups, int cells, long nanos) {
@@ -470,6 +563,24 @@ public final class ApocBRServerTelemetry {
             .append(",\"player\":").append(playerQueueLast)
             .append(",\"normal\":").append(normalQueueLast)
             .append("}");
+        long netHigh = netHighPackets.sum();
+        long netPlayer = netPlayerPackets.sum();
+        long netNormal = netNormalPackets.sum();
+        json.append(",\"netLoop\":{\"high\":{\"packets\":").append(netHigh)
+            .append(",\"avgMs\":").append(avgMs(netHighNanos.sum(), worldTicks))
+            .append(",\"avgPacketMs\":").append(avgMs(netHighNanos.sum(), netHigh))
+            .append(",\"maxMs\":").append(ms(netHighMaxNanos.get()))
+            .append("},\"player\":{\"packets\":").append(netPlayer)
+            .append(",\"avgMs\":").append(avgMs(netPlayerNanos.sum(), worldTicks))
+            .append(",\"avgPacketMs\":").append(avgMs(netPlayerNanos.sum(), netPlayer))
+            .append(",\"maxMs\":").append(ms(netPlayerMaxNanos.get()))
+            .append("},\"normal\":{\"packets\":").append(netNormal)
+            .append(",\"processed\":").append(netNormalProcessed.sum())
+            .append(",\"dropped\":").append(netNormalDropped.sum())
+            .append(",\"avgMs\":").append(avgMs(netNormalNanos.sum(), worldTicks))
+            .append(",\"avgPacketMs\":").append(avgMs(netNormalNanos.sum(), netNormal))
+            .append(",\"maxMs\":").append(ms(netNormalMaxNanos.get()))
+            .append("}}");
         long losCalcsCount = losCalcs.sum();
         json.append(",\"los\":{\"slots\":").append(losSlotCount)
             .append(",\"busyMax\":").append(losSlotsBusyMax.get())
@@ -483,9 +594,13 @@ public final class ApocBRServerTelemetry {
             .append("}");
         long authGridBuilds = zombieAuthGridBuilds.sum();
         long authQueries = zombieAuthQueries.sum();
+        long authUpdateCalls = zombieAuthUpdateCalls.sum();
+        long authListCalls = zombieAuthListCalls.sum();
         long relayGridBuilds = zombieRelayGridBuilds.sum();
         long relayQueries = zombieRelayQueries.sum();
         long relayPackets = zombieRelayPackets.sum();
+        long relayPostCalls = zombieRelayPostCalls.sum();
+        long relayConnectionCalls = zombieRelayConnectionCalls.sum();
         long groupGridBuilds = zombieGroupGridBuilds.sum();
         long groupQueries = zombieGroupQueries.sum();
         long zombieUpdates = zombieServerUpdateCalls.sum();
@@ -498,6 +613,13 @@ public final class ApocBRServerTelemetry {
             .append(",\"queries\":").append(authQueries)
             .append(",\"avgQueryCandidates\":").append(avg(zombieAuthQueryCandidates.sum(), authQueries))
             .append(",\"moves\":").append(zombieAuthMoves.sum())
+            .append(",\"updateCalls\":").append(authUpdateCalls)
+            .append(",\"avgUpdateZombies\":").append(avg(zombieAuthUpdateZombies.sum(), authUpdateCalls))
+            .append(",\"avgUpdateMs\":").append(avgMs(zombieAuthUpdateNanos.sum(), authUpdateCalls))
+            .append(",\"maxUpdateMs\":").append(ms(zombieAuthUpdateMaxNanos.get()))
+            .append(",\"listCalls\":").append(authListCalls)
+            .append(",\"avgListMs\":").append(avgMs(zombieAuthListNanos.sum(), authListCalls))
+            .append(",\"maxListMs\":").append(ms(zombieAuthListMaxNanos.get()))
             .append("},\"relay\":{\"gridBuilds\":").append(relayGridBuilds)
             .append(",\"avgActive\":").append(avg(zombieRelayGridActive.sum(), relayGridBuilds))
             .append(",\"avgCells\":").append(avg(zombieRelayGridCells.sum(), relayGridBuilds))
@@ -511,6 +633,16 @@ public final class ApocBRServerTelemetry {
             .append(",\"packets\":").append(relayPackets)
             .append(",\"extraAllMarks\":").append(zombieRelayExtraAllMarks.sum())
             .append(",\"extraAllPackets\":").append(zombieRelayExtraAllPackets.sum())
+            .append(",\"postCalls\":").append(relayPostCalls)
+            .append(",\"avgPostMs\":").append(avgMs(zombieRelayPostNanos.sum(), relayPostCalls))
+            .append(",\"maxPostMs\":").append(ms(zombieRelayPostMaxNanos.get()))
+            .append(",\"connectionCalls\":").append(relayConnectionCalls)
+            .append(",\"avgConnectionMs\":").append(avgMs(zombieRelayConnectionNanos.sum(), relayConnectionCalls))
+            .append(",\"maxConnectionMs\":").append(ms(zombieRelayConnectionMaxNanos.get()))
+            .append(",\"avgGetDataMs\":").append(avgMs(zombieRelayGetDataNanos.sum(), relayConnectionCalls))
+            .append(",\"maxGetDataMs\":").append(ms(zombieRelayGetDataMaxNanos.get()))
+            .append(",\"avgSendMs\":").append(avgMs(zombieRelaySendNanos.sum(), relayConnectionCalls))
+            .append(",\"maxSendMs\":").append(ms(zombieRelaySendMaxNanos.get()))
             .append("}}");
         json.append(",\"zombieGroups\":{\"gridBuilds\":").append(groupGridBuilds)
             .append(",\"avgGroups\":").append(avg(zombieGroupGridGroups.sum(), groupGridBuilds))
@@ -570,6 +702,17 @@ public final class ApocBRServerTelemetry {
         // state/queue "last" values are intentionally left as-is: they get
         // overwritten by the next sampler snapshot regardless, and showing the
         // last known value between snapshots is more useful than resetting to 0.
+        netHighPackets.reset();
+        netHighNanos.reset();
+        netHighMaxNanos.set(0L);
+        netPlayerPackets.reset();
+        netPlayerNanos.reset();
+        netPlayerMaxNanos.set(0L);
+        netNormalPackets.reset();
+        netNormalProcessed.reset();
+        netNormalDropped.reset();
+        netNormalNanos.reset();
+        netNormalMaxNanos.set(0L);
         losCalcs.reset();
         losSkipped.reset();
         losPhased.reset();
@@ -591,6 +734,13 @@ public final class ApocBRServerTelemetry {
         zombieAuthQueries.reset();
         zombieAuthQueryCandidates.reset();
         zombieAuthMoves.reset();
+        zombieAuthUpdateCalls.reset();
+        zombieAuthUpdateZombies.reset();
+        zombieAuthUpdateNanos.reset();
+        zombieAuthUpdateMaxNanos.set(0L);
+        zombieAuthListCalls.reset();
+        zombieAuthListNanos.reset();
+        zombieAuthListMaxNanos.set(0L);
         zombieRelayGridBuilds.reset();
         zombieRelayGridActive.reset();
         zombieRelayGridCells.reset();
@@ -604,6 +754,16 @@ public final class ApocBRServerTelemetry {
         zombieRelayPackets.reset();
         zombieRelayExtraAllMarks.reset();
         zombieRelayExtraAllPackets.reset();
+        zombieRelayPostCalls.reset();
+        zombieRelayPostNanos.reset();
+        zombieRelayPostMaxNanos.set(0L);
+        zombieRelayConnectionCalls.reset();
+        zombieRelayConnectionNanos.reset();
+        zombieRelayConnectionMaxNanos.set(0L);
+        zombieRelayGetDataNanos.reset();
+        zombieRelayGetDataMaxNanos.set(0L);
+        zombieRelaySendNanos.reset();
+        zombieRelaySendMaxNanos.set(0L);
         zombieGroupGridBuilds.reset();
         zombieGroupGridGroups.reset();
         zombieGroupGridCells.reset();
