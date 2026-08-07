@@ -43,7 +43,7 @@ public class FluidContainerUpdateSystem extends EngineSystem {
                     GameEntity entity = entities.get(i);
                     if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         FluidContainer fluidContainer = entity.getComponent(ComponentType.FluidContainer);
-                        if (fluidContainer.isValid() && (entity.isMeta() || fluidContainer.isQualifiesForMetaStorage())) {
+                        if (fluidContainer != null && fluidContainer.isValid() && (entity.isMeta() || fluidContainer.isQualifiesForMetaStorage())) {
                             this.updateEntity(entity, fluidContainer, doSync);
                         }
                     }

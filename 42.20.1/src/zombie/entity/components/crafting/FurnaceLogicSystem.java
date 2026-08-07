@@ -54,7 +54,7 @@ public class FurnaceLogicSystem extends EngineSystem {
                     if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         FurnaceLogic furnaceLogic = entity.getComponent(ComponentType.FurnaceLogic);
                         Resources resources = entity.getComponent(ComponentType.Resources);
-                        if (furnaceLogic.isValid() && resources.isValid()) {
+                        if (furnaceLogic != null && resources != null && furnaceLogic.isValid() && resources.isValid()) {
                             ResourceGroup fuelInputResources = resources.getResourceGroup(furnaceLogic.getFuelInputsGroupName());
                             ResourceGroup fuelOutputResources = resources.getResourceGroup(furnaceLogic.getFuelOutputsGroupName());
                             ResourceGroup inputResources = resources.getResourceGroup(furnaceLogic.getFurnaceInputsGroupName());

@@ -56,7 +56,7 @@ public class MashingLogicSystem extends EngineSystem {
                     if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         MashingLogic mashingLogic = entity.getComponent(ComponentType.MashingLogic);
                         Resources resources = entity.getComponent(ComponentType.Resources);
-                        if (mashingLogic.isValid() && resources.isValid()) {
+                        if (mashingLogic != null && resources != null && mashingLogic.isValid() && resources.isValid()) {
                             ResourceGroup inputResources = resources.getResourceGroup(mashingLogic.getInputsGroupName());
                             if (inputResources != null && !inputResources.getResources().isEmpty()) {
                                 ResourceFluid fluidBarrel = (ResourceFluid)inputResources.get(mashingLogic.getResourceFluidID());

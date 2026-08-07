@@ -46,7 +46,7 @@ public class CraftLogicSystem extends EngineSystem {
                     if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         CraftLogic craftLogic = entity.getComponentAny(ComponentType.CraftLogic, ComponentType.DryingCraftLogic);
                         Resources resources = entity.getComponent(ComponentType.Resources);
-                        if (craftLogic.isValid() && resources.isValid()) {
+                        if (craftLogic != null && resources != null && craftLogic.isValid() && resources.isValid()) {
                             ResourceGroup inputResources = resources.getResourceGroup(craftLogic.getInputsGroupName());
                             ResourceGroup outputResources = resources.getResourceGroup(craftLogic.getOutputsGroupName());
                             if (inputResources != null

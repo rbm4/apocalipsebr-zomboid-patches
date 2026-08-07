@@ -101,11 +101,54 @@ public abstract class EntityBucket {
                 }
             }
 
-            int lastIndex = this.entities.size - 1;
-            GameEntity swapped = this.entities.items[lastIndex];
-            this.entities.removeIndex(slot);
-            if (swapped != entity) {
-                swapped.setBucketSlot(this.index, slot);
+            // === ApocBR: always-on self-healing slot verification ================
+            // The cheap O(1) check below (single array read + reference compare)
+            // guards the O(1) removal optimization above against any cache desync,
+            // regardless of cause (pooling edge cases, ordering bugs, etc). If the
+            // cached slot is wrong, fall back to the O(n) linear scan to find the
+            // real slot instead of corrupting the bucket by removing/mutating the
+            // wrong entity. This keeps removal O(1) in the (expected) common case
+            // while making desyncs self-correcting instead of silently producing
+            // stale bucket members (e.g. an entity left registered in a component
+            // family bucket after that component was removed).
+            if (slot < 0 || slot >= this.entities.size || this.entities.get(slot) != entity) {
+                int actualSlot = this.entities.indexOf(entity, true);
+                DebugType.General
+                    .warn(
+                        "EntityBucket.updateMembership: cached bucket slot out of sync for entity="
+                            + entity.getEntityNetID()
+                            + ", bucketIndex="
+                            + this.index
+                            + ", cachedSlot="
+                            + slot
+                            + ", actualSlot="
+                            + actualSlot
+                            + " - falling back to linear scan."
+                    );
+                slot = actualSlot;
+            }
+            // =======================================================================
+
+            if (slot >= 0) {
+                int lastIndex = this.entities.size - 1;
+                GameEntity swapped = this.entities.get(lastIndex);
+                this.entities.removeIndex(slot);
+                if (swapped != entity) {
+                    swapped.setBucketSlot(this.index, slot);
+                }
+            } else {
+                // Entity's bit says it should be a member, but it is nowhere in the
+                // backing array (severe pre-existing desync). Nothing to remove;
+                // just clear the stale bit below so it stops being treated as a
+                // member instead of throwing/crashing.
+                DebugType.General
+                    .warn(
+                        "EntityBucket.updateMembership: entity="
+                            + entity.getEntityNetID()
+                            + " marked as bucket member (bucketIndex="
+                            + this.index
+                            + ") but not found in bucket array - clearing stale bit."
+                    );
             }
 
             bits.clear(this.index);

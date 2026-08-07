@@ -37,7 +37,7 @@ public class ResourceUpdateSystem extends EngineSystem {
                     GameEntity entity = entities.get(i);
                     if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         Resources resources = entity.getComponent(ComponentType.Resources);
-                        if (resources.isValid()) {
+                        if (resources != null && resources.isValid()) {
                             List<Resource> resourcesArray = resources.getResources();
 
                             for (int j = 0; j < resourcesArray.size(); j++) {

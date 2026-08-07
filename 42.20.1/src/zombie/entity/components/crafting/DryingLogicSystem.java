@@ -55,7 +55,7 @@ public class DryingLogicSystem extends EngineSystem {
                     if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         DryingLogic dryingLogic = entity.getComponent(ComponentType.DryingLogic);
                         Resources resources = entity.getComponent(ComponentType.Resources);
-                        if (dryingLogic.isValid() && resources.isValid()) {
+                        if (dryingLogic != null && resources != null && dryingLogic.isValid() && resources.isValid()) {
                             ResourceGroup fuelInputResources = resources.getResourceGroup(dryingLogic.getFuelInputsGroupName());
                             ResourceGroup fuelOutputResources = resources.getResourceGroup(dryingLogic.getFuelOutputsGroupName());
                             ResourceGroup inputResources = resources.getResourceGroup(dryingLogic.getDryingInputsGroupName());

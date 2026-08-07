@@ -36,7 +36,7 @@ public class LogisticsSystem extends EngineSystem {
                     GameEntity entity = entities.get(i);
                     if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         Resources resources = entity.getComponent(ComponentType.Resources);
-                        if (!resources.isValid()) {
+                        if (resources != null && !resources.isValid()) {
                         }
                     }
                 }
