@@ -1113,44 +1113,56 @@ public class ServerMap {
             int ex = sx + 64;
             int ey = sy + 64;
 
+            long apocBrPhaseStart = System.nanoTime();
             for (RoomDef def : this.unexploredRooms) {
                 def.indoorZombies--;
             }
+            ApocBRServerTelemetry.recordServerMapPrePhase("load2RoomsDec", this.unexploredRooms.size(), System.nanoTime() - apocBrPhaseStart);
 
             this.unexploredRooms.clear();
             this.isLoaded = true;
             int minLevel = Integer.MAX_VALUE;
             int maxLevel = Integer.MIN_VALUE;
 
+            apocBrPhaseStart = System.nanoTime();
+            int apocBrUnits = 0;
             for (int chunkY = 0; chunkY < 8; chunkY++) {
                 for (int chunkX = 0; chunkX < 8; chunkX++) {
                     IsoChunk chunk = this.getChunk(chunkX, chunkY);
                     if (chunk != null) {
+                        apocBrUnits++;
                         minLevel = PZMath.min(minLevel, chunk.getMinLevel());
                         maxLevel = PZMath.max(maxLevel, chunk.getMaxLevel());
                     }
                 }
             }
+            ApocBRServerTelemetry.recordServerMapPrePhase("load2LevelScan", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
 
+            apocBrPhaseStart = System.nanoTime();
+            apocBrUnits = 0;
             for (int z = 1; z <= maxLevel; z++) {
                 for (int x = -1; x < 65; x++) {
                     IsoGridSquare sq = ServerMap.instance.getGridSquare(sx + x, sy - 1, z);
                     if (sq != null && !sq.getObjects().isEmpty()) {
                         IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                        apocBrUnits++;
                     } else if (x >= 0 && x < 64) {
                         sq = ServerMap.instance.getGridSquare(sx + x, sy, z);
                         if (sq != null && !sq.getObjects().isEmpty()) {
                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                            apocBrUnits++;
                         }
                     }
 
                     sq = ServerMap.instance.getGridSquare(sx + x, sy + 64, z);
                     if (sq != null && !sq.getObjects().isEmpty()) {
                         IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                        apocBrUnits++;
                     } else if (x >= 0 && x < 64) {
-                        ServerMap.instance.getGridSquare(sx + x, sy + 64 - 1, z);
+                        sq = ServerMap.instance.getGridSquare(sx + x, sy + 64 - 1, z);
                         if (sq != null && !sq.getObjects().isEmpty()) {
                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                            apocBrUnits++;
                         }
                     }
                 }
@@ -1159,35 +1171,44 @@ public class ServerMap {
                     IsoGridSquare sqx = ServerMap.instance.getGridSquare(sx - 1, sy + y, z);
                     if (sqx != null && !sqx.getObjects().isEmpty()) {
                         IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                        apocBrUnits++;
                     } else {
                         sqx = ServerMap.instance.getGridSquare(sx, sy + y, z);
                         if (sqx != null && !sqx.getObjects().isEmpty()) {
                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                            apocBrUnits++;
                         }
                     }
 
                     sqx = ServerMap.instance.getGridSquare(sx + 64, sy + y, z);
                     if (sqx != null && !sqx.getObjects().isEmpty()) {
                         IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                        apocBrUnits++;
                     } else {
                         sqx = ServerMap.instance.getGridSquare(sx + 64 - 1, sy + y, z);
                         if (sqx != null && !sqx.getObjects().isEmpty()) {
                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                            apocBrUnits++;
                         }
                     }
                 }
             }
+            ApocBRServerTelemetry.recordServerMapPrePhase("load2EnsureSurround", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
 
+            apocBrPhaseStart = System.nanoTime();
+            apocBrUnits = 0;
             for (int z = minLevel; z <= maxLevel; z++) {
                 for (int x = 0; x < 64; x++) {
                     IsoGridSquare sqxx = ServerMap.instance.getGridSquare(sx + x, sy, z);
                     if (sqxx != null) {
                         sqxx.RecalcAllWithNeighbours(true);
+                        apocBrUnits++;
                     }
 
                     sqxx = ServerMap.instance.getGridSquare(sx + x, ey - 1, z);
                     if (sqxx != null) {
                         sqxx.RecalcAllWithNeighbours(true);
+                        apocBrUnits++;
                     }
                 }
 
@@ -1195,17 +1216,22 @@ public class ServerMap {
                     IsoGridSquare sqxxx = ServerMap.instance.getGridSquare(sx, sy + y, z);
                     if (sqxxx != null) {
                         sqxxx.RecalcAllWithNeighbours(true);
+                        apocBrUnits++;
                     }
 
                     sqxxx = ServerMap.instance.getGridSquare(ex - 1, sy + y, z);
                     if (sqxxx != null) {
                         sqxxx.RecalcAllWithNeighbours(true);
+                        apocBrUnits++;
                     }
                 }
             }
+            ApocBRServerTelemetry.recordServerMapPrePhase("load2BorderRecalc", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
 
             int nSquares = 64;
 
+            apocBrPhaseStart = System.nanoTime();
+            apocBrUnits = 0;
             for (int cx = 0; cx < 8; cx++) {
                 for (int cy = 0; cy < 8; cy++) {
                     IsoChunk chunk = this.chunks[cx][cy];
@@ -1222,21 +1248,29 @@ public class ServerMap {
                                     }
 
                                     g.propertiesDirty = true;
+                                    apocBrUnits++;
                                 }
                             }
                         }
                     }
                 }
             }
+            ApocBRServerTelemetry.recordServerMapPrePhase("load2MarkSquares", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
 
+            apocBrPhaseStart = System.nanoTime();
+            apocBrUnits = 0;
             for (int x = 0; x < 8; x++) {
                 for (int y = 0; y < 8; y++) {
                     if (this.chunks[x][y] != null) {
                         this.chunks[x][y].doLoadGridsquare();
+                        apocBrUnits++;
                     }
                 }
             }
+            ApocBRServerTelemetry.recordServerMapPrePhase("load2DoLoadGridSquare", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
 
+            apocBrPhaseStart = System.nanoTime();
+            apocBrUnits = 0;
             for (RoomDef def : this.unexploredRooms) {
                 def.indoorZombies++;
                 if (def.indoorZombies == 1) {
@@ -1246,7 +1280,9 @@ public class ServerMap {
                         DebugType.General.printException(var15, LogSeverity.Error);
                     }
                 }
+                apocBrUnits++;
             }
+            ApocBRServerTelemetry.recordServerMapPrePhase("load2RoomsInc", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
 
             this.isLoaded = true;
             this.unloading = false;

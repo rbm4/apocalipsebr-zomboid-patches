@@ -113,7 +113,8 @@ public final class ApocBRServerTelemetry {
     private static final String[] SERVER_MAP_PRE_KEYS = new String[] {
         "cancelScan", "collectPendingLoads", "sortPendingLoads", "addLoadJobs", "drainLoaded", "addRecalcJobs",
         "drainRecalc", "load2", "load2DrainRecalc", "load2RecalcAll2", "load2Vehicles", "removeLoaded2FromToLoad",
-        "saveAll", "saveLater", "entitySave"
+        "load2RoomsDec", "load2LevelScan", "load2EnsureSurround", "load2BorderRecalc", "load2MarkSquares",
+        "load2DoLoadGridSquare", "load2RoomsInc", "saveAll", "saveLater", "entitySave"
     };
     private static final LongAdder[] serverMapPreCalls = newLongAdders(SERVER_MAP_PRE_KEYS.length);
     private static final LongAdder[] serverMapPreUnits = newLongAdders(SERVER_MAP_PRE_KEYS.length);
