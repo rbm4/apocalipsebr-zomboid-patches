@@ -18,6 +18,8 @@ import zombie.network.ServerMap;
 import zombie.vehicles.BaseVehicle;
 
 final class LineClearCollideMain {
+    private static final float MAX_LINE_COORD_ABS = 1000000.0F;
+    private static final float MAX_LINE_SPAN = 512.0F;
     final Vector2 perp = new Vector2();
     final ArrayList<Point> pts = new ArrayList<>();
     final VehicleRect sweepAabb = new VehicleRect();
@@ -37,6 +39,10 @@ final class LineClearCollideMain {
 
     private static boolean isFinite(float value) {
         return !Float.isNaN(value) && !Float.isInfinite(value);
+    }
+
+    private static boolean isSafeLineCoord(float value) {
+        return isFinite(value) && Math.abs(value) <= MAX_LINE_COORD_ABS;
     }
 
     private float clamp(float f1, float min, float max) {
@@ -247,13 +253,13 @@ final class LineClearCollideMain {
         boolean ignoreDoors = (flags & 1) != 0;
         boolean checkCost = (flags & 4) != 0;
         boolean render = (flags & 8) != 0;
-        if (!isFinite(fromX) || !isFinite(fromY) || !isFinite(toX) || !isFinite(toY)) {
+        if (!isSafeLineCoord(fromX) || !isSafeLineCoord(fromY) || !isSafeLineCoord(toX) || !isSafeLineCoord(toY)) {
             return true;
         }
 
         float spanX = Math.abs(toX - fromX);
         float spanY = Math.abs(toY - fromY);
-        if (!isFinite(spanX) || !isFinite(spanY) || spanX > 512.0F || spanY > 512.0F) {
+        if (!isFinite(spanX) || !isFinite(spanY) || spanX > MAX_LINE_SPAN || spanY > MAX_LINE_SPAN) {
             return true;
         }
 
@@ -521,7 +527,12 @@ final class LineClearCollideMain {
             float minY = Math.min(y0, Math.min(y1, Math.min(y2, y3)));
             float maxX = Math.max(x0, Math.max(x1, Math.max(x2, x3)));
             float maxY = Math.max(y0, Math.max(y1, Math.max(y2, y3)));
-            if (!isFinite(minX) || !isFinite(minY) || !isFinite(maxX) || !isFinite(maxY) || maxX - minX > 512.0F || maxY - minY > 512.0F) {
+            if (!isSafeLineCoord(minX)
+                || !isSafeLineCoord(minY)
+                || !isSafeLineCoord(maxX)
+                || !isSafeLineCoord(maxY)
+                || maxX - minX > MAX_LINE_SPAN
+                || maxY - minY > MAX_LINE_SPAN) {
                 return true;
             }
 
