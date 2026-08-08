@@ -58,6 +58,14 @@ public class ServerChunkLoader {
         this.threadLoad.fromThread.drainTo(loaded);
     }
 
+    public int getLoadQueueSize() {
+        return this.threadLoad.toThread.size();
+    }
+
+    public int getLoadedQueueSize() {
+        return this.threadLoad.fromThread.size();
+    }
+
     public void quit() {
         this.threadLoad.quit();
 
@@ -100,6 +108,18 @@ public class ServerChunkLoader {
 
     public void getRecalc(ArrayList<ServerMap.ServerCell> loaded) {
         this.threadRecalc.fromThread.drainTo(loaded);
+    }
+
+    public int getRecalcQueueSize() {
+        return this.threadRecalc.toThread.size();
+    }
+
+    public int getRecalcDoneQueueSize() {
+        return this.threadRecalc.fromThread.size();
+    }
+
+    public int getSaveQueueSize() {
+        return this.threadSave.toThread.size();
     }
 
     private class GetSquare implements IsoGridSquare.GetSquare {

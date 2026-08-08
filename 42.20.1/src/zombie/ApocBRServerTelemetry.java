@@ -110,6 +110,26 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder[] serverMapUnloadDetailNanos = newLongAdders(SERVER_MAP_UNLOAD_DETAIL_KEYS.length);
     private static final AtomicLong[] serverMapUnloadDetailMaxNanos = newAtomicLongs(SERVER_MAP_UNLOAD_DETAIL_KEYS.length);
 
+    private static final String[] SERVER_MAP_PRE_KEYS = new String[] {
+        "cancelScan", "collectPendingLoads", "sortPendingLoads", "addLoadJobs", "drainLoaded", "addRecalcJobs",
+        "drainRecalc", "load2", "load2DrainRecalc", "load2RecalcAll2", "load2Vehicles", "removeLoaded2FromToLoad",
+        "saveAll", "saveLater", "entitySave"
+    };
+    private static final LongAdder[] serverMapPreCalls = newLongAdders(SERVER_MAP_PRE_KEYS.length);
+    private static final LongAdder[] serverMapPreUnits = newLongAdders(SERVER_MAP_PRE_KEYS.length);
+    private static final LongAdder[] serverMapPreNanos = newLongAdders(SERVER_MAP_PRE_KEYS.length);
+    private static final AtomicLong[] serverMapPreMaxNanos = newAtomicLongs(SERVER_MAP_PRE_KEYS.length);
+    private static final AtomicLong serverMapPreLoadQueueMax = new AtomicLong();
+    private static final AtomicLong serverMapPreLoadedQueueMax = new AtomicLong();
+    private static final AtomicLong serverMapPreRecalcQueueMax = new AtomicLong();
+    private static final AtomicLong serverMapPreRecalcDoneQueueMax = new AtomicLong();
+    private static final AtomicLong serverMapPreSaveQueueMax = new AtomicLong();
+    private static volatile int serverMapPreLoadQueueLast;
+    private static volatile int serverMapPreLoadedQueueLast;
+    private static volatile int serverMapPreRecalcQueueLast;
+    private static volatile int serverMapPreRecalcDoneQueueLast;
+    private static volatile int serverMapPreSaveQueueLast;
+
     private static int playersLast;
     private static int zombiesLast;
     private static int connectionsLast;
@@ -301,6 +321,33 @@ public final class ApocBRServerTelemetry {
                 return;
             }
         }
+    }
+
+    public static void recordServerMapPrePhase(String phase, int units, long nanos) {
+        if (!ENABLED || nanos < 0L) return;
+        for (int i = 0; i < SERVER_MAP_PRE_KEYS.length; i++) {
+            if (SERVER_MAP_PRE_KEYS[i].equals(phase)) {
+                serverMapPreCalls[i].increment();
+                serverMapPreUnits[i].add(units);
+                serverMapPreNanos[i].add(nanos);
+                serverMapPreMaxNanos[i].accumulateAndGet(nanos, Math::max);
+                return;
+            }
+        }
+    }
+
+    public static void recordServerMapPreQueues(int loadQueue, int loadedQueue, int recalcQueue, int recalcDoneQueue, int saveQueue) {
+        if (!ENABLED) return;
+        serverMapPreLoadQueueLast = loadQueue;
+        serverMapPreLoadedQueueLast = loadedQueue;
+        serverMapPreRecalcQueueLast = recalcQueue;
+        serverMapPreRecalcDoneQueueLast = recalcDoneQueue;
+        serverMapPreSaveQueueLast = saveQueue;
+        serverMapPreLoadQueueMax.accumulateAndGet(loadQueue, Math::max);
+        serverMapPreLoadedQueueMax.accumulateAndGet(loadedQueue, Math::max);
+        serverMapPreRecalcQueueMax.accumulateAndGet(recalcQueue, Math::max);
+        serverMapPreRecalcDoneQueueMax.accumulateAndGet(recalcDoneQueue, Math::max);
+        serverMapPreSaveQueueMax.accumulateAndGet(saveQueue, Math::max);
     }
 
     public static synchronized void recordStateSnapshot(
@@ -598,6 +645,24 @@ public final class ApocBRServerTelemetry {
             .append(",\"attempts\":").append(serverMapUnloadAttempts)
             .append(",\"partial\":").append(serverMapUnloadPartialCells)
             .append("}");
+        json.append(",\"serverMapPreQueues\":{")
+            .append("\"load\":{\"last\":").append(serverMapPreLoadQueueLast).append(",\"max\":").append(serverMapPreLoadQueueMax.get()).append("}")
+            .append(",\"loaded\":{\"last\":").append(serverMapPreLoadedQueueLast).append(",\"max\":").append(serverMapPreLoadedQueueMax.get()).append("}")
+            .append(",\"recalc\":{\"last\":").append(serverMapPreRecalcQueueLast).append(",\"max\":").append(serverMapPreRecalcQueueMax.get()).append("}")
+            .append(",\"recalcDone\":{\"last\":").append(serverMapPreRecalcDoneQueueLast).append(",\"max\":").append(serverMapPreRecalcDoneQueueMax.get()).append("}")
+            .append(",\"save\":{\"last\":").append(serverMapPreSaveQueueLast).append(",\"max\":").append(serverMapPreSaveQueueMax.get()).append("}")
+            .append("}");
+        json.append(",\"serverMapPrePhases\":{");
+        for (int i = 0; i < SERVER_MAP_PRE_KEYS.length; i++) {
+            long calls = serverMapPreCalls[i].sum();
+            if (i > 0) json.append(",");
+            json.append("\"").append(SERVER_MAP_PRE_KEYS[i]).append("\":{\"calls\":").append(calls)
+                .append(",\"units\":").append(serverMapPreUnits[i].sum())
+                .append(",\"avgMs\":").append(avgMs(serverMapPreNanos[i].sum(), calls))
+                .append(",\"maxMs\":").append(ms(serverMapPreMaxNanos[i].get()))
+                .append("}");
+        }
+        json.append("}");
         json.append(",\"unloadPhases\":{");
         for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
             if (i > 0) json.append(",");
@@ -747,6 +812,17 @@ public final class ApocBRServerTelemetry {
             tickSectionNanos[i].reset();
             tickSectionMaxNanos[i].set(0L);
         }
+        for (int i = 0; i < SERVER_MAP_PRE_KEYS.length; i++) {
+            serverMapPreCalls[i].reset();
+            serverMapPreUnits[i].reset();
+            serverMapPreNanos[i].reset();
+            serverMapPreMaxNanos[i].set(0L);
+        }
+        serverMapPreLoadQueueMax.set(0L);
+        serverMapPreLoadedQueueMax.set(0L);
+        serverMapPreRecalcQueueMax.set(0L);
+        serverMapPreRecalcDoneQueueMax.set(0L);
+        serverMapPreSaveQueueMax.set(0L);
         serverMapUnloadQueued = 0L;
         serverMapUnloadRevalidated = 0L;
         serverMapUnloadCells = 0L;
