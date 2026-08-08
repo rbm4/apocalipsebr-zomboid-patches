@@ -241,21 +241,15 @@ public class BodyDamageSync {
             }
         }
 
-        public boolean updateField(byte id, String value1, String value2) {
-            if (value1 == null && value2 == null) {
-                return false;
-            } else if (value1 != null && value2 != null && value1.equals(value2)) {
-                return false;
-            } else {
-                if (!this.partStarted) {
-                    bb.put((byte)64);
-                    bb.put(this.partIndex);
-                    this.partStarted = true;
-                }
-
-                GameWindow.WriteString(bb, value1);
-                return true;
+        public void updateField(byte id, String value) {
+            if (!this.partStarted) {
+                bb.put((byte)64);
+                bb.put(this.partIndex);
+                this.partStarted = true;
             }
+
+            bb.put(id);
+            GameWindow.WriteString(bb, value);
         }
     }
 }
