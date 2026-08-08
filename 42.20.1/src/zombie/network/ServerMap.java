@@ -106,7 +106,7 @@ public class ServerMap {
     private static final int UNLOAD_PENDING_STRESS = 24;
     private static final int UNLOAD_PENDING_EMERGENCY = 40;
     private static final int UNLOAD_PENDING_CRITICAL = 60;
-    private static final int UNLOAD_PENDING_OVERLOADED = 90;
+    private static final int UNLOAD_PENDING_OVERLOADED = 80;
     private static final int DEFERRED_UNLOAD_MODE_NORMAL = 0;
     private static final int DEFERRED_UNLOAD_MODE_WARNING = 1;
     private static final int DEFERRED_UNLOAD_MODE_STRESS = 2;
