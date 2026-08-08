@@ -89,30 +89,24 @@ public class ServerMap {
     ArrayList<ServerMap.ServerCell> toLoad = new ArrayList<>();
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
-    private static final long DEFERRED_UNLOAD_GRACE_MS = 20000L;
     private static final int UNLOAD_SQUARES_PER_SLICE = 254;
     private static final int UNLOAD_SLICES_NORMAL = 4;
     private static final int UNLOAD_SLICES_WARNING = 12;
     private static final int UNLOAD_SLICES_STRESS = 24;
     private static final int UNLOAD_SLICES_EMERGENCY = 32;
-    private static final int UNLOAD_SLICES_CRITICAL = 48;
-    private static final int UNLOAD_SLICES_OVERLOADED = 96;
+    private static final int UNLOAD_SLICES_CRITICAL = 36;
+    private static final int UNLOAD_SLICES_OVERLOADED = 48;
     private static final int UNLOAD_CELLS_NORMAL = 2;
     private static final int UNLOAD_CELLS_WARNING = 2;
     private static final int UNLOAD_CELLS_STRESS = 3;
     private static final int UNLOAD_CELLS_EMERGENCY = 4;
     private static final int UNLOAD_CELLS_CRITICAL = 6;
     private static final int UNLOAD_CELLS_OVERLOADED = 12;
-    private static final int UNLOAD_PENDING_WARNING = 40;
-    private static final int UNLOAD_PENDING_STRESS = 70;
-    private static final int UNLOAD_PENDING_EMERGENCY = 90;
-    private static final int UNLOAD_PENDING_CRITICAL = 100;
-    private static final int UNLOAD_PENDING_OVERLOADED = 150;
-    private static final long UNLOAD_OLDEST_WARNING_MS = DEFERRED_UNLOAD_GRACE_MS * 3L / 2L;
-    private static final long UNLOAD_OLDEST_STRESS_MS = DEFERRED_UNLOAD_GRACE_MS * 2L;
-    private static final long UNLOAD_OLDEST_EMERGENCY_MS = DEFERRED_UNLOAD_GRACE_MS * 9L / 4L;
-    private static final long UNLOAD_OLDEST_CRITICAL_MS = 40000L;
-    private static final long UNLOAD_OLDEST_OVERLOADED_MS = 50000L;
+    private static final int UNLOAD_PENDING_WARNING = 12;
+    private static final int UNLOAD_PENDING_STRESS = 24;
+    private static final int UNLOAD_PENDING_EMERGENCY = 40;
+    private static final int UNLOAD_PENDING_CRITICAL = 60;
+    private static final int UNLOAD_PENDING_OVERLOADED = 90;
     private static final int DEFERRED_UNLOAD_MODE_NORMAL = 0;
     private static final int DEFERRED_UNLOAD_MODE_WARNING = 1;
     private static final int DEFERRED_UNLOAD_MODE_STRESS = 2;
@@ -658,25 +652,25 @@ public class ServerMap {
         ServerMap.ServerCell.chunkLoader.updateSaved();
     }
 
-    private int getDeferredUnloadMode(long oldestAgeMs) {
+    private int getDeferredUnloadMode() {
         int pending = this.pendingUnloads.size();
-        if (pending >= UNLOAD_PENDING_OVERLOADED || oldestAgeMs >= UNLOAD_OLDEST_OVERLOADED_MS) {
+        if (pending >= UNLOAD_PENDING_OVERLOADED) {
             return DEFERRED_UNLOAD_MODE_OVERLOADED;
         }
 
-        if (pending >= UNLOAD_PENDING_CRITICAL || oldestAgeMs >= UNLOAD_OLDEST_CRITICAL_MS) {
+        if (pending >= UNLOAD_PENDING_CRITICAL) {
             return DEFERRED_UNLOAD_MODE_CRITICAL;
         }
 
-        if (pending >= UNLOAD_PENDING_EMERGENCY || oldestAgeMs >= UNLOAD_OLDEST_EMERGENCY_MS) {
+        if (pending >= UNLOAD_PENDING_EMERGENCY) {
             return DEFERRED_UNLOAD_MODE_EMERGENCY;
         }
 
-        if (pending >= UNLOAD_PENDING_STRESS || oldestAgeMs >= UNLOAD_OLDEST_STRESS_MS) {
+        if (pending >= UNLOAD_PENDING_STRESS) {
             return DEFERRED_UNLOAD_MODE_STRESS;
         }
 
-        if (pending >= UNLOAD_PENDING_WARNING || oldestAgeMs >= UNLOAD_OLDEST_WARNING_MS) {
+        if (pending >= UNLOAD_PENDING_WARNING) {
             return DEFERRED_UNLOAD_MODE_WARNING;
         }
 
@@ -746,7 +740,7 @@ public class ServerMap {
         }
 
         long oldestAgeMs = this.getPendingUnloadOldestAgeMs(now);
-        int unloadMode = this.getDeferredUnloadMode(oldestAgeMs);
+        int unloadMode = this.getDeferredUnloadMode();
         int maxDeferredUnloadsPerTick = this.getDeferredUnloadCellsPerTick(unloadMode);
         int unloadSlicesPerTick = this.getDeferredUnloadSlicesPerTick(unloadMode);
         ArrayList<ServerMap.ServerCell> readyUnloads = new ArrayList<>();
@@ -758,11 +752,9 @@ public class ServerMap {
                 continue;
             }
 
-            if (cell.isUnloading() || now - queuedAt >= DEFERRED_UNLOAD_GRACE_MS) {
-                readyUnloads.add(cell);
-                if (readyUnloads.size() >= maxDeferredUnloadsPerTick) {
-                    break;
-                }
+            readyUnloads.add(cell);
+            if (readyUnloads.size() >= maxDeferredUnloadsPerTick) {
+                break;
             }
         }
 
@@ -804,7 +796,7 @@ public class ServerMap {
         int cx = PZMath.coorddivision(x, 64) - this.getMinX();
         int cy = PZMath.coorddivision(y, 64) - this.getMinY();
         ServerMap.ServerCell cell = this.getCell(cx, cy);
-        if (cell != null && cell.isLoaded) {
+        if (cell != null && cell.isLoaded && !cell.isUnloading()) {
             cell.physicsCheck = true;
         }
     }
@@ -862,7 +854,7 @@ public class ServerMap {
             cx -= this.getMinX();
             cy -= this.getMinY();
             ServerMap.ServerCell cell = this.getCell(cx, cy);
-            if (cell != null && cell.isLoaded) {
+            if (cell != null && cell.isLoaded && !cell.isUnloading()) {
                 IsoChunk c = cell.chunks[chx][chy];
                 return c == null ? null : c.getGridSquare(sqx, sqy, z);
             } else {
@@ -897,7 +889,7 @@ public class ServerMap {
         cx -= this.getMinX();
         cy -= this.getMinY();
         ServerMap.ServerCell cell = this.getCell(cx, cy);
-        return cell != null && cell.isLoaded ? cell.chunks[chx][chy] : null;
+        return cell != null && cell.isLoaded && !cell.isUnloading() ? cell.chunks[chx][chy] : null;
     }
 
     public void setSoftResetChunk(IsoChunk chunk) {

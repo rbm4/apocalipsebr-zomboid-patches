@@ -12,7 +12,7 @@ public final class LosUtil {
     public static final int SLOT_COUNT = 4;
     public static int sizeX = 200;
     public static int sizeY = 200;
-    public static int sizeZ = 8;
+    public static int sizeZ = 4;
     public static LosUtil.PerPlayerData[] cachedresults = new LosUtil.PerPlayerData[SLOT_COUNT];
     public static boolean[] cachecleared = new boolean[SLOT_COUNT];
 
