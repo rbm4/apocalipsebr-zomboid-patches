@@ -683,25 +683,33 @@ public final class IngameState extends GameState {
             if (GameServer.server) {
                 apocBrStateSectionStart = System.nanoTime();
                 try {
+                    long apocBrServerManagerStart = System.nanoTime();
                     AmbientStreamManager.instance.update();
+                    ApocBRServerTelemetry.recordTickSection("stateServerAmbient", System.nanoTime() - apocBrServerManagerStart);
                 } catch (Exception var20) {
                     ExceptionLogger.logException(var20);
                 }
 
                 try {
+                    long apocBrServerManagerStart = System.nanoTime();
                     Manager.getInstance().update();
+                    ApocBRServerTelemetry.recordTickSection("stateServerVehicleSound", System.nanoTime() - apocBrServerManagerStart);
                 } catch (Exception var19) {
                     ExceptionLogger.logException(var19);
                 }
 
                 try {
+                    long apocBrServerManagerStart = System.nanoTime();
                     AnimEventEmulator.getInstance().update();
+                    ApocBRServerTelemetry.recordTickSection("stateServerAnimEvent", System.nanoTime() - apocBrServerManagerStart);
                 } catch (Exception var18) {
                     ExceptionLogger.logException(var18);
                 }
 
                 try {
+                    long apocBrServerManagerStart = System.nanoTime();
                     BodyDamageSync.instance.update();
+                    ApocBRServerTelemetry.recordTickSection("stateServerBodyDamage", System.nanoTime() - apocBrServerManagerStart);
                 } catch (Exception var17) {
                     ExceptionLogger.logException(var17);
                 } finally {

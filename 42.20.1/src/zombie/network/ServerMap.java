@@ -90,7 +90,7 @@ public class ServerMap {
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
     private static final int UNLOAD_SQUARES_PER_SLICE = 254;
-    private static final int UNLOAD_SLICES_NORMAL = 4;
+    private static final int UNLOAD_SLICES_NORMAL = 6;
     private static final int UNLOAD_SLICES_WARNING = 12;
     private static final int UNLOAD_SLICES_STRESS = 24;
     private static final int UNLOAD_SLICES_EMERGENCY = 32;
@@ -102,11 +102,11 @@ public class ServerMap {
     private static final int UNLOAD_CELLS_EMERGENCY = 4;
     private static final int UNLOAD_CELLS_CRITICAL = 6;
     private static final int UNLOAD_CELLS_OVERLOADED = 12;
-    private static final int UNLOAD_PENDING_WARNING = 12;
-    private static final int UNLOAD_PENDING_STRESS = 24;
-    private static final int UNLOAD_PENDING_EMERGENCY = 40;
-    private static final int UNLOAD_PENDING_CRITICAL = 60;
-    private static final int UNLOAD_PENDING_OVERLOADED = 80;
+    private static final int UNLOAD_PENDING_WARNING = 10;
+    private static final int UNLOAD_PENDING_STRESS = 20;
+    private static final int UNLOAD_PENDING_EMERGENCY = 30;
+    private static final int UNLOAD_PENDING_CRITICAL = 40;
+    private static final int UNLOAD_PENDING_OVERLOADED = 50;
     private static final int DEFERRED_UNLOAD_MODE_NORMAL = 0;
     private static final int DEFERRED_UNLOAD_MODE_WARNING = 1;
     private static final int DEFERRED_UNLOAD_MODE_STRESS = 2;
@@ -1199,27 +1199,27 @@ public class ServerMap {
             apocBrUnits = 0;
             for (int z = minLevel; z <= maxLevel; z++) {
                 for (int x = 0; x < 64; x++) {
-                    IsoGridSquare sqxx = ServerMap.instance.getGridSquare(sx + x, sy, z);
+                    IsoGridSquare sqxx = this.getGridSquareLocal(x, 0, z);
                     if (sqxx != null) {
                         sqxx.RecalcAllWithNeighbours(true);
                         apocBrUnits++;
                     }
 
-                    sqxx = ServerMap.instance.getGridSquare(sx + x, ey - 1, z);
+                    sqxx = this.getGridSquareLocal(x, 63, z);
                     if (sqxx != null) {
                         sqxx.RecalcAllWithNeighbours(true);
                         apocBrUnits++;
                     }
                 }
 
-                for (int y = 0; y < 64; y++) {
-                    IsoGridSquare sqxxx = ServerMap.instance.getGridSquare(sx, sy + y, z);
+                for (int y = 1; y < 63; y++) {
+                    IsoGridSquare sqxxx = this.getGridSquareLocal(0, y, z);
                     if (sqxxx != null) {
                         sqxxx.RecalcAllWithNeighbours(true);
                         apocBrUnits++;
                     }
 
-                    sqxxx = ServerMap.instance.getGridSquare(ex - 1, sy + y, z);
+                    sqxxx = this.getGridSquareLocal(63, y, z);
                     if (sqxxx != null) {
                         sqxxx.RecalcAllWithNeighbours(true);
                         apocBrUnits++;
@@ -1462,6 +1462,15 @@ public class ServerMap {
             }
 
             return null;
+        }
+
+        private IsoGridSquare getGridSquareLocal(int localX, int localY, int z) {
+            if (localX < 0 || localX >= 64 || localY < 0 || localY >= 64) {
+                return null;
+            }
+
+            IsoChunk chunk = this.chunks[localX / 8][localY / 8];
+            return chunk == null ? null : chunk.getGridSquare(localX % 8, localY % 8, z);
         }
 
         public int getWX() {

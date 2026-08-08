@@ -125,6 +125,7 @@ import zombie.randomizedWorld.randomizedZoneStory.RandomizedZoneStoryBase;
 import zombie.scripting.ScriptManager;
 import zombie.scripting.objects.VehicleScript;
 import zombie.util.StringUtils;
+import zombie.util.list.PZArrayList;
 import zombie.util.list.PZArrayUtil;
 import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehicleType;
@@ -3898,9 +3899,12 @@ public final class IsoChunk {
             for (int x = 0; x < 8; x++) {
                 for (int y = 0; y < 8; y++) {
                     IsoGridSquare square = this.getGridSquare(x, y, zz);
-                    if (square != null && !square.getObjects().isEmpty()) {
-                        for (int ix = 0; ix < square.getObjects().size(); ix++) {
-                            IsoObject obj = square.getObjects().get(ix);
+                    if (square != null) {
+                        PZArrayList<IsoObject> objects = square.getObjects();
+                        int objectCount = objects.size();
+                        if (objectCount > 0) {
+                            for (int ix = 0; ix < objectCount; ix++) {
+                                IsoObject obj = objects.get(ix);
                             obj.addToWorld();
                             if (obj.getSprite() != null && obj.getSprite().getProperties().has(IsoPropertyType.FUEL_AMOUNT)) {
                                 obj.getPipedFuelAmount();
@@ -3911,34 +3915,37 @@ public final class IsoChunk {
                             }
                         }
 
-                        if (square.HasTree()) {
-                            this.treeCount++;
+                            if (square.HasTree()) {
+                                this.treeCount++;
+                            }
+
+                            if (this.jobType != IsoChunk.JobType.SoftReset) {
+                                ErosionMain.LoadGridsquare(square);
+                            }
+
+                            if (this.addZombies) {
+                                MapObjects.newGridSquare(square);
+                            }
+
+                            MapObjects.loadGridSquare(square);
+                            if (this.isNewChunk()) {
+                                this.addRatsAfterLoading(square);
+                            }
+
+                            try {
+                                LuaEventManager.triggerEvent("LoadGridsquare", square);
+                            } catch (Throwable var15) {
+                                ExceptionLogger.logException(var15);
+                            }
                         }
 
-                        if (this.jobType != IsoChunk.JobType.SoftReset) {
-                            ErosionMain.LoadGridsquare(square);
-                        }
-
-                        if (this.addZombies) {
-                            MapObjects.newGridSquare(square);
-                        }
-
-                        MapObjects.loadGridSquare(square);
-                        if (this.isNewChunk()) {
-                            this.addRatsAfterLoading(square);
-                        }
-
-                        try {
-                            LuaEventManager.triggerEvent("LoadGridsquare", square);
-                        } catch (Throwable var15) {
-                            ExceptionLogger.logException(var15);
-                        }
-                    }
-
-                    if (square != null && !square.getStaticMovingObjects().isEmpty()) {
-                        for (int ix = 0; ix < square.getStaticMovingObjects().size(); ix++) {
-                            IsoMovingObject objx = square.getStaticMovingObjects().get(ix);
-                            objx.addToWorld();
+                        ArrayList<IsoMovingObject> staticMovingObjects = square.getStaticMovingObjects();
+                        int staticMovingObjectCount = staticMovingObjects.size();
+                        if (staticMovingObjectCount > 0) {
+                            for (int ix = 0; ix < staticMovingObjectCount; ix++) {
+                                IsoMovingObject objx = staticMovingObjects.get(ix);
+                                objx.addToWorld();
+                            }
                         }
                     }
                 }

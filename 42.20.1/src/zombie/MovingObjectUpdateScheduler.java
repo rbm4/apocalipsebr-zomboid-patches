@@ -33,6 +33,7 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void startFrame() {
+        long apocStartNanos = System.nanoTime();
         this.frameCounter++;
         PZArrayUtil.forEach(this.simulationLevels, MovingObjectUpdateSchedulerUpdateBucket::clear);
         float averageFps = GameWindow.averageFPS;
@@ -54,6 +55,7 @@ public final class MovingObjectUpdateScheduler {
                 this.simulationLevels[sim.getUpdateOrderIndex()].add(isoMovingObject);
             }
         }
+        ApocBRServerTelemetry.recordTickSection("stateMoveStartFrame", System.nanoTime() - apocStartNanos);
     }
 
     private UpdateSchedulerSimulationLevel getUpdateSchedulerSimulationLevelForObject(IsoMovingObject isoMovingObject, float averageFps) {
@@ -193,12 +195,15 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void update() {
+        long apocStartNanos = System.nanoTime();
         for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
             simulation.update((int)this.frameCounter);
         }
+        ApocBRServerTelemetry.recordTickSection("stateMoveUpdate", System.nanoTime() - apocStartNanos);
     }
 
     public void postupdate() {
+        long apocStartNanos = System.nanoTime();
         if (GameServer.server) {
             ZombieCountOptimiser.deleteZombies();
         }
@@ -206,6 +211,7 @@ public final class MovingObjectUpdateScheduler {
         for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
             simulation.postupdate((int)this.frameCounter);
         }
+        ApocBRServerTelemetry.recordTickSection("stateMovePostUpdate", System.nanoTime() - apocStartNanos);
     }
 
     public boolean isEnabled() {

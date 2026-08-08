@@ -240,6 +240,8 @@ public final class ApocBRServerTelemetry {
         "stateGameTime", "stateScript", "stateWorldSound", "stateFire", "stateRain", "stateMeta",
         "stateVirtualZombie", "stateMapCollisionMain", "stateZombiePopulationMain", "statePathfindCheck",
         "statePathfindMain", "statePolygonalMap", "stateLootRespawn", "stateServerManagers",
+        "stateServerAmbient", "stateServerVehicleSound", "stateServerAnimEvent", "stateServerBodyDamage",
+        "stateMoveStartFrame", "stateMoveUpdate", "stateMovePostUpdate",
         "stateSearchMode", "stateRenderSettings"
     };
     private static final LongAdder[] tickSectionCalls = newLongAdders(TICK_SECTION_KEYS.length);

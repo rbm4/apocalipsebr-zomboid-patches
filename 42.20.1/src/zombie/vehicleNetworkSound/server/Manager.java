@@ -11,9 +11,11 @@ import zombie.vehicles.BaseVehicle;
 
 public final class Manager {
     private static Manager instance;
+    private static final int APocBRUpdateIntervalTicks = Math.max(1, Integer.getInteger("apocbr.vehicleSoundUpdateIntervalTicks", 5));
     private final Connection[] connections = new Connection[512];
     private final Set<BaseVehicle> tempVehicles = new HashSet<>();
     private final TShortHashSet relevantVehicleIDs = new TShortHashSet();
+    private int updateTick;
 
     public static Manager getInstance() {
         if (instance == null) {
@@ -34,6 +36,11 @@ public final class Manager {
     }
 
     public void update() {
+        this.updateTick++;
+        if (APocBRUpdateIntervalTicks > 1 && this.updateTick % APocBRUpdateIntervalTicks != 0) {
+            return;
+        }
+
         for (UdpConnection udpConnection : GameServer.udpEngine.connections) {
             this.updateConnection(udpConnection);
         }
