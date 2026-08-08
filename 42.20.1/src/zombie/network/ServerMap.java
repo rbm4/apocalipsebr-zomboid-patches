@@ -457,6 +457,7 @@ public class ServerMap {
     }
 
     public void preupdate() {
+        long apocBrSectionStart = System.nanoTime();
         this.lastTick = System.nanoTime();
         mapLoading = DebugType.MapLoading.isEnabled();
 
@@ -600,9 +601,12 @@ public class ServerMap {
         if (GameEntityManager.needSave && this.metaEntitySaveFrequency.Check()) {
             GameEntityManager.Save();
         }
+
+        ApocBRServerTelemetry.recordTickSection("serverMapPre", System.nanoTime() - apocBrSectionStart);
     }
 
     public void postupdate() {
+        long apocBrPostStart = System.nanoTime();
         ArrayList<ServerMap.ServerCell> cellsToUpdate = new ArrayList<>();
         ArrayList<ServerMap.ServerCell> toUnload = new ArrayList<>();
 
@@ -636,6 +640,7 @@ public class ServerMap {
 
         this.processDeferredUnloads(cellsToUpdate, toUnload);
 
+        long apocBrCellUpdateStart = System.nanoTime();
         for (int i = 0; i < cellsToUpdate.size(); i++) {
             ServerMap.ServerCell cell = cellsToUpdate.get(i);
 
@@ -647,9 +652,16 @@ public class ServerMap {
                 DebugType.General.printException(e, LogSeverity.Error);
             }
         }
+        ApocBRServerTelemetry.recordTickSection("serverMapCellUpdate", System.nanoTime() - apocBrCellUpdateStart);
 
+        long apocBrZombiePostStart = System.nanoTime();
         NetworkZombiePacker.getInstance().postupdate();
+        ApocBRServerTelemetry.recordTickSection("serverMapZombiePost", System.nanoTime() - apocBrZombiePostStart);
+
+        long apocBrUpdateSavedStart = System.nanoTime();
         ServerMap.ServerCell.chunkLoader.updateSaved();
+        ApocBRServerTelemetry.recordTickSection("serverMapUpdateSaved", System.nanoTime() - apocBrUpdateSavedStart);
+        ApocBRServerTelemetry.recordTickSection("serverMapPost", System.nanoTime() - apocBrPostStart);
     }
 
     private int getDeferredUnloadMode() {

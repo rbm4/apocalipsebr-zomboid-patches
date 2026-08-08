@@ -1,9 +1,21 @@
 package zombie;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.OpenOption;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.LongAdder;
 import zombie.debug.DebugLog;
+import zombie.debug.DebugType;
+import zombie.debug.LogSeverity;
 
 /**
  * Minimal server-side telemetry for ApocBR patches on build 42.20.1.
@@ -53,6 +65,13 @@ import zombie.debug.DebugLog;
 public final class ApocBRServerTelemetry {
     private static final boolean ENABLED = getBoolean("apocbr.telemetry.enabled", true);
     private static final long INTERVAL_MS = clamp(getLong("apocbr.telemetry.intervalMs", 30000L), 5000L, 300000L);
+    private static final boolean NDJSON_ENABLED = getBoolean("apocbr.telemetry.ndjson.enabled", true);
+    private static final String NDJSON_PATH = getString("apocbr.telemetry.ndjson.path", "apocbr-telemetry.ndjson");
+    private static final int NDJSON_QUEUE_CAPACITY = (int)clamp(getLong("apocbr.telemetry.ndjson.queue", 64L), 1L, 4096L);
+    private static final ArrayBlockingQueue<String> ndjsonQueue = new ArrayBlockingQueue<>(NDJSON_QUEUE_CAPACITY);
+    private static final AtomicBoolean ndjsonWriterStarted = new AtomicBoolean(false);
+    private static final AtomicLong ndjsonSeq = new AtomicLong();
+    private static final LongAdder ndjsonDropped = new LongAdder();
 
     private static long nextLogMs = System.currentTimeMillis() + INTERVAL_MS;
 
@@ -188,6 +207,18 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder zombiePopNanos = new LongAdder();
     private static final AtomicLong zombiePopMaxNanos = new AtomicLong();
 
+    private static final String[] TICK_SECTION_KEYS = new String[] {
+        "netHigh", "netPlayer", "netNormal", "throttleSleep", "removeRequests", "rcon",
+        "mapCollision", "gameState", "vehicleManager", "objectIdManager", "playersRelevant", "importantAreas",
+        "connectionRelevant", "objectCleanup", "connectionTimeouts", "serverMapPre", "serverMapPost",
+        "serverMapCellUpdate", "serverMapZombiePost", "serverMapUpdateSaved", "serverGui", "consoleCommands",
+        "statsPublic", "connectionMaintenance", "worldMapPositions", "coop", "loginQueue", "zipBackup",
+        "steamLoop", "trading", "war", "safehouse", "networkPlayer", "asyncTransactions", "worldMapVisited"
+    };
+    private static final LongAdder[] tickSectionCalls = newLongAdders(TICK_SECTION_KEYS.length);
+    private static final LongAdder[] tickSectionNanos = newLongAdders(TICK_SECTION_KEYS.length);
+    private static final AtomicLong[] tickSectionMaxNanos = newAtomicLongs(TICK_SECTION_KEYS.length);
+
     private ApocBRServerTelemetry() {
     }
 
@@ -196,6 +227,18 @@ public final class ApocBRServerTelemetry {
         worldTicks++;
         worldNanos += nanos;
         worldMaxNanos = Math.max(worldMaxNanos, nanos);
+    }
+
+    public static void recordTickSection(String section, long nanos) {
+        if (!ENABLED || nanos < 0L) return;
+        for (int i = 0; i < TICK_SECTION_KEYS.length; i++) {
+            if (TICK_SECTION_KEYS[i].equals(section)) {
+                tickSectionCalls[i].increment();
+                tickSectionNanos[i].add(nanos);
+                tickSectionMaxNanos[i].accumulateAndGet(nanos, Math::max);
+                return;
+            }
+        }
     }
 
     /**
@@ -277,6 +320,7 @@ public final class ApocBRServerTelemetry {
         netHighPackets.add(packets);
         netHighNanos.add(nanos);
         netHighMaxNanos.accumulateAndGet(nanos, Math::max);
+        recordTickSection("netHigh", nanos);
     }
 
     public static void recordMainLoopNetPlayer(int packets, long nanos) {
@@ -284,6 +328,7 @@ public final class ApocBRServerTelemetry {
         netPlayerPackets.add(packets);
         netPlayerNanos.add(nanos);
         netPlayerMaxNanos.accumulateAndGet(nanos, Math::max);
+        recordTickSection("netPlayer", nanos);
     }
 
     public static void recordMainLoopNetNormal(int packets, int processed, int dropped, long nanos) {
@@ -293,6 +338,7 @@ public final class ApocBRServerTelemetry {
         netNormalDropped.add(dropped);
         netNormalNanos.add(nanos);
         netNormalMaxNanos.accumulateAndGet(nanos, Math::max);
+        recordTickSection("netNormal", nanos);
     }
 
     /**
@@ -509,18 +555,34 @@ public final class ApocBRServerTelemetry {
         if (!ENABLED) return;
         long now = System.currentTimeMillis();
         if (now < nextLogMs) return;
-        DebugLog.log(buildJsonLog(now));
+        String payload = buildJsonPayload(now);
+        DebugLog.log("[ApocBRTelemetry]" + payload);
+        offerNdjson(payload);
         resetWorldCounters();
         nextLogMs = now + INTERVAL_MS;
     }
 
-    private static String buildJsonLog(long now) {
-        StringBuilder json = new StringBuilder(220);
-        json.append("[ApocBRTelemetry]{\"ts\":").append(now);
+    private static String buildJsonPayload(long now) {
+        StringBuilder json = new StringBuilder(4096);
+        json.append("{\"schemaVersion\":1");
+        json.append(",\"seq\":").append(ndjsonSeq.incrementAndGet());
+        json.append(",\"ts\":").append(now);
+        json.append(",\"ndjson\":{\"dropped\":").append(ndjsonDropped.sum()).append("}");
         json.append(",\"world\":{\"ticks\":").append(worldTicks)
             .append(",\"avgMs\":").append(avgMs(worldNanos, worldTicks))
             .append(",\"maxMs\":").append(ms(worldMaxNanos))
             .append("}");
+        json.append(",\"tickSections\":{");
+        for (int i = 0; i < TICK_SECTION_KEYS.length; i++) {
+            long calls = tickSectionCalls[i].sum();
+            if (i > 0) json.append(",");
+            json.append("\"").append(TICK_SECTION_KEYS[i]).append("\":{\"calls\":").append(calls)
+                .append(",\"avgMs\":").append(avgMs(tickSectionNanos[i].sum(), worldTicks))
+                .append(",\"avgCallMs\":").append(avgMs(tickSectionNanos[i].sum(), calls))
+                .append(",\"maxMs\":").append(ms(tickSectionMaxNanos[i].get()))
+                .append("}");
+        }
+        json.append("}");
         json.append(",\"unload\":{\"pending\":").append(serverMapUnloadPendingLast)
             .append(",\"queued\":").append(serverMapUnloadQueued)
             .append(",\"revalidated\":").append(serverMapUnloadRevalidated)
@@ -680,6 +742,11 @@ public final class ApocBRServerTelemetry {
         worldTicks = 0L;
         worldNanos = 0L;
         worldMaxNanos = 0L;
+        for (int i = 0; i < TICK_SECTION_KEYS.length; i++) {
+            tickSectionCalls[i].reset();
+            tickSectionNanos[i].reset();
+            tickSectionMaxNanos[i].set(0L);
+        }
         serverMapUnloadQueued = 0L;
         serverMapUnloadRevalidated = 0L;
         serverMapUnloadCells = 0L;
@@ -790,6 +857,56 @@ public final class ApocBRServerTelemetry {
         zombiePopMaxNanos.set(0L);
     }
 
+    private static void offerNdjson(String payload) {
+        if (!NDJSON_ENABLED || payload == null) {
+            return;
+        }
+
+        startNdjsonWriter();
+        if (!ndjsonQueue.offer(payload)) {
+            ndjsonDropped.increment();
+        }
+    }
+
+    private static void startNdjsonWriter() {
+        if (!ndjsonWriterStarted.compareAndSet(false, true)) {
+            return;
+        }
+
+        Thread thread = new Thread(ApocBRServerTelemetry::runNdjsonWriter, "ApocBR-Telemetry-NDJSON");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private static void runNdjsonWriter() {
+        Path path = Paths.get(NDJSON_PATH);
+        Path parent = path.getParent();
+        try {
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+        } catch (IOException e) {
+            DebugType.General.printException(e, "ApocBRServerTelemetry: failed to create NDJSON telemetry directory", LogSeverity.Warning);
+        }
+
+        OpenOption[] options = new OpenOption[] {
+            StandardOpenOption.CREATE, StandardOpenOption.WRITE, StandardOpenOption.APPEND
+        };
+
+        try (BufferedWriter writer = Files.newBufferedWriter(path, StandardCharsets.UTF_8, options)) {
+            while (true) {
+                String payload = ndjsonQueue.take();
+                writer.write(payload);
+                writer.newLine();
+                writer.flush();
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } catch (Throwable t) {
+            DebugType.General.printException(t, "ApocBRServerTelemetry: NDJSON writer stopped", LogSeverity.Warning);
+        }
+    }
+
     private static double avgMs(long nanos, long count) {
         return count <= 0L ? 0.0 : round2((double) nanos / (double) count / 1000000.0);
     }
@@ -819,6 +936,11 @@ public final class ApocBRServerTelemetry {
         } catch (NumberFormatException e) {
             return def;
         }
+    }
+
+    private static String getString(String key, String def) {
+        String value = System.getProperty(key);
+        return value == null || value.trim().isEmpty() ? def : value.trim();
     }
 
     private static long clamp(long value, long min, long max) {
