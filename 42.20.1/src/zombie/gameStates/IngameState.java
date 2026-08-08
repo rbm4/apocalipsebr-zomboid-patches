@@ -15,6 +15,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.concurrent.CompletableFuture;
 import zombie.AmbientStreamManager;
+import zombie.ApocBRServerTelemetry;
 import zombie.CombatManager;
 import zombie.DebugFileWatcher;
 import zombie.FliesSound;
@@ -574,74 +575,113 @@ public final class IngameState extends GameState {
             asleep = IsoPlayer.allPlayersAsleep();
         }
 
+        long apocBrStateSectionStart = System.nanoTime();
         GameTime.getInstance().update(asleep && UIManager.getFadeAlpha() == 1.0);
+        ApocBRServerTelemetry.recordTickSection("stateGameTime", System.nanoTime() - apocBrStateSectionStart);
         GameProfiler profiler = GameProfiler.getInstance();
         if (!this.paused) {
+            apocBrStateSectionStart = System.nanoTime();
             try (GameProfiler.ProfileArea ex = profiler.profile("ScriptManager.update")) {
                 ScriptManager.instance.update();
+            } finally {
+                ApocBRServerTelemetry.recordTickSection("stateScript", System.nanoTime() - apocBrStateSectionStart);
             }
         }
 
         if (!this.paused) {
+            apocBrStateSectionStart = System.nanoTime();
             try (GameProfiler.ProfileArea var56 = profiler.profile("WorldSoundManager.update")) {
                 WorldSoundManager.instance.update();
             } catch (Exception var55) {
                 ExceptionLogger.logException(var55);
+            } finally {
+                ApocBRServerTelemetry.recordTickSection("stateWorldSound", System.nanoTime() - apocBrStateSectionStart);
             }
 
+            apocBrStateSectionStart = System.nanoTime();
             try (GameProfiler.ProfileArea var57 = profiler.profile("IsoFireManager.Update")) {
                 IsoFireManager.Update();
             } catch (Exception var53) {
                 ExceptionLogger.logException(var53);
+            } finally {
+                ApocBRServerTelemetry.recordTickSection("stateFire", System.nanoTime() - apocBrStateSectionStart);
             }
 
+            apocBrStateSectionStart = System.nanoTime();
             try (GameProfiler.ProfileArea var58 = profiler.profile("RainManager.Update")) {
                 RainManager.Update();
             } catch (Exception var51) {
                 ExceptionLogger.logException(var51);
+            } finally {
+                ApocBRServerTelemetry.recordTickSection("stateRain", System.nanoTime() - apocBrStateSectionStart);
             }
 
+            apocBrStateSectionStart = System.nanoTime();
             try (GameProfiler.ProfileArea var59 = profiler.profile("Meta.update")) {
                 Meta.instance.update();
+            } finally {
+                ApocBRServerTelemetry.recordTickSection("stateMeta", System.nanoTime() - apocBrStateSectionStart);
             }
 
             try {
+                apocBrStateSectionStart = System.nanoTime();
                 try (GameProfiler.ProfileArea var60 = profiler.profile("VirtualZombieManager.update")) {
                     VirtualZombieManager.instance.update();
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("stateVirtualZombie", System.nanoTime() - apocBrStateSectionStart);
                 }
 
+                apocBrStateSectionStart = System.nanoTime();
                 try (GameProfiler.ProfileArea var61 = profiler.profile("MapCollisionData.updateMain")) {
                     MapCollisionData.instance.updateMain();
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("stateMapCollisionMain", System.nanoTime() - apocBrStateSectionStart);
                 }
 
+                apocBrStateSectionStart = System.nanoTime();
                 try (GameProfiler.ProfileArea var62 = profiler.profile("ZombiePopulationManager.updateMain")) {
                     ZombiePopulationManager.instance.updateMain();
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("stateZombiePopulationMain", System.nanoTime() - apocBrStateSectionStart);
                 }
 
+                apocBrStateSectionStart = System.nanoTime();
                 try (GameProfiler.ProfileArea var63 = profiler.profile("PathfindNative.checkUseNativeCode")) {
                     PathfindNative.instance.checkUseNativeCode();
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("statePathfindCheck", System.nanoTime() - apocBrStateSectionStart);
                 }
 
                 if (PathfindNative.useNativeCode) {
+                    apocBrStateSectionStart = System.nanoTime();
                     try (GameProfiler.ProfileArea var64 = profiler.profile("PathfindNative.updateMain")) {
                         PathfindNative.instance.updateMain();
+                    } finally {
+                        ApocBRServerTelemetry.recordTickSection("statePathfindMain", System.nanoTime() - apocBrStateSectionStart);
                     }
                 } else {
+                    apocBrStateSectionStart = System.nanoTime();
                     try (GameProfiler.ProfileArea var65 = profiler.profile("PolygonalMap2.updateMain")) {
                         PolygonalMap2.instance.updateMain();
+                    } finally {
+                        ApocBRServerTelemetry.recordTickSection("statePolygonalMap", System.nanoTime() - apocBrStateSectionStart);
                     }
                 }
             } catch (Throwable var49) {
                 ExceptionLogger.logException(var49);
             }
 
+            apocBrStateSectionStart = System.nanoTime();
             try (GameProfiler.ProfileArea var66 = profiler.profile("LootRespawn.update")) {
                 LootRespawn.update();
             } catch (Exception var42) {
                 ExceptionLogger.logException(var42);
+            } finally {
+                ApocBRServerTelemetry.recordTickSection("stateLootRespawn", System.nanoTime() - apocBrStateSectionStart);
             }
 
             if (GameServer.server) {
+                apocBrStateSectionStart = System.nanoTime();
                 try {
                     AmbientStreamManager.instance.update();
                 } catch (Exception var20) {
@@ -664,6 +704,8 @@ public final class IngameState extends GameState {
                     BodyDamageSync.instance.update();
                 } catch (Exception var17) {
                     ExceptionLogger.logException(var17);
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("stateServerManagers", System.nanoTime() - apocBrStateSectionStart);
                 }
             }
 
@@ -709,12 +751,20 @@ public final class IngameState extends GameState {
                 }
             }
 
-            try (GameProfiler.ProfileArea var72 = profiler.profile("SearchMode.update")) {
-                SearchMode.getInstance().update();
-            }
+            if (!GameServer.server) {
+                apocBrStateSectionStart = System.nanoTime();
+                try (GameProfiler.ProfileArea var72 = profiler.profile("SearchMode.update")) {
+                    SearchMode.getInstance().update();
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("stateSearchMode", System.nanoTime() - apocBrStateSectionStart);
+                }
 
-            try (GameProfiler.ProfileArea var73 = profiler.profile("RenderSettings.update")) {
-                RenderSettings.getInstance().update();
+                apocBrStateSectionStart = System.nanoTime();
+                try (GameProfiler.ProfileArea var73 = profiler.profile("RenderSettings.update")) {
+                    RenderSettings.getInstance().update();
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("stateRenderSettings", System.nanoTime() - apocBrStateSectionStart);
+                }
             }
         }
     }
@@ -1316,7 +1366,9 @@ public final class IngameState extends GameState {
             }
         }
 
+        long apocBrStateSectionStart = System.nanoTime();
         LuaEventManager.triggerEvent("OnTickEvenPaused", BoxedStaticValues.toDouble(this.numberTicks));
+        ApocBRServerTelemetry.recordTickSection("stateEvenPausedLua", System.nanoTime() - apocBrStateSectionStart);
         DebugFileWatcher.instance.update();
         AdvancedAnimator.checkModifiedFiles();
         if (Core.debug) {
@@ -1507,43 +1559,64 @@ public final class IngameState extends GameState {
                             this.debugTimes.add(System.nanoTime());
                         }
 
+                        apocBrStateSectionStart = System.nanoTime();
                         IsoWorld.instance.update();
+                        ApocBRServerTelemetry.recordTickSection("stateIsoWorld", System.nanoTime() - apocBrStateSectionStart);
                         CompletableFuture<Void> objAmbEmit = null;
                         if (DebugOptions.instance.threadAmbient.getValue() && !GameServer.server) {
                             objAmbEmit = CompletableFuture.runAsync(ObjectAmbientEmitters.getInstance()::update, PZForkJoinPool.commonPool());
                         }
 
+                        apocBrStateSectionStart = System.nanoTime();
                         try (GameProfiler.ProfileArea var36 = profiler.profile("GEM Update")) {
                             GameEntityManager.Update();
+                        } finally {
+                            ApocBRServerTelemetry.recordTickSection("stateGem", System.nanoTime() - apocBrStateSectionStart);
                         }
 
+                        apocBrStateSectionStart = System.nanoTime();
                         try (GameProfiler.ProfileArea var37 = profiler.profile("Animal")) {
                             AnimalController.getInstance().update();
+                        } finally {
+                            ApocBRServerTelemetry.recordTickSection("stateAnimal", System.nanoTime() - apocBrStateSectionStart);
                         }
 
                         if (Core.debug) {
                             this.debugTimes.add(System.nanoTime());
                         }
 
+                        apocBrStateSectionStart = System.nanoTime();
                         try (GameProfiler.ProfileArea var38 = profiler.profile("Radio")) {
                             ZomboidRadio.getInstance().update();
+                        } finally {
+                            ApocBRServerTelemetry.recordTickSection("stateRadio", System.nanoTime() - apocBrStateSectionStart);
                         }
 
+                        apocBrStateSectionStart = System.nanoTime();
                         try (GameProfiler.ProfileArea var39 = profiler.profile("Stuff")) {
                             this.UpdateStuff();
+                        } finally {
+                            ApocBRServerTelemetry.recordTickSection("stateUpdateStuff", System.nanoTime() - apocBrStateSectionStart);
                         }
 
+                        apocBrStateSectionStart = System.nanoTime();
                         try (GameProfiler.ProfileArea var40 = profiler.profile("On Tick")) {
                             this.onTick();
+                        } finally {
+                            ApocBRServerTelemetry.recordTickSection("stateOnTickLua", System.nanoTime() - apocBrStateSectionStart);
                         }
 
+                        apocBrStateSectionStart = System.nanoTime();
                         try {
                             FMODAmbientWalls.getInstance().update();
                         } catch (Throwable var19) {
                             ExceptionLogger.logException(var19);
+                        } finally {
+                            ApocBRServerTelemetry.recordTickSection("stateAmbientWalls", System.nanoTime() - apocBrStateSectionStart);
                         }
 
                         this.TickMusicDirector();
+                        apocBrStateSectionStart = System.nanoTime();
                         if (objAmbEmit != null) {
                             try (GameProfiler.ProfileArea var41 = profiler.profile("ObjectAmbientEmitters.update")) {
                                 objAmbEmit.join();
@@ -1551,6 +1624,7 @@ public final class IngameState extends GameState {
                         } else {
                             ObjectAmbientEmitters.getInstance().update();
                         }
+                        ApocBRServerTelemetry.recordTickSection("stateObjectAmbient", System.nanoTime() - apocBrStateSectionStart);
 
                         this.numberTicks = Math.max(this.numberTicks + 1L, 0L);
                     } catch (Exception var28) {
@@ -1604,8 +1678,11 @@ public final class IngameState extends GameState {
             }
 
             if (!GameServer.server || ServerGUI.isCreated()) {
+                apocBrStateSectionStart = System.nanoTime();
                 try (GameProfiler.ProfileArea var34 = profiler.profile("Update Model")) {
                     ModelManager.instance.update();
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("stateModel", System.nanoTime() - apocBrStateSectionStart);
                 }
             }
 
@@ -1615,8 +1692,11 @@ public final class IngameState extends GameState {
             }
 
             if (GameClient.client || GameServer.server) {
+                apocBrStateSectionStart = System.nanoTime();
                 try (GameProfiler.ProfileArea var35 = profiler.profile("Update Managers")) {
                     updateManagers();
+                } finally {
+                    ApocBRServerTelemetry.recordTickSection("stateUpdateManagers", System.nanoTime() - apocBrStateSectionStart);
                 }
             }
 

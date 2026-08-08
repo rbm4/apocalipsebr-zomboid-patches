@@ -233,7 +233,13 @@ public final class ApocBRServerTelemetry {
         "connectionRelevant", "objectCleanup", "connectionTimeouts", "serverMapPre", "serverMapPost",
         "serverMapCellUpdate", "serverMapZombiePost", "serverMapUpdateSaved", "serverGui", "consoleCommands",
         "statsPublic", "connectionMaintenance", "worldMapPositions", "coop", "loginQueue", "zipBackup",
-        "steamLoop", "trading", "war", "safehouse", "networkPlayer", "asyncTransactions", "worldMapVisited"
+        "steamLoop", "trading", "war", "safehouse", "networkPlayer", "asyncTransactions", "worldMapVisited",
+        "stateEvenPausedLua", "stateIsoWorld", "stateGem", "stateAnimal", "stateRadio", "stateUpdateStuff",
+        "stateOnTickLua", "stateAmbientWalls", "stateObjectAmbient", "stateModel", "stateUpdateManagers",
+        "stateGameTime", "stateScript", "stateWorldSound", "stateFire", "stateRain", "stateMeta",
+        "stateVirtualZombie", "stateMapCollisionMain", "stateZombiePopulationMain", "statePathfindCheck",
+        "statePathfindMain", "statePolygonalMap", "stateLootRespawn", "stateServerManagers",
+        "stateSearchMode", "stateRenderSettings"
     };
     private static final LongAdder[] tickSectionCalls = newLongAdders(TICK_SECTION_KEYS.length);
     private static final LongAdder[] tickSectionNanos = newLongAdders(TICK_SECTION_KEYS.length);
