@@ -32,6 +32,7 @@ import java.nio.ByteOrder;
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import zombie.ApocBRServerTelemetry;
 import zombie.GameTime;
 import zombie.GameWindow;
 import zombie.Lua.LuaManager;
@@ -490,7 +491,9 @@ public class PathfindNative {
                     IsoPlayer.players[0].StopAllActionQueue();
                     Object obj = LuaManager.env.rawget("ISPathFindAction_pathToLocationF");
                     if (obj != null) {
+                        long apocBRStart = System.nanoTime();
                         LuaManager.caller.pcall(LuaManager.thread, obj, this.request.targetX, this.request.targetY, this.request.targetZ);
+                        ApocBRServerTelemetry.recordLuaDirect("PathfindNative.ISPathFindAction_pathToLocationF", System.nanoTime() - apocBRStart);
                     }
                 }
             }

@@ -11,6 +11,7 @@ import java.util.HashMap;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.joml.Vector2f;
+import zombie.ApocBRServerTelemetry;
 import zombie.GameWindow;
 import zombie.Lua.LuaManager;
 import zombie.ai.KnownBlockedEdges;
@@ -1650,7 +1651,9 @@ public final class PolygonalMap2 {
                         if (GameKeyboard.isKeyDown(207) && !GameKeyboard.wasKeyDown(207)) {
                             Object obj = LuaManager.env.rawget("ISPathFindAction_pathToLocationF");
                             if (obj != null) {
+                                long apocBRStart = System.nanoTime();
                                 LuaManager.caller.pcall(LuaManager.thread, obj, targetX, targetY, targetZ);
+                                ApocBRServerTelemetry.recordLuaDirect("PolygonalMap2.ISPathFindAction_pathToLocationF", System.nanoTime() - apocBRStart);
                             }
                         }
                     }

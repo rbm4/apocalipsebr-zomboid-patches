@@ -13,6 +13,7 @@ import org.joml.Vector3f;
 import org.lwjgl.util.vector.Quaternion;
 import se.krka.kahlua.j2se.KahluaTableImpl;
 import se.krka.kahlua.vm.KahluaTable;
+import zombie.ApocBRServerTelemetry;
 import zombie.FliesSound;
 import zombie.GameTime;
 import zombie.GameWindow;
@@ -2357,7 +2358,9 @@ public final class IsoDeadBody
     public void setAnimalData(IsoAnimal died) {
         Object functionObj = LuaManager.getFunctionObject("setAnimalBodyData");
         if (functionObj != null) {
+            long apocBRStart = System.nanoTime();
             LuaManager.caller.protectedCallVoid(LuaManager.thread, functionObj, died, this.getModData());
+            ApocBRServerTelemetry.recordLuaDirect("IsoDeadBody.setAnimalBodyData", System.nanoTime() - apocBRStart);
         }
 
         this.animalType = died.getAnimalType();

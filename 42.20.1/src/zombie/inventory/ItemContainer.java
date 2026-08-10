@@ -13,6 +13,7 @@ import se.krka.kahlua.integration.LuaReturn;
 import se.krka.kahlua.vm.LuaClosure;
 import zombie.GameTime;
 import zombie.GameWindow;
+import zombie.ApocBRServerTelemetry;
 import zombie.SandboxOptions;
 import zombie.SystemDisabler;
 import zombie.UsedFromLua;
@@ -294,7 +295,9 @@ public final class ItemContainer {
                 if (functionName != null) {
                     Object functionObj = LuaManager.getFunctionObject(functionName);
                     if (functionObj != null) {
+                        long apocBRStart = System.nanoTime();
                         Boolean accept = LuaManager.caller.protectedCallBoolean(LuaManager.thread, functionObj, this, item);
+                        ApocBRServerTelemetry.recordLuaDirect("ItemContainer.acceptItem|" + functionName, System.nanoTime() - apocBRStart);
                         if (accept != Boolean.TRUE) {
                             return false;
                         }
@@ -3829,6 +3832,19 @@ public final class ItemContainer {
         }
     }
 
+    private static String getLuaCallId(Object functionObj) {
+        if (functionObj instanceof LuaClosure closure && closure.prototype != null) {
+            String file = closure.prototype.file;
+            if (file == null || file.isEmpty()) {
+                file = "unknown";
+            }
+
+            return file + "#" + Integer.toHexString(System.identityHashCode(closure));
+        }
+
+        return functionObj == null ? "unknown" : functionObj.getClass().getName();
+    }
+
     private static final class CategoryPredicate implements Predicate<InventoryItem> {
         private String category;
 
@@ -3865,7 +3881,9 @@ public final class ItemContainer {
         }
 
         public int compare(InventoryItem o1, InventoryItem o2) {
+            long apocBRStart = System.nanoTime();
             LuaReturn result = LuaManager.caller.protectedCall(LuaManager.thread, this.functionObj, o1, o2, this.arg);
+            ApocBRServerTelemetry.recordLuaDirect("ItemContainer.EvalArgComparator|" + ItemContainer.getLuaCallId(this.functionObj), System.nanoTime() - apocBRStart);
             if (result.isSuccess() && !result.isEmpty() && result.getFirst() instanceof Double) {
                 double v = (Double)result.getFirst();
                 return Double.compare(v, 0.0);
@@ -3886,7 +3904,10 @@ public final class ItemContainer {
         }
 
         public boolean test(InventoryItem item) {
-            return LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item, this.arg) == Boolean.TRUE;
+            long apocBRStart = System.nanoTime();
+            Boolean result = LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item, this.arg);
+            ApocBRServerTelemetry.recordLuaDirect("ItemContainer.EvalArgPredicate|" + ItemContainer.getLuaCallId(this.functionObj), System.nanoTime() - apocBRStart);
+            return result == Boolean.TRUE;
         }
     }
 
@@ -3899,7 +3920,9 @@ public final class ItemContainer {
         }
 
         public int compare(InventoryItem o1, InventoryItem o2) {
+            long apocBRStart = System.nanoTime();
             LuaReturn result = LuaManager.caller.protectedCall(LuaManager.thread, this.functionObj, o1, o2);
+            ApocBRServerTelemetry.recordLuaDirect("ItemContainer.EvalComparator|" + ItemContainer.getLuaCallId(this.functionObj), System.nanoTime() - apocBRStart);
             if (result.isSuccess() && !result.isEmpty() && result.getFirst() instanceof Double) {
                 double v = (Double)result.getFirst();
                 return Double.compare(v, 0.0);
@@ -3918,7 +3941,10 @@ public final class ItemContainer {
         }
 
         public boolean test(InventoryItem item) {
-            return LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item) == Boolean.TRUE;
+            long apocBRStart = System.nanoTime();
+            Boolean result = LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item);
+            ApocBRServerTelemetry.recordLuaDirect("ItemContainer.EvalPredicate|" + ItemContainer.getLuaCallId(this.functionObj), System.nanoTime() - apocBRStart);
+            return result == Boolean.TRUE;
         }
     }
 
@@ -3969,7 +3995,14 @@ public final class ItemContainer {
         }
 
         public boolean test(InventoryItem item) {
-            return item.hasTag(this.itemTag) && LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item, this.arg) == Boolean.TRUE;
+            if (!item.hasTag(this.itemTag)) {
+                return false;
+            }
+
+            long apocBRStart = System.nanoTime();
+            Boolean result = LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item, this.arg);
+            ApocBRServerTelemetry.recordLuaDirect("ItemContainer.TagEvalArgPredicate|" + ItemContainer.getLuaCallId(this.functionObj), System.nanoTime() - apocBRStart);
+            return result == Boolean.TRUE;
         }
     }
 
@@ -3984,7 +4017,14 @@ public final class ItemContainer {
         }
 
         public boolean test(InventoryItem item) {
-            return item.hasTag(this.itemTag) && LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item) == Boolean.TRUE;
+            if (!item.hasTag(this.itemTag)) {
+                return false;
+            }
+
+            long apocBRStart = System.nanoTime();
+            Boolean result = LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item);
+            ApocBRServerTelemetry.recordLuaDirect("ItemContainer.TagEvalPredicate|" + ItemContainer.getLuaCallId(this.functionObj), System.nanoTime() - apocBRStart);
+            return result == Boolean.TRUE;
         }
     }
 
@@ -4014,8 +4054,14 @@ public final class ItemContainer {
         }
 
         public boolean test(InventoryItem item) {
-            return ItemContainer.compareType(this.type, item)
-                && LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item, this.arg) == Boolean.TRUE;
+            if (!ItemContainer.compareType(this.type, item)) {
+                return false;
+            }
+
+            long apocBRStart = System.nanoTime();
+            Boolean result = LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item, this.arg);
+            ApocBRServerTelemetry.recordLuaDirect("ItemContainer.TypeEvalArgPredicate|" + ItemContainer.getLuaCallId(this.functionObj), System.nanoTime() - apocBRStart);
+            return result == Boolean.TRUE;
         }
     }
 
@@ -4030,8 +4076,14 @@ public final class ItemContainer {
         }
 
         public boolean test(InventoryItem item) {
-            return ItemContainer.compareType(this.type, item)
-                && LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item) == Boolean.TRUE;
+            if (!ItemContainer.compareType(this.type, item)) {
+                return false;
+            }
+
+            long apocBRStart = System.nanoTime();
+            Boolean result = LuaManager.caller.protectedCallBoolean(LuaManager.thread, this.functionObj, item);
+            ApocBRServerTelemetry.recordLuaDirect("ItemContainer.TypeEvalPredicate|" + ItemContainer.getLuaCallId(this.functionObj), System.nanoTime() - apocBRStart);
+            return result == Boolean.TRUE;
         }
     }
 

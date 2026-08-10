@@ -8,6 +8,7 @@ import se.krka.kahlua.vm.KahluaTable;
 import se.krka.kahlua.vm.KahluaTableIterator;
 import se.krka.kahlua.vm.LuaClosure;
 import se.krka.kahlua.vm.Prototype;
+import zombie.ApocBRServerTelemetry;
 import zombie.UsedFromLua;
 import zombie.core.Core;
 import zombie.core.logger.ExceptionLogger;
@@ -119,10 +120,14 @@ public final class MapObjects {
                         params[0] = obj;
 
                         for (int n = 0; n < callback.functions.size(); n++) {
+                            LuaClosure function = callback.functions.get(n);
+                            long apocBRStart = System.nanoTime();
                             try {
-                                LuaManager.caller.protectedCallVoid(LuaManager.thread, callback.functions.get(n), params);
+                                LuaManager.caller.protectedCallVoid(LuaManager.thread, function, params);
                             } catch (Throwable var7) {
                                 ExceptionLogger.logException(var7);
+                            } finally {
+                                ApocBRServerTelemetry.recordLuaDirect("MapObjects.newGridSquare|" + getCallbackId(function), System.nanoTime() - apocBRStart);
                             }
 
                             spriteName = obj.sprite != null && obj.sprite.name != null ? obj.sprite.name : obj.spriteName;
@@ -228,10 +233,14 @@ public final class MapObjects {
                         params[0] = obj;
 
                         for (int n = 0; n < callback.functions.size(); n++) {
+                            LuaClosure function = callback.functions.get(n);
+                            long apocBRStart = System.nanoTime();
                             try {
-                                LuaManager.caller.protectedCallVoid(LuaManager.thread, callback.functions.get(n), params);
+                                LuaManager.caller.protectedCallVoid(LuaManager.thread, function, params);
                             } catch (Throwable var7) {
                                 ExceptionLogger.logException(var7);
+                            } finally {
+                                ApocBRServerTelemetry.recordLuaDirect("MapObjects.loadGridSquare|" + getCallbackId(function), System.nanoTime() - apocBRStart);
                             }
 
                             spriteName = obj.sprite != null && obj.sprite.name != null ? obj.sprite.name : obj.spriteName;
@@ -243,6 +252,19 @@ public final class MapObjects {
                 }
             }
         }
+    }
+
+    private static String getCallbackId(LuaClosure closure) {
+        if (closure == null || closure.prototype == null) {
+            return "unknown";
+        }
+
+        String file = closure.prototype.file;
+        if (file == null || file.isEmpty()) {
+            file = "unknown";
+        }
+
+        return file + "#" + Integer.toHexString(System.identityHashCode(closure));
     }
 
     public static void debugNewSquare(int x, int y, int z) {

@@ -8,7 +8,11 @@ import java.nio.file.OpenOption;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.Map;
 import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
@@ -68,6 +72,9 @@ public final class ApocBRServerTelemetry {
     private static final boolean NDJSON_ENABLED = getBoolean("apocbr.telemetry.ndjson.enabled", true);
     private static final String NDJSON_PATH = getString("apocbr.telemetry.ndjson.path", "apocbr-telemetry.ndjson");
     private static final int NDJSON_QUEUE_CAPACITY = (int)clamp(getLong("apocbr.telemetry.ndjson.queue", 64L), 1L, 4096L);
+    private static final int LUA_TELEMETRY_TOP_N = (int)clamp(getLong("apocbr.telemetry.lua.topN", 16L), 1L, 64L);
+    private static final long LUA_CALLBACK_SLOW_NANOS = clamp(getLong("apocbr.telemetry.lua.callbackSlowMs", 1L), 0L, 60000L) * 1000000L;
+    private static final boolean LUA_CALLBACK_TELEMETRY_ENABLED = getBoolean("apocbr.telemetry.lua.callbacks.enabled", true);
     private static final ArrayBlockingQueue<String> ndjsonQueue = new ArrayBlockingQueue<>(NDJSON_QUEUE_CAPACITY);
     private static final AtomicBoolean ndjsonWriterStarted = new AtomicBoolean(false);
     private static final AtomicLong ndjsonSeq = new AtomicLong();
@@ -228,6 +235,10 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder zombiePopNanos = new LongAdder();
     private static final AtomicLong zombiePopMaxNanos = new AtomicLong();
 
+    private static final ConcurrentHashMap<String, DynamicTiming> luaEvents = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DynamicTiming> luaCallbacks = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DynamicTiming> luaDirect = new ConcurrentHashMap<>();
+
     private static final String[] TICK_SECTION_KEYS = new String[] {
         "netHigh", "netPlayer", "netNormal", "throttleSleep", "removeRequests", "rcon",
         "mapCollision", "gameState", "vehicleManager", "objectIdManager", "playersRelevant", "importantAreas",
@@ -268,6 +279,29 @@ public final class ApocBRServerTelemetry {
                 return;
             }
         }
+    }
+
+    public static void recordLuaEvent(String event, int callbackCount, long nanos) {
+        if (!ENABLED || event == null || nanos < 0L) return;
+        recordDynamicTiming(luaEvents, event, Math.max(0, callbackCount), nanos);
+    }
+
+    public static void recordLuaCallback(String event, String callback, long nanos) {
+        if (!ENABLED || !LUA_CALLBACK_TELEMETRY_ENABLED || event == null || callback == null || nanos < LUA_CALLBACK_SLOW_NANOS) return;
+        recordDynamicTiming(luaCallbacks, event + "|" + callback, 1, nanos);
+    }
+
+    public static void recordLuaDirect(String callsite, long nanos) {
+        if (!ENABLED || callsite == null || nanos < 0L) return;
+        recordDynamicTiming(luaDirect, callsite, 1, nanos);
+    }
+
+    private static void recordDynamicTiming(ConcurrentHashMap<String, DynamicTiming> map, String key, int units, long nanos) {
+        DynamicTiming timing = map.computeIfAbsent(key, ignored -> new DynamicTiming());
+        timing.calls.increment();
+        timing.units.add(units);
+        timing.nanos.add(nanos);
+        timing.maxNanos.accumulateAndGet(nanos, Math::max);
     }
 
     /**
@@ -808,6 +842,9 @@ public final class ApocBRServerTelemetry {
             .append(",\"avgMs\":").append(avgMs(zombiePopNanos.sum(), popUpdates))
             .append(",\"maxMs\":").append(ms(zombiePopMaxNanos.get()))
             .append("}");
+        appendDynamicTimingMap(json, "luaEvents", luaEvents, LUA_TELEMETRY_TOP_N);
+        appendDynamicTimingMap(json, "luaCallbacks", luaCallbacks, LUA_TELEMETRY_TOP_N);
+        appendDynamicTimingMap(json, "luaDirect", luaDirect, LUA_TELEMETRY_TOP_N);
         json.append("}");
         return json.toString();
     }
@@ -940,6 +977,9 @@ public final class ApocBRServerTelemetry {
         zombiePopMoving.reset();
         zombiePopNanos.reset();
         zombiePopMaxNanos.set(0L);
+        luaEvents.clear();
+        luaCallbacks.clear();
+        luaDirect.clear();
     }
 
     private static void offerNdjson(String payload) {
@@ -1008,6 +1048,50 @@ public final class ApocBRServerTelemetry {
         return Math.round(value * 100.0) / 100.0;
     }
 
+    private static void appendDynamicTimingMap(StringBuilder json, String name, ConcurrentHashMap<String, DynamicTiming> map, int limit) {
+        json.append(",\"").append(name).append("\":{");
+        ArrayList<Map.Entry<String, DynamicTiming>> entries = new ArrayList<>(map.entrySet());
+        entries.sort(Comparator.comparingLong((Map.Entry<String, DynamicTiming> entry) -> entry.getValue().nanos.sum()).reversed());
+        int emitted = 0;
+        for (Map.Entry<String, DynamicTiming> entry : entries) {
+            if (emitted >= limit) break;
+            DynamicTiming timing = entry.getValue();
+            long calls = timing.calls.sum();
+            long nanos = timing.nanos.sum();
+            if (calls <= 0L && nanos <= 0L) continue;
+            if (emitted > 0) json.append(",");
+            appendJsonString(json, entry.getKey());
+            json.append(":{\"calls\":").append(calls)
+                .append(",\"units\":").append(timing.units.sum())
+                .append(",\"avgMs\":").append(avgMs(nanos, calls))
+                .append(",\"totalMs\":").append(ms(nanos))
+                .append(",\"maxMs\":").append(ms(timing.maxNanos.get()))
+                .append("}");
+            emitted++;
+        }
+        json.append("}");
+    }
+
+    private static void appendJsonString(StringBuilder json, String value) {
+        json.append('"');
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            if (c == '"' || c == '\\') {
+                json.append('\\').append(c);
+            } else if (c < 32) {
+                json.append("\\u");
+                String hex = Integer.toHexString(c);
+                for (int n = hex.length(); n < 4; n++) {
+                    json.append('0');
+                }
+                json.append(hex);
+            } else {
+                json.append(c);
+            }
+        }
+        json.append('"');
+    }
+
     private static boolean getBoolean(String key, boolean def) {
         String value = System.getProperty(key);
         return value == null ? def : Boolean.parseBoolean(value.trim());
@@ -1046,5 +1130,12 @@ public final class ApocBRServerTelemetry {
             atomics[i] = new AtomicLong();
         }
         return atomics;
+    }
+
+    private static final class DynamicTiming {
+        private final LongAdder calls = new LongAdder();
+        private final LongAdder units = new LongAdder();
+        private final LongAdder nanos = new LongAdder();
+        private final AtomicLong maxNanos = new AtomicLong();
     }
 }
