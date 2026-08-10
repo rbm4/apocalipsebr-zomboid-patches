@@ -6,8 +6,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
 import zombie.ApocBRServerTelemetry;
@@ -89,31 +87,6 @@ public class ServerMap {
     ArrayList<ServerMap.ServerCell> toLoad = new ArrayList<>();
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
-    private static final int UNLOAD_SQUARES_PER_SLICE = 254;
-    private static final int UNLOAD_SLICES_NORMAL = 6;
-    private static final int UNLOAD_SLICES_WARNING = 12;
-    private static final int UNLOAD_SLICES_STRESS = 24;
-    private static final int UNLOAD_SLICES_EMERGENCY = 32;
-    private static final int UNLOAD_SLICES_CRITICAL = 36;
-    private static final int UNLOAD_SLICES_OVERLOADED = 48;
-    private static final int UNLOAD_CELLS_NORMAL = 2;
-    private static final int UNLOAD_CELLS_WARNING = 2;
-    private static final int UNLOAD_CELLS_STRESS = 3;
-    private static final int UNLOAD_CELLS_EMERGENCY = 4;
-    private static final int UNLOAD_CELLS_CRITICAL = 6;
-    private static final int UNLOAD_CELLS_OVERLOADED = 12;
-    private static final int UNLOAD_PENDING_WARNING = 10;
-    private static final int UNLOAD_PENDING_STRESS = 20;
-    private static final int UNLOAD_PENDING_EMERGENCY = 30;
-    private static final int UNLOAD_PENDING_CRITICAL = 40;
-    private static final int UNLOAD_PENDING_OVERLOADED = 50;
-    private static final int DEFERRED_UNLOAD_MODE_NORMAL = 0;
-    private static final int DEFERRED_UNLOAD_MODE_WARNING = 1;
-    private static final int DEFERRED_UNLOAD_MODE_STRESS = 2;
-    private static final int DEFERRED_UNLOAD_MODE_EMERGENCY = 3;
-    private static final int DEFERRED_UNLOAD_MODE_CRITICAL = 4;
-    private static final int DEFERRED_UNLOAD_MODE_OVERLOADED = 5;
-    private final LinkedHashMap<ServerMap.ServerCell, Long> pendingUnloads = new LinkedHashMap<>();
     long lastTick;
 
     public short getUniqueZombieId() {
@@ -480,7 +453,6 @@ public class ServerMap {
                 this.loadedCells.remove(cell);
                 this.releventNow.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
-                this.pendingUnloads.remove(cell);
                 this.toLoad.remove(i--);
             }
         }
@@ -502,7 +474,6 @@ public class ServerMap {
                 this.loadedCells.remove(ix--);
                 this.releventNow.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
-                this.pendingUnloads.remove(cell);
                 this.toLoad.remove(cell);
             }
         }
@@ -524,7 +495,6 @@ public class ServerMap {
                 this.loadedCells.remove(cell);
                 this.releventNow.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
-                this.pendingUnloads.remove(cell);
                 this.toLoad.remove(cell);
             }
         }
@@ -653,8 +623,7 @@ public class ServerMap {
 
     public void postupdate() {
         long apocBrPostStart = System.nanoTime();
-        ArrayList<ServerMap.ServerCell> cellsToUpdate = new ArrayList<>();
-        ArrayList<ServerMap.ServerCell> toUnload = new ArrayList<>();
+        boolean pathfindPaused = false;
 
         try {
             for (int n = 0; n < this.loadedCells.size(); n++) {
@@ -675,30 +644,28 @@ public class ServerMap {
                         cell.cancelLoading = true;
                     }
                 } else if (!shouldBeLoaded) {
-                    toUnload.add(cell);
+                    int x = cell.wx - this.getMinX();
+                    int y = cell.wy - this.getMinY();
+                    if (!pathfindPaused) {
+                        ServerLOS.instance.suspend();
+                        pathfindPaused = true;
+                    }
+
+                    this.cellMap[y * this.width + x].Unload();
+                    this.cellMap[y * this.width + x] = null;
+                    this.loadedCells.remove(cell);
+                    n--;
                 } else {
-                    cellsToUpdate.add(cell);
+                    cell.update();
                 }
             }
         } catch (Exception var10) {
             DebugType.General.printException(var10, LogSeverity.Error);
-        }
-
-        this.processDeferredUnloads(cellsToUpdate, toUnload);
-
-        long apocBrCellUpdateStart = System.nanoTime();
-        for (int i = 0; i < cellsToUpdate.size(); i++) {
-            ServerMap.ServerCell cell = cellsToUpdate.get(i);
-
-            try {
-                if (this.loadedCells.contains(cell)) {
-                    cell.update();
-                }
-            } catch (Exception e) {
-                DebugType.General.printException(e, LogSeverity.Error);
+        } finally {
+            if (pathfindPaused) {
+                ServerLOS.instance.resume();
             }
         }
-        ApocBRServerTelemetry.recordTickSection("serverMapCellUpdate", System.nanoTime() - apocBrCellUpdateStart);
 
         long apocBrZombiePostStart = System.nanoTime();
         NetworkZombiePacker.getInstance().postupdate();
@@ -710,151 +677,11 @@ public class ServerMap {
         ApocBRServerTelemetry.recordTickSection("serverMapPost", System.nanoTime() - apocBrPostStart);
     }
 
-    private int getDeferredUnloadMode() {
-        int pending = this.pendingUnloads.size();
-        if (pending >= UNLOAD_PENDING_OVERLOADED) {
-            return DEFERRED_UNLOAD_MODE_OVERLOADED;
-        }
-
-        if (pending >= UNLOAD_PENDING_CRITICAL) {
-            return DEFERRED_UNLOAD_MODE_CRITICAL;
-        }
-
-        if (pending >= UNLOAD_PENDING_EMERGENCY) {
-            return DEFERRED_UNLOAD_MODE_EMERGENCY;
-        }
-
-        if (pending >= UNLOAD_PENDING_STRESS) {
-            return DEFERRED_UNLOAD_MODE_STRESS;
-        }
-
-        if (pending >= UNLOAD_PENDING_WARNING) {
-            return DEFERRED_UNLOAD_MODE_WARNING;
-        }
-
-        return DEFERRED_UNLOAD_MODE_NORMAL;
-    }
-
-    private int getDeferredUnloadCellsPerTick(int mode) {
-        if (mode == DEFERRED_UNLOAD_MODE_OVERLOADED) {
-            return UNLOAD_CELLS_OVERLOADED;
-        } else if (mode == DEFERRED_UNLOAD_MODE_CRITICAL) {
-            return UNLOAD_CELLS_CRITICAL;
-        } else if (mode == DEFERRED_UNLOAD_MODE_EMERGENCY) {
-            return UNLOAD_CELLS_EMERGENCY;
-        } else if (mode == DEFERRED_UNLOAD_MODE_STRESS) {
-            return UNLOAD_CELLS_STRESS;
-        } else {
-            return mode == DEFERRED_UNLOAD_MODE_WARNING ? UNLOAD_CELLS_WARNING : UNLOAD_CELLS_NORMAL;
-        }
-    }
-
-    private int getDeferredUnloadSlicesPerTick(int mode) {
-        if (mode == DEFERRED_UNLOAD_MODE_OVERLOADED) {
-            return UNLOAD_SLICES_OVERLOADED;
-        } else if (mode == DEFERRED_UNLOAD_MODE_CRITICAL) {
-            return UNLOAD_SLICES_CRITICAL;
-        } else if (mode == DEFERRED_UNLOAD_MODE_EMERGENCY) {
-            return UNLOAD_SLICES_EMERGENCY;
-        } else if (mode == DEFERRED_UNLOAD_MODE_STRESS) {
-            return UNLOAD_SLICES_STRESS;
-        } else {
-            return mode == DEFERRED_UNLOAD_MODE_WARNING ? UNLOAD_SLICES_WARNING : UNLOAD_SLICES_NORMAL;
-        }
-    }
-
-    private long getPendingUnloadOldestAgeMs(long now) {
-        if (this.pendingUnloads.isEmpty()) {
-            return 0L;
-        }
-
-        Long oldestQueuedAt = this.pendingUnloads.values().iterator().next();
-        return oldestQueuedAt == null ? 0L : Math.max(0L, now - oldestQueuedAt);
-    }
-
-    private void processDeferredUnloads(List<ServerMap.ServerCell> toUpdate, List<ServerMap.ServerCell> toUnload) {
-        long now = System.currentTimeMillis();
-        int queued = 0;
-        int revalidated = 0;
-        int unloaded = 0;
-        int partial = 0;
-        long unloadNanos = 0L;
-
-        for (int i = toUpdate.size() - 1; i >= 0; i--) {
-            ServerMap.ServerCell cell = toUpdate.get(i);
-            if (cell.isUnloading()) {
-                toUpdate.remove(i);
-            } else if (this.pendingUnloads.remove(cell) != null) {
-                revalidated++;
-            }
-        }
-
-        for (int i = 0; i < toUnload.size(); i++) {
-            ServerMap.ServerCell cell = toUnload.get(i);
-            if (!this.pendingUnloads.containsKey(cell)) {
-                this.pendingUnloads.put(cell, now);
-                queued++;
-            }
-        }
-
-        long oldestAgeMs = this.getPendingUnloadOldestAgeMs(now);
-        int unloadMode = this.getDeferredUnloadMode();
-        int maxDeferredUnloadsPerTick = this.getDeferredUnloadCellsPerTick(unloadMode);
-        int unloadSlicesPerTick = this.getDeferredUnloadSlicesPerTick(unloadMode);
-        ArrayList<ServerMap.ServerCell> readyUnloads = new ArrayList<>();
-
-        for (ServerMap.ServerCell cell : new ArrayList<>(this.pendingUnloads.keySet())) {
-            Long queuedAt = this.pendingUnloads.get(cell);
-            if (queuedAt == null || !cell.isLoaded || !this.loadedCells.contains(cell)) {
-                this.pendingUnloads.remove(cell);
-                continue;
-            }
-
-            readyUnloads.add(cell);
-            if (readyUnloads.size() >= maxDeferredUnloadsPerTick) {
-                break;
-            }
-        }
-
-        for (int attempts = 0; attempts < readyUnloads.size(); attempts++) {
-            ServerMap.ServerCell cell = readyUnloads.get(attempts);
-            long unloadStart = System.nanoTime();
-
-            try {
-                int x = cell.wx - this.getMinX();
-                int y = cell.wy - this.getMinY();
-                ServerMap.ServerCell mapCell = this.cellMap[y * this.width + x];
-                boolean unloadComplete = mapCell != null && mapCell.Unload(unloadSlicesPerTick);
-                if (unloadComplete) {
-                    this.cellMap[y * this.width + x] = null;
-                    this.loadedCells.remove(mapCell);
-                    this.releventNow.remove(mapCell);
-                    this.toLoad.remove(mapCell);
-                    this.pendingUnloads.remove(cell);
-                    unloaded++;
-                } else {
-                    partial++;
-                }
-            } catch (Exception e) {
-                DebugType.General.printException(e, LogSeverity.Error);
-            } finally {
-                unloadNanos += System.nanoTime() - unloadStart;
-            }
-        }
-
-        oldestAgeMs = this.getPendingUnloadOldestAgeMs(now);
-
-        ApocBRServerTelemetry.recordServerMapDeferredUnload(this.pendingUnloads.size(), queued, revalidated, unloaded, unloadNanos, oldestAgeMs);
-        ApocBRServerTelemetry.recordServerMapDeferredUnloadBudget(
-            unloadMode, readyUnloads.size(), maxDeferredUnloadsPerTick, unloadSlicesPerTick, readyUnloads.size(), partial
-        );
-    }
-
     public void physicsCheck(int x, int y) {
         int cx = PZMath.coorddivision(x, 64) - this.getMinX();
         int cy = PZMath.coorddivision(y, 64) - this.getMinY();
         ServerMap.ServerCell cell = this.getCell(cx, cy);
-        if (cell != null && cell.isLoaded && !cell.isUnloading()) {
+        if (cell != null && cell.isLoaded) {
             cell.physicsCheck = true;
         }
     }
@@ -912,7 +739,7 @@ public class ServerMap {
             cx -= this.getMinX();
             cy -= this.getMinY();
             ServerMap.ServerCell cell = this.getCell(cx, cy);
-            if (cell != null && cell.isLoaded && !cell.isUnloading()) {
+            if (cell != null && cell.isLoaded) {
                 IsoChunk c = cell.chunks[chx][chy];
                 return c == null ? null : c.getGridSquare(sqx, sqy, z);
             } else {
@@ -947,7 +774,7 @@ public class ServerMap {
         cx -= this.getMinX();
         cy -= this.getMinY();
         ServerMap.ServerCell cell = this.getCell(cx, cy);
-        return cell != null && cell.isLoaded && !cell.isUnloading() ? cell.chunks[chx][chy] : null;
+        return cell != null && cell.isLoaded ? cell.chunks[chx][chy] : null;
     }
 
     public void setSoftResetChunk(IsoChunk chunk) {
@@ -1061,9 +888,6 @@ public class ServerMap {
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
-        private boolean unloading;
-        private int unloadChunkX;
-        private int unloadChunkY;
 
         public boolean Load2() {
             long apocBrPhaseStart = System.nanoTime();
@@ -1285,57 +1109,30 @@ public class ServerMap {
             ApocBRServerTelemetry.recordServerMapPrePhase("load2RoomsInc", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
 
             this.isLoaded = true;
-            this.unloading = false;
-            this.unloadChunkX = 0;
-            this.unloadChunkY = 0;
         }
 
-        public boolean isUnloading() {
-            return this.unloading;
-        }
-
-        public boolean Unload(int unloadSlicesPerTick) {
+        public void Unload() {
             if (this.isLoaded) {
-                if (!this.unloading) {
-                    this.unloading = true;
-                    this.unloadChunkX = 0;
-                    this.unloadChunkY = 0;
-                    if (ServerMap.mapLoading) {
-                        DebugType.MapLoading
-                            .debugln(
-                                "Unloading cell: "
-                                    + this.wx
-                                    + ", "
-                                    + this.wy
-                                    + " ("
-                                    + ServerMap.instance.toWorldCellX(this.wx)
-                                    + ", "
-                                    + ServerMap.instance.toWorldCellY(this.wy)
-                                    + ")"
-                            );
-                    }
+                if (ServerMap.mapLoading) {
+                    DebugType.MapLoading
+                        .debugln(
+                            "Unloading cell: "
+                                + this.wx
+                                + ", "
+                                + this.wy
+                                + " ("
+                                + ServerMap.instance.toWorldCellX(this.wx)
+                                + ", "
+                                + ServerMap.instance.toWorldCellY(this.wy)
+                                + ")"
+                        );
                 }
 
-                int slicesRemaining = Math.max(1, unloadSlicesPerTick);
-
-                while (this.unloadChunkX < 8 && slicesRemaining > 0) {
-                    IsoChunk chunk = this.chunks[this.unloadChunkX][this.unloadChunkY];
-                    if (chunk != null) {
-                        if (!chunk.isRemoveFromWorldStarted()) {
-                            long chunkStart = System.nanoTime();
-                            chunk.beginRemoveFromWorld();
-                            ApocBRServerTelemetry.recordServerMapUnloadPhase("chunkGlobal", 1, System.nanoTime() - chunkStart);
-                        }
-
-                        long squareStart = System.nanoTime();
-                        boolean chunkDone = chunk.processRemoveFromWorldSquares(ServerMap.UNLOAD_SQUARES_PER_SLICE);
-                        ApocBRServerTelemetry.recordServerMapUnloadPhase(
-                            "squareTeardown", ServerMap.UNLOAD_SQUARES_PER_SLICE, System.nanoTime() - squareStart
-                        );
-                        slicesRemaining--;
-
-                        if (chunkDone) {
-                            chunk.finishRemoveFromWorld();
+                for (int x = 0; x < 8; x++) {
+                    for (int y = 0; y < 8; y++) {
+                        IsoChunk chunk = this.chunks[x][y];
+                        if (chunk != null) {
+                            chunk.removeFromWorld();
                             chunk.loadVehiclesObject = null;
 
                             for (int i = 0; i < chunk.vehicles.size(); i++) {
@@ -1343,48 +1140,20 @@ public class ServerMap {
                                 VehiclesDB2.instance.updateVehicle(vehicle);
                             }
 
-                            ApocBRServerTelemetry.recordServerMapUnloadPhase("vehicleSave", chunk.vehicles.size(), 0L);
                             chunkLoader.addSaveUnloadedJob(chunk);
-                            ApocBRServerTelemetry.recordServerMapUnloadPhase("saveEnqueue", 1, 0L);
-                            this.chunks[this.unloadChunkX][this.unloadChunkY] = null;
-                            this.advanceUnloadChunkCursor();
-                            continue;
+                            this.chunks[x][y] = null;
                         }
-
-                        return false;
                     }
-
-                    this.advanceUnloadChunkCursor();
-                }
-
-                if (this.unloadChunkX < 8) {
-                    return false;
                 }
 
                 for (RoomDef def : this.unexploredRooms) {
                     def.indoorZombies--;
                 }
-
-                this.isLoaded = false;
-                this.unloading = false;
-                this.unloadChunkX = 0;
-                this.unloadChunkY = 0;
-                return true;
-            }
-
-            return false;
-        }
-
-        private void advanceUnloadChunkCursor() {
-            this.unloadChunkY++;
-            if (this.unloadChunkY >= 8) {
-                this.unloadChunkY = 0;
-                this.unloadChunkX++;
             }
         }
 
         public void Save(boolean worker) {
-            if (this.isLoaded && !this.unloading) {
+            if (this.isLoaded) {
                 for (int x = 0; x < 8; x++) {
                     for (int y = 0; y < 8; y++) {
                         IsoChunk chunk = this.chunks[x][y];
