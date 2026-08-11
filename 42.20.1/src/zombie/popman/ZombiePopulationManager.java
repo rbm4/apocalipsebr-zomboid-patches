@@ -67,6 +67,7 @@ public final class ZombiePopulationManager {
     public static boolean debugLoggingEnabled;
     public static final ReentrantLock saveLock = new ReentrantLock();
     private static final ConcurrentLinkedQueue<ZombiePopulationManager.PendingCellSave> pendingSaveCells = new ConcurrentLinkedQueue<>();
+    private static final Set<Long> pendingSaveCellKeys = new HashSet<>();
     private final LoadedAreas loadedAreas = new LoadedAreas(false);
     private final LoadedAreas loadedServerCells = new LoadedAreas(true);
     private final PlayerSpawns playerSpawns = new PlayerSpawns();
@@ -173,9 +174,17 @@ public final class ZombiePopulationManager {
 
     public void requestSaveCell(int popmanCellX, int popmanCellY) {
         if (!GameClient.client) {
+            long apocBrStart = System.nanoTime();
+            long cellKey = getCellKey(popmanCellX, popmanCellY);
             saveLock.lock();
 
             try {
+                if (pendingSaveCellKeys.contains(cellKey)) {
+                    ApocBRServerTelemetry.recordServerMapUnloadDetail("zombieSaveCellDeduped", 1, System.nanoTime() - apocBrStart);
+                    return;
+                }
+
+                pendingSaveCellKeys.add(cellKey);
                 List<ZombiePopulationManager.ZombieSaveData> snapshot = new ArrayList<>();
 
                 for (IsoZombie z : IsoWorld.instance.currentCell.getZombieList()) {
@@ -188,7 +197,8 @@ public final class ZombiePopulationManager {
                     }
                 }
 
-                pendingSaveCells.offer(new ZombiePopulationManager.PendingCellSave(popmanCellX, popmanCellY, snapshot));
+                pendingSaveCells.offer(new ZombiePopulationManager.PendingCellSave(popmanCellX, popmanCellY, cellKey, snapshot));
+                ApocBRServerTelemetry.recordServerMapUnloadDetail("zombieSaveCellSnapshot", snapshot.size(), System.nanoTime() - apocBrStart);
             } finally {
                 saveLock.unlock();
             }
@@ -204,10 +214,15 @@ public final class ZombiePopulationManager {
                 try {
                     this.writeCellSnapshot(req);
                 } finally {
+                    pendingSaveCellKeys.remove(req.cellKey);
                     saveLock.unlock();
                 }
             }
         }
+    }
+
+    private static long getCellKey(int cellX, int cellY) {
+        return (long)cellX << 32 ^ (long)cellY & 4294967295L;
     }
 
     private void writeCellSnapshot(ZombiePopulationManager.PendingCellSave req) {
@@ -983,11 +998,13 @@ public final class ZombiePopulationManager {
     private static final class PendingCellSave {
         final int popmanCellX;
         final int popmanCellY;
+        final long cellKey;
         final List<ZombiePopulationManager.ZombieSaveData> aliveZombies;
 
-        PendingCellSave(int x, int y, List<ZombiePopulationManager.ZombieSaveData> zombies) {
+        PendingCellSave(int x, int y, long cellKey, List<ZombiePopulationManager.ZombieSaveData> zombies) {
             this.popmanCellX = x;
             this.popmanCellY = y;
+            this.cellKey = cellKey;
             this.aliveZombies = zombies;
         }
     }

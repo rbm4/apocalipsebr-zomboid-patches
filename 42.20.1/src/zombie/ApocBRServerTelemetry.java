@@ -110,7 +110,7 @@ public final class ApocBRServerTelemetry {
         "chunkMapCollision", "chunkAnimalPop", "chunkZombiePop", "chunkPathfind", "chunkCollisionClear",
         "squareRainWater", "squareRoomZone", "squareMoving", "squareObjects", "squareStatic",
         "squareAdjacent", "squareSoftClear", "finishVehicles", "finishChunkMeta", "saveUnloadedWrite",
-        "reuseGridsquares"
+        "reuseGridsquares", "zombieSaveCellSnapshot", "zombieSaveCellDeduped"
     };
     private static final LongAdder[] serverMapUnloadDetailCalls = newLongAdders(SERVER_MAP_UNLOAD_DETAIL_KEYS.length);
     private static final LongAdder[] serverMapUnloadDetailUnits = newLongAdders(SERVER_MAP_UNLOAD_DETAIL_KEYS.length);
@@ -127,6 +127,14 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder[] serverMapPreUnits = newLongAdders(SERVER_MAP_PRE_KEYS.length);
     private static final LongAdder[] serverMapPreNanos = newLongAdders(SERVER_MAP_PRE_KEYS.length);
     private static final AtomicLong[] serverMapPreMaxNanos = newAtomicLongs(SERVER_MAP_PRE_KEYS.length);
+    private static final String[] SERVER_MAP_POST_KEYS = new String[] {
+        "loop", "relevantContains", "outsidePlayerInfluence", "cancelLoading", "losSuspend", "cellUnload",
+        "cellMapClear", "loadedCellsRemove", "cellUpdate", "losResume", "zombiePost", "updateSaved"
+    };
+    private static final LongAdder[] serverMapPostCalls = newLongAdders(SERVER_MAP_POST_KEYS.length);
+    private static final LongAdder[] serverMapPostUnits = newLongAdders(SERVER_MAP_POST_KEYS.length);
+    private static final LongAdder[] serverMapPostNanos = newLongAdders(SERVER_MAP_POST_KEYS.length);
+    private static final AtomicLong[] serverMapPostMaxNanos = newAtomicLongs(SERVER_MAP_POST_KEYS.length);
     private static final AtomicLong serverMapPreLoadQueueMax = new AtomicLong();
     private static final AtomicLong serverMapPreLoadedQueueMax = new AtomicLong();
     private static final AtomicLong serverMapPreRecalcQueueMax = new AtomicLong();
@@ -374,6 +382,19 @@ public final class ApocBRServerTelemetry {
                 serverMapPreUnits[i].add(units);
                 serverMapPreNanos[i].add(nanos);
                 serverMapPreMaxNanos[i].accumulateAndGet(nanos, Math::max);
+                return;
+            }
+        }
+    }
+
+    public static void recordServerMapPostPhase(String phase, int units, long nanos) {
+        if (!ENABLED || nanos < 0L) return;
+        for (int i = 0; i < SERVER_MAP_POST_KEYS.length; i++) {
+            if (SERVER_MAP_POST_KEYS[i].equals(phase)) {
+                serverMapPostCalls[i].increment();
+                serverMapPostUnits[i].add(units);
+                serverMapPostNanos[i].add(nanos);
+                serverMapPostMaxNanos[i].accumulateAndGet(nanos, Math::max);
                 return;
             }
         }
@@ -706,6 +727,17 @@ public final class ApocBRServerTelemetry {
                 .append("}");
         }
         json.append("}");
+        json.append(",\"serverMapPostPhases\":{");
+        for (int i = 0; i < SERVER_MAP_POST_KEYS.length; i++) {
+            long calls = serverMapPostCalls[i].sum();
+            if (i > 0) json.append(",");
+            json.append("\"").append(SERVER_MAP_POST_KEYS[i]).append("\":{\"calls\":").append(calls)
+                .append(",\"units\":").append(serverMapPostUnits[i].sum())
+                .append(",\"avgMs\":").append(avgMs(serverMapPostNanos[i].sum(), calls))
+                .append(",\"maxMs\":").append(ms(serverMapPostMaxNanos[i].get()))
+                .append("}");
+        }
+        json.append("}");
         json.append(",\"unloadPhases\":{");
         for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
             if (i > 0) json.append(",");
@@ -863,6 +895,12 @@ public final class ApocBRServerTelemetry {
             serverMapPreUnits[i].reset();
             serverMapPreNanos[i].reset();
             serverMapPreMaxNanos[i].set(0L);
+        }
+        for (int i = 0; i < SERVER_MAP_POST_KEYS.length; i++) {
+            serverMapPostCalls[i].reset();
+            serverMapPostUnits[i].reset();
+            serverMapPostNanos[i].reset();
+            serverMapPostMaxNanos[i].set(0L);
         }
         serverMapPreLoadQueueMax.set(0L);
         serverMapPreLoadedQueueMax.set(0L);
