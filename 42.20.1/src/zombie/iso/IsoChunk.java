@@ -3273,9 +3273,11 @@ public final class IsoChunk {
 
     private void removeSquareFromWorld(IsoGridSquare sq) {
         long detailStart = System.nanoTime();
-        RainManager.RemoveAllOn(sq);
-        sq.clearWater();
-        sq.clearPuddles();
+        if (!GameServer.server) {
+            RainManager.RemoveAllOn(sq);
+            sq.clearWater();
+            sq.clearPuddles();
+        }
         ApocBRServerTelemetry.recordServerMapUnloadDetail("squareRainWater", 1, System.nanoTime() - detailStart);
         detailStart = System.nanoTime();
         if (sq.getRoom() != null) {
@@ -3387,58 +3389,66 @@ public final class IsoChunk {
         if (lx == 0 || lx == 7 || ly == 0 || ly == 7) {
             IsoDirections d1 = IsoDirections.N;
             IsoDirections d2 = IsoDirections.S;
-            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
-                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
-                sq.getAdjacentSquare(d1).s = null;
+            IsoGridSquare adjacent = sq.getAdjacentSquare(d1);
+            if (adjacent != null && adjacent.chunk != sq.chunk) {
+                adjacent.setAdjacentSquare(d2, null);
+                adjacent.s = null;
             }
 
             d1 = IsoDirections.NW;
             d2 = IsoDirections.SE;
-            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
-                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
-                sq.getAdjacentSquare(d1).se = null;
+            adjacent = sq.getAdjacentSquare(d1);
+            if (adjacent != null && adjacent.chunk != sq.chunk) {
+                adjacent.setAdjacentSquare(d2, null);
+                adjacent.se = null;
             }
 
             d1 = IsoDirections.W;
             d2 = IsoDirections.E;
-            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
-                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
-                sq.getAdjacentSquare(d1).e = null;
+            adjacent = sq.getAdjacentSquare(d1);
+            if (adjacent != null && adjacent.chunk != sq.chunk) {
+                adjacent.setAdjacentSquare(d2, null);
+                adjacent.e = null;
             }
 
             d1 = IsoDirections.SW;
             d2 = IsoDirections.NE;
-            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
-                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
-                sq.getAdjacentSquare(d1).ne = null;
+            adjacent = sq.getAdjacentSquare(d1);
+            if (adjacent != null && adjacent.chunk != sq.chunk) {
+                adjacent.setAdjacentSquare(d2, null);
+                adjacent.ne = null;
             }
 
             d1 = IsoDirections.S;
             d2 = IsoDirections.N;
-            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
-                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
-                sq.getAdjacentSquare(d1).n = null;
+            adjacent = sq.getAdjacentSquare(d1);
+            if (adjacent != null && adjacent.chunk != sq.chunk) {
+                adjacent.setAdjacentSquare(d2, null);
+                adjacent.n = null;
             }
 
             d1 = IsoDirections.SE;
             d2 = IsoDirections.NW;
-            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
-                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
-                sq.getAdjacentSquare(d1).nw = null;
+            adjacent = sq.getAdjacentSquare(d1);
+            if (adjacent != null && adjacent.chunk != sq.chunk) {
+                adjacent.setAdjacentSquare(d2, null);
+                adjacent.nw = null;
             }
 
             d1 = IsoDirections.E;
             d2 = IsoDirections.W;
-            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
-                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
-                sq.getAdjacentSquare(d1).w = null;
+            adjacent = sq.getAdjacentSquare(d1);
+            if (adjacent != null && adjacent.chunk != sq.chunk) {
+                adjacent.setAdjacentSquare(d2, null);
+                adjacent.w = null;
             }
 
             d1 = IsoDirections.NE;
             d2 = IsoDirections.SW;
-            if (sq.getAdjacentSquare(d1) != null && sq.getAdjacentSquare(d1).chunk != sq.chunk) {
-                sq.getAdjacentSquare(d1).setAdjacentSquare(d2, null);
-                sq.getAdjacentSquare(d1).sw = null;
+            adjacent = sq.getAdjacentSquare(d1);
+            if (adjacent != null && adjacent.chunk != sq.chunk) {
+                adjacent.setAdjacentSquare(d2, null);
+                adjacent.sw = null;
             }
         }
     }

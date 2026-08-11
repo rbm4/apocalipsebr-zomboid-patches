@@ -22,10 +22,10 @@ The current world-simulation signal is:
 
 ## Task list
 
-1. Batch zombie population save requests during unload.
-2. Audit and optimize `ZombiePopulationManager.removeChunkFromWorld`.
-3. Optimize adjacent-square disconnection during chunk detach.
-4. Remove avoidable server-side client/render work from unload.
+1. Batch zombie population save requests during unload. Status: implemented with pending popman-cell dedupe.
+2. Audit and optimize `ZombiePopulationManager.removeChunkFromWorld`. Status: partially implemented by removing repeated moving-object getter calls and reducing save-lock churn; native virtualization remains main-thread.
+3. Optimize adjacent-square disconnection during chunk detach. Status: implemented by caching adjacent-square lookups.
+4. Remove avoidable server-side client/render work from unload. Status: first pass implemented for rain/water/puddle geometry cleanup.
 5. Batch or defer vehicle database updates during unload.
 6. Reduce duplicate work while preserving same-tick unload semantics.
 7. After unload work, investigate active zombie population pressure on world simulation.
@@ -107,6 +107,14 @@ Inspect `ZombiePopulationManager.removeChunkFromWorld` directly and classify its
 
 Best possible improvement would be to convert any broad scan into a direct lookup keyed by chunk or popman cell. If the manager keeps per-cell collections, unload should hit the exact cell and exact chunk bucket, not scan unrelated records.
 
+Implemented first-pass local improvements:
+
+- `requestSaveCell` now dedupes pending popman cell saves before scanning all loaded zombies.
+- The per-chunk square scan now caches `sq.getMovingObjects()` once per square.
+- `saveLock` is acquired lazily only when a zombie actually needs virtualization, and then held for the remaining chunk virtualization work instead of lock/unlock around every individual zombie.
+
+This does not make `n_addZombie` asynchronous. That native/global mutation remains on the main thread because it touches population state and real zombie world detachment.
+
 ### What to measure
 
 Split `chunkZombiePop` into inner phases if source allows:
@@ -159,6 +167,8 @@ if (adjacent != null && adjacent.chunk != sq.chunk) {
 
 This keeps behavior identical and reduces method calls and pointer chasing. It is a low-risk local optimization.
 
+Implemented: `IsoChunk.disconnectFromAdjacentChunks` now caches the adjacent square once for each direction before clearing the reverse link.
+
 ### What to measure
 
 Watch:
@@ -208,6 +218,15 @@ For each branch, classify as:
 - redundant after server-specific patches
 
 Then add explicit `GameServer.server` fast paths where safe.
+
+Implemented first-pass local improvement:
+
+- `IsoChunk.removeSquareFromWorld` now skips `RainManager.RemoveAllOn`, `sq.clearWater()`, and `sq.clearPuddles()` on dedicated servers.
+- `RainManager.RemoveAllOn` only detaches `IsoRaindrop` and `IsoRainSplash` presentation objects.
+- `clearWater` and `clearPuddles` release `IsoWaterGeometry` and `IsoPuddlesGeometry` pool objects. Searches show these are render/terrain geometry paths, while gameplay water availability is still driven by object `hasWater()` state, not this cached geometry cleanup.
+- Client and single-player behavior is preserved because the cleanup still runs when `!GameServer.server`.
+
+The larger unload path was also audited. `finishRemoveFromWorld` already guards FBO render chunks, occlusion, cutaways, visibility polygon data, and corpse render data behind `!GameServer.server`. `removeSquareFromWorld` already guards client animal instance removal and single-player vehicle-meta update paths. The object and moving-object removal calls should remain server-side because they detach ECS/entities, update process lists, remove scheduler entries, stop world emitters/lights, and preserve persistence hooks.
 
 ### What to measure
 

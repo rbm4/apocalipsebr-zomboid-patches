@@ -371,20 +371,26 @@ public final class ZombiePopulationManager {
             if (!this.stopped) {
                 n_loadChunk(chunk.wx, chunk.wy, false);
 
-                for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
-                    for (int y = 0; y < 8; y++) {
-                        for (int x = 0; x < 8; x++) {
-                            IsoGridSquare sq = chunk.getGridSquare(x, y, z);
-                            if (sq != null && !sq.getMovingObjects().isEmpty()) {
-                                for (int i = 0; i < sq.getMovingObjects().size(); i++) {
-                                    IsoMovingObject mo = sq.getMovingObjects().get(i);
-                                    if (mo instanceof IsoZombie realZombie
-                                        && (!GameServer.server || !realZombie.indoorZombie)
-                                        && !realZombie.isReanimatedPlayer()) {
-                                        int state = ZombieStateFlags.intFromZombie(realZombie);
-                                        saveLock.lock();
+                boolean apocBrSaveLocked = false;
 
-                                        try {
+                try {
+                    for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
+                        for (int y = 0; y < 8; y++) {
+                            for (int x = 0; x < 8; x++) {
+                                IsoGridSquare sq = chunk.getGridSquare(x, y, z);
+                                if (sq != null) {
+                                    ArrayList<IsoMovingObject> movingObjects = sq.getMovingObjects();
+                                    for (int i = 0; i < movingObjects.size(); i++) {
+                                        IsoMovingObject mo = movingObjects.get(i);
+                                        if (mo instanceof IsoZombie realZombie
+                                            && (!GameServer.server || !realZombie.indoorZombie)
+                                            && !realZombie.isReanimatedPlayer()) {
+                                            if (!apocBrSaveLocked) {
+                                                saveLock.lock();
+                                                apocBrSaveLocked = true;
+                                            }
+
+                                            int state = ZombieStateFlags.intFromZombie(realZombie);
                                             if (z != 0
                                                 || sq.getRoom() != null
                                                 || realZombie.getCurrentState() != WalkTowardState.instance()
@@ -419,13 +425,15 @@ public final class ZombiePopulationManager {
                                                 realZombie.removeFromSquare();
                                                 i--;
                                             }
-                                        } finally {
-                                            saveLock.unlock();
                                         }
                                     }
                                 }
                             }
                         }
+                    }
+                } finally {
+                    if (apocBrSaveLocked) {
+                        saveLock.unlock();
                     }
                 }
 
