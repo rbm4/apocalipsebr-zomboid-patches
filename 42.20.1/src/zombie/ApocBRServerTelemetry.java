@@ -99,6 +99,12 @@ public final class ApocBRServerTelemetry {
     private static int serverMapUnloadSlicesLast;
     private static long serverMapUnloadAttempts;
     private static long serverMapUnloadPartialCells;
+    private static int serverMapLoad2MaxCellsLast;
+    private static int serverMapLoad2ReadyLast;
+    private static int serverMapLoad2FlushedLast;
+    private static int serverMapLoad2BacklogLast;
+    private static long serverMapLoad2Attempts;
+    private static long serverMapLoad2DeferredCells;
     private static final String[] SERVER_MAP_UNLOAD_PHASE_KEYS = new String[] {
         "chunkGlobal", "squareTeardown", "vehicleSave", "saveEnqueue"
     };
@@ -119,9 +125,10 @@ public final class ApocBRServerTelemetry {
 
     private static final String[] SERVER_MAP_PRE_KEYS = new String[] {
         "cancelScan", "collectPendingLoads", "sortPendingLoads", "addLoadJobs", "drainLoaded", "addRecalcJobs",
-        "drainRecalc", "load2", "load2DrainRecalc", "load2RecalcAll2", "load2Vehicles", "removeLoaded2FromToLoad",
-        "load2RoomsDec", "load2LevelScan", "load2EnsureSurround", "load2BorderRecalc", "load2MarkSquares",
-        "load2DoLoadGridSquare", "load2RoomsInc", "saveAll", "saveLater", "entitySave"
+        "drainRecalc", "load2LosSuspend", "load2", "load2DrainRecalc", "load2RecalcAll2", "load2Vehicles",
+        "removeLoaded2FromToLoad", "load2RoomsDec", "load2LevelScan", "load2EnsureSurround", "load2BorderRecalc",
+        "load2MarkSquares", "load2DoLoadGridSquare", "load2RoomsInc", "load2LosResume", "saveAll", "saveLater",
+        "entitySave"
     };
     private static final LongAdder[] serverMapPreCalls = newLongAdders(SERVER_MAP_PRE_KEYS.length);
     private static final LongAdder[] serverMapPreUnits = newLongAdders(SERVER_MAP_PRE_KEYS.length);
@@ -360,6 +367,25 @@ public final class ApocBRServerTelemetry {
         serverMapUnloadSlicesLast = slicesPerTick;
         serverMapUnloadAttempts += attempts;
         serverMapUnloadPartialCells += partialCells;
+    }
+
+    /**
+     * Per-tick cap on how many ready cells Load2()/RecalcAll2() flushes in a
+     * single tick, mirroring the deferred-unload budget schema above. ready
+     * is how many cells were sitting in loaded2 when the loop started,
+     * flushed is how many actually got processed this tick (bounded by
+     * maxCells), and backlogAfter is what's left over for the next tick.
+     */
+    public static synchronized void recordServerMapLoad2Budget(int maxCells, int ready, int flushed, int backlogAfter) {
+        if (!ENABLED) return;
+        serverMapLoad2MaxCellsLast = maxCells;
+        serverMapLoad2ReadyLast = ready;
+        serverMapLoad2FlushedLast = flushed;
+        serverMapLoad2BacklogLast = backlogAfter;
+        serverMapLoad2Attempts++;
+        if (backlogAfter > 0) {
+            serverMapLoad2DeferredCells += backlogAfter;
+        }
     }
 
     /**
@@ -729,6 +755,13 @@ public final class ApocBRServerTelemetry {
             .append(",\"attempts\":").append(serverMapUnloadAttempts)
             .append(",\"partial\":").append(serverMapUnloadPartialCells)
             .append("}");
+        json.append(",\"load2Budget\":{\"maxCells\":").append(serverMapLoad2MaxCellsLast)
+            .append(",\"ready\":").append(serverMapLoad2ReadyLast)
+            .append(",\"flushed\":").append(serverMapLoad2FlushedLast)
+            .append(",\"backlog\":").append(serverMapLoad2BacklogLast)
+            .append(",\"attempts\":").append(serverMapLoad2Attempts)
+            .append(",\"deferredCells\":").append(serverMapLoad2DeferredCells)
+            .append("}");
         json.append(",\"serverMapPreQueues\":{")
             .append("\"load\":{\"last\":").append(serverMapPreLoadQueueLast).append(",\"max\":").append(serverMapPreLoadQueueMax.get()).append("}")
             .append(",\"loaded\":{\"last\":").append(serverMapPreLoadedQueueLast).append(",\"max\":").append(serverMapPreLoadedQueueMax.get()).append("}")
@@ -936,6 +969,8 @@ public final class ApocBRServerTelemetry {
         serverMapUnloadMaxNanos = 0L;
         serverMapUnloadAttempts = 0L;
         serverMapUnloadPartialCells = 0L;
+        serverMapLoad2Attempts = 0L;
+        serverMapLoad2DeferredCells = 0L;
         for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
             serverMapUnloadPhaseCalls[i] = 0L;
             serverMapUnloadPhaseUnits[i] = 0L;

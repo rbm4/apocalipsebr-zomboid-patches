@@ -16,7 +16,9 @@ import zombie.core.textures.ColorInfo;
 import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.iso.IsoCamera;
+import zombie.iso.IsoChunk;
 import zombie.iso.IsoGridSquare;
+import zombie.iso.IsoWorld;
 import zombie.iso.LosUtil;
 
 public class ServerLOS {
@@ -255,8 +257,30 @@ public class ServerLOS {
 
             for (int x = minX; x < maxX; x++) {
                 for (int y = minY; y < maxY; y++) {
+                    // ApocBR: ServerMap.getGridSquare(x, y, z) re-resolves the owning
+                    // cell/chunk (coordinate division/modulo, cell lookup, isLoaded check)
+                    // from scratch for every z, even though none of that depends on z - only
+                    // the final chunk.getGridSquare(sqx, sqy, z) call does. Resolving the
+                    // chunk once per (x, y) column and reusing it across the z loop below
+                    // cuts that redundant resolution ~16x (LosUtil.sizeZ per column) with no
+                    // behavior change. z=0 is always within the valid range (-32..31), so
+                    // isValidSquare(x, y, 0) reads exactly the z-independent metaGrid check.
+                    int rawCx = ServerMap.instance.worldSquareToServerCellXY(x);
+                    int rawCy = ServerMap.instance.worldSquareToServerCellXY(y);
+                    int chx = (x - rawCx * 64) / 8;
+                    int chy = (y - rawCy * 64) / 8;
+                    int sqx = (x - rawCx * 64) % 8;
+                    int sqy = (y - rawCy * 64) % 8;
+                    IsoChunk chunk = null;
+                    if (IsoWorld.instance.isValidSquare(x, y, 0)) {
+                        int cellX = rawCx - ServerMap.instance.getMinX();
+                        int cellY = rawCy - ServerMap.instance.getMinY();
+                        ServerMap.ServerCell cell = ServerMap.instance.getCell(cellX, cellY);
+                        chunk = cell != null && cell.isLoaded ? cell.chunks[chx][chy] : null;
+                    }
+
                     for (int z = minZ; z < maxZ; z++) {
-                        IsoGridSquare sq = ServerMap.instance.getGridSquare(x, y, z);
+                        IsoGridSquare sq = chunk != null && z >= -32 && z <= 31 ? chunk.getGridSquare(sqx, sqy, z) : null;
                         if (sq != null) {
                             sq.CalcVisibility(slotIndex, isoGameCharacter, visibilityData);
                             data.visible[x - minX][y - minY][z - minZ] = sq.isCouldSee(slotIndex);
