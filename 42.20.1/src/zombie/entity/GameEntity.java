@@ -489,7 +489,10 @@ public abstract class GameEntity {
 
     public void addToWorld() {
         if (this.getGameEntityType() != GameEntityType.InventoryItem) {
-            GameEntityManager.RegisterEntity(this);
+            if (!this.addedToWorldOrEquipped || !this.addedToEntityManager) {
+                GameEntityManager.RegisterEntity(this);
+            }
+
             this.addedToWorldOrEquipped = true;
             this.sendEntityEvent(EntityEventType.AddedToWorld);
         }
