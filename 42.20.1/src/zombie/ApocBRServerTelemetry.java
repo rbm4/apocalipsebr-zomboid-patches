@@ -246,6 +246,8 @@ public final class ApocBRServerTelemetry {
     private static final ConcurrentHashMap<String, DynamicTiming> luaEvents = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, DynamicTiming> luaCallbacks = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, DynamicTiming> luaDirect = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DynamicTiming> netHighPacketsByType = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DynamicTiming> netHighDetails = new ConcurrentHashMap<>();
 
     private static final String[] TICK_SECTION_KEYS = new String[] {
         "netHigh", "netPlayer", "netNormal", "throttleSleep", "removeRequests", "rcon",
@@ -261,6 +263,14 @@ public final class ApocBRServerTelemetry {
         "statePathfindMain", "statePolygonalMap", "stateLootRespawn", "stateServerManagers",
         "stateServerAmbient", "stateServerVehicleSound", "stateServerAnimEvent", "stateServerBodyDamage",
         "stateMoveStartFrame", "stateMoveUpdate", "stateMovePostUpdate",
+        "stateIsoWorldVehicleServer", "stateIsoWorldSimulation", "stateIsoWorldHutch", "stateIsoWorldFogHelicopter",
+        "stateIsoWorldEmitters", "stateIsoWorldZombieGroupPre", "stateIsoWorldCollisionInit", "stateIsoWorldClimate",
+        "stateIsoWorldCell", "stateIsoWorldRegions", "stateIsoWorldHaloText", "stateIsoWorldCollisionResolve",
+        "stateIsoWorldUpdateThread", "stateIsoWorldBuildings", "stateIsoWorldStaticEffects", "stateIsoWorldCoopPlayers",
+        "stateIsoWorldDBs", "stateIsoWorldSafehousePlayers", "stateIsoWorldVirtualAnimals", "stateIsoWorldAnimalDefs",
+        "stateIsoCellSpottedRooms", "stateIsoCellItems", "stateIsoCellIsoObject", "stateIsoCellObjects",
+        "stateIsoCellSchedulerUpdate", "stateIsoCellAnimalVocals", "stateIsoCellZombieVocals",
+        "stateIsoCellStaticUpdaters", "stateIsoCellObjectDeletion", "stateIsoCellDeadBodies", "stateIsoCellFish",
         "stateSearchMode", "stateRenderSettings"
     };
     private static final LongAdder[] tickSectionCalls = newLongAdders(TICK_SECTION_KEYS.length);
@@ -302,6 +312,16 @@ public final class ApocBRServerTelemetry {
     public static void recordLuaDirect(String callsite, long nanos) {
         if (!ENABLED || callsite == null || nanos < 0L) return;
         recordDynamicTiming(luaDirect, callsite, 1, nanos);
+    }
+
+    public static void recordMainLoopNetHighPacket(String packetType, long nanos) {
+        if (!ENABLED || packetType == null || nanos < 0L) return;
+        recordDynamicTiming(netHighPacketsByType, packetType, 1, nanos);
+    }
+
+    public static void recordNetHighDetail(String detail, int units, long nanos) {
+        if (!ENABLED || detail == null || nanos < 0L) return;
+        recordDynamicTiming(netHighDetails, detail, Math.max(0, units), nanos);
     }
 
     private static void recordDynamicTiming(ConcurrentHashMap<String, DynamicTiming> map, String key, int units, long nanos) {
@@ -877,6 +897,8 @@ public final class ApocBRServerTelemetry {
         appendDynamicTimingMap(json, "luaEvents", luaEvents, LUA_TELEMETRY_TOP_N);
         appendDynamicTimingMap(json, "luaCallbacks", luaCallbacks, LUA_TELEMETRY_TOP_N);
         appendDynamicTimingMap(json, "luaDirect", luaDirect, LUA_TELEMETRY_TOP_N);
+        appendDynamicTimingMap(json, "netHighPackets", netHighPacketsByType, LUA_TELEMETRY_TOP_N);
+        appendDynamicTimingMap(json, "netHighDetails", netHighDetails, LUA_TELEMETRY_TOP_N);
         json.append("}");
         return json.toString();
     }
@@ -1018,6 +1040,8 @@ public final class ApocBRServerTelemetry {
         luaEvents.clear();
         luaCallbacks.clear();
         luaDirect.clear();
+        netHighPacketsByType.clear();
+        netHighDetails.clear();
     }
 
     private static void offerNdjson(String payload) {

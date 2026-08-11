@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import se.krka.kahlua.vm.KahluaTable;
+import zombie.ApocBRServerTelemetry;
 import zombie.CollisionManager;
 import zombie.FliesSound;
 import zombie.GameProfiler;
@@ -2080,10 +2081,10 @@ public final class IsoWorld {
             DebugType.General.println("ItemConfigurator.Preprocess() start");
             ItemConfigurator.Preprocess();
             DebugType.General.println("ItemConfigurator.Preprocess() end");
-            boolean isPlayerAlive = (boolean)0;
+            boolean isPlayerAlive = false;
             if (GameClient.client) {
                 if (ClientPlayerDB.getInstance().clientLoadNetworkPlayer() && ClientPlayerDB.getInstance().isAliveMainNetworkPlayer()) {
-                    isPlayerAlive = (boolean)1;
+                    isPlayerAlive = true;
                 }
             } else {
                 isPlayerAlive = PlayerDBHelper.isPlayerAlive(ZomboidFileSystem.instance.getCurrentSaveDir(), 1);
@@ -2099,7 +2100,7 @@ public final class IsoWorld {
 
             boolean bLoadCharacter;
             if (isPlayerAlive) {
-                bLoadCharacter = (boolean)1;
+                bLoadCharacter = true;
                 if (!this.LoadPlayerForInfo()) {
                     return;
                 }
@@ -2107,7 +2108,7 @@ public final class IsoWorld {
                 worldX = IsoChunkMap.SWorldX[IsoPlayer.getPlayerIndex()];
                 worldY = IsoChunkMap.SWorldY[IsoPlayer.getPlayerIndex()];
             } else {
-                bLoadCharacter = (boolean)0;
+                bLoadCharacter = false;
                 if (GameClient.client && !ServerOptions.instance.spawnPoint.getValue().isEmpty()) {
                     String[] spawnPoint = ServerOptions.instance.spawnPoint.getValue().split(",");
                     if (spawnPoint.length == 3) {
@@ -2412,12 +2413,12 @@ public final class IsoWorld {
             ReanimatedPlayers.instance.loadReanimatedPlayers();
             if (IsoPlayer.getInstance() != null) {
                 if (GameClient.client) {
-                    isPlayerAlive = (boolean)PZMath.fastfloor(IsoPlayer.getInstance().getX());
-                    bLoadCharacter = (boolean)PZMath.fastfloor(IsoPlayer.getInstance().getY());
+                    int playerX = PZMath.fastfloor(IsoPlayer.getInstance().getX());
+                    int playerY = PZMath.fastfloor(IsoPlayer.getInstance().getY());
                     int z = PZMath.fastfloor(IsoPlayer.getInstance().getZ());
 
                     while (z > 0) {
-                        IsoGridSquare sqx = this.currentCell.getGridSquare(isPlayerAlive, bLoadCharacter, PZMath.fastfloor((float)z));
+                        IsoGridSquare sqx = this.currentCell.getGridSquare(playerX, playerY, PZMath.fastfloor((float)z));
                         if (sqx != null && sqx.TreatAsSolidFloor()) {
                             break;
                         }
@@ -2954,10 +2955,18 @@ public final class IsoWorld {
     }
 
     private void updateWorld() {
+        long apocBrSectionStart = System.nanoTime();
         this.currentCell.update();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldCell", System.nanoTime() - apocBrSectionStart);
+        apocBrSectionStart = System.nanoTime();
         IsoRegions.update();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldRegions", System.nanoTime() - apocBrSectionStart);
+        apocBrSectionStart = System.nanoTime();
         HaloTextHelper.update();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldHaloText", System.nanoTime() - apocBrSectionStart);
+        apocBrSectionStart = System.nanoTime();
         CollisionManager.instance.ResolveContacts();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldCollisionResolve", System.nanoTime() - apocBrSectionStart);
         if (DebugOptions.instance.threadAnimation.getValue()) {
             animationThread = CompletableFuture.runAsync(MovingObjectUpdateScheduler.instance::postupdate);
         } else {
@@ -2990,17 +2999,27 @@ public final class IsoWorld {
     private void updateInternal() {
         this.frameNo++;
         if (GameServer.server) {
+            long apocBrSectionStart = System.nanoTime();
             try {
                 VehicleManager.instance.serverUpdate();
             } catch (Exception var10) {
                 DebugType.General.printException(var10, LogSeverity.Error);
+            } finally {
+                ApocBRServerTelemetry.recordTickSection("stateIsoWorldVehicleServer", System.nanoTime() - apocBrSectionStart);
             }
         }
 
+        long apocBrSectionStart = System.nanoTime();
         WorldSimulation.instance.update();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldSimulation", System.nanoTime() - apocBrSectionStart);
+        apocBrSectionStart = System.nanoTime();
         HutchManager.getInstance().updateAll();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldHutch", System.nanoTime() - apocBrSectionStart);
+        apocBrSectionStart = System.nanoTime();
         ImprovedFog.update();
         this.helicopter.update();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldFogHelicopter", System.nanoTime() - apocBrSectionStart);
+        apocBrSectionStart = System.nanoTime();
         long currentMS = System.currentTimeMillis();
         if (currentMS - this.emitterUpdateMs >= 30L) {
             this.emitterUpdateMs = currentMS;
@@ -3030,6 +3049,7 @@ public final class IsoWorld {
                 n--;
             }
         }
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldEmitters", System.nanoTime() - apocBrSectionStart);
 
         if (!GameClient.client && !GameServer.server) {
             IsoMetaCell currentChunk = this.metaGrid.getCurrentCellData();
@@ -3039,9 +3059,13 @@ public final class IsoWorld {
         }
 
         WorldSoundManager.instance.initFrame();
+        apocBrSectionStart = System.nanoTime();
         ZombieGroupManager.instance.preupdate();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldZombieGroupPre", System.nanoTime() - apocBrSectionStart);
         OnceEvery.update();
+        apocBrSectionStart = System.nanoTime();
         CollisionManager.instance.initUpdate();
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldCollisionInit", System.nanoTime() - apocBrSectionStart);
         CompletableFuture<Void> thread = null;
         if (DebugOptions.instance.threadWorld.getValue()) {
             thread = CompletableFuture.runAsync(this::updateThread, PZForkJoinPool.commonPool());
@@ -3049,8 +3073,11 @@ public final class IsoWorld {
 
         GameProfiler profiler = GameProfiler.getInstance();
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var17 = profiler.profile("Update Climate")) {
             ClimateManager.getInstance().update();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoWorldClimate", System.nanoTime() - apocBrSectionStart);
         }
 
         this.updateWorld();
@@ -3059,7 +3086,9 @@ public final class IsoWorld {
                 thread.join();
             }
         } else {
+            apocBrSectionStart = System.nanoTime();
             this.updateThread();
+            ApocBRServerTelemetry.recordTickSection("stateIsoWorldUpdateThread", System.nanoTime() - apocBrSectionStart);
         }
 
         AnimationPlayerRecorder.onPostUpdateWorld();
@@ -3068,14 +3097,21 @@ public final class IsoWorld {
     private void updateThread() {
         GameProfiler profiler = GameProfiler.getInstance();
 
+        long apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea i = profiler.profile("Update Buildings")) {
             this.updateBuildings();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoWorldBuildings", System.nanoTime() - apocBrSectionStart);
         }
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var15 = profiler.profile("Update Static")) {
             ObjectRenderEffects.updateStatic();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoWorldStaticEffects", System.nanoTime() - apocBrSectionStart);
         }
 
+        apocBrSectionStart = System.nanoTime();
         for (int i = 0; i < this.addCoopPlayers.size(); i++) {
             AddCoopPlayer acp = this.addCoopPlayers.get(i);
             acp.update();
@@ -3083,15 +3119,20 @@ public final class IsoWorld {
                 this.addCoopPlayers.remove(i--);
             }
         }
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldCoopPlayers", System.nanoTime() - apocBrSectionStart);
 
         if (!GameServer.server) {
             IsoPlayer.UpdateRemovedEmitters();
         }
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var17 = profiler.profile("Update DBs")) {
             this.updateDBs();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoWorldDBs", System.nanoTime() - apocBrSectionStart);
         }
 
+        apocBrSectionStart = System.nanoTime();
         if (this.updateSafehousePlayers > 0 && (GameServer.server || GameClient.client)) {
             this.updateSafehousePlayers--;
             if (this.updateSafehousePlayers == 0) {
@@ -3099,13 +3140,20 @@ public final class IsoWorld {
                 SafeHouse.updateSafehousePlayersConnected();
             }
         }
+        ApocBRServerTelemetry.recordTickSection("stateIsoWorldSafehousePlayers", System.nanoTime() - apocBrSectionStart);
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var18 = profiler.profile("Update VA")) {
             AnimalZones.updateVirtualAnimals();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoWorldVirtualAnimals", System.nanoTime() - apocBrSectionStart);
         }
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var19 = profiler.profile("Load Animal Defs")) {
             AnimalTracksDefinitions.loadTracksDefinitions();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoWorldAnimalDefs", System.nanoTime() - apocBrSectionStart);
         }
     }
 

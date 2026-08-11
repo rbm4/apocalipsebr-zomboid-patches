@@ -868,16 +868,22 @@ public class GameServer {
 
                     for (int nxx = 0; nxx < MainLoopNetData2.size(); nxx++) {
                         IZomboidPacket data = MainLoopNetData2.get(nxx);
-                        if (data.isConnect()) {
-                            if (!closed) {
-                                ((GameServer.DelayedConnection)data).connect();
+                        long apocBrPacketStart = System.nanoTime();
+                        String apocBrPacketType = getApocBRPacketTypeName(data);
+                        try {
+                            if (data.isConnect()) {
+                                if (!closed) {
+                                    ((GameServer.DelayedConnection)data).connect();
+                                } else {
+                                    ((GameServer.DelayedConnection)data).connection.forceDisconnect("server-closed");
+                                }
+                            } else if (data.isDisconnect()) {
+                                ((GameServer.DelayedConnection)data).disconnect();
                             } else {
-                                ((GameServer.DelayedConnection)data).connection.forceDisconnect("server-closed");
+                                mainLoopDealWithNetData((ZomboidNetData)data);
                             }
-                        } else if (data.isDisconnect()) {
-                            ((GameServer.DelayedConnection)data).disconnect();
-                        } else {
-                            mainLoopDealWithNetData((ZomboidNetData)data);
+                        } finally {
+                            ApocBRServerTelemetry.recordMainLoopNetHighPacket(apocBrPacketType, System.nanoTime() - apocBrPacketStart);
                         }
                     }
                     ApocBRServerTelemetry.recordMainLoopNetHigh(MainLoopNetData2.size(), System.nanoTime() - apocBrNetPhaseStart);
@@ -1660,6 +1666,21 @@ public class GameServer {
         }
     }
 
+    private static String getApocBRPacketTypeName(IZomboidPacket data) {
+        if (data == null) {
+            return "null";
+        } else if (data.isConnect()) {
+            return "DelayedConnect";
+        } else if (data.isDisconnect()) {
+            return "DelayedDisconnect";
+        } else if (data instanceof ZomboidNetData) {
+            ZomboidNetData netData = (ZomboidNetData)data;
+            return netData.type == null ? "Unknown" : netData.type.name();
+        } else {
+            return data.getClass().getSimpleName();
+        }
+    }
+
     static void receiveInvMngRemoveItem(ByteBufferReader bb, UdpConnection connection, short packetType) {
         int itemId = bb.getInt();
         short requested = bb.getShort();
@@ -2103,21 +2124,29 @@ public class GameServer {
     }
 
     static void receiveReceiveCommand(ByteBufferReader bb, UdpConnection connection, short packetType) {
+        long apocBrPhaseStart = System.nanoTime();
         String chat = bb.getUTF();
+        ApocBRServerTelemetry.recordNetHighDetail("ReceiveCommand|parse", 1, System.nanoTime() - apocBrPhaseStart);
+        apocBrPhaseStart = System.nanoTime();
         String message = handleClientCommand(chat.substring(1), connection);
+        ApocBRServerTelemetry.recordNetHighDetail("ReceiveCommand|handleClientCommand", 1, System.nanoTime() - apocBrPhaseStart);
         if (message == null) {
+            apocBrPhaseStart = System.nanoTime();
             message = handleServerCommand(chat.substring(1), connection);
+            ApocBRServerTelemetry.recordNetHighDetail("ReceiveCommand|handleServerCommand", 1, System.nanoTime() - apocBrPhaseStart);
         }
 
         if (message == null) {
             message = "Unknown command " + chat;
         }
 
+        apocBrPhaseStart = System.nanoTime();
         if (!chat.substring(1).startsWith("roll") && !chat.substring(1).startsWith("card")) {
             ChatServer.getInstance().sendMessageToServerChat(connection, message);
         } else {
             ChatServer.getInstance().sendMessageToServerChat(message);
         }
+        ApocBRServerTelemetry.recordNetHighDetail("ReceiveCommand|sendChat", 1, System.nanoTime() - apocBrPhaseStart);
     }
 
     private static String handleClientCommand(String input, UdpConnection connection) {
@@ -2727,6 +2756,7 @@ public class GameServer {
 
     public static void receiveClientConnect(UdpConnection connection, ServerWorldDatabase.LogonResult r) {
         ConnectionManager.log("receive-packet", "client-connect", connection);
+        long apocBrPhaseStart = System.nanoTime();
         int slot = getFreeSlot();
         short playerID = (short)(slot * 4);
         if (connection.getPlayerDownloadServer() != null) {
@@ -2737,13 +2767,18 @@ public class GameServer {
                 DebugType.General.printException(var9, "", LogSeverity.Error);
             }
         }
+        ApocBRServerTelemetry.recordNetHighDetail("Login|allocateSlot", 1, System.nanoTime() - apocBrPhaseStart);
 
+        apocBrPhaseStart = System.nanoTime();
         playerToCoordsMap.put(playerID, new Vector2());
         SlotToConnection[slot] = connection;
         connection.playerIds[0] = playerID;
         IDToAddressMap.put(playerID, connection.getConnectedGUID());
         connection.setPlayerDownloadServer(new PlayerDownloadServer(connection));
         DebugLog.log(DebugType.Network, "Connected new client " + connection.getConnectedGUID() + " ID # " + playerID);
+        ApocBRServerTelemetry.recordNetHighDetail("Login|registerConnection", 1, System.nanoTime() - apocBrPhaseStart);
+
+        apocBrPhaseStart = System.nanoTime();
         KahluaTable spawnRegions = SpawnPoints.instance.getSpawnRegions();
 
         for (int i = 1; i < spawnRegions.size() + 1; i++) {
@@ -2758,9 +2793,12 @@ public class GameServer {
                 DebugType.General.printException(var8, "", LogSeverity.Error);
             }
         }
+        ApocBRServerTelemetry.recordNetHighDetail("Login|sendSpawnRegions", spawnRegions.size(), System.nanoTime() - apocBrPhaseStart);
 
+        apocBrPhaseStart = System.nanoTime();
         RequestDataPacket packet = new RequestDataPacket();
         packet.sendConnectingDetails(connection, r);
+        ApocBRServerTelemetry.recordNetHighDetail("Login|sendConnectingDetails", 1, System.nanoTime() - apocBrPhaseStart);
     }
 
     public static void sendMetaGrid(int cellX, int cellY, int roomID, UdpConnection connection) {
@@ -2837,22 +2875,27 @@ public class GameServer {
 
     public static void receivePlayerConnect(ByteBufferReader bb, IConnection connection, String username) {
         ConnectionManager.log("receive-packet", "player-connect", connection);
+        long apocBrPhaseStart = System.nanoTime();
         int playerIndex = bb.getByte();
         DebugType.DetailedInfo.trace("User: \"%s\" index=%d ip=%s is trying to connect", username, playerIndex, connection.getIP());
         if (playerIndex >= 0 && playerIndex < 4 && connection.getPlayerAt(playerIndex) == null) {
             byte range = (byte)Math.max(12, Math.min(20, bb.getByte()));
             connection.setRelevantRange((byte)(range / 2 + 2));
             IsoPlayer player;
+            ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|parseHeader", 1, System.nanoTime() - apocBrPhaseStart);
+            apocBrPhaseStart = System.nanoTime();
             if (coop && SteamUtils.isSteamModeEnabled()) {
                 player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getIDStr());
             } else {
                 player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getUserName());
             }
+            ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|loadCharacter", 1, System.nanoTime() - apocBrPhaseStart);
 
             if (player == null) {
                 kick(connection, "UI_LoadPlayerProfileError", null);
                 connection.forceDisconnect("UI_LoadPlayerProfileError");
             } else {
+                apocBrPhaseStart = System.nanoTime();
                 connection.getRelevantPos(playerIndex).x = player.getX();
                 connection.getRelevantPos(playerIndex).y = player.getY();
                 connection.getRelevantPos(playerIndex).z = player.getZ();
@@ -2883,6 +2926,9 @@ public class GameServer {
                 }
 
                 player.username = username;
+                ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|registerPlayer", 1, System.nanoTime() - apocBrPhaseStart);
+
+                apocBrPhaseStart = System.nanoTime();
                 ChatServer.getInstance().initPlayer(player.onlineId);
                 connection.setFullyConnected();
                 sendWeather(connection);
@@ -2890,13 +2936,17 @@ public class GameServer {
                 if (!connection.getRole().hasCapability(Capability.HideFromSteamUserList)) {
                     SteamGameServer.AddPlayer(player);
                 }
+                ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|initSessionSystems", 1, System.nanoTime() - apocBrPhaseStart);
 
+                apocBrPhaseStart = System.nanoTime();
                 for (int n = 0; n < udpEngine.connections.size(); n++) {
                     UdpConnection c = udpEngine.connections.get(n);
                     sendPlayerConnected(player, c);
                     sendPlayerExtraInfo(player, c, true);
                 }
+                ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|broadcastNewPlayer", udpEngine.connections.size(), System.nanoTime() - apocBrPhaseStart);
 
+                apocBrPhaseStart = System.nanoTime();
                 for (IsoPlayer isoPlayer : IDToPlayerMap.values()) {
                     if (isoPlayer.getOnlineID() != player.getOnlineID() && isoPlayer.isAlive()) {
                         sendPlayerConnected(isoPlayer, connection);
@@ -2905,11 +2955,19 @@ public class GameServer {
                         INetworkPacket.send(connection, PacketTypes.PacketType.PlayerInjuries, isoPlayer);
                     }
                 }
+                ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|sendExistingPlayers", IDToPlayerMap.size(), System.nanoTime() - apocBrPhaseStart);
 
+                apocBrPhaseStart = System.nanoTime();
                 connection.getLoadedCell(playerIndex).setLoaded();
                 connection.getLoadedCell(playerIndex).sendPacket(connection);
+                ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|sendLoadedCell", 1, System.nanoTime() - apocBrPhaseStart);
+                apocBrPhaseStart = System.nanoTime();
                 preventIndoorZombies(PZMath.fastfloor(player.getX()), PZMath.fastfloor(player.getY()), PZMath.fastfloor(player.getZ()));
+                ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|preventIndoorZombies", IsoWorld.instance.currentCell.getZombieList().size(), System.nanoTime() - apocBrPhaseStart);
+                apocBrPhaseStart = System.nanoTime();
                 ServerLOS.instance.addPlayer(player);
+                ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|serverLosAddPlayer", 1, System.nanoTime() - apocBrPhaseStart);
+                apocBrPhaseStart = System.nanoTime();
                 WarManager.sendWarToPlayer(player);
                 Set<String> hiddenAuthorsSet = HiddenAuthors.getSetForUser(username);
                 if (hiddenAuthorsSet != null) {
@@ -2931,6 +2989,7 @@ public class GameServer {
                         }
                     }
                 }
+                ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|warHiddenAuthors", hiddenAuthorsSet == null ? 0 : hiddenAuthorsSet.size(), System.nanoTime() - apocBrPhaseStart);
 
                 LoggerManager.getLogger("user")
                     .write(connection.getIDStr() + " \"" + player.username + "\" fully connected " + LoggerManager.getPlayerCoords(player));
@@ -2939,19 +2998,27 @@ public class GameServer {
     }
 
     public static void sendInitialWorldState(IConnection c) {
+        long apocBrPhaseStart = System.nanoTime();
         if (RainManager.isRaining()) {
             sendStartRain(c);
         }
+        ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|initialRain", 1, System.nanoTime() - apocBrPhaseStart);
 
+        apocBrPhaseStart = System.nanoTime();
         INetworkPacket.send(c, PacketTypes.PacketType.VehicleTowingState, VehicleManager.instance.towedVehicleMap);
+        ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|initialVehicleTowing", VehicleManager.instance.towedVehicleMap.size(), System.nanoTime() - apocBrPhaseStart);
 
         try {
+            apocBrPhaseStart = System.nanoTime();
             if (!ClimateManager.getInstance().isUpdated()) {
                 ClimateManager.getInstance().update();
             }
 
             ClimateManager.getInstance().sendInitialState(c);
+            ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|initialClimate", 1, System.nanoTime() - apocBrPhaseStart);
+            apocBrPhaseStart = System.nanoTime();
             INetworkPacket.send(c, PacketTypes.PacketType.SyncPuddles, IsoPuddles.getInstance());
+            ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|initialPuddles", 1, System.nanoTime() - apocBrPhaseStart);
         } catch (Exception var2) {
             DebugType.General.printException(var2, "", LogSeverity.Error);
         }

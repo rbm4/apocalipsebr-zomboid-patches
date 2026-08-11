@@ -30,6 +30,7 @@ import se.krka.kahlua.integration.annotations.LuaMethod;
 import se.krka.kahlua.vm.JavaFunction;
 import se.krka.kahlua.vm.KahluaTable;
 import se.krka.kahlua.vm.LuaClosure;
+import zombie.ApocBRServerTelemetry;
 import zombie.GameProfiler;
 import zombie.GameTime;
 import zombie.GameWindow;
@@ -2230,17 +2231,24 @@ public final class IsoCell {
     }
 
     private void ProcessObjects(Iterator<IsoMovingObject> it) {
+        long apocBrSectionStart = System.nanoTime();
         MovingObjectUpdateScheduler.instance.update();
+        ApocBRServerTelemetry.recordTickSection("stateIsoCellSchedulerUpdate", System.nanoTime() - apocBrSectionStart);
 
+        apocBrSectionStart = System.nanoTime();
         for (IsoMovingObject obj : this.objectList) {
             if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
                 animal.updateVocalProperties();
                 animal.updateLoopingSounds();
             }
         }
+        ApocBRServerTelemetry.recordTickSection("stateIsoCellAnimalVocals", System.nanoTime() - apocBrSectionStart);
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var7 = GameProfiler.getInstance().profile("Zombie Vocals")) {
             this.updateZombieVocals();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoCellZombieVocals", System.nanoTime() - apocBrSectionStart);
         }
     }
 
@@ -4138,8 +4146,11 @@ public final class IsoCell {
         IsoGridSquare.gridSquareCacheEmptyTimer++;
         GameProfiler profiler = GameProfiler.getInstance();
 
+        long apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea itemsFuture = profiler.profile("SpottedRooms")) {
             this.ProcessSpottedRooms();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoCellSpottedRooms", System.nanoTime() - apocBrSectionStart);
         }
 
         if (!GameServer.server) {
@@ -4157,21 +4168,30 @@ public final class IsoCell {
         if (!GameClient.client && !GameServer.server || GameServer.server && System.currentTimeMillis() - this.lastServerItemsUpdate > 5000L) {
             this.lastServerItemsUpdate = System.currentTimeMillis();
 
+            apocBrSectionStart = System.nanoTime();
             try (GameProfiler.ProfileArea var3 = profiler.profile("Items")) {
                 this.ProcessItems(null);
+            } finally {
+                ApocBRServerTelemetry.recordTickSection("stateIsoCellItems", System.nanoTime() - apocBrSectionStart);
             }
         }
 
         this.ProcessRemoveItems(null);
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var26 = profiler.profile("IsoObject")) {
             this.ProcessIsoObject();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoCellIsoObject", System.nanoTime() - apocBrSectionStart);
         }
 
         this.safeToAdd = false;
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var27 = profiler.profile("Objects")) {
             this.ProcessObjects(null);
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoCellObjects", System.nanoTime() - apocBrSectionStart);
         }
 
         if (GameClient.client
@@ -4192,18 +4212,29 @@ public final class IsoCell {
 
         this.safeToAdd = true;
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var29 = profiler.profile("Static Updaters")) {
             this.ProcessStaticUpdaters();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoCellStaticUpdaters", System.nanoTime() - apocBrSectionStart);
         }
 
+        apocBrSectionStart = System.nanoTime();
         this.ObjectDeletionAddition();
+        ApocBRServerTelemetry.recordTickSection("stateIsoCellObjectDeletion", System.nanoTime() - apocBrSectionStart);
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var30 = profiler.profile("Update Dead Bodies")) {
             IsoDeadBody.updateBodies();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoCellDeadBodies", System.nanoTime() - apocBrSectionStart);
         }
 
+        apocBrSectionStart = System.nanoTime();
         try (GameProfiler.ProfileArea var31 = profiler.profile("Update Fish")) {
             FishSchoolManager.getInstance().update();
+        } finally {
+            ApocBRServerTelemetry.recordTickSection("stateIsoCellFish", System.nanoTime() - apocBrSectionStart);
         }
 
         IsoGridSquare.setLightcache(IsoGridSquare.getLightcache() - 1);
