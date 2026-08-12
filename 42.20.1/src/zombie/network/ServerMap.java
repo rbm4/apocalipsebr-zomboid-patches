@@ -87,7 +87,6 @@ public class ServerMap {
     ArrayList<ServerMap.ServerCell> toLoad = new ArrayList<>();
     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
     private final ArrayList<ServerMap.ServerCell> tempCells = new ArrayList<>();
-    private static final int APocBRLoad2MaxCellsPerTick = Math.max(1, Integer.getInteger("apocbr.load2MaxCellsPerTick", 1));
     long lastTick;
 
     public short getUniqueZombieId() {
@@ -563,8 +562,7 @@ public class ServerMap {
 
                     apocBrPhaseStart = System.nanoTime();
                     apocBrUnits = 0;
-                    int apocBrReadyCells = ServerMap.ServerCell.loaded2.size();
-                    for (int x = 0; x < ServerMap.ServerCell.loaded2.size() && apocBrUnits < APocBRLoad2MaxCellsPerTick; x++) {
+                    for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
                         ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
                         if (cell.Load2()) {
                             x--;
@@ -575,9 +573,6 @@ public class ServerMap {
                         }
                     }
                     ApocBRServerTelemetry.recordServerMapPrePhase("load2", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
-                    ApocBRServerTelemetry.recordServerMapLoad2Budget(
-                        APocBRLoad2MaxCellsPerTick, apocBrReadyCells, apocBrUnits, ServerMap.ServerCell.loaded2.size()
-                    );
                 } finally {
                     long apocBrResumeStart = System.nanoTime();
                     ServerLOS.instance.resume();
