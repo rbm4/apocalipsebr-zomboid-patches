@@ -843,13 +843,15 @@ public class GameServer {
             }
 
             LuaManager.GlobalObject.refreshAnimSets(true);
+            boolean apocBrTelemetry = ApocBRServerTelemetry.isEnabled();
+            boolean apocBrDetailTelemetry = ApocBRServerTelemetry.isDetailEnabled();
 
             while (!done) {
                 try {
                     long startServerCycle = System.nanoTime();
                     MainLoopNetData2.clear();
 
-                    long apocBrNetPhaseStart = System.nanoTime();
+                    long apocBrNetPhaseStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                     for (IZomboidPacket data = MainLoopNetDataHighPriorityQ.poll(); data != null; data = MainLoopNetDataHighPriorityQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
@@ -868,8 +870,8 @@ public class GameServer {
 
                     for (int nxx = 0; nxx < MainLoopNetData2.size(); nxx++) {
                         IZomboidPacket data = MainLoopNetData2.get(nxx);
-                        long apocBrPacketStart = System.nanoTime();
-                        String apocBrPacketType = getApocBRPacketTypeName(data);
+                        long apocBrPacketStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
+                        String apocBrPacketType = apocBrDetailTelemetry ? getApocBRPacketTypeName(data) : null;
                         try {
                             if (data.isConnect()) {
                                 if (!closed) {
@@ -883,14 +885,18 @@ public class GameServer {
                                 mainLoopDealWithNetData((ZomboidNetData)data);
                             }
                         } finally {
-                            ApocBRServerTelemetry.recordMainLoopNetHighPacket(apocBrPacketType, System.nanoTime() - apocBrPacketStart);
+                            if (apocBrDetailTelemetry) {
+                                ApocBRServerTelemetry.recordMainLoopNetHighPacket(apocBrPacketType, System.nanoTime() - apocBrPacketStart);
+                            }
                         }
                     }
-                    ApocBRServerTelemetry.recordMainLoopNetHigh(MainLoopNetData2.size(), System.nanoTime() - apocBrNetPhaseStart);
+                    if (apocBrDetailTelemetry) {
+                        ApocBRServerTelemetry.recordMainLoopNetHigh(MainLoopNetData2.size(), System.nanoTime() - apocBrNetPhaseStart);
+                    }
 
                     MainLoopNetData2.clear();
 
-                    apocBrNetPhaseStart = System.nanoTime();
+                    apocBrNetPhaseStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                     for (IZomboidPacket data = MainLoopPlayerUpdateQ.poll(); data != null; data = MainLoopPlayerUpdateQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
@@ -904,11 +910,13 @@ public class GameServer {
                             mainLoopDealWithNetData((ZomboidNetData)data);
                         }
                     }
-                    ApocBRServerTelemetry.recordMainLoopNetPlayer(MainLoopNetData2.size(), System.nanoTime() - apocBrNetPhaseStart);
+                    if (apocBrDetailTelemetry) {
+                        ApocBRServerTelemetry.recordMainLoopNetPlayer(MainLoopNetData2.size(), System.nanoTime() - apocBrNetPhaseStart);
+                    }
 
                     MainLoopNetData2.clear();
 
-                    apocBrNetPhaseStart = System.nanoTime();
+                    apocBrNetPhaseStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                     for (IZomboidPacket data = MainLoopNetDataQ.poll(); data != null; data = MainLoopNetDataQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
@@ -941,9 +949,11 @@ public class GameServer {
                         }
                         apocBrNormalProcessed++;
                     }
-                    ApocBRServerTelemetry.recordMainLoopNetNormal(
-                        MainLoopNetData2.size(), apocBrNormalProcessed, apocBrNormalDropped, System.nanoTime() - apocBrNetPhaseStart
-                    );
+                    if (apocBrDetailTelemetry) {
+                        ApocBRServerTelemetry.recordMainLoopNetNormal(
+                            MainLoopNetData2.size(), apocBrNormalProcessed, apocBrNormalDropped, System.nanoTime() - apocBrNetPhaseStart
+                        );
+                    }
 
                     MainLoopNetData2.clear();
                     if (droppedPackets == 1) {
@@ -962,13 +972,13 @@ public class GameServer {
                     if (!serverUpdateLimiter.Check()) {
                         long delay = PZMath.clamp((5000000L - System.nanoTime() + startServerCycle) / 1000000L, 0L, 100L);
                         if (delay > 0L) {
-                            long apocBrSleepStart = System.nanoTime();
+                            long apocBrSleepStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             try {
                                 Thread.sleep(delay);
                             } catch (InterruptedException var39) {
                                 DebugType.General.printException(var39, "", LogSeverity.Error);
                             } finally {
-                                ApocBRServerTelemetry.recordTickSection("throttleSleep", System.nanoTime() - apocBrSleepStart);
+                                if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("throttleSleep", System.nanoTime() - apocBrSleepStart);
                             }
                         }
                     } else {
@@ -978,7 +988,7 @@ public class GameServer {
                         try (AbstractPerformanceProfileProbe var107 = GameServer.s_performance.frameStep.profile()) {
                             timeSinceKeepAlive = timeSinceKeepAlive + GameTime.getInstance().getMultiplier();
                             ServerMap.instance.preupdate();
-                            long apocBrSectionStart = System.nanoTime();
+                            long apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             synchronized (consoleCommands) {
                                 for (int i = 0; i < consoleCommands.size(); i++) {
                                     String command = consoleCommands.get(i);
@@ -994,9 +1004,9 @@ public class GameServer {
 
                                 consoleCommands.clear();
                             }
-                            ApocBRServerTelemetry.recordTickSection("consoleCommands", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("consoleCommands", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             if (removeZombiesConnection != null) {
                                 NetworkZombieManager.removeZombies(removeZombiesConnection);
                                 removeZombiesConnection = null;
@@ -1021,27 +1031,27 @@ public class GameServer {
 
                                 removeVehiclesConnection = null;
                             }
-                            ApocBRServerTelemetry.recordTickSection("removeRequests", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("removeRequests", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             try (AbstractPerformanceProfileProbe var115 = GameServer.s_performance.RCONServerUpdate.profile()) {
                                 RCONServer.update();
                             }
-                            ApocBRServerTelemetry.recordTickSection("rcon", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("rcon", System.nanoTime() - apocBrSectionStart);
 
                             try {
-                                apocBrSectionStart = System.nanoTime();
+                                apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                                 MapCollisionData.instance.updateGameState();
-                                ApocBRServerTelemetry.recordTickSection("mapCollision", System.nanoTime() - apocBrSectionStart);
-                                apocBrSectionStart = System.nanoTime();
+                                if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("mapCollision", System.nanoTime() - apocBrSectionStart);
+                                apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                                 statex.update();
-                                ApocBRServerTelemetry.recordTickSection("gameState", System.nanoTime() - apocBrSectionStart);
-                                apocBrSectionStart = System.nanoTime();
+                                if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("gameState", System.nanoTime() - apocBrSectionStart);
+                                apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                                 VehicleManager.instance.serverUpdate();
-                                ApocBRServerTelemetry.recordTickSection("vehicleManager", System.nanoTime() - apocBrSectionStart);
-                                apocBrSectionStart = System.nanoTime();
+                                if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("vehicleManager", System.nanoTime() - apocBrSectionStart);
+                                apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                                 ObjectIDManager.getInstance().checkForSaveDataFile(false);
-                                ApocBRServerTelemetry.recordTickSection("objectIdManager", System.nanoTime() - apocBrSectionStart);
+                                if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("objectIdManager", System.nanoTime() - apocBrSectionStart);
                             } catch (Exception var38) {
                                 DebugType.General.printException(var38, "", LogSeverity.Error);
                             }
@@ -1049,7 +1059,7 @@ public class GameServer {
                             int asleepCount = 0;
                             int playerCount = 0;
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             for (int nxxx = 0; nxxx < Players.size(); nxxx++) {
                                 IsoPlayer p = Players.get(nxxx);
                                 if (p.isAlive()) {
@@ -1065,15 +1075,15 @@ public class GameServer {
 
                                 ServerMap.instance.characterIn(p);
                             }
-                            ApocBRServerTelemetry.recordTickSection("playersRelevant", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("playersRelevant", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             ImportantAreaManager.getInstance().process(statex.paused);
                             setFastForward(ServerOptions.instance.sleepAllowed.getValue() && playerCount > 0 && asleepCount == playerCount);
                             boolean needCalcCountPlayersInRelevantPosition = calcCountPlayersInRelevantPositionLimiter.Check();
-                            ApocBRServerTelemetry.recordTickSection("importantAreas", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("importantAreas", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             for (int nxxx = 0; nxxx < udpEngine.connections.size(); nxxx++) {
                                 UdpConnection c = udpEngine.connections.get(nxxx);
                                 if (needCalcCountPlayersInRelevantPosition) {
@@ -1093,9 +1103,9 @@ public class GameServer {
                                     c.getPlayerDownloadServer().update();
                                 }
                             }
-                            ApocBRServerTelemetry.recordTickSection("connectionRelevant", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("connectionRelevant", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             Set<IsoMovingObject> toRemove = new HashSet<>();
 
                             for (IsoMovingObject o : IsoWorld.instance.currentCell.getObjectList()) {
@@ -1107,8 +1117,8 @@ public class GameServer {
 
                             IsoWorld.instance.currentCell.getObjectList().removeAll(toRemove);
                             toRemove.clear();
-                            ApocBRServerTelemetry.recordTickSection("objectCleanup", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("objectCleanup", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             if (++updateDBCount > 150) {
                                 for (int nxxx = 0; nxxx < udpEngine.connections.size(); nxxx++) {
                                     UdpConnection connection = udpEngine.connections.get(nxxx);
@@ -1129,17 +1139,17 @@ public class GameServer {
 
                                 updateDBCount = 0;
                             }
-                            ApocBRServerTelemetry.recordTickSection("connectionTimeouts", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("connectionTimeouts", System.nanoTime() - apocBrSectionStart);
 
                             ServerMap.instance.postupdate();
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             try {
                                 ServerGUI.update();
                             } catch (Exception var37) {
                                 DebugType.General.printException(var37, "", LogSeverity.Error);
                             }
-                            ApocBRServerTelemetry.recordTickSection("serverGui", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("serverGui", System.nanoTime() - apocBrSectionStart);
 
                             long serverCycleLast = serverCycle;
                             serverCycle = System.currentTimeMillis();
@@ -1150,18 +1160,18 @@ public class GameServer {
                             }
 
                             GameTime.instance.fpsMultiplier = 60.0F / averageFPS;
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             launchCommandHandler();
-                            ApocBRServerTelemetry.recordTickSection("consoleCommands", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("consoleCommands", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             StatisticManager.getInstance().update(dif);
                             if (!SteamUtils.isSteamModeEnabled()) {
                                 PublicServerUtil.update();
                                 PublicServerUtil.updatePlayerCountIfChanged();
                             }
-                            ApocBRServerTelemetry.recordTickSection("statsPublic", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("statsPublic", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             for (int i = 0; i < udpEngine.connections.size(); i++) {
                                 UdpConnection connection = udpEngine.connections.get(i);
                                 connection.getValidator().update();
@@ -1178,9 +1188,9 @@ public class GameServer {
                                     }
                                 }
                             }
-                            ApocBRServerTelemetry.recordTickSection("connectionMaintenance", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("connectionMaintenance", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             if (sendWorldMapPlayerPositionLimiter.Check()) {
                                 try {
                                     sendWorldMapPlayerPosition();
@@ -1188,9 +1198,9 @@ public class GameServer {
                                     boolean var133 = true;
                                 }
                             }
-                            ApocBRServerTelemetry.recordTickSection("worldMapPositions", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("worldMapPositions", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             if (CoopSlave.instance != null) {
                                 CoopSlave.instance.update();
                                 if (CoopSlave.instance.masterLost()) {
@@ -1198,37 +1208,39 @@ public class GameServer {
                                     ServerMap.instance.QueueQuit();
                                 }
                             }
-                            ApocBRServerTelemetry.recordTickSection("coop", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("coop", System.nanoTime() - apocBrSectionStart);
 
-                            apocBrSectionStart = System.nanoTime();
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             LoginQueue.update();
-                            ApocBRServerTelemetry.recordTickSection("loginQueue", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("loginQueue", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             ZipBackup.onPeriod();
-                            ApocBRServerTelemetry.recordTickSection("zipBackup", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("zipBackup", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             SteamUtils.runLoop();
-                            ApocBRServerTelemetry.recordTickSection("steamLoop", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("steamLoop", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             TradingManager.getInstance().update();
-                            ApocBRServerTelemetry.recordTickSection("trading", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("trading", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             WarManager.update();
-                            ApocBRServerTelemetry.recordTickSection("war", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("war", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             SafeHouse.update();
-                            ApocBRServerTelemetry.recordTickSection("safehouse", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("safehouse", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             NetworkPlayerManager.getInstance().update();
-                            ApocBRServerTelemetry.recordTickSection("networkPlayer", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("networkPlayer", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             GameWindow.fileSystem.updateAsyncTransactions();
-                            ApocBRServerTelemetry.recordTickSection("asyncTransactions", System.nanoTime() - apocBrSectionStart);
-                            apocBrSectionStart = System.nanoTime();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("asyncTransactions", System.nanoTime() - apocBrSectionStart);
+                            apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             WorldMapVisitedServer.getInstance().update();
-                            ApocBRServerTelemetry.recordTickSection("worldMapVisited", System.nanoTime() - apocBrSectionStart);
-                            ApocBRServerTelemetry.recordWorldTick(System.nanoTime() - startServerCycle);
-                            ApocBRServerTelemetry.maybeLog();
+                            if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("worldMapVisited", System.nanoTime() - apocBrSectionStart);
+                            if (apocBrTelemetry) {
+                                ApocBRServerTelemetry.recordWorldTick(System.nanoTime() - startServerCycle);
+                                ApocBRServerTelemetry.maybeLog();
+                            }
                         } catch (Exception var60) {
                             if (mainCycleExceptionLogCount-- > 0) {
                                 DebugType.Multiplayer.printException(var60, "Server processing error", LogSeverity.Error);

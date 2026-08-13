@@ -67,9 +67,11 @@ import zombie.debug.LogSeverity;
      * max-age escape hatches that bypass that throttle.
  */
 public final class ApocBRServerTelemetry {
-    private static final boolean ENABLED = getBoolean("apocbr.telemetry.enabled", true);
+    public static final boolean DETAIL_ENABLED = getBoolean("apocbr.telemetry.enabled", false);
+    public static final boolean PROD_ENABLED = getBoolean("apocbr.telemetry.prod", false);
+    public static final boolean ENABLED = DETAIL_ENABLED || PROD_ENABLED;
     private static final long INTERVAL_MS = clamp(getLong("apocbr.telemetry.intervalMs", 30000L), 5000L, 300000L);
-    private static final boolean NDJSON_ENABLED = getBoolean("apocbr.telemetry.ndjson.enabled", true);
+    private static final boolean NDJSON_ENABLED = getBoolean("apocbr.telemetry.ndjson.enabled", false);
     private static final String NDJSON_PATH = getString("apocbr.telemetry.ndjson.path", "apocbr-telemetry.ndjson");
     private static final int NDJSON_QUEUE_CAPACITY = (int)clamp(getLong("apocbr.telemetry.ndjson.queue", 64L), 1L, 4096L);
     private static final int LUA_TELEMETRY_TOP_N = (int)clamp(getLong("apocbr.telemetry.lua.topN", 16L), 1L, 64L);
@@ -287,6 +289,18 @@ public final class ApocBRServerTelemetry {
     private ApocBRServerTelemetry() {
     }
 
+    public static boolean isEnabled() {
+        return ENABLED;
+    }
+
+    public static boolean isDetailEnabled() {
+        return DETAIL_ENABLED;
+    }
+
+    public static long beginDetail() {
+        return DETAIL_ENABLED ? System.nanoTime() : 0L;
+    }
+
     public static synchronized void recordWorldTick(long nanos) {
         if (!ENABLED) return;
         worldTicks++;
@@ -295,7 +309,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordTickSection(String section, long nanos) {
-        if (!ENABLED || nanos < 0L) return;
+        if (!DETAIL_ENABLED || nanos < 0L) return;
         for (int i = 0; i < TICK_SECTION_KEYS.length; i++) {
             if (TICK_SECTION_KEYS[i].equals(section)) {
                 tickSectionCalls[i].increment();
@@ -306,28 +320,33 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static void recordTickSectionSince(String section, long startNanos) {
+        if (!DETAIL_ENABLED) return;
+        recordTickSection(section, System.nanoTime() - startNanos);
+    }
+
     public static void recordLuaEvent(String event, int callbackCount, long nanos) {
-        if (!ENABLED || event == null || nanos < 0L) return;
+        if (!DETAIL_ENABLED || event == null || nanos < 0L) return;
         recordDynamicTiming(luaEvents, event, Math.max(0, callbackCount), nanos);
     }
 
     public static void recordLuaCallback(String event, String callback, long nanos) {
-        if (!ENABLED || !LUA_CALLBACK_TELEMETRY_ENABLED || event == null || callback == null || nanos < LUA_CALLBACK_SLOW_NANOS) return;
+        if (!DETAIL_ENABLED || !LUA_CALLBACK_TELEMETRY_ENABLED || event == null || callback == null || nanos < LUA_CALLBACK_SLOW_NANOS) return;
         recordDynamicTiming(luaCallbacks, event + "|" + callback, 1, nanos);
     }
 
     public static void recordLuaDirect(String callsite, long nanos) {
-        if (!ENABLED || callsite == null || nanos < 0L) return;
+        if (!DETAIL_ENABLED || callsite == null || nanos < 0L) return;
         recordDynamicTiming(luaDirect, callsite, 1, nanos);
     }
 
     public static void recordMainLoopNetHighPacket(String packetType, long nanos) {
-        if (!ENABLED || packetType == null || nanos < 0L) return;
+        if (!DETAIL_ENABLED || packetType == null || nanos < 0L) return;
         recordDynamicTiming(netHighPacketsByType, packetType, 1, nanos);
     }
 
     public static void recordNetHighDetail(String detail, int units, long nanos) {
-        if (!ENABLED || detail == null || nanos < 0L) return;
+        if (!DETAIL_ENABLED || detail == null || nanos < 0L) return;
         recordDynamicTiming(netHighDetails, detail, Math.max(0, units), nanos);
     }
 
@@ -347,7 +366,7 @@ public final class ApocBRServerTelemetry {
     public static synchronized void recordServerMapDeferredUnload(
         int pending, int queued, int revalidated, int unloaded, long unloadNanos, long oldestAgeMs
     ) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         serverMapUnloadPendingLast = pending;
         serverMapUnloadQueued += queued;
         serverMapUnloadRevalidated += revalidated;
@@ -360,7 +379,7 @@ public final class ApocBRServerTelemetry {
     public static synchronized void recordServerMapDeferredUnloadBudget(
         int mode, int ready, int maxCells, int slicesPerTick, int attempts, int partialCells
     ) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         serverMapUnloadModeLast = mode;
         serverMapUnloadReadyLast = ready;
         serverMapUnloadMaxCellsLast = maxCells;
@@ -377,7 +396,7 @@ public final class ApocBRServerTelemetry {
      * maxCells), and backlogAfter is what's left over for the next tick.
      */
     public static synchronized void recordServerMapLoad2Budget(int maxCells, int ready, int flushed, int backlogAfter) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         serverMapLoad2MaxCellsLast = maxCells;
         serverMapLoad2ReadyLast = ready;
         serverMapLoad2FlushedLast = flushed;
@@ -395,7 +414,7 @@ public final class ApocBRServerTelemetry {
      * which phase dominates instead of only the aggregate unload cost.
      */
     public static synchronized void recordServerMapUnloadPhase(String phase, int units, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         for (int i = 0; i < SERVER_MAP_UNLOAD_PHASE_KEYS.length; i++) {
             if (SERVER_MAP_UNLOAD_PHASE_KEYS[i].equals(phase)) {
                 serverMapUnloadPhaseCalls[i]++;
@@ -408,7 +427,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordServerMapUnloadDetail(String detail, int units, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         for (int i = 0; i < SERVER_MAP_UNLOAD_DETAIL_KEYS.length; i++) {
             if (SERVER_MAP_UNLOAD_DETAIL_KEYS[i].equals(detail)) {
                 serverMapUnloadDetailCalls[i].increment();
@@ -421,7 +440,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordServerMapPrePhase(String phase, int units, long nanos) {
-        if (!ENABLED || nanos < 0L) return;
+        if (!DETAIL_ENABLED || nanos < 0L) return;
         for (int i = 0; i < SERVER_MAP_PRE_KEYS.length; i++) {
             if (SERVER_MAP_PRE_KEYS[i].equals(phase)) {
                 serverMapPreCalls[i].increment();
@@ -433,8 +452,13 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static void recordServerMapPrePhaseSince(String phase, int units, long startNanos) {
+        if (!DETAIL_ENABLED) return;
+        recordServerMapPrePhase(phase, units, System.nanoTime() - startNanos);
+    }
+
     public static void recordServerMapPostPhase(String phase, int units, long nanos) {
-        if (!ENABLED || nanos < 0L) return;
+        if (!DETAIL_ENABLED || nanos < 0L) return;
         for (int i = 0; i < SERVER_MAP_POST_KEYS.length; i++) {
             if (SERVER_MAP_POST_KEYS[i].equals(phase)) {
                 serverMapPostCalls[i].increment();
@@ -446,8 +470,13 @@ public final class ApocBRServerTelemetry {
         }
     }
 
+    public static void recordServerMapPostPhaseSince(String phase, int units, long startNanos) {
+        if (!DETAIL_ENABLED) return;
+        recordServerMapPostPhase(phase, units, System.nanoTime() - startNanos);
+    }
+
     public static void recordServerMapPreQueues(int loadQueue, int loadedQueue, int recalcQueue, int recalcDoneQueue, int saveQueue) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         serverMapPreLoadQueueLast = loadQueue;
         serverMapPreLoadedQueueLast = loadedQueue;
         serverMapPreRecalcQueueLast = recalcQueue;
@@ -473,7 +502,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordMainLoopNetHigh(int packets, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         netHighPackets.add(packets);
         netHighNanos.add(nanos);
         netHighMaxNanos.accumulateAndGet(nanos, Math::max);
@@ -481,7 +510,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordMainLoopNetPlayer(int packets, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         netPlayerPackets.add(packets);
         netPlayerNanos.add(nanos);
         netPlayerMaxNanos.accumulateAndGet(nanos, Math::max);
@@ -489,7 +518,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordMainLoopNetNormal(int packets, int processed, int dropped, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         netNormalPackets.add(packets);
         netNormalProcessed.add(processed);
         netNormalDropped.add(dropped);
@@ -511,7 +540,7 @@ public final class ApocBRServerTelemetry {
      * for a WaitingInLOS player, before handing the calc off to PZForkJoinPool.
      */
     public static void recordServerLosDispatch() {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         int busy = losSlotsBusy.incrementAndGet();
         losSlotsBusyMax.accumulateAndGet(busy, Math::max);
     }
@@ -522,17 +551,17 @@ public final class ApocBRServerTelemetry {
      * is the current bottleneck.
      */
     public static void recordServerLosStarved() {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         losStarved.increment();
     }
 
     public static void recordServerLosPhased() {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         losPhased.increment();
     }
 
     public static void recordServerLosForced() {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         losForced.increment();
     }
 
@@ -543,7 +572,7 @@ public final class ApocBRServerTelemetry {
      * since no square work was done.
      */
     public static void recordServerLosCalc(boolean skipped, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         losSlotsBusy.decrementAndGet();
         if (skipped) {
             losSkipped.increment();
@@ -555,7 +584,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordZombieAuthGrid(int cells, int candidates, int cellWrites, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieAuthGridBuilds.increment();
         zombieAuthGridCells.add(cells);
         zombieAuthGridCandidates.add(candidates);
@@ -565,18 +594,18 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordZombieAuthQuery(int candidates) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieAuthQueries.increment();
         zombieAuthQueryCandidates.add(candidates);
     }
 
     public static void recordZombieAuthMove() {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieAuthMoves.increment();
     }
 
     public static void recordZombieAuthUpdate(int zombies, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieAuthUpdateCalls.increment();
         zombieAuthUpdateZombies.add(zombies);
         zombieAuthUpdateNanos.add(nanos);
@@ -584,14 +613,14 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordZombieAuthList(long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieAuthListCalls.increment();
         zombieAuthListNanos.add(nanos);
         zombieAuthListMaxNanos.accumulateAndGet(nanos, Math::max);
     }
 
     public static void recordZombieRelayGrid(int activeZombies, int cells, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelayGridBuilds.increment();
         zombieRelayGridActive.add(activeZombies);
         zombieRelayGridCells.add(cells);
@@ -600,7 +629,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordZombieRelayQuery(int cellsVisited, int candidates, int sent) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelayQueries.increment();
         zombieRelayCellsVisited.add(cellsVisited);
         zombieRelayCandidates.add(candidates);
@@ -608,12 +637,12 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordZombieRelayInitial(int sent) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelayInitialSent.add(sent);
     }
 
     public static void recordZombieRelayPacket(boolean extraAll) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelayPackets.increment();
         if (extraAll) {
             zombieRelayExtraAllPackets.increment();
@@ -621,38 +650,38 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordZombieRelayExtraAllMark() {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelayExtraAllMarks.increment();
     }
 
     public static void recordZombieRelayPost(long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelayPostCalls.increment();
         zombieRelayPostNanos.add(nanos);
         zombieRelayPostMaxNanos.accumulateAndGet(nanos, Math::max);
     }
 
     public static void recordZombieRelayConnection(long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelayConnectionCalls.increment();
         zombieRelayConnectionNanos.add(nanos);
         zombieRelayConnectionMaxNanos.accumulateAndGet(nanos, Math::max);
     }
 
     public static void recordZombieRelayGetData(long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelayGetDataNanos.add(nanos);
         zombieRelayGetDataMaxNanos.accumulateAndGet(nanos, Math::max);
     }
 
     public static void recordZombieRelaySend(long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieRelaySendNanos.add(nanos);
         zombieRelaySendMaxNanos.accumulateAndGet(nanos, Math::max);
     }
 
     public static void recordZombieGroupGrid(int groups, int cells, long nanos) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieGroupGridBuilds.increment();
         zombieGroupGridGroups.add(groups);
         zombieGroupGridCells.add(cells);
@@ -661,7 +690,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordZombieGroupQuery(int candidates, boolean removedEmptyGroups) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieGroupQueries.increment();
         zombieGroupCandidates.add(candidates);
         if (removedEmptyGroups) {
@@ -670,7 +699,7 @@ public final class ApocBRServerTelemetry {
     }
 
     public static void recordZombieServerUpdate(long nanos, boolean owned, boolean hasTarget, boolean remote) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombieServerUpdateCalls.increment();
         if (owned) {
             zombieServerUpdateOwned.increment();
@@ -695,7 +724,7 @@ public final class ApocBRServerTelemetry {
         int moving,
         long nanos
     ) {
-        if (!ENABLED) return;
+        if (!DETAIL_ENABLED) return;
         zombiePopUpdates.increment();
         zombiePopNativeRequested.add(nativeRequested);
         zombiePopBatches.add(batches);
@@ -712,11 +741,33 @@ public final class ApocBRServerTelemetry {
         if (!ENABLED) return;
         long now = System.currentTimeMillis();
         if (now < nextLogMs) return;
-        String payload = buildJsonPayload(now);
+        String payload = DETAIL_ENABLED ? buildJsonPayload(now) : buildProdJsonPayload(now);
         DebugLog.log("[ApocBRTelemetry]" + payload);
         offerNdjson(payload);
         resetWorldCounters();
         nextLogMs = now + INTERVAL_MS;
+    }
+
+    private static String buildProdJsonPayload(long now) {
+        StringBuilder json = new StringBuilder(256);
+        json.append("{\"schemaVersion\":1");
+        json.append(",\"seq\":").append(ndjsonSeq.incrementAndGet());
+        json.append(",\"ts\":").append(now);
+        json.append(",\"mode\":\"prod\"");
+        json.append(",\"ndjson\":{\"dropped\":").append(ndjsonDropped.sum()).append("}");
+        json.append(",\"world\":{\"ticks\":").append(worldTicks)
+            .append(",\"avgMs\":").append(avgMs(worldNanos, worldTicks))
+            .append(",\"maxMs\":").append(ms(worldMaxNanos))
+            .append("}");
+        json.append(",\"state\":{\"players\":").append(playersLast)
+            .append(",\"zombies\":").append(zombiesLast)
+            .append(",\"connections\":").append(connectionsLast)
+            .append(",\"queues\":{\"high\":").append(highQueueLast)
+            .append(",\"player\":").append(playerQueueLast)
+            .append(",\"normal\":").append(normalQueueLast)
+            .append("}}");
+        json.append("}");
+        return json.toString();
     }
 
     private static String buildJsonPayload(long now) {
@@ -724,6 +775,7 @@ public final class ApocBRServerTelemetry {
         json.append("{\"schemaVersion\":1");
         json.append(",\"seq\":").append(ndjsonSeq.incrementAndGet());
         json.append(",\"ts\":").append(now);
+        json.append(",\"mode\":\"detail\"");
         json.append(",\"ndjson\":{\"dropped\":").append(ndjsonDropped.sum()).append("}");
         json.append(",\"world\":{\"ticks\":").append(worldTicks)
             .append(",\"avgMs\":").append(avgMs(worldNanos, worldTicks))

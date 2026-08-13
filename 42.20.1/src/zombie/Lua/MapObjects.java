@@ -121,13 +121,13 @@ public final class MapObjects {
 
                         for (int n = 0; n < callback.functions.size(); n++) {
                             LuaClosure function = callback.functions.get(n);
-                            long apocBRStart = System.nanoTime();
+                            long apocBRStart = ApocBRServerTelemetry.beginDetail();
                             try {
                                 LuaManager.caller.protectedCallVoid(LuaManager.thread, function, params);
                             } catch (Throwable var7) {
                                 ExceptionLogger.logException(var7);
                             } finally {
-                                ApocBRServerTelemetry.recordLuaDirect("MapObjects.newGridSquare|" + getCallbackId(function), System.nanoTime() - apocBRStart);
+                                if (ApocBRServerTelemetry.isDetailEnabled()) ApocBRServerTelemetry.recordLuaDirect("MapObjects.newGridSquare|" + getCallbackId(function), System.nanoTime() - apocBRStart);
                             }
 
                             spriteName = obj.sprite != null && obj.sprite.name != null ? obj.sprite.name : obj.spriteName;
@@ -234,13 +234,13 @@ public final class MapObjects {
 
                         for (int n = 0; n < callback.functions.size(); n++) {
                             LuaClosure function = callback.functions.get(n);
-                            long apocBRStart = System.nanoTime();
+                            long apocBRStart = ApocBRServerTelemetry.beginDetail();
                             try {
                                 LuaManager.caller.protectedCallVoid(LuaManager.thread, function, params);
                             } catch (Throwable var7) {
                                 ExceptionLogger.logException(var7);
                             } finally {
-                                ApocBRServerTelemetry.recordLuaDirect("MapObjects.loadGridSquare|" + getCallbackId(function), System.nanoTime() - apocBRStart);
+                                if (ApocBRServerTelemetry.isDetailEnabled()) ApocBRServerTelemetry.recordLuaDirect("MapObjects.loadGridSquare|" + getCallbackId(function), System.nanoTime() - apocBRStart);
                             }
 
                             spriteName = obj.sprite != null && obj.sprite.name != null ? obj.sprite.name : obj.spriteName;

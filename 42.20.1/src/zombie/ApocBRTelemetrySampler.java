@@ -42,6 +42,10 @@ public final class ApocBRTelemetrySampler {
     }
 
     public static void start() {
+        if (!ApocBRServerTelemetry.isEnabled()) {
+            return;
+        }
+
         if (!started.compareAndSet(false, true)) {
             return;
         }

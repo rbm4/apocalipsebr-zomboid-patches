@@ -33,7 +33,7 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void startFrame() {
-        long apocStartNanos = System.nanoTime();
+        long apocStartNanos = ApocBRServerTelemetry.beginDetail();
         this.frameCounter++;
         for (int i = 0; i < this.simulationLevels.length; i++) {
             this.simulationLevels[i].clear();
@@ -59,7 +59,7 @@ public final class MovingObjectUpdateScheduler {
                 this.simulationLevels[sim.getUpdateOrderIndex()].add(isoMovingObject);
             }
         }
-        ApocBRServerTelemetry.recordTickSection("stateMoveStartFrame", System.nanoTime() - apocStartNanos);
+        ApocBRServerTelemetry.recordTickSectionSince("stateMoveStartFrame", apocStartNanos);
     }
 
     private UpdateSchedulerSimulationLevel getUpdateSchedulerSimulationLevelForObject(IsoMovingObject isoMovingObject, float averageFps) {
@@ -199,15 +199,15 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void update() {
-        long apocStartNanos = System.nanoTime();
+        long apocStartNanos = ApocBRServerTelemetry.beginDetail();
         for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
             simulation.update((int)this.frameCounter);
         }
-        ApocBRServerTelemetry.recordTickSection("stateMoveUpdate", System.nanoTime() - apocStartNanos);
+        ApocBRServerTelemetry.recordTickSectionSince("stateMoveUpdate", apocStartNanos);
     }
 
     public void postupdate() {
-        long apocStartNanos = System.nanoTime();
+        long apocStartNanos = ApocBRServerTelemetry.beginDetail();
         if (GameServer.server) {
             ZombieCountOptimiser.deleteZombies();
         }
@@ -215,7 +215,7 @@ public final class MovingObjectUpdateScheduler {
         for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
             simulation.postupdate((int)this.frameCounter);
         }
-        ApocBRServerTelemetry.recordTickSection("stateMovePostUpdate", System.nanoTime() - apocStartNanos);
+        ApocBRServerTelemetry.recordTickSectionSince("stateMovePostUpdate", apocStartNanos);
     }
 
     public boolean isEnabled() {

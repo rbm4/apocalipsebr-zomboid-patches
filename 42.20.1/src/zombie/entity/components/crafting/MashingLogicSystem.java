@@ -32,7 +32,7 @@ public class MashingLogicSystem extends EngineSystem {
     private EntityBucket mashingEntities;
 
     public MashingLogicSystem(int updatePriority) {
-        super(true, false, updatePriority);
+        super(false, true, updatePriority);
     }
 
     @Override
@@ -45,7 +45,7 @@ public class MashingLogicSystem extends EngineSystem {
     }
 
     @Override
-    public void update() {
+    public void updateSimulation() {
         if (!GameClient.client) {
             ImmutableArray<GameEntity> entities = this.mashingEntities.getEntities();
             if (entities.size() != 0) {

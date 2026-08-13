@@ -430,8 +430,8 @@ public class ServerMap {
     }
 
     public void preupdate() {
-        long apocBrSectionStart = System.nanoTime();
-        long apocBrPhaseStart = System.nanoTime();
+        long apocBrSectionStart = ApocBRServerTelemetry.beginDetail();
+        long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
         int apocBrUnits = 0;
         this.lastTick = System.nanoTime();
         mapLoading = DebugType.MapLoading.isEnabled();
@@ -498,7 +498,7 @@ public class ServerMap {
                 this.toLoad.remove(cell);
             }
         }
-        ApocBRServerTelemetry.recordServerMapPrePhase("cancelScan", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+        ApocBRServerTelemetry.recordServerMapPrePhaseSince("cancelScan", apocBrUnits, apocBrPhaseStart);
         ApocBRServerTelemetry.recordServerMapPreQueues(
             ServerMap.ServerCell.chunkLoader.getLoadQueueSize(),
             ServerMap.ServerCell.chunkLoader.getLoadedQueueSize(),
@@ -510,35 +510,35 @@ public class ServerMap {
         if (!this.toLoad.isEmpty()) {
             this.tempCells.clear();
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             for (int ixxx = 0; ixxx < this.toLoad.size(); ixxx++) {
                 ServerMap.ServerCell cell = this.toLoad.get(ixxx);
                 if (!cell.cancelLoading && !cell.startedLoading) {
                     this.tempCells.add(cell);
                 }
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("collectPendingLoads", this.tempCells.size(), System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("collectPendingLoads", this.tempCells.size(), apocBrPhaseStart);
 
             if (!this.tempCells.isEmpty()) {
-                apocBrPhaseStart = System.nanoTime();
+                apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                 distToCellComparator.init();
                 this.tempCells.sort(distToCellComparator);
-                ApocBRServerTelemetry.recordServerMapPrePhase("sortPendingLoads", this.tempCells.size(), System.nanoTime() - apocBrPhaseStart);
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("sortPendingLoads", this.tempCells.size(), apocBrPhaseStart);
 
-                apocBrPhaseStart = System.nanoTime();
+                apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                 for (int ixxxx = 0; ixxxx < this.tempCells.size(); ixxxx++) {
                     ServerMap.ServerCell cell = this.tempCells.get(ixxxx);
                     ServerMap.ServerCell.chunkLoader.addJob(cell);
                     cell.startedLoading = true;
                 }
-                ApocBRServerTelemetry.recordServerMapPrePhase("addLoadJobs", this.tempCells.size(), System.nanoTime() - apocBrPhaseStart);
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("addLoadJobs", this.tempCells.size(), apocBrPhaseStart);
             }
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             ServerMap.ServerCell.chunkLoader.getLoaded(ServerMap.ServerCell.loaded);
-            ApocBRServerTelemetry.recordServerMapPrePhase("drainLoaded", ServerMap.ServerCell.loaded.size(), System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("drainLoaded", ServerMap.ServerCell.loaded.size(), apocBrPhaseStart);
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
             for (int ixxxx = 0; ixxxx < ServerMap.ServerCell.loaded.size(); ixxxx++) {
                 ServerMap.ServerCell cell = ServerMap.ServerCell.loaded.get(ixxxx);
@@ -548,35 +548,35 @@ public class ServerMap {
                     apocBrUnits++;
                 }
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("addRecalcJobs", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("addRecalcJobs", apocBrUnits, apocBrPhaseStart);
 
             ServerMap.ServerCell.loaded.clear();
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
-            ApocBRServerTelemetry.recordServerMapPrePhase("drainRecalc", ServerMap.ServerCell.loaded2.size(), System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("drainRecalc", ServerMap.ServerCell.loaded2.size(), apocBrPhaseStart);
             if (!ServerMap.ServerCell.loaded2.isEmpty()) {
                 try {
-                    apocBrPhaseStart = System.nanoTime();
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     ServerLOS.instance.suspend();
-                    ApocBRServerTelemetry.recordServerMapPrePhase("load2LosSuspend", 1, System.nanoTime() - apocBrPhaseStart);
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LosSuspend", 1, apocBrPhaseStart);
 
-                    apocBrPhaseStart = System.nanoTime();
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     apocBrUnits = 0;
                     for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
                         ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
                         if (cell.Load2()) {
                             x--;
                             apocBrUnits++;
-                            long apocBrRemoveStart = System.nanoTime();
+                            long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
                             this.toLoad.remove(cell);
-                            ApocBRServerTelemetry.recordServerMapPrePhase("removeLoaded2FromToLoad", 1, System.nanoTime() - apocBrRemoveStart);
+                            ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", 1, apocBrRemoveStart);
                         }
                     }
-                    ApocBRServerTelemetry.recordServerMapPrePhase("load2", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", apocBrUnits, apocBrPhaseStart);
                 } finally {
-                    long apocBrResumeStart = System.nanoTime();
+                    long apocBrResumeStart = ApocBRServerTelemetry.beginDetail();
                     ServerLOS.instance.resume();
-                    ApocBRServerTelemetry.recordServerMapPrePhase("load2LosResume", 1, System.nanoTime() - apocBrResumeStart);
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LosResume", 1, apocBrResumeStart);
                 }
             }
             ApocBRServerTelemetry.recordServerMapPreQueues(
@@ -599,9 +599,9 @@ public class ServerMap {
 
         if (this.queuedSaveAll && !ZipBackup.isRunning()) {
             this.queuedSaveAll = false;
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             this.QueuedSaveAll(false);
-            ApocBRServerTelemetry.recordServerMapPrePhase("saveAll", 1, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("saveAll", 1, apocBrPhaseStart);
         }
 
         if (this.queuedQuit) {
@@ -611,43 +611,43 @@ public class ServerMap {
         this.releventNow.clear();
         this.updateLosThisFrame = LOS_TICK.Check();
         if (TIME_TICK.Check()) {
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             ServerMap.ServerCell.chunkLoader.saveLater(GameTime.instance);
-            ApocBRServerTelemetry.recordServerMapPrePhase("saveLater", 1, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("saveLater", 1, apocBrPhaseStart);
         }
 
         if (GameEntityManager.needSave && this.metaEntitySaveFrequency.Check()) {
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             GameEntityManager.Save();
-            ApocBRServerTelemetry.recordServerMapPrePhase("entitySave", 1, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("entitySave", 1, apocBrPhaseStart);
         }
 
-        ApocBRServerTelemetry.recordTickSection("serverMapPre", System.nanoTime() - apocBrSectionStart);
+        ApocBRServerTelemetry.recordTickSectionSince("serverMapPre", apocBrSectionStart);
     }
 
     public void postupdate() {
-        long apocBrPostStart = System.nanoTime();
+        long apocBrPostStart = ApocBRServerTelemetry.beginDetail();
         boolean pathfindPaused = false;
 
         try {
             int apocBrLoadedCellsAtStart = this.loadedCells.size();
-            long apocBrLoopStart = System.nanoTime();
+            long apocBrLoopStart = ApocBRServerTelemetry.beginDetail();
             for (int n = 0; n < this.loadedCells.size(); n++) {
                 ServerMap.ServerCell cell = this.loadedCells.get(n);
-                long apocBrPhaseStart = System.nanoTime();
+                long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                 boolean relevant = this.releventNow.contains(cell);
-                ApocBRServerTelemetry.recordServerMapPostPhase("relevantContains", 1, System.nanoTime() - apocBrPhaseStart);
+                ApocBRServerTelemetry.recordServerMapPostPhaseSince("relevantContains", 1, apocBrPhaseStart);
                 boolean outsidePlayerInfluence = false;
                 if (!relevant) {
-                    apocBrPhaseStart = System.nanoTime();
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     outsidePlayerInfluence = this.outsidePlayerInfluence(cell);
-                    ApocBRServerTelemetry.recordServerMapPostPhase("outsidePlayerInfluence", 1, System.nanoTime() - apocBrPhaseStart);
+                    ApocBRServerTelemetry.recordServerMapPostPhaseSince("outsidePlayerInfluence", 1, apocBrPhaseStart);
                 }
 
                 boolean shouldBeLoaded = relevant || !outsidePlayerInfluence;
                 if (!cell.isLoaded) {
                     if (!shouldBeLoaded && !cell.cancelLoading) {
-                        apocBrPhaseStart = System.nanoTime();
+                        apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                         if (mapLoading) {
                             DebugLog.log(
                                 DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy + " cell.startedLoading=" + cell.startedLoading
@@ -659,57 +659,57 @@ public class ServerMap {
                         }
 
                         cell.cancelLoading = true;
-                        ApocBRServerTelemetry.recordServerMapPostPhase("cancelLoading", 1, System.nanoTime() - apocBrPhaseStart);
+                        ApocBRServerTelemetry.recordServerMapPostPhaseSince("cancelLoading", 1, apocBrPhaseStart);
                     }
                 } else if (!shouldBeLoaded) {
                     int x = cell.wx - this.getMinX();
                     int y = cell.wy - this.getMinY();
                     if (!pathfindPaused) {
-                        apocBrPhaseStart = System.nanoTime();
+                        apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                         ServerLOS.instance.suspend();
-                        ApocBRServerTelemetry.recordServerMapPostPhase("losSuspend", 1, System.nanoTime() - apocBrPhaseStart);
+                        ApocBRServerTelemetry.recordServerMapPostPhaseSince("losSuspend", 1, apocBrPhaseStart);
                         pathfindPaused = true;
                     }
 
                     int cellMapIndex = y * this.width + x;
                     ServerMap.ServerCell mapCell = this.cellMap[cellMapIndex];
-                    apocBrPhaseStart = System.nanoTime();
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     mapCell.Unload();
-                    ApocBRServerTelemetry.recordServerMapPostPhase("cellUnload", 1, System.nanoTime() - apocBrPhaseStart);
-                    apocBrPhaseStart = System.nanoTime();
+                    ApocBRServerTelemetry.recordServerMapPostPhaseSince("cellUnload", 1, apocBrPhaseStart);
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     this.cellMap[cellMapIndex] = null;
-                    ApocBRServerTelemetry.recordServerMapPostPhase("cellMapClear", 1, System.nanoTime() - apocBrPhaseStart);
-                    apocBrPhaseStart = System.nanoTime();
+                    ApocBRServerTelemetry.recordServerMapPostPhaseSince("cellMapClear", 1, apocBrPhaseStart);
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     this.loadedCells.remove(cell);
-                    ApocBRServerTelemetry.recordServerMapPostPhase("loadedCellsRemove", 1, System.nanoTime() - apocBrPhaseStart);
+                    ApocBRServerTelemetry.recordServerMapPostPhaseSince("loadedCellsRemove", 1, apocBrPhaseStart);
                     n--;
                 } else {
-                    apocBrPhaseStart = System.nanoTime();
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     cell.update();
-                    ApocBRServerTelemetry.recordServerMapPostPhase("cellUpdate", 1, System.nanoTime() - apocBrPhaseStart);
+                    ApocBRServerTelemetry.recordServerMapPostPhaseSince("cellUpdate", 1, apocBrPhaseStart);
                 }
             }
-            ApocBRServerTelemetry.recordServerMapPostPhase("loop", apocBrLoadedCellsAtStart, System.nanoTime() - apocBrLoopStart);
+            ApocBRServerTelemetry.recordServerMapPostPhaseSince("loop", apocBrLoadedCellsAtStart, apocBrLoopStart);
         } catch (Exception var10) {
             DebugType.General.printException(var10, LogSeverity.Error);
         } finally {
             if (pathfindPaused) {
-                long apocBrPhaseStart = System.nanoTime();
+                long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                 ServerLOS.instance.resume();
-                ApocBRServerTelemetry.recordServerMapPostPhase("losResume", 1, System.nanoTime() - apocBrPhaseStart);
+                ApocBRServerTelemetry.recordServerMapPostPhaseSince("losResume", 1, apocBrPhaseStart);
             }
         }
 
-        long apocBrZombiePostStart = System.nanoTime();
+        long apocBrZombiePostStart = ApocBRServerTelemetry.beginDetail();
         NetworkZombiePacker.getInstance().postupdate();
-        ApocBRServerTelemetry.recordServerMapPostPhase("zombiePost", 1, System.nanoTime() - apocBrZombiePostStart);
-        ApocBRServerTelemetry.recordTickSection("serverMapZombiePost", System.nanoTime() - apocBrZombiePostStart);
+        ApocBRServerTelemetry.recordServerMapPostPhaseSince("zombiePost", 1, apocBrZombiePostStart);
+        ApocBRServerTelemetry.recordTickSectionSince("serverMapZombiePost", apocBrZombiePostStart);
 
-        long apocBrUpdateSavedStart = System.nanoTime();
+        long apocBrUpdateSavedStart = ApocBRServerTelemetry.beginDetail();
         ServerMap.ServerCell.chunkLoader.updateSaved();
-        ApocBRServerTelemetry.recordServerMapPostPhase("updateSaved", 1, System.nanoTime() - apocBrUpdateSavedStart);
-        ApocBRServerTelemetry.recordTickSection("serverMapUpdateSaved", System.nanoTime() - apocBrUpdateSavedStart);
-        ApocBRServerTelemetry.recordTickSection("serverMapPost", System.nanoTime() - apocBrPostStart);
+        ApocBRServerTelemetry.recordServerMapPostPhaseSince("updateSaved", 1, apocBrUpdateSavedStart);
+        ApocBRServerTelemetry.recordTickSectionSince("serverMapUpdateSaved", apocBrUpdateSavedStart);
+        ApocBRServerTelemetry.recordTickSectionSince("serverMapPost", apocBrPostStart);
     }
 
     public void physicsCheck(int x, int y) {
@@ -925,16 +925,16 @@ public class ServerMap {
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
 
         public boolean Load2() {
-            long apocBrPhaseStart = System.nanoTime();
+            long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             chunkLoader.getRecalc(loaded2);
-            ApocBRServerTelemetry.recordServerMapPrePhase("load2DrainRecalc", loaded2.size(), System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2DrainRecalc", loaded2.size(), apocBrPhaseStart);
 
             for (int i = 0; i < loaded2.size(); i++) {
                 if (loaded2.get(i) == this) {
                     long start = System.nanoTime();
-                    apocBrPhaseStart = System.nanoTime();
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     this.RecalcAll2();
-                    ApocBRServerTelemetry.recordServerMapPrePhase("load2RecalcAll2", 1, System.nanoTime() - apocBrPhaseStart);
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2RecalcAll2", 1, apocBrPhaseStart);
                     loaded2.remove(i);
                     if (ServerMap.mapLoading) {
                         DebugType.MapLoading.debugln("loaded2=" + loaded2);
@@ -945,9 +945,9 @@ public class ServerMap {
                         DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
                     }
 
-                    apocBrPhaseStart = System.nanoTime();
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     this.loadVehicles();
-                    ApocBRServerTelemetry.recordServerMapPrePhase("load2Vehicles", 1, System.nanoTime() - apocBrPhaseStart);
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
                     return true;
                 }
             }
@@ -972,18 +972,18 @@ public class ServerMap {
             int ex = sx + 64;
             int ey = sy + 64;
 
-            long apocBrPhaseStart = System.nanoTime();
+            long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             for (RoomDef def : this.unexploredRooms) {
                 def.indoorZombies--;
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("load2RoomsDec", this.unexploredRooms.size(), System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2RoomsDec", this.unexploredRooms.size(), apocBrPhaseStart);
 
             this.unexploredRooms.clear();
             this.isLoaded = true;
             int minLevel = Integer.MAX_VALUE;
             int maxLevel = Integer.MIN_VALUE;
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             int apocBrUnits = 0;
             for (int chunkY = 0; chunkY < 8; chunkY++) {
                 for (int chunkX = 0; chunkX < 8; chunkX++) {
@@ -995,9 +995,9 @@ public class ServerMap {
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("load2LevelScan", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LevelScan", apocBrUnits, apocBrPhaseStart);
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
             for (int z = 1; z <= maxLevel; z++) {
                 for (int x = -1; x < 65; x++) {
@@ -1052,9 +1052,9 @@ public class ServerMap {
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("load2EnsureSurround", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2EnsureSurround", apocBrUnits, apocBrPhaseStart);
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
             for (int z = minLevel; z <= maxLevel; z++) {
                 for (int x = 0; x < 64; x++) {
@@ -1085,11 +1085,11 @@ public class ServerMap {
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("load2BorderRecalc", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2BorderRecalc", apocBrUnits, apocBrPhaseStart);
 
             int nSquares = 64;
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
             for (int cx = 0; cx < 8; cx++) {
                 for (int cy = 0; cy < 8; cy++) {
@@ -1114,9 +1114,9 @@ public class ServerMap {
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("load2MarkSquares", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2MarkSquares", apocBrUnits, apocBrPhaseStart);
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
             for (int x = 0; x < 8; x++) {
                 for (int y = 0; y < 8; y++) {
@@ -1126,9 +1126,9 @@ public class ServerMap {
                     }
                 }
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("load2DoLoadGridSquare", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2DoLoadGridSquare", apocBrUnits, apocBrPhaseStart);
 
-            apocBrPhaseStart = System.nanoTime();
+            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
             for (RoomDef def : this.unexploredRooms) {
                 def.indoorZombies++;
@@ -1141,7 +1141,7 @@ public class ServerMap {
                 }
                 apocBrUnits++;
             }
-            ApocBRServerTelemetry.recordServerMapPrePhase("load2RoomsInc", apocBrUnits, System.nanoTime() - apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2RoomsInc", apocBrUnits, apocBrPhaseStart);
 
             this.isLoaded = true;
         }

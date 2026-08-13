@@ -275,3 +275,30 @@ To avoid optimizing blind, split `stateMoveUpdate` one level deeper:
 The key success metric for the `separate()` patch is not only lower time, but lower
 `sqrt` calls per tick and lower expensive character-branch work per candidate while
 keeping close-range contact counts unchanged.
+
+---
+
+## Implemented: GEM Subsystem Easy Wins
+
+`stateGem` wraps `GameEntityManager.Update()`, which runs B42 entity/component systems.
+The first low-risk pass trims systems that were doing broad bucket scans more often
+than their semantics require:
+
+- `LogisticsSystem`: changed from simulation updater to non-updater. Its current body
+  scans all resource entities but has no behavior when it finds invalid resources, so
+  this removes a pure no-op O(n) scan.
+- `UsingPlayerUpdateSystem`: added as a class override and throttled to once per
+  second. It still clears stale `usingPlayer` references when the player is too far,
+  dead, on another z-level, etc., but no longer scans every IsoObject entity every
+  frame.
+- `InventoryItemSystem`: added as a class override and throttled to once per second.
+  Equipped-item entity cleanup can lag by up to one second, avoiding a full inventory
+  item entity scan every frame.
+- `MashingLogicSystem`: moved from every-frame `update()` to entity simulation
+  `updateSimulation()`. It already advances from `GameTime.instance.getWorldAgeHours()`,
+  so fermentation/mashing progress remains wall/game-time based while scanning far less
+  often under normal tick pacing.
+
+Validation:
+
+- `patchApocalipseBr.ps1 -DryRun` compiles successfully with these GEM overrides.

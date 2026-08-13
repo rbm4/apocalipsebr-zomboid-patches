@@ -28,7 +28,8 @@ public final class Event {
         if (this.callbacks.isEmpty()) {
             return false;
         } else {
-            long eventStart = System.nanoTime();
+            boolean apocBrDetailTelemetry = ApocBRServerTelemetry.isDetailEnabled();
+            long eventStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
             int callbackCount = this.callbacks.size();
 
             try {
@@ -43,7 +44,9 @@ public final class Event {
                                 caller.protectedCallVoid(LuaManager.thread, closure, params);
                             } finally {
                                 long callbackNanos = System.nanoTime() - start;
-                                ApocBRServerTelemetry.recordLuaCallback(this.name, getCallbackId(closure), callbackNanos);
+                                if (apocBrDetailTelemetry) {
+                                    ApocBRServerTelemetry.recordLuaCallback(this.name, getCallbackId(closure), callbackNanos);
+                                }
                                 double delayMS = callbackNanos / 1000000.0;
                                 if (delayMS > 250.0) {
                                     DebugType.Lua.warn("SLOW Lua event callback %s %s %dms", closure.prototype.file, closure, (int)delayMS);
@@ -64,11 +67,13 @@ public final class Event {
                         LuaClosure closure = this.callbacks.get(n);
 
                         try (GameProfiler.ProfileArea ex = profiler.profile("Lua - " + this.name)) {
-                            long start = System.nanoTime();
+                            long start = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             try {
                                 caller.protectedCallVoid(LuaManager.thread, closure, params);
                             } finally {
-                                ApocBRServerTelemetry.recordLuaCallback(this.name, getCallbackId(closure), System.nanoTime() - start);
+                                if (apocBrDetailTelemetry) {
+                                    ApocBRServerTelemetry.recordLuaCallback(this.name, getCallbackId(closure), System.nanoTime() - start);
+                                }
                             }
                         } catch (Exception var17) {
                             ExceptionLogger.logException(var17);
@@ -82,7 +87,9 @@ public final class Event {
                     return true;
                 }
             } finally {
-                ApocBRServerTelemetry.recordLuaEvent(this.name, callbackCount, System.nanoTime() - eventStart);
+                if (apocBrDetailTelemetry) {
+                    ApocBRServerTelemetry.recordLuaEvent(this.name, callbackCount, System.nanoTime() - eventStart);
+                }
             }
         }
     }
