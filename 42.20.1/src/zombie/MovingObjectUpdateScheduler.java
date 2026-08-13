@@ -35,14 +35,18 @@ public final class MovingObjectUpdateScheduler {
     public void startFrame() {
         long apocStartNanos = System.nanoTime();
         this.frameCounter++;
-        PZArrayUtil.forEach(this.simulationLevels, MovingObjectUpdateSchedulerUpdateBucket::clear);
-        float averageFps = GameWindow.averageFPS;
-        if (GameServer.server) {
+        for (int i = 0; i < this.simulationLevels.length; i++) {
+            this.simulationLevels[i].clear();
+        }
+
+        boolean server = GameServer.server;
+        float averageFps = server ? 0.0F : GameWindow.averageFPS;
+        if (server) {
             ZombieCountOptimiser.prepareZombiesForDeletion();
         }
 
         for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
-            if (GameServer.server && isoMovingObject instanceof IsoZombie isoZombie) {
+            if (server && isoMovingObject instanceof IsoZombie isoZombie) {
                 if (GameServer.guiCommandline) {
                     isoZombie.updateForServerGui();
                 }
