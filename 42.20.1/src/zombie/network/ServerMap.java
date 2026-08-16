@@ -73,8 +73,8 @@ public class ServerMap {
     private final UpdateLimit metaEntitySaveFrequency = new UpdateLimit(1000L);
     public final IsoObjectID<IsoZombie> zombieMap = new IsoObjectID<>(IsoZombie.class);
     private static final int SAVE_CELL_COUNT_MULTITHREAD_THRESHOLD = 10;
-    private static final int SAVE_CELL_WORK_THREADS = 4;
-    private static final ServerMap.WorkerThread[] workerThreads = new ServerMap.WorkerThread[4];
+    private static final int SAVE_CELL_WORK_THREADS = 1;
+    private static final ServerMap.WorkerThread[] workerThreads = new ServerMap.WorkerThread[SAVE_CELL_WORK_THREADS];
     public boolean queuedSaveAll;
     public boolean queuedQuit;
     public static ServerMap instance = new ServerMap();
@@ -96,7 +96,7 @@ public class ServerMap {
     public void SaveAll() {
         long start = System.nanoTime();
         if (!GameServer.softReset && this.loadedCells.size() >= 10) {
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < SAVE_CELL_WORK_THREADS; i++) {
                 workerThreads[i] = new ServerMap.WorkerThread();
                 workerThreads[i].setDaemon(true);
                 workerThreads[i].start();
@@ -104,18 +104,18 @@ public class ServerMap {
 
             for (int n = 0; n < this.loadedCells.size(); n++) {
                 ServerMap.ServerCell cell = this.loadedCells.get(n);
-                workerThreads[n % 4].putCommand(ServerMap.EThreadCommand.SaveCell, cell);
+                workerThreads[n % SAVE_CELL_WORK_THREADS].putCommand(ServerMap.EThreadCommand.SaveCell, cell);
                 cell.UpdateVehicle();
             }
 
-            for (int i = 0; i < 4; i++) {
+            for (int i = 0; i < SAVE_CELL_WORK_THREADS; i++) {
                 workerThreads[i].putCommand(ServerMap.EThreadCommand.Quit, null);
             }
 
             while (true) {
                 boolean running = false;
 
-                for (int i = 0; i < 4; i++) {
+                for (int i = 0; i < SAVE_CELL_WORK_THREADS; i++) {
                     if (!workerThreads[i].quit) {
                         running = true;
                         break;
