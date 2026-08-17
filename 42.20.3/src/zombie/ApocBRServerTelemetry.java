@@ -67,7 +67,8 @@ import zombie.debug.LogSeverity;
      * max-age escape hatches that bypass that throttle.
  */
 public final class ApocBRServerTelemetry {
-    public static final boolean DETAIL_ENABLED = getBoolean("apocbr.telemetry.enabled", false);
+    private static final String PATCH_BUILD = "42.20.3";
+    public static final boolean DETAIL_ENABLED = getBoolean("apocbr.telemetry.enabled", true);
     public static final boolean PROD_ENABLED = getBoolean("apocbr.telemetry.prod", false);
     public static final boolean ENABLED = DETAIL_ENABLED || PROD_ENABLED;
     private static final long INTERVAL_MS = clamp(getLong("apocbr.telemetry.intervalMs", 30000L), 5000L, 300000L);
@@ -77,10 +78,34 @@ public final class ApocBRServerTelemetry {
     private static final int LUA_TELEMETRY_TOP_N = (int)clamp(getLong("apocbr.telemetry.lua.topN", 16L), 1L, 64L);
     private static final long LUA_CALLBACK_SLOW_NANOS = clamp(getLong("apocbr.telemetry.lua.callbackSlowMs", 1L), 0L, 60000L) * 1000000L;
     private static final boolean LUA_CALLBACK_TELEMETRY_ENABLED = getBoolean("apocbr.telemetry.lua.callbacks.enabled", true);
+    private static final AtomicBoolean startupBannerLogged = new AtomicBoolean(false);
     private static final ArrayBlockingQueue<String> ndjsonQueue = new ArrayBlockingQueue<>(NDJSON_QUEUE_CAPACITY);
     private static final AtomicBoolean ndjsonWriterStarted = new AtomicBoolean(false);
     private static final AtomicLong ndjsonSeq = new AtomicLong();
     private static final LongAdder ndjsonDropped = new LongAdder();
+
+    private static final String[] OPTIMIZATION_PATCHES = new String[] {
+        "Server main-loop telemetry and per-section tick timing",
+        "ApocBR background sampler for player/zombie/connection/packet-queue state",
+        "Telemetry NDJSON writer and production/detail JSON log modes",
+        "Lua event/callback/direct-call timing instrumentation",
+        "ServerMap load/recalc/post-update queue telemetry",
+        "ServerMap single save worker and unload/save phase timing",
+        "Incremental IsoChunk removeFromWorld teardown with per-square telemetry",
+        "Lazy server container loading workaround for LoadGridsquare",
+        "Parallel ServerLOS dispatcher, LOS throttling, slot accounting, and direct square lookup",
+        "IsoGridSquare server lighting slot allocation and thread-local visibility scratch buffers",
+        "Pathfind active chunk loadId registry and stale ChunkUpdateTask native-call guard",
+        "Pathfind pathological request rejection before native calls",
+        "Zombie population and indoor-spawn throttling/telemetry",
+        "Zombie network list/manager/packer optimizations and telemetry",
+        "Moving object update scheduler bucket instrumentation",
+        "Entity/component update throttles and bucket self-healing checks",
+        "ObjectID manager/type allocation safety instrumentation",
+        "BodyDamageSync update throttle",
+        "Vehicle network sound update throttle and connection guards",
+        "ItemContainer and request-container packet performance safeguards"
+    };
 
     private static long nextLogMs = System.currentTimeMillis() + INTERVAL_MS;
 
@@ -295,6 +320,35 @@ public final class ApocBRServerTelemetry {
 
     public static boolean isDetailEnabled() {
         return DETAIL_ENABLED;
+    }
+
+    public static void logStartupBanner() {
+        if (!startupBannerLogged.compareAndSet(false, true)) {
+            return;
+        }
+
+        DebugLog.log("============================================================");
+        DebugLog.log("[ApocBR] ApocalipseBR telemetry and optimizations patch loaded");
+        DebugLog.log("[ApocBR] Target build: " + PATCH_BUILD);
+        DebugLog.log("[ApocBR] Runtime properties:");
+        logProperty("apocbr.telemetry.enabled", String.valueOf(DETAIL_ENABLED), "true");
+        logProperty("apocbr.telemetry.prod", String.valueOf(PROD_ENABLED), "false");
+        logProperty("apocbr.telemetry.intervalMs", String.valueOf(INTERVAL_MS), "30000");
+        logProperty("apocbr.telemetry.sampleIntervalMs", String.valueOf(clamp(getLong("apocbr.telemetry.sampleIntervalMs", 5000L), 1000L, 60000L)), "5000");
+        logProperty("apocbr.telemetry.ndjson.enabled", String.valueOf(NDJSON_ENABLED), "false");
+        logProperty("apocbr.telemetry.ndjson.path", NDJSON_PATH, "apocbr-telemetry.ndjson");
+        logProperty("apocbr.telemetry.ndjson.queue", String.valueOf(NDJSON_QUEUE_CAPACITY), "64");
+        logProperty("apocbr.telemetry.lua.topN", String.valueOf(LUA_TELEMETRY_TOP_N), "16");
+        logProperty("apocbr.telemetry.lua.callbackSlowMs", String.valueOf(LUA_CALLBACK_SLOW_NANOS / 1000000L), "1");
+        logProperty("apocbr.telemetry.lua.callbacks.enabled", String.valueOf(LUA_CALLBACK_TELEMETRY_ENABLED), "true");
+        logProperty("apocbr.vehicleSoundUpdateIntervalTicks", String.valueOf(Math.max(1, Integer.getInteger("apocbr.vehicleSoundUpdateIntervalTicks", 5))), "5");
+        logProperty("apocbr.bodyDamageSyncUpdateIntervalTicks", String.valueOf(Math.max(1, Integer.getInteger("apocbr.bodyDamageSyncUpdateIntervalTicks", 5))), "5");
+        logProperty("apocbr.lazyServerContainerLoad", String.valueOf(getBoolean("apocbr.lazyServerContainerLoad", true)), "true");
+        DebugLog.log("[ApocBR] Implemented optimization patches:");
+        for (String patch : OPTIMIZATION_PATCHES) {
+            DebugLog.log("[ApocBR]   - " + patch);
+        }
+        DebugLog.log("============================================================");
     }
 
     public static long beginDetail() {
@@ -1259,6 +1313,22 @@ public final class ApocBRServerTelemetry {
     private static String getString(String key, String def) {
         String value = System.getProperty(key);
         return value == null || value.trim().isEmpty() ? def : value.trim();
+    }
+
+    private static void logProperty(String key, String effectiveValue, String defaultValue) {
+        String rawValue = System.getProperty(key);
+        String source = rawValue == null ? "default" : "system";
+        DebugLog.log(
+            "[ApocBR]   "
+                + key
+                + "="
+                + effectiveValue
+                + " ("
+                + source
+                + ", default="
+                + defaultValue
+                + ")"
+        );
     }
 
     private static long clamp(long value, long min, long max) {

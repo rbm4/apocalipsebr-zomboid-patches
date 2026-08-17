@@ -836,6 +836,7 @@ public class GameServer {
 
             ServerLOS.init();
             ApocBRTelemetrySampler.start();
+            ApocBRServerTelemetry.logStartupBanner();
             NetworkAIParams.Init();
             int rconPort = ServerOptions.instance.rconPort.getValue();
             String rconPwd = ServerOptions.instance.rconPassword.getValue();

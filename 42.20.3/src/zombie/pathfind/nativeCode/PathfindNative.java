@@ -140,9 +140,12 @@ public class PathfindNative {
     }
 
     public void stop() {
-        PathfindNativeThread.instance.stopThread();
-        PathfindNativeThread.instance.cleanup();
-        PathfindNativeThread.instance = null;
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread != null) {
+            thread.stopThread();
+            thread.cleanup();
+            PathfindNativeThread.instance = null;
+        }
 
         // === ApocBR: clear registry on shutdown ==============================
         activeChunkLoadIds.clear();
