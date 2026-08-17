@@ -204,49 +204,61 @@ public class PathfindNative {
     }
 
     public void addChunkToWorld(IsoChunk chunk) {
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread == null) {
+            return;
+        }
+
         // === ApocBR: register chunk loadId before queuing ====================
         // Registering BEFORE queuing ensures that if the pathfind thread
         // immediately polls the task, the map entry is already visible.
         activeChunkLoadIds.put(chunkKey(chunk.wx, chunk.wy), chunk.getLoadID());
         // =====================================================================
         ChunkUpdateTask task = ChunkUpdateTask.alloc().init(chunk);
-        PathfindNativeThread.instance.chunkTaskQueue.add(task);
-        PathfindNativeThread.instance.wake();
+        thread.chunkTaskQueue.add(task);
+        thread.wake();
         chunk.loadedBits = (short)(chunk.loadedBits | 2);
     }
 
     public void removeChunkFromWorld(IsoChunk chunk) {
-        if (PathfindNativeThread.instance != null) {
-            // === ApocBR: unregister chunk before queuing remove task ==========
-            // Removing BEFORE queuing ensures that any ChunkUpdateTask for this
-            // chunk that is still in the queue will see a missing/mismatched
-            // entry and skip the native call.
-            activeChunkLoadIds.remove(chunkKey(chunk.wx, chunk.wy));
-            // =================================================================
+        // === ApocBR: unregister chunk before queuing remove task ==============
+        // Removing BEFORE queuing ensures that any ChunkUpdateTask for this
+        // chunk that is still in the queue will see a missing/mismatched
+        // entry and skip the native call.
+        activeChunkLoadIds.remove(chunkKey(chunk.wx, chunk.wy));
+        // =====================================================================
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread != null) {
             ChunkRemoveTask task = ChunkRemoveTask.alloc().init(chunk);
-            PathfindNativeThread.instance.chunkTaskQueue.add(task);
-            PathfindNativeThread.instance.wake();
+            thread.chunkTaskQueue.add(task);
+            thread.wake();
         }
     }
 
     public void squareChanged(IsoGridSquare square) {
-        if ((square.chunk.loadedBits & 2) != 0) {
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread != null && (square.chunk.loadedBits & 2) != 0) {
             for (int i = 0; i < DIRECTIONS.length; i++) {
                 IsoDirections dir = DIRECTIONS[i];
                 IsoGridSquare square2 = square.getAdjacentSquare(dir);
                 if (square2 != null) {
                     SquareUpdateTask task = SquareUpdateTask.alloc().init(square2);
-                    PathfindNativeThread.instance.squareTaskQueue.add(task);
+                    thread.squareTaskQueue.add(task);
                 }
             }
 
             SquareUpdateTask task = SquareUpdateTask.alloc().init(square);
-            PathfindNativeThread.instance.squareTaskQueue.add(task);
-            PathfindNativeThread.instance.wake();
+            thread.squareTaskQueue.add(task);
+            thread.wake();
         }
     }
 
     public void addVehicle(BaseVehicle vehicle) {
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread == null) {
+            return;
+        }
+
         VehicleState state = this.vehicleState.get(vehicle);
         if (state == null) {
             state = VehicleState.alloc();
@@ -257,8 +269,8 @@ public class PathfindNative {
 
         state.init(vehicle);
         VehicleAddTask task = VehicleAddTask.alloc().init(vehicle);
-        PathfindNativeThread.instance.vehicleTaskQueue.add(task);
-        PathfindNativeThread.instance.wake();
+        thread.vehicleTaskQueue.add(task);
+        thread.wake();
     }
 
     public void removeVehicle(BaseVehicle vehicle) {
@@ -267,34 +279,46 @@ public class PathfindNative {
             vehicleState1.release();
         }
 
-        if (PathfindNativeThread.instance != null) {
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread != null) {
             VehicleRemoveTask task = VehicleRemoveTask.alloc().init(vehicle);
-            PathfindNativeThread.instance.vehicleTaskQueue.add(task);
-            PathfindNativeThread.instance.wake();
+            thread.vehicleTaskQueue.add(task);
+            thread.wake();
         }
     }
 
     public void updateVehicle(BaseVehicle vehicle) {
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread == null) {
+            return;
+        }
+
         VehicleUpdateTask task = VehicleUpdateTask.alloc().init(vehicle);
-        PathfindNativeThread.instance.vehicleTaskQueue.add(task);
-        PathfindNativeThread.instance.wake();
+        thread.vehicleTaskQueue.add(task);
+        thread.wake();
     }
 
     public PathFindRequest addRequest(
         IPathfinder pathfinder, Mover mover, float startX, float startY, float startZ, float targetX, float targetY, float targetZ
     ) {
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread == null) {
+            return null;
+        }
+
         this.cancelRequest(mover);
         PathFindRequest request = PathFindRequest.alloc().init(pathfinder, mover, startX, startY, startZ, targetX, targetY, targetZ);
-        PathfindNativeThread.instance.requestMap.put(mover, request);
+        thread.requestMap.put(mover, request);
         PathRequestTask task = PathRequestTask.alloc().init(request);
-        PathfindNativeThread.instance.requestTaskQueue.add(task);
-        PathfindNativeThread.instance.wake();
+        thread.requestTaskQueue.add(task);
+        thread.wake();
         return request;
     }
 
     public void cancelRequest(Mover mover) {
-        if (PathfindNativeThread.instance != null) {
-            PathFindRequest request = PathfindNativeThread.instance.requestMap.remove(mover);
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread != null) {
+            PathFindRequest request = thread.requestMap.remove(mover);
             if (request != null) {
                 request.cancel = true;
             }
@@ -302,7 +326,12 @@ public class PathfindNative {
     }
 
     public void updateMain() {
-        ConcurrentLinkedQueue<IPathfindTask> queue = PathfindNativeThread.instance.taskReturnQueue;
+        PathfindNativeThread thread = PathfindNativeThread.instance;
+        if (thread == null) {
+            return;
+        }
+
+        ConcurrentLinkedQueue<IPathfindTask> queue = thread.taskReturnQueue;
 
         for (IPathfindTask task = queue.poll(); task != null; task = queue.poll()) {
             task.release();
@@ -315,11 +344,11 @@ public class PathfindNative {
             }
         }
 
-        ConcurrentLinkedQueue<PathFindRequest> requestToMain = PathfindNativeThread.instance.requestToMain;
+        ConcurrentLinkedQueue<PathFindRequest> requestToMain = thread.requestToMain;
 
         for (PathFindRequest request1 = requestToMain.poll(); request1 != null; request1 = requestToMain.poll()) {
-            if (PathfindNativeThread.instance.requestMap.get(request1.mover) == request1) {
-                PathfindNativeThread.instance.requestMap.remove(request1.mover);
+            if (thread.requestMap.get(request1.mover) == request1) {
+                thread.requestMap.remove(request1.mover);
             }
 
             if (!request1.cancel) {
@@ -516,11 +545,16 @@ public class PathfindNative {
                 this.request.canThump = true;
             }
 
+            PathfindNativeThread thread = PathfindNativeThread.instance;
+            if (thread == null) {
+                return;
+            }
+
             PathRequestTask task = PathRequestTask.alloc();
             task.init(this.request);
-            PathfindNativeThread.instance.requestTaskQueue.add(task);
+            thread.requestTaskQueue.add(task);
             this.testRequestAdded = true;
-            PathfindNativeThread.instance.wake();
+            thread.wake();
         }
 
         if (GameWindow.states.current == DebugChunkState.instance) {
