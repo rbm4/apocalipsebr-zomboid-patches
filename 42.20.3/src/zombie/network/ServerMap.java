@@ -46,6 +46,7 @@ import zombie.iso.WorldGenerate;
 import zombie.iso.worldgen.WorldGenParams;
 import zombie.network.id.ObjectIDManager;
 import zombie.network.packets.INetworkPacket;
+import zombie.pathfind.PolygonalMap2;
 import zombie.pathfind.nativeCode.PathfindNative;
 import zombie.popman.NetworkZombiePacker;
 import zombie.popman.ZombiePopulationManager;
@@ -346,8 +347,12 @@ public class ServerMap {
         }
 
         Roles.save();
-        PathfindNative.instance.stop();
-        PathfindNative.freeMemoryAtExit();
+        if (PathfindNative.useNativeCode) {
+            PathfindNative.instance.stop();
+            PathfindNative.freeMemoryAtExit();
+        } else {
+            PolygonalMap2.instance.stop();
+        }
         MapCollisionData.instance.stop();
         AnimalPopulationManager.getInstance().stop();
         ZombiePopulationManager.instance.stop();
