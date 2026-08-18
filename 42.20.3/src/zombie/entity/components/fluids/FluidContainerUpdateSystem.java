@@ -57,7 +57,10 @@ public class FluidContainerUpdateSystem extends EngineSystem {
             && fluidContainer.getRainCatcher() > 0.0F
             && !fluidContainer.isEmpty()
             && fluidContainer.getPrimaryFluid().getFluidTypeString().equals("Petrol")) {
-            float amount = 1.0E-4F * fluidContainer.getRainCatcher() / (SandboxOptions.getInstance().getDayLengthMinutes() * 24 / 60);
+            float amount = 1.0E-4F
+                * fluidContainer.getRainCatcher()
+                * EntitySimulation.getEffectiveSimulationTicksThisFrame()
+                / (SandboxOptions.getInstance().getDayLengthMinutes() * 24 / 60);
             if (fluidContainer.getAmount() < amount) {
                 amount = fluidContainer.getAmount();
             }
@@ -88,7 +91,7 @@ public class FluidContainerUpdateSystem extends EngineSystem {
                     * ClimateManager.getInstance().getPrecipitationIntensity()
                     * snowModifier
                     * fluidContainer.getRainCatcher()
-                    * (float)EntitySimulation.getGameSecondsPerTick();
+                    * (float)EntitySimulation.getEffectiveGameSecondsThisFrame();
                 if (fluidContainer.getFreeCapacity() < rainAmount) {
                     fluidContainer.adjustAmount(fluidContainer.getCapacity() - rainAmount);
                 }

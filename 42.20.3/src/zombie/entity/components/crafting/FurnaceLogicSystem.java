@@ -9,6 +9,7 @@ import zombie.entity.ComponentType;
 import zombie.entity.Engine;
 import zombie.entity.EngineSystem;
 import zombie.entity.EntityBucket;
+import zombie.entity.EntitySimulation;
 import zombie.entity.Family;
 import zombie.entity.GameEntity;
 import zombie.entity.MetaSimulationThrottle;
@@ -47,6 +48,7 @@ public class FurnaceLogicSystem extends EngineSystem {
     @Override
     public void updateSimulation() {
         if (!GameClient.client) {
+            int effectiveTicks = Math.max(1, EntitySimulation.getEffectiveSimulationTicksThisFrame());
             ImmutableArray<GameEntity> entities = this.furnaceLogicEntities.getEntities();
             if (entities.size() != 0) {
                 for (int i = 0; i < entities.size(); i++) {
@@ -60,7 +62,7 @@ public class FurnaceLogicSystem extends EngineSystem {
                             ResourceGroup inputResources = resources.getResourceGroup(furnaceLogic.getFurnaceInputsGroupName());
                             ResourceGroup outputResources = resources.getResourceGroup(furnaceLogic.getFurnaceOutputsGroupName());
                             if (this.verifyFurnaceSlots(furnaceLogic, inputResources, outputResources) && furnaceLogic.getSlotSize() != 0) {
-                                this.updateFurnaceLogic(furnaceLogic, fuelInputResources, fuelOutputResources);
+                                this.updateFurnaceLogic(furnaceLogic, fuelInputResources, fuelOutputResources, effectiveTicks);
                             }
                         }
                     }
@@ -102,7 +104,7 @@ public class FurnaceLogicSystem extends EngineSystem {
         }
     }
 
-    private void updateFurnaceLogic(FurnaceLogic logic, ResourceGroup fuelInputs, ResourceGroup fuelOutputs) {
+    private void updateFurnaceLogic(FurnaceLogic logic, ResourceGroup fuelInputs, ResourceGroup fuelOutputs, int effectiveTicks) {
         if (logic.isRunning()) {
             if (fuelOutputs != null && fuelOutputs.isDirty() && !logic.getCraftData().canCreateOutputs(fuelOutputs.getResources())) {
                 this.cancel(logic, fuelOutputs);
@@ -114,8 +116,8 @@ public class FurnaceLogicSystem extends EngineSystem {
                 return;
             }
 
-            this.updateFurnaceSlots(logic, false);
-            logic.setElapsedTime(logic.getElapsedTime() + 1);
+            this.updateFurnaceSlots(logic, false, effectiveTicks);
+            logic.setElapsedTime(logic.getElapsedTime() + effectiveTicks);
             if (logic.getElapsedTime() > logic.getCurrentRecipe().getTime()) {
                 logic.setElapsedTime(logic.getCurrentRecipe().getTime());
             }
@@ -135,7 +137,7 @@ public class FurnaceLogicSystem extends EngineSystem {
         }
     }
 
-    private void updateFurnaceSlots(FurnaceLogic logic, boolean cancel) {
+    private void updateFurnaceSlots(FurnaceLogic logic, boolean cancel, int effectiveTicks) {
         int size = logic.getSlotSize();
 
         for (int index = 0; index < size; index++) {
@@ -159,7 +161,7 @@ public class FurnaceLogicSystem extends EngineSystem {
                         if (slot.getCurrentRecipe() == null) {
                             this.getSlotRecipe(logic, slot, index);
                             if (slot.getCurrentRecipe() != null) {
-                                slot.setElapsedTime(slot.getElapsedTime() + 1);
+                                slot.setElapsedTime(slot.getElapsedTime() + effectiveTicks);
                             }
                         } else {
                             CraftRecipe recipe = slot.getCurrentRecipe();
@@ -173,7 +175,7 @@ public class FurnaceLogicSystem extends EngineSystem {
                                 }
                             }
 
-                            slot.setElapsedTime(slot.getElapsedTime() + 1);
+                            slot.setElapsedTime(slot.getElapsedTime() + effectiveTicks);
                             if (slot.getElapsedTime() >= recipe.getTime()) {
                                 this.craftSlotRecipe(logic, slot, inputResourcex, outputResourcex);
                             }
@@ -260,7 +262,7 @@ public class FurnaceLogicSystem extends EngineSystem {
                         logic.getCraftData().luaCallOnCreate();
                     }
 
-                    this.updateFurnaceSlots(logic, true);
+                    this.updateFurnaceSlots(logic, true, 0);
                     logic.setDoAutomaticCraftCheck(true);
                     logic.setRecipe(null);
                     if (GameServer.server) {

@@ -75,7 +75,7 @@ public class CraftLogicSystem extends EngineSystem {
                     return;
                 }
 
-                craftData.setElapsedTime(craftData.getElapsedTime() + EntitySimulation.getGameSecondsPerTick());
+                craftData.setElapsedTime(craftData.getElapsedTime() + EntitySimulation.getEffectiveGameSecondsThisFrame());
                 if (craftData.getElapsedTime() > craftData.getRecipe().getTime()) {
                     craftData.setElapsedTime(craftData.getRecipe().getTime());
                 }

@@ -10,6 +10,7 @@ import zombie.entity.ComponentType;
 import zombie.entity.Engine;
 import zombie.entity.EngineSystem;
 import zombie.entity.EntityBucket;
+import zombie.entity.EntitySimulation;
 import zombie.entity.Family;
 import zombie.entity.GameEntity;
 import zombie.entity.MetaSimulationThrottle;
@@ -48,6 +49,7 @@ public class DryingLogicSystem extends EngineSystem {
     @Override
     public void updateSimulation() {
         if (!GameClient.client) {
+            int effectiveTicks = Math.max(1, EntitySimulation.getEffectiveSimulationTicksThisFrame());
             ImmutableArray<GameEntity> entities = this.dryingLogicEntities.getEntities();
             if (entities.size() != 0) {
                 for (int i = 0; i < entities.size(); i++) {
@@ -61,7 +63,7 @@ public class DryingLogicSystem extends EngineSystem {
                             ResourceGroup inputResources = resources.getResourceGroup(dryingLogic.getDryingInputsGroupName());
                             ResourceGroup outputResources = resources.getResourceGroup(dryingLogic.getDryingOutputsGroupName());
                             if (this.verifyDryingLogicSlots(dryingLogic, inputResources, outputResources) && dryingLogic.getSlotSize() != 0) {
-                                this.updateDryingLogic(dryingLogic, fuelInputResources, fuelOutputResources);
+                                this.updateDryingLogic(dryingLogic, fuelInputResources, fuelOutputResources, effectiveTicks);
                             }
                         }
                     }
@@ -103,7 +105,7 @@ public class DryingLogicSystem extends EngineSystem {
         }
     }
 
-    private void updateDryingLogic(DryingLogic logic, ResourceGroup fuelInputs, ResourceGroup fuelOutputs) {
+    private void updateDryingLogic(DryingLogic logic, ResourceGroup fuelInputs, ResourceGroup fuelOutputs, int effectiveTicks) {
         if (!logic.isRunning() && logic.isUsesFuel()) {
             if (logic.isUsesFuel()) {
                 if (logic.isStartRequested()) {
@@ -126,9 +128,9 @@ public class DryingLogicSystem extends EngineSystem {
                 return;
             }
 
-            this.updateDryingSlots(logic, false);
+            this.updateDryingSlots(logic, false, effectiveTicks);
             if (logic.isUsesFuel()) {
-                logic.setElapsedTime(logic.getElapsedTime() + 1);
+                logic.setElapsedTime(logic.getElapsedTime() + effectiveTicks);
                 if (logic.getElapsedTime() > logic.getCurrentRecipe().getTime()) {
                     logic.setElapsedTime(logic.getCurrentRecipe().getTime());
                 }
@@ -142,7 +144,7 @@ public class DryingLogicSystem extends EngineSystem {
         }
     }
 
-    private void updateDryingSlots(DryingLogic logic, boolean cancel) {
+    private void updateDryingSlots(DryingLogic logic, boolean cancel, int effectiveTicks) {
         int size = logic.getSlotSize();
 
         for (int index = 0; index < size; index++) {
@@ -166,7 +168,7 @@ public class DryingLogicSystem extends EngineSystem {
                         if (slot.getCurrentRecipe() == null) {
                             this.getSlotRecipe(logic, slot, index);
                             if (slot.getCurrentRecipe() != null) {
-                                slot.setElapsedTime(slot.getElapsedTime() + 1);
+                                slot.setElapsedTime(slot.getElapsedTime() + effectiveTicks);
                             }
                         } else {
                             CraftRecipe recipe = slot.getCurrentRecipe();
@@ -180,7 +182,7 @@ public class DryingLogicSystem extends EngineSystem {
                                 }
                             }
 
-                            slot.setElapsedTime(slot.getElapsedTime() + 1);
+                            slot.setElapsedTime(slot.getElapsedTime() + effectiveTicks);
                             if (slot.getElapsedTime() >= recipe.getTime()) {
                                 this.craftSlotRecipe(logic, slot, inputResourcex, outputResourcex);
                             }
@@ -280,7 +282,7 @@ public class DryingLogicSystem extends EngineSystem {
                             logic.getCraftData().luaCallOnCreate();
                         }
 
-                        this.updateDryingSlots(logic, true);
+                        this.updateDryingSlots(logic, true, 0);
                         logic.setDoAutomaticCraftCheck(true);
                         logic.setRecipe(null);
                         if (GameServer.server) {

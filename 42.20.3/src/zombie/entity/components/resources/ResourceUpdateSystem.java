@@ -6,6 +6,7 @@ import zombie.entity.ComponentType;
 import zombie.entity.Engine;
 import zombie.entity.EngineSystem;
 import zombie.entity.EntityBucket;
+import zombie.entity.EntitySimulation;
 import zombie.entity.Family;
 import zombie.entity.GameEntity;
 import zombie.entity.MetaSimulationThrottle;
@@ -45,7 +46,7 @@ public class ResourceUpdateSystem extends EngineSystem {
                                 if (resource.getType() == ResourceType.Energy && !resource.isEmpty()) {
                                     ResourceEnergy resourceEnergy = (ResourceEnergy)resource;
                                     if (resource.isAutoDecay() && !resource.isDirty()) {
-                                        float amount = resourceEnergy.getEnergyCapacity() * 0.05F;
+                                        float amount = resourceEnergy.getEnergyCapacity() * 0.05F * EntitySimulation.getEffectiveSimulationTicksThisFrame();
                                         resourceEnergy.setEnergyAmount(resourceEnergy.getEnergyAmount() - amount);
                                     }
                                 }
