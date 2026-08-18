@@ -7,12 +7,15 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.Objects;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
 import zombie.ApocBRServerTelemetry;
+import zombie.core.logger.ExceptionLogger;
 import zombie.GameTime;
 import zombie.MapCollisionData;
 import zombie.ReanimatedPlayers;
-import zombie.VirtualZombieManager;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
 import zombie.characters.Roles;
@@ -525,19 +528,21 @@ public class ServerMap {
                     ServerLOS.instance.suspend();
                     ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LosSuspend", 1, apocBrPhaseStart);
 
+                    // RecalcAll2() work for every ready cell is fanned out across a 4-color checkerboard
+                    // (see ServerCell.recalcAllParallel) so non-adjacent cells run concurrently on worker
+                    // threads. The main thread blocks until every cell is done, so this is a synchronous
+                    // parallel fan-out, not a deferred-to-next-tick pipeline.
                     apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    apocBrUnits = 0;
-                    for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
-                        ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
-                        if (cell.Load2()) {
-                            x--;
-                            apocBrUnits++;
-                            long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
-                            this.toLoad.remove(cell);
-                            ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", 1, apocBrRemoveStart);
-                        }
-                    }
+                    apocBrUnits = ServerMap.ServerCell.loaded2.size();
+                    ServerMap.ServerCell.recalcAllParallel(ServerMap.ServerCell.loaded2);
                     ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", apocBrUnits, apocBrPhaseStart);
+
+                    long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
+                    for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
+                        this.toLoad.remove(ServerMap.ServerCell.loaded2.get(x));
+                    }
+                    ServerMap.ServerCell.loaded2.clear();
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", apocBrUnits, apocBrRemoveStart);
                 } finally {
                     long apocBrResumeStart = ApocBRServerTelemetry.beginDetail();
                     ServerLOS.instance.resume();
@@ -892,36 +897,64 @@ public class ServerMap {
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
+        private static final int RECALC_WORKERS = 6;
+        private static final ExecutorService recalcPool = Executors.newFixedThreadPool(RECALC_WORKERS);
 
-        public boolean Load2() {
-            long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-            chunkLoader.getRecalc(loaded2);
-            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2DrainRecalc", loaded2.size(), apocBrPhaseStart);
-
-            for (int i = 0; i < loaded2.size(); i++) {
-                if (loaded2.get(i) == this) {
-                    long start = System.nanoTime();
-                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    this.RecalcAll2();
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2RecalcAll2", 1, apocBrPhaseStart);
-                    loaded2.remove(i);
-                    if (ServerMap.mapLoading) {
-                        DebugType.MapLoading.debugln("loaded2=" + loaded2);
-                    }
-
-                    float time = (float)(System.nanoTime() - start) / 1000000.0F;
-                    if (ServerMap.mapLoading) {
-                        DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
-                    }
-
-                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    this.loadVehicles();
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
-                    return true;
-                }
+        /**
+         * RecalcAll2() mutates shared, cross-cell world state: EnsureSurroundNotNull()/createNewGridSquare()
+         * write directly into a neighbouring ServerCell's grid-square storage for cells across a border.
+         * Running two adjacent cells' RecalcAll2() concurrently would race on that storage.
+         * To keep this safe while still using multiple cores, cells are bucketed into a 4-color
+         * checkerboard by (wx & 1, wy & 1): within a color, no two cells are ever adjacent (even
+         * diagonally), so their border writes can never collide. Colors are processed one at a time,
+         * with a full barrier (CountDownLatch) between them, and the main thread blocks on that barrier,
+         * so there is no other thread touching ServerMap/IsoCell state while a color group is in flight.
+         */
+        private static void recalcAllParallel(ArrayList<ServerMap.ServerCell> cells) {
+            if (cells.isEmpty()) {
+                return;
             }
 
-            return false;
+            ArrayList<ArrayList<ServerMap.ServerCell>> colorGroups = new ArrayList<>(4);
+            for (int i = 0; i < 4; i++) {
+                colorGroups.add(new ArrayList<>());
+            }
+
+            for (ServerMap.ServerCell cell : cells) {
+                int color = (cell.wx & 1) | ((cell.wy & 1) << 1);
+                colorGroups.get(color).add(cell);
+            }
+
+            for (ArrayList<ServerMap.ServerCell> group : colorGroups) {
+                if (group.isEmpty()) {
+                    continue;
+                }
+
+                CountDownLatch latch = new CountDownLatch(group.size());
+                for (ServerMap.ServerCell cell : group) {
+                    recalcPool.execute(() -> {
+                        try {
+                            long start = System.nanoTime();
+                            cell.RecalcAll2();
+                            cell.loadVehicles();
+                            if (ServerMap.mapLoading) {
+                                float time = (float)(System.nanoTime() - start) / 1000000.0F;
+                                DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
+                            }
+                        } catch (Exception e) {
+                            ExceptionLogger.logException(e);
+                        } finally {
+                            latch.countDown();
+                        }
+                    });
+                }
+
+                try {
+                    latch.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
+            }
         }
 
         private void loadVehicles() {
@@ -1101,13 +1134,9 @@ public class ServerMap {
             apocBrUnits = 0;
             for (RoomDef def : this.unexploredRooms) {
                 def.indoorZombies++;
-                if (def.indoorZombies == 1) {
-                    try {
-                        VirtualZombieManager.instance.tryAddIndoorZombies(def, false);
-                    } catch (Exception var15) {
-                        DebugType.General.printException(var15, LogSeverity.Error);
-                    }
-                }
+                // VirtualZombieManager.tryAddIndoorZombies(RoomDef, boolean) is an empty no-op method
+                // in vanilla (zombie/VirtualZombieManager.java), even outside this patch. It has never
+                // done anything, so the call is skipped here rather than paid for on every worker thread.
                 apocBrUnits++;
             }
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2RoomsInc", apocBrUnits, apocBrPhaseStart);
