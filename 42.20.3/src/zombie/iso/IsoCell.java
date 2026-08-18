@@ -2211,6 +2211,22 @@ public final class IsoCell {
 
     private static final int APOC_BR_PROCESS_ISO_OBJECT_FRAME_MOD = Math.max(1, Integer.getInteger("apocbr.isoObjectUpdateFrameMod", 8));
 
+    private static int getIsoObjectUpdatePhase(IsoObject object, int mod) {
+        long id = object.getEntityNetID();
+
+        if (id == -1L) {
+            return Math.floorMod(System.identityHashCode(object), mod);
+        }
+
+        id ^= id >>> 33;
+        id *= 0xff51afd7ed558ccdL;
+        id ^= id >>> 33;
+        id *= 0xc4ceb9fe1a85ec53L;
+        id ^= id >>> 33;
+
+        return Math.floorMod((int) id, mod);
+    }
+
     private void ProcessIsoObject() {
         if (!this.processIsoObjectRemove.isEmpty()) {
             this.processIsoObject.removeAll(this.processIsoObjectRemove);
@@ -2229,7 +2245,7 @@ public final class IsoCell {
                 IsoObject i = this.processIsoObject.get(n);
                 if (i != null) {
                     boolean always = i instanceof IsoTrap || i instanceof IsoGenerator;
-                    if (always || i.getID() % mod == frame) {
+                    if (always || getIsoObjectUpdatePhase(i,mod) == frame) {
                         if (always) {
                             GameTime.getInstance().perObjectMultiplier = 1.0F;
                         }
