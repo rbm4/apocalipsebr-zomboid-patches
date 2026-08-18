@@ -10,6 +10,7 @@ import zombie.core.raknet.UdpConnection;
 import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
+import zombie.network.packets.ChunkObjectStateRequestPacket;
 import zombie.popman.NetworkZombiePacker;
 import zombie.popman.ZombieCountOptimiser;
 import zombie.util.list.PZArrayUtil;
@@ -44,6 +45,7 @@ public final class MovingObjectUpdateScheduler {
         float averageFps = server ? 0.0F : GameWindow.averageFPS;
         if (server) {
             NetworkZombiePacker.getInstance().awaitWorkers();
+            ChunkObjectStateRequestPacket.awaitWorkers();
             ZombieCountOptimiser.prepareZombiesForDeletion();
         }
 

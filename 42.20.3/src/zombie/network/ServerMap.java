@@ -45,6 +45,7 @@ import zombie.iso.Vector3;
 import zombie.iso.WorldGenerate;
 import zombie.iso.worldgen.WorldGenParams;
 import zombie.network.id.ObjectIDManager;
+import zombie.network.packets.ChunkObjectStateRequestPacket;
 import zombie.network.packets.INetworkPacket;
 import zombie.pathfind.PolygonalMap2;
 import zombie.pathfind.nativeCode.PathfindNative;
@@ -668,6 +669,10 @@ public class ServerMap {
         NetworkZombiePacker.getInstance().postupdate();
         ApocBRServerTelemetry.recordServerMapPostPhaseSince("zombiePost", 1, apocBrZombiePostStart);
         ApocBRServerTelemetry.recordTickSectionSince("serverMapZombiePost", apocBrZombiePostStart);
+
+        long apocBrChunkStateStart = ApocBRServerTelemetry.beginDetail();
+        ChunkObjectStateRequestPacket.processQueue();
+        ApocBRServerTelemetry.recordServerMapPostPhaseSince("chunkObjectStatePost", 1, apocBrChunkStateStart);
 
         long apocBrUpdateSavedStart = ApocBRServerTelemetry.beginDetail();
         ServerMap.ServerCell.chunkLoader.updateSaved();
