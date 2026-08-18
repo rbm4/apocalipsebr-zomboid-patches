@@ -4,13 +4,17 @@ package zombie.network;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.Objects;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import zombie.ApocBRServerTelemetry;
 import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
 import zombie.characters.VisibilityData;
-import zombie.core.PZForkJoinPool;
 import zombie.core.math.PZMath;
 import zombie.core.textures.ColorInfo;
 import zombie.debug.DebugType;
@@ -37,10 +41,24 @@ public class ServerLOS {
     private static final int PD_SIZE_IN_SQUARES = 96;
     boolean wasSuspended;
 
-    // ApocBR: IsoGridSquare.lighting[] is still a fixed 4-slot array on 42.20.1.
-    // Keep ServerLOS inside that slot space; higher indexes crash in CalcVisibility().
-    private static final int LOS_SLOT_COUNT = 4;
-    private final ConcurrentLinkedQueue<Integer> freeSlots = new ConcurrentLinkedQueue<>();
+    // ApocBR: IsoGridSquare.lighting[] is kept aligned with LosUtil.SLOT_COUNT.
+    private static final int LOS_SLOT_COUNT = LosUtil.SLOT_COUNT;
+    private static final int LOS_WORKER_THREADS = 6;
+    private final BlockingQueue<Integer> freeSlots = new ArrayBlockingQueue<>(LOS_SLOT_COUNT);
+    private final BlockingQueue<PlayerData> losQueue = new LinkedBlockingQueue<>();
+    private final ExecutorService losPool = Executors.newFixedThreadPool(
+        LOS_WORKER_THREADS,
+        new ThreadFactory() {
+            private final AtomicInteger counter = new AtomicInteger(1);
+
+            @Override
+            public Thread newThread(Runnable r) {
+                Thread t = new Thread(r, "ServerLOS-worker-" + counter.getAndIncrement());
+                t.setDaemon(true);
+                return t;
+            }
+        }
+    );
     private static final int LOS_THROTTLE_PHASES = 10;
     private static final int LOS_THROTTLE_RUN_PHASE = 0;
     private static final int LOS_THROTTLE_MAX_DEFER_ROUNDS = 10;
@@ -61,8 +79,9 @@ public class ServerLOS {
         }
 
         ApocBRServerTelemetry.recordServerLosSlotCount(LOS_SLOT_COUNT);
+        ((java.util.concurrent.ThreadPoolExecutor)this.losPool).prestartAllCoreThreads();
         this.thread = new ServerLOS.LOSDispatcher();
-        this.thread.setName("LOS");
+        this.thread.setName("LOS-listener");
         this.thread.setDaemon(true);
         this.thread.start();
     }
@@ -73,9 +92,6 @@ public class ServerLOS {
                 ServerLOS.PlayerData data = new ServerLOS.PlayerData(player);
                 this.playersMain.add(data);
                 this.playersMainByPlayer.put(player, data);
-                synchronized (this.thread.notifier) {
-                    this.thread.notifier.notify();
-                }
             }
         }
     }
@@ -85,9 +101,7 @@ public class ServerLOS {
             ServerLOS.PlayerData data = this.findData(player);
             this.playersMain.remove(data);
             this.playersMainByPlayer.remove(player);
-            synchronized (this.thread.notifier) {
-                this.thread.notifier.notify();
-            }
+            this.losQueue.remove(data);
         }
     }
 
@@ -128,6 +142,7 @@ public class ServerLOS {
 
                         data.lastQueuedLosRound = this.losThrottleRound;
                         data.status = ServerLOS.UpdateStatus.WaitingInLOS;
+                        this.losQueue.offer(data);
                         this.noise("WaitingInLOS playerID=" + player.onlineId);
                         synchronized (this.thread.notifier) {
                             this.thread.notifier.notify();
@@ -180,17 +195,19 @@ public class ServerLOS {
     public void suspend() {
         this.mapLoading = true;
         this.wasSuspended = this.suspended;
+        this.losQueue.clear();
         synchronized (this.thread.notifier) {
             this.thread.notifier.notify();
         }
 
-        while (!this.suspended) {
+        while (this.freeSlots.size() < LOS_SLOT_COUNT) {
             try {
                 Thread.sleep(1L);
             } catch (InterruptedException var2) {
             }
         }
 
+        this.suspended = true;
         if (!this.wasSuspended) {
             this.noise("suspend **********");
         }
@@ -198,6 +215,7 @@ public class ServerLOS {
 
     public void resume() {
         this.mapLoading = false;
+        this.suspended = false;
         synchronized (this.thread.notifier) {
             this.thread.notifier.notify();
         }
@@ -208,7 +226,7 @@ public class ServerLOS {
     }
 
     // ApocBR: calcLOS is now a plain instance method (not nested in the dispatcher thread)
-    // so it can be invoked from PZForkJoinPool worker threads via CompletableFuture.runAsync,
+    // so it can be invoked from losPool worker threads,
     // bound to whichever lighting[]/cachedresults[] slot index the dispatcher handed out.
     private boolean calcLOS(ServerLOS.PlayerData data, int slotIndex) {
         boolean skip = data.px == PZMath.fastfloor(data.player.getX())
@@ -296,15 +314,38 @@ public class ServerLOS {
         return skip;
     }
 
+    private void process(PlayerData data) {
+        if (ServerLOS.this.mapLoading) {
+            data.status = ServerLOS.UpdateStatus.ReadyInMain;
+            return;
+        }
+
+        int slot;
+        try {
+            slot = this.freeSlots.take();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            data.status = ServerLOS.UpdateStatus.ReadyInMain;
+            return;
+        }
+
+        boolean skipped = true;
+        long startNanos = System.nanoTime();
+        try {
+            data.status = ServerLOS.UpdateStatus.BusyInLOS;
+            this.noise("BusyInLOS playerID=" + data.player.onlineId);
+            skipped = this.calcLOS(data, slot);
+        } catch (Exception ex) {
+            DebugType.General.printException(ex, LogSeverity.Error);
+        } finally {
+            ApocBRServerTelemetry.recordServerLosCalc(skipped, System.nanoTime() - startNanos);
+            data.status = ServerLOS.UpdateStatus.ReadyInLOS;
+            this.freeSlots.offer(slot);
+        }
+    }
+
     private class LOSDispatcher extends Thread {
         public final Object notifier;
-        // ApocBR: runInner() used to always scan playersMain starting at index 0. Once slots
-        // are saturated (busyMax == LOS_SLOT_COUNT every pass, as seen in production telemetry),
-        // that meant players earlier in playersMain were dispatched almost every pass while
-        // players later in the list absorbed most of the "starved" count. Rotating the scan
-        // start index forward past the last player actually dispatched spreads slot-claim
-        // priority round-robin across all waiting players instead of favoring list order.
-        private int nextScanIndex;
 
         private LOSDispatcher() {
             Objects.requireNonNull(ServerLOS.this);
@@ -316,112 +357,18 @@ public class ServerLOS {
         public void run() {
             while (true) {
                 try {
-                    this.runInner();
-                } catch (Exception var2) {
-                    DebugType.General.printException(var2, LogSeverity.Error);
-                }
-            }
-        }
-
-        private void runInner() {
-            boolean starvedThisPass = false;
-            if (!ServerLOS.this.mapLoading) {
-                ArrayList<ServerLOS.PlayerData> snapshot;
-                synchronized (ServerLOS.this.playersMain) {
-                    snapshot = new ArrayList<>(ServerLOS.this.playersMain);
-                }
-
-                int size = snapshot.size();
-                if (size > 0) {
-                    int start = Math.floorMod(this.nextScanIndex, size);
-
-                    for (int offset = 0; offset < size; offset++) {
-                        if (ServerLOS.this.mapLoading) {
-                            break;
-                        }
-
-                        int i = (start + offset) % size;
-                        ServerLOS.PlayerData data = snapshot.get(i);
-                        if (data.status == ServerLOS.UpdateStatus.WaitingInLOS) {
-                            Integer slot = ServerLOS.this.freeSlots.poll();
-                            if (slot != null) {
-                                data.status = ServerLOS.UpdateStatus.BusyInLOS;
-                                ServerLOS.this.noise("BusyInLOS playerID=" + data.player.onlineId);
-                                ApocBRServerTelemetry.recordServerLosDispatch();
-                                this.dispatch(data, slot);
-                                this.nextScanIndex = i + 1;
-                            } else {
-                                starvedThisPass = true;
-                                break;
-                            }
+                    synchronized (this.notifier) {
+                        while (ServerLOS.this.mapLoading) {
+                            this.notifier.wait();
                         }
                     }
-                }
-            }
 
-            if (starvedThisPass) {
-                ApocBRServerTelemetry.recordServerLosStarved();
-                synchronized (this.notifier) {
-                    try {
-                        this.notifier.wait(1L);
-                    } catch (InterruptedException var5) {
-                    }
-                }
-            }
-
-            while (this.shouldWait()) {
-                // ApocBR: dispatch() is fire-and-forget onto PZForkJoinPool, so "no new work to
-                // dispatch" no longer means "safe to unload/mutate grid squares" - suspend()
-                // relies on `suspended` for that guarantee. Only report suspended once
-                // mapLoading is set AND every in-flight LOS task has returned its slot
-                // (freeSlots back to full). shouldWait() still always blocks while mapLoading
-                // regardless of drain state, so this never busy-spins - task completions and
-                // resume() both notify() this thread to re-check.
-                ServerLOS.this.suspended = ServerLOS.this.mapLoading && ServerLOS.this.freeSlots.size() == ServerLOS.LOS_SLOT_COUNT;
-                synchronized (this.notifier) {
-                    try {
-                        this.notifier.wait();
-                    } catch (InterruptedException var4) {
-                    }
-                }
-            }
-
-            ServerLOS.this.suspended = ServerLOS.this.mapLoading && ServerLOS.this.freeSlots.size() == ServerLOS.LOS_SLOT_COUNT;
-        }
-
-        private void dispatch(ServerLOS.PlayerData data, int slot) {
-            CompletableFuture.runAsync(() -> {
-                boolean skipped = true;
-                long startNanos = System.nanoTime();
-                try {
-                    skipped = ServerLOS.this.calcLOS(data, slot);
+                    ServerLOS.PlayerData data = ServerLOS.this.losQueue.take();
+                    ApocBRServerTelemetry.recordServerLosDispatch();
+                    ServerLOS.this.losPool.execute(() -> ServerLOS.this.process(data));
                 } catch (Exception ex) {
                     DebugType.General.printException(ex, LogSeverity.Error);
-                } finally {
-                    ApocBRServerTelemetry.recordServerLosCalc(skipped, System.nanoTime() - startNanos);
-                    data.status = ServerLOS.UpdateStatus.ReadyInLOS;
-                    ServerLOS.this.freeSlots.add(slot);
-                    synchronized (this.notifier) {
-                        this.notifier.notify();
-                    }
                 }
-            }, PZForkJoinPool.commonPool());
-        }
-
-        private boolean shouldWait() {
-            if (ServerLOS.this.mapLoading) {
-                return true;
-            } else {
-                synchronized (ServerLOS.this.playersMain) {
-                    for (int i = 0; i < ServerLOS.this.playersMain.size(); i++) {
-                        ServerLOS.PlayerData data = ServerLOS.this.playersMain.get(i);
-                        if (data.status == ServerLOS.UpdateStatus.WaitingInLOS) {
-                            return false;
-                        }
-                    }
-                }
-
-                return true;
             }
         }
     }
@@ -429,7 +376,7 @@ public class ServerLOS {
     private static final class PlayerData {
         public IsoPlayer player;
         // ApocBR: status is now read/written across the main thread, the LOS dispatcher
-        // thread, and PZForkJoinPool worker threads (see calcLOS/dispatch), so it needs to be
+        // thread, and losPool worker threads (see calcLOS/process), so it needs to be
         // volatile for cross-thread visibility instead of a plain field.
         public volatile ServerLOS.UpdateStatus status = ServerLOS.UpdateStatus.NeverDone;
         public int px;

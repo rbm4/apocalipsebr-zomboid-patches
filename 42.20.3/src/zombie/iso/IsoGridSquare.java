@@ -219,8 +219,8 @@ public final class IsoGridSquare {
     private static final ThreadLocal<ArrayList<Zone>> threadLocalZones = ThreadLocal.withInitial(ArrayList::new);
     private static final IsoDirections[] DIRECTIONS = IsoDirections.values();
     // ApocBR: keep this aligned with ServerLOS.LOS_SLOT_COUNT and LosUtil.SLOT_COUNT.
-    // 42.20.1 visibility state is still a fixed 4-slot player/worker index space.
-    private static final int SERVER_LOS_SLOT_COUNT = 4;
+    // 42.20.1 visibility state is still a fixed 6-slot player/worker index space.
+    private static final int SERVER_LOS_SLOT_COUNT = 6;
     public final IsoGridSquare.ILighting[] lighting = new IsoGridSquare.ILighting[GameServer.server ? SERVER_LOS_SLOT_COUNT : 4];
     // ApocBR: was a single static Vector2 scratch buffer, only ever used inside CalcVisibility()
     // (written then consumed within the same call, nothing persists across calls). It was static

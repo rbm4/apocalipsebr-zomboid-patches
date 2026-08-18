@@ -8,8 +8,8 @@ import zombie.core.math.PZMath;
 @UsedFromLua
 public final class LosUtil {
     // ApocBR: keep this aligned with IsoGridSquare.lighting[] and ServerLOS.LOS_SLOT_COUNT.
-    // 42.20.1 visibility state is indexed by a fixed 4-slot player/worker index space.
-    public static final int SLOT_COUNT = 4;
+    // 42.20.1 visibility state is indexed by a fixed 6-slot player/worker index space.
+    public static final int SLOT_COUNT = 6;
     public static int sizeX = 200;
     public static int sizeY = 200;
     public static int sizeZ = 4;
