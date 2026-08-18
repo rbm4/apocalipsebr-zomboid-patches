@@ -8403,6 +8403,22 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         }
     }
 
+    public boolean apocIsServerDormant() {
+        if (!GameServer.server) {
+            return false;
+        }
+
+        return !this.isJustMoved()
+            && !this.isAiming()
+            && !this.isAttacking()
+            && !this.hasPath()
+            && !this.isOnFire()
+            && !this.isAsleep()
+            && !this.isKnockedDown()
+            && !this.isSprinting()
+            && !this.isRunning();
+    }
+
     public void setJustMoved(boolean val) {
         this.justMoved = val;
         if (GameClient.client) {

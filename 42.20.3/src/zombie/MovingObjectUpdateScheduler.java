@@ -68,6 +68,8 @@ public final class MovingObjectUpdateScheduler {
                 return getServerSimulationLevelForVehicle(baseVehicle);
             } else if (isoMovingObject instanceof IsoAnimal isoAnimal) {
                 return getServerSimulationLevelForAnimal(isoAnimal);
+            } else if (isoMovingObject instanceof IsoPlayer player) {
+                return player.apocIsServerDormant() ? UpdateSchedulerSimulationLevel.HALF : UpdateSchedulerSimulationLevel.FULL;
             } else {
                 return isoMovingObject.getMinimumSimulationLevel();
             }

@@ -92,6 +92,8 @@ import zombie.iso.fboRenderChunk.FBORenderChunkManager;
 import zombie.iso.fboRenderChunk.FBORenderCutaways;
 import zombie.iso.fboRenderChunk.FBORenderSnow;
 import zombie.iso.objects.IsoDeadBody;
+import zombie.iso.objects.IsoGenerator;
+import zombie.iso.objects.IsoTrap;
 import zombie.iso.objects.IsoTree;
 import zombie.iso.objects.IsoWindow;
 import zombie.iso.objects.IsoWorldInventoryObject;
@@ -2207,6 +2209,8 @@ public final class IsoCell {
         }
     }
 
+    private static final int APOC_BR_PROCESS_ISO_OBJECT_FRAME_MOD = Math.max(1, Integer.getInteger("apocbr.isoObjectUpdateFrameMod", 8));
+
     private void ProcessIsoObject() {
         if (!this.processIsoObjectRemove.isEmpty()) {
             this.processIsoObject.removeAll(this.processIsoObjectRemove);
@@ -2215,16 +2219,36 @@ public final class IsoCell {
         }
 
         int size = this.processIsoObject.size();
+        int mod = APOC_BR_PROCESS_ISO_OBJECT_FRAME_MOD;
+        int frame = IsoWorld.instance.getFrameNo() % mod;
+        float modMultiplier = (float) mod;
+        GameTime.getInstance().perObjectMultiplier = modMultiplier;
 
-        for (int n = 0; n < size; n++) {
-            IsoObject i = this.processIsoObject.get(n);
-            if (i != null) {
-                i.update();
-                if (size > this.processIsoObject.size()) {
-                    n--;
-                    size--;
+        try {
+            for (int n = 0; n < size; n++) {
+                IsoObject i = this.processIsoObject.get(n);
+                if (i != null) {
+                    boolean always = i instanceof IsoTrap || i instanceof IsoGenerator;
+                    if (always || i.getID() % mod == frame) {
+                        if (always) {
+                            GameTime.getInstance().perObjectMultiplier = 1.0F;
+                        }
+
+                        i.update();
+
+                        if (always) {
+                            GameTime.getInstance().perObjectMultiplier = modMultiplier;
+                        }
+                    }
+
+                    if (size > this.processIsoObject.size()) {
+                        n--;
+                        size--;
+                    }
                 }
             }
+        } finally {
+            GameTime.getInstance().perObjectMultiplier = 1.0F;
         }
     }
 
