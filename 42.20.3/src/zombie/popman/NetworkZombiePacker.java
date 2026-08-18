@@ -3,11 +3,18 @@ package zombie.popman;
 
 import java.nio.BufferOverflowException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import zombie.ApocBRServerTelemetry;
 import zombie.ai.states.ZombieTurnAlerted;
 import zombie.characters.IsoPlayer;
@@ -34,20 +41,21 @@ import zombie.network.packets.character.ZombiePacket;
 import zombie.network.packets.character.ZombieSynchronizationPacket;
 
 public class NetworkZombiePacker {
+    private static final int ZOMBIE_PACKET_WORKERS = 6;
     private static final NetworkZombiePacker instance = new NetworkZombiePacker();
     private final ArrayList<NetworkZombiePacker.DeletedZombie> zombiesDeleted = new ArrayList<>();
     private final ArrayList<NetworkZombiePacker.DeletedZombie> zombiesDeletedForSending = new ArrayList<>();
     private final HashSet<IsoZombie> zombiesReceived = new HashSet<>();
     private final ArrayList<IsoZombie> zombiesProcessing = new ArrayList<>();
     private final Map<Long, ArrayList<IsoZombie>> zombiesProcessingByCell = new HashMap<>();
-    private final HashSet<IsoZombie> relayCandidateScratch = new HashSet<>();
-    private int relayCellsVisited;
     public final NetworkZombieList zombiesRequest = new NetworkZombieList();
     private final ZombiePacket packet = new ZombiePacket();
-    private final HashSet<IConnection> extraUpdate = new HashSet<>();
-    private boolean extraUpdateAll;
-    public final Map<IConnection, List<Short>> zombiesToSend = new HashMap<>();
+    private final Set<IConnection> extraUpdate = ConcurrentHashMap.newKeySet();
+    private volatile boolean extraUpdateAll;
+    public final Map<IConnection, List<Short>> zombiesToSend = new ConcurrentHashMap<>();
     UpdateLimit zombieSynchronizationReliableLimit = new UpdateLimit(5000L);
+    private final ExecutorService zombiePacketPool = Executors.newFixedThreadPool(ZOMBIE_PACKET_WORKERS);
+    private volatile CountDownLatch pendingLatch;
     private static final int RELAY_GRID_CELL_SIZE = 64;
 
     public static NetworkZombiePacker getInstance() {
@@ -107,14 +115,30 @@ public class NetworkZombiePacker {
         }
     }
 
+    public void awaitWorkers() {
+        CountDownLatch latch = this.pendingLatch;
+        if (latch != null) {
+            try {
+                latch.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
+                this.pendingLatch = null;
+            }
+        }
+    }
+
     public void postupdate() {
         long apocBrPostStart = System.nanoTime();
+        this.awaitWorkers();
+        this.zombiesToSend.clear();
         this.updateAuth();
         synchronized (this.zombiesReceived) {
             this.zombiesProcessing.clear();
             this.zombiesProcessing.addAll(this.zombiesReceived);
             this.zombiesReceived.clear();
         }
+
         this.rebuildZombiesProcessingGrid();
 
         synchronized (this.zombiesDeleted) {
@@ -123,41 +147,27 @@ public class NetworkZombiePacker {
             this.zombiesDeleted.clear();
         }
 
-        for (UdpConnection connection : GameServer.udpEngine.connections) {
-            if (connection != null && connection.isFullyConnected()) {
-                long apocBrConnectionStart = System.nanoTime();
-                ZombieListPacket packet = (ZombieListPacket)connection.getPacket(PacketTypes.PacketType.ZombieList);
-                long apocBrAuthListStart = System.nanoTime();
-                int newHash = NetworkZombieManager.getInstance().getZombieAuth(connection, packet);
-                ApocBRServerTelemetry.recordZombieAuthList(System.nanoTime() - apocBrAuthListStart);
-                boolean hashChanged = connection.getZombieListHash() != newHash;
-                boolean overdue = !packet.zombiesAuth.isEmpty() && connection.zombieListRefresh.Check();
-                this.zombiesToSend.computeIfAbsent(connection, k -> new ArrayList<>()).clear();
-                this.zombiesToSend.get(connection).addAll(packet.zombiesAuth);
-                if (hashChanged || overdue) {
-                    connection.setZombieListHash(newHash);
-                    connection.zombieListRefresh.Reset();
-                    ByteBufferWriter b = connection.startPacket();
-                    PacketTypes.PacketType.ZombieList.doPacket(b);
-                    packet.write(b);
-                    PacketTypes.PacketType.ZombieList.send(connection);
-                    if (hashChanged) {
-                        NetworkZombieList.NetworkZombie netZombieRequest = this.zombiesRequest.getNetworkZombie(connection);
-
-                        for (Short zombieId : packet.zombiesAuth) {
-                            IsoZombie z = ServerMap.instance.zombieMap.get(zombieId);
-                            if (z != null && z.onlineId != -1 && !netZombieRequest.zombies.contains(z)) {
-                                netZombieRequest.zombies.add(z);
-                            }
-                        }
-                    }
-                }
-
-                this.send(connection);
-                ApocBRServerTelemetry.recordZombieRelayConnection(System.nanoTime() - apocBrConnectionStart);
+        List<UdpConnection> connections = new ArrayList<>();
+        for (UdpConnection c : GameServer.udpEngine.connections) {
+            if (c != null && c.isFullyConnected()) {
+                connections.add(c);
             }
         }
 
+        CountDownLatch currentLatch = new CountDownLatch(connections.size());
+        for (UdpConnection connection : connections) {
+            NetworkZombieList.NetworkZombie nz = this.zombiesRequest.getNetworkZombie(connection);
+            ArrayList<IsoZombie> tmp;
+            synchronized (nz.zombies) {
+                tmp = new ArrayList<>(nz.zombies);
+                nz.zombies.clear();
+            }
+
+            Collection<IsoZombie> requestSnapshot = new LinkedHashSet<>(tmp);
+            this.zombiePacketPool.execute(new ConnectionJob(connection, requestSnapshot, currentLatch));
+        }
+
+        this.pendingLatch = currentLatch;
         this.extraUpdateAll = false;
         ApocBRServerTelemetry.recordZombieRelayPost(System.nanoTime() - apocBrPostStart);
     }
@@ -170,25 +180,28 @@ public class NetworkZombiePacker {
         for (int i = 0; i < zl.size(); i++) {
             IsoZombie z = zl.get(i);
             NetworkZombieManager.getInstance().updateAuth(z);
+            z.zombiePacket.set(z);
         }
+
         ApocBRServerTelemetry.recordZombieAuthUpdate(zl.size(), System.nanoTime() - apocBrAuthStart);
     }
 
-    public int getZombieData(UdpConnection connection, ZombieSynchronizationPacket packet) {
+    private int getZombieData(
+        UdpConnection connection,
+        ZombieSynchronizationPacket packet,
+        Collection<IsoZombie> requestSnapshot,
+        List<Short> zombiesToSend
+    ) {
         packet.sendQueue.clear();
         int realCount = 0;
         int initialSent = 0;
         int relaySent = 0;
 
         try {
-            NetworkZombieList.NetworkZombie nzr = this.zombiesRequest.getNetworkZombie(connection);
-
-            while (!nzr.zombies.isEmpty()) {
-                IsoZombie z = nzr.zombies.poll();
-                z.zombiePacket.set(z);
-                if (z.onlineId != -1) {
+            for (IsoZombie z : requestSnapshot) {
+                if (z != null && z.onlineId != -1) {
                     packet.sendQueue.add(z);
-                    z.zombiePacketUpdated = false;
+                    zombiesToSend.add(z.getOnlineID());
                     initialSent++;
                     if (++realCount >= 300) {
                         break;
@@ -196,21 +209,28 @@ public class NetworkZombiePacker {
                 }
             }
 
-            HashSet<IsoZombie> relayCandidates = this.getRelayCandidates(connection);
-            for (IsoZombie z : relayCandidates) {
-                if (z.getOwner() != null
-                    && z.getOwner() != connection
-                    && connection.RelevantTo(z.getX(), z.getY(), (connection.getRelevantRange() - 2) * 10)
-                    && z.onlineId != -1) {
-                    packet.sendQueue.add(z);
-                    this.zombiesToSend.get(connection).add(z.getOnlineID());
-                    z.zombiePacketUpdated = false;
-                    realCount++;
-                    relaySent++;
+            if (realCount < 300) {
+                HashSet<IsoZombie> relayCandidates = new HashSet<>();
+                int relayCellsVisited = this.getRelayCandidates(connection, relayCandidates);
+                for (IsoZombie z : relayCandidates) {
+                    if (z.getOwner() != null
+                        && z.getOwner() != connection
+                        && connection.RelevantTo(z.getX(), z.getY(), (connection.getRelevantRange() - 2) * 10)
+                        && z.onlineId != -1) {
+                        packet.sendQueue.add(z);
+                        zombiesToSend.add(z.getOnlineID());
+                        realCount++;
+                        relaySent++;
+                        if (realCount >= 300) {
+                            break;
+                        }
+                    }
                 }
+
+                ApocBRServerTelemetry.recordZombieRelayQuery(relayCellsVisited, relayCandidates.size(), relaySent);
             }
+
             ApocBRServerTelemetry.recordZombieRelayInitial(initialSent);
-            ApocBRServerTelemetry.recordZombieRelayQuery(this.relayCellsVisited, relayCandidates.size(), relaySent);
         } catch (BufferOverflowException var7) {
             DebugType.General.printException(var7, LogSeverity.Error);
         }
@@ -234,9 +254,9 @@ public class NetworkZombiePacker {
         ApocBRServerTelemetry.recordZombieRelayGrid(active, this.zombiesProcessingByCell.size(), System.nanoTime() - startNanos);
     }
 
-    private HashSet<IsoZombie> getRelayCandidates(UdpConnection connection) {
-        this.relayCandidateScratch.clear();
-        this.relayCellsVisited = 0;
+    private int getRelayCandidates(UdpConnection connection, HashSet<IsoZombie> out) {
+        out.clear();
+        int relayCellsVisited = 0;
         int radius = (connection.getRelevantRange() - 2) * 10;
 
         for (IsoPlayer player : connection.players) {
@@ -245,7 +265,7 @@ public class NetworkZombiePacker {
                 int maxCellX = cellFor(player.getX() + radius);
                 int minCellY = cellFor(player.getY() - radius);
                 int maxCellY = cellFor(player.getY() + radius);
-                this.addRelayCells(minCellX, maxCellX, minCellY, maxCellY);
+                relayCellsVisited += this.addRelayCells(minCellX, maxCellX, minCellY, maxCellY, out);
             }
         }
 
@@ -256,23 +276,26 @@ public class NetworkZombiePacker {
                 int minY = PZMath.fastfloor(connection.connectArea[n].y - chunkMapWidth / 2) * 8;
                 int maxX = minX + chunkMapWidth * 8;
                 int maxY = minY + chunkMapWidth * 8;
-                this.addRelayCells(cellFor(minX), cellFor(maxX), cellFor(minY), cellFor(maxY));
+                relayCellsVisited += this.addRelayCells(cellFor(minX), cellFor(maxX), cellFor(minY), cellFor(maxY), out);
             }
         }
 
-        return this.relayCandidateScratch;
+        return relayCellsVisited;
     }
 
-    private void addRelayCells(int minCellX, int maxCellX, int minCellY, int maxCellY) {
+    private int addRelayCells(int minCellX, int maxCellX, int minCellY, int maxCellY, HashSet<IsoZombie> out) {
+        int cellsVisited = 0;
         for (int cx = minCellX; cx <= maxCellX; cx++) {
             for (int cy = minCellY; cy <= maxCellY; cy++) {
-                this.relayCellsVisited++;
+                cellsVisited++;
                 ArrayList<IsoZombie> zombies = this.zombiesProcessingByCell.get(key(cx, cy));
                 if (zombies != null) {
-                    this.relayCandidateScratch.addAll(zombies);
+                    out.addAll(zombies);
                 }
             }
         }
+
+        return cellsVisited;
     }
 
     private static int cellFor(float value) {
@@ -283,16 +306,40 @@ public class NetworkZombiePacker {
         return ((long)cellX & 4294967295L) << 32 | (long)cellY & 4294967295L;
     }
 
-    public void send(UdpConnection connection) {
-        long apocBrSendStart = System.nanoTime();
+    private void send(UdpConnection connection, Collection<IsoZombie> requestSnapshot) {
+        long apocBrConnectionStart = System.nanoTime();
         if (!this.zombiesDeletedForSending.isEmpty()) {
             INetworkPacket.send(connection, PacketTypes.PacketType.ZombieDeleteOnClient, connection, this.zombiesDeletedForSending);
         }
 
-        ZombieSynchronizationPacket packet = (ZombieSynchronizationPacket)connection.getPacket(PacketTypes.PacketType.ZombieSynchronizationReliable);
-        packet.hasNeighborPlayer = connection.isNeighborPlayer();
+        ZombieListPacket listPacket = (ZombieListPacket)connection.getPacket(PacketTypes.PacketType.ZombieList);
+        long apocBrAuthListStart = System.nanoTime();
+        int newHash = NetworkZombieManager.getInstance().getZombieAuth(connection, listPacket);
+        ApocBRServerTelemetry.recordZombieAuthList(System.nanoTime() - apocBrAuthListStart);
+        boolean hashChanged = connection.getZombieListHash() != newHash;
+        boolean overdue = !listPacket.zombiesAuth.isEmpty() && connection.zombieListRefresh.Check();
+        List<Short> zombiesToSend = new ArrayList<>();
+        if (hashChanged || overdue) {
+            connection.setZombieListHash(newHash);
+            connection.zombieListRefresh.Reset();
+            ByteBufferWriter b = connection.startPacket();
+            PacketTypes.PacketType.ZombieList.doPacket(b);
+            listPacket.write(b);
+            PacketTypes.PacketType.ZombieList.send(connection);
+            if (hashChanged) {
+                for (Short zombieId : listPacket.zombiesAuth) {
+                    IsoZombie z = ServerMap.instance.zombieMap.get(zombieId);
+                    if (z != null && z.onlineId != -1) {
+                        requestSnapshot.add(z);
+                    }
+                }
+            }
+        }
+
+        ZombieSynchronizationPacket syncPacket = (ZombieSynchronizationPacket)connection.getPacket(PacketTypes.PacketType.ZombieSynchronizationReliable);
+        syncPacket.hasNeighborPlayer = connection.isNeighborPlayer();
         long apocBrGetDataStart = System.nanoTime();
-        int countData = this.getZombieData(connection, packet);
+        int countData = this.getZombieData(connection, syncPacket, requestSnapshot, zombiesToSend);
         ApocBRServerTelemetry.recordZombieRelayGetData(System.nanoTime() - apocBrGetDataStart);
         if (countData > 0 || connection.timerSendZombie.check() || this.extraUpdateAll || this.extraUpdate.contains(connection)) {
             ApocBRServerTelemetry.recordZombieRelayPacket(this.extraUpdateAll);
@@ -300,17 +347,22 @@ public class NetworkZombiePacker {
             connection.timerSendZombie.reset(3800L);
             ByteBufferWriter b = connection.startPacket();
             PacketTypes.PacketType packetType;
-            if (this.zombieSynchronizationReliableLimit.Check()) {
-                packetType = PacketTypes.PacketType.ZombieSynchronizationReliable;
-            } else {
-                packetType = PacketTypes.PacketType.ZombieSynchronizationUnreliable;
+            synchronized (this.zombieSynchronizationReliableLimit) {
+                if (this.zombieSynchronizationReliableLimit.Check()) {
+                    packetType = PacketTypes.PacketType.ZombieSynchronizationReliable;
+                } else {
+                    packetType = PacketTypes.PacketType.ZombieSynchronizationUnreliable;
+                }
             }
 
             packetType.doPacket(b);
-            packet.write(b);
+            syncPacket.write(b);
             packetType.send(connection);
         }
-        ApocBRServerTelemetry.recordZombieRelaySend(System.nanoTime() - apocBrSendStart);
+
+        this.zombiesToSend.put(connection, zombiesToSend);
+        ApocBRServerTelemetry.recordZombieRelayConnection(System.nanoTime() - apocBrConnectionStart);
+        ApocBRServerTelemetry.recordZombieRelaySend(System.nanoTime() - apocBrConnectionStart);
     }
 
     private void applyZombie(IsoZombie zombie) {
@@ -356,6 +408,29 @@ public class NetworkZombiePacker {
         zombie.setWalkType(this.packet.walkType.toString());
         zombie.setSpeedTypeFromWalkType();
         zombie.realState = this.packet.realState;
+    }
+
+    private class ConnectionJob implements Runnable {
+        private final UdpConnection connection;
+        private final Collection<IsoZombie> requestSnapshot;
+        private final CountDownLatch latch;
+
+        ConnectionJob(UdpConnection connection, Collection<IsoZombie> requestSnapshot, CountDownLatch latch) {
+            this.connection = connection;
+            this.requestSnapshot = requestSnapshot;
+            this.latch = latch;
+        }
+
+        @Override
+        public void run() {
+            try {
+                NetworkZombiePacker.this.send(this.connection, this.requestSnapshot);
+            } catch (Exception e) {
+                DebugType.General.printException(e, LogSeverity.Error);
+            } finally {
+                this.latch.countDown();
+            }
+        }
     }
 
     public class DeletedZombie {

@@ -10,6 +10,7 @@ import zombie.core.raknet.UdpConnection;
 import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
+import zombie.popman.NetworkZombiePacker;
 import zombie.popman.ZombieCountOptimiser;
 import zombie.util.list.PZArrayUtil;
 import zombie.vehicles.BaseVehicle;
@@ -42,6 +43,7 @@ public final class MovingObjectUpdateScheduler {
         boolean server = GameServer.server;
         float averageFps = server ? 0.0F : GameWindow.averageFPS;
         if (server) {
+            NetworkZombiePacker.getInstance().awaitWorkers();
             ZombieCountOptimiser.prepareZombiesForDeletion();
         }
 
