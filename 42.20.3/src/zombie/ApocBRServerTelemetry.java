@@ -443,7 +443,7 @@ public final class ApocBRServerTelemetry {
     }
 
     /**
-     * Per-tick cap on how many ready cells Load2()/RecalcAll2() flushes in a
+     * Per-tick cap on how many ready cells Load2 prep/finalization flushes in a
      * single tick, mirroring the deferred-unload budget schema above. ready
      * is how many cells were sitting in loaded2 when the loop started,
      * flushed is how many actually got processed this tick (bounded by

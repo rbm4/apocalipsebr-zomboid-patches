@@ -528,13 +528,14 @@ public class ServerMap {
                     ServerLOS.instance.suspend();
                     ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LosSuspend", 1, apocBrPhaseStart);
 
-                    // RecalcAll2() work for every ready cell is fanned out across a 4-color checkerboard
-                    // (see ServerCell.recalcAllParallel) so non-adjacent cells run concurrently on worker
-                    // threads. The main thread blocks until every cell is done, so this is a synchronous
-                    // parallel fan-out, not a deferred-to-next-tick pipeline.
+                    // Load2 prep work for every ready cell is fanned out across a 4-color checkerboard
+                    // (see ServerCell.recalcAllPrepParallel) so non-adjacent cells run concurrently on
+                    // worker threads. The main thread blocks until prep is done, then runs activation
+                    // phases that can touch Lua/global world systems.
                     apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     apocBrUnits = ServerMap.ServerCell.loaded2.size();
-                    ServerMap.ServerCell.recalcAllParallel(ServerMap.ServerCell.loaded2);
+                    ServerMap.ServerCell.recalcAllPrepParallel(ServerMap.ServerCell.loaded2);
+                    ServerMap.ServerCell.finishLoad2MainThread(ServerMap.ServerCell.loaded2);
                     ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", apocBrUnits, apocBrPhaseStart);
 
                     long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
@@ -901,16 +902,17 @@ public class ServerMap {
         private static final ExecutorService recalcPool = Executors.newFixedThreadPool(RECALC_WORKERS);
 
         /**
-         * RecalcAll2() mutates shared, cross-cell world state: EnsureSurroundNotNull()/createNewGridSquare()
+         * Load2 prep mutates shared, cross-cell world state: EnsureSurroundNotNull()/createNewGridSquare()
          * write directly into a neighbouring ServerCell's grid-square storage for cells across a border.
-         * Running two adjacent cells' RecalcAll2() concurrently would race on that storage.
+         * Running two adjacent cells' prep concurrently would race on that storage.
          * To keep this safe while still using multiple cores, cells are bucketed into a 4-color
          * checkerboard by (wx & 1, wy & 1): within a color, no two cells are ever adjacent (even
          * diagonally), so their border writes can never collide. Colors are processed one at a time,
          * with a full barrier (CountDownLatch) between them, and the main thread blocks on that barrier,
          * so there is no other thread touching ServerMap/IsoCell state while a color group is in flight.
+         * Lua-facing chunk activation remains on the main thread in finishLoad2MainThread().
          */
-        private static void recalcAllParallel(ArrayList<ServerMap.ServerCell> cells) {
+        private static void recalcAllPrepParallel(ArrayList<ServerMap.ServerCell> cells) {
             if (cells.isEmpty()) {
                 return;
             }
@@ -934,13 +936,7 @@ public class ServerMap {
                 for (ServerMap.ServerCell cell : group) {
                     recalcPool.execute(() -> {
                         try {
-                            long start = System.nanoTime();
-                            cell.RecalcAll2();
-                            cell.loadVehicles();
-                            if (ServerMap.mapLoading) {
-                                float time = (float)(System.nanoTime() - start) / 1000000.0F;
-                                DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
-                            }
+                            cell.RecalcAll2Prep();
                         } catch (Exception e) {
                             ExceptionLogger.logException(e);
                         } finally {
@@ -957,6 +953,20 @@ public class ServerMap {
             }
         }
 
+        private static void finishLoad2MainThread(ArrayList<ServerMap.ServerCell> cells) {
+            for (ServerMap.ServerCell cell : cells) {
+                long start = System.nanoTime();
+                cell.finishLoad2MainThread();
+                long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                cell.loadVehicles();
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
+                if (ServerMap.mapLoading) {
+                    float time = (float)(System.nanoTime() - start) / 1000000.0F;
+                    DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
+                }
+            }
+        }
+
         private void loadVehicles() {
             for (int cx = 0; cx < 8; cx++) {
                 for (int cy = 0; cy < 8; cy++) {
@@ -968,7 +978,7 @@ public class ServerMap {
             }
         }
 
-        public void RecalcAll2() {
+        public void RecalcAll2Prep() {
             int sx = this.wx * 8 * 8;
             int sy = this.wy * 8 * 8;
             int ex = sx + 64;
@@ -1118,8 +1128,12 @@ public class ServerMap {
             }
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2MarkSquares", apocBrUnits, apocBrPhaseStart);
 
-            apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-            apocBrUnits = 0;
+            this.isLoaded = true;
+        }
+
+        private void finishLoad2MainThread() {
+            long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+            int apocBrUnits = 0;
             for (int x = 0; x < 8; x++) {
                 for (int y = 0; y < 8; y++) {
                     if (this.chunks[x][y] != null) {
