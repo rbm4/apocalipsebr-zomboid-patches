@@ -3025,6 +3025,11 @@ public final class IsoChunk {
     }
 
     public void update() {
+        this.updateBeforeVehicleStory();
+        this.updateVehicleStory();
+    }
+
+    private void updateBeforeVehicleStory() {
         if (doAttachments && !this.blendingDoneFull && !Arrays.equals(this.blendingModified, comparatorBool4)) {
             IsoWorld.instance.getBlending().applyBlending(this);
         }
@@ -3055,8 +3060,6 @@ public final class IsoChunk {
             this.ragdollControllersForAddToWorld.clear();
             this.ragdollControllersForAddToWorld = null;
         }
-
-        this.updateVehicleStory();
     }
 
     public void updateVehicleStory() {
@@ -3802,6 +3805,12 @@ public final class IsoChunk {
     }
 
     public void doLoadGridsquare() {
+        if (this.doLoadGridsquare(null)) {
+            this.finishLoadGridsquareAfterChunkRegistration();
+        }
+    }
+
+    public boolean doLoadGridsquare(ArrayList<IsoChunk> nativeRegistrationChunks) {
         this.preventHotSave = true;
         if (this.jobType == IsoChunk.JobType.SoftReset) {
             this.spawnedRooms.clear();
@@ -3848,7 +3857,8 @@ public final class IsoChunk {
         }
 
         this.proceduralZombieSquares.clear();
-        this.update();
+        this.updateBeforeVehicleStory();
+        ServerMap.runLoad2MainThreadTask("IsoChunk.updateVehicleStory", this::updateVehicleStory);
         this.addRagdollControllers();
         CorpseCount.instance.chunkLoaded(this);
         if (!GameServer.server) {
@@ -3965,19 +3975,23 @@ public final class IsoChunk {
 
         ReanimatedPlayers.instance.addReanimatedPlayersToChunk(this);
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            MapCollisionData.instance.addChunkToWorld(this);
-            AnimalPopulationManager.getInstance().addChunkToWorld(this);
-            ZombiePopulationManager.instance.addChunkToWorld(this);
-            if (PathfindNative.useNativeCode) {
-                PathfindNative.instance.addChunkToWorld(this);
-            } else {
-                PolygonalMap2.instance.addChunkToWorld(this);
+            if (nativeRegistrationChunks != null) {
+                nativeRegistrationChunks.add(this);
+                return true;
             }
 
-            IsoGenerator.chunkLoaded(this);
-            LootRespawn.chunkLoaded(this);
+            ServerMap.runLoad2ChunkRegistrations(this);
         }
 
+        if (nativeRegistrationChunks != null) {
+            this.finishLoadGridsquareAfterChunkRegistration();
+            return false;
+        }
+
+        return true;
+    }
+
+    public void finishLoadGridsquareAfterChunkRegistration() {
         if (!GameServer.server) {
             ArrayList<IsoRoomLight> roomLightsWorld = IsoWorld.instance.currentCell.roomLights;
 
@@ -3991,32 +4005,7 @@ public final class IsoChunk {
 
         this.roomLights.clear();
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            tempBuildingDefs.clear();
-            IsoWorld.instance.metaGrid.getBuildingsIntersecting(this.wx * 8 - 1, this.wy * 8 - 1, 10, 10, tempBuildingDefs);
-            tempBuildings.clear();
-
-            for (int ixx = 0; ixx < tempBuildingDefs.size(); ixx++) {
-                BuildingDef buildingDef = tempBuildingDefs.get(ixx);
-                ArrayList<RoomDef> rooms = buildingDef.getRooms();
-                if (buildingDef.getRooms().isEmpty()) {
-                    rooms = buildingDef.getEmptyOutside();
-                }
-
-                if (!rooms.isEmpty()) {
-                    RoomDef roomDef = rooms.get(0);
-                    if (roomDef.getIsoRoom() == null) {
-                        boolean var43 = true;
-                    } else {
-                        IsoBuilding building = roomDef.getIsoRoom().getBuilding();
-                        tempBuildings.add(building);
-                    }
-                }
-            }
-
-            this.randomizeBuildingsEtc(tempBuildings);
-            if (!GameServer.server) {
-                VisibilityPolygon2.getInstance().addChunkToWorld(this);
-            }
+            ServerMap.runLoad2MainThreadTask("IsoChunk.randomizeBuildingsEtc", this::randomizeBuildingsEtcMainThread);
         }
 
         for (int zz = this.minLevel; zz <= this.maxLevel; zz++) {
@@ -4133,6 +4122,35 @@ public final class IsoChunk {
                 IsoMovingObject objx = staticMovingObjects.get(ix);
                 objx.addToWorld();
             }
+        }
+    }
+
+    private void randomizeBuildingsEtcMainThread() {
+        tempBuildingDefs.clear();
+        IsoWorld.instance.metaGrid.getBuildingsIntersecting(this.wx * 8 - 1, this.wy * 8 - 1, 10, 10, tempBuildingDefs);
+        tempBuildings.clear();
+
+        for (int ixx = 0; ixx < tempBuildingDefs.size(); ixx++) {
+            BuildingDef buildingDef = tempBuildingDefs.get(ixx);
+            ArrayList<RoomDef> rooms = buildingDef.getRooms();
+            if (buildingDef.getRooms().isEmpty()) {
+                rooms = buildingDef.getEmptyOutside();
+            }
+
+            if (!rooms.isEmpty()) {
+                RoomDef roomDef = rooms.get(0);
+                if (roomDef.getIsoRoom() == null) {
+                    boolean var43 = true;
+                } else {
+                    IsoBuilding building = roomDef.getIsoRoom().getBuilding();
+                    tempBuildings.add(building);
+                }
+            }
+        }
+
+        this.randomizeBuildingsEtc(tempBuildings);
+        if (!GameServer.server) {
+            VisibilityPolygon2.getInstance().addChunkToWorld(this);
         }
     }
 

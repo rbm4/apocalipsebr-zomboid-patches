@@ -5,7 +5,9 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Collections;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -15,6 +17,8 @@ import zombie.ApocBRMainThreadOrchestrator;
 import zombie.ApocBRServerTelemetry;
 import zombie.core.logger.ExceptionLogger;
 import zombie.GameTime;
+import zombie.iso.objects.IsoGenerator;
+import zombie.LootRespawn;
 import zombie.MapCollisionData;
 import zombie.ReanimatedPlayers;
 import zombie.characters.IsoPlayer;
@@ -92,6 +96,32 @@ public class ServerMap {
 
         ServerMap.ServerCell.load2MainThread.submitAndWait(label, task);
     }
+
+    public static void runLoad2ChunkRegistrations(IsoChunk chunk) {
+        if (chunk == null) {
+            return;
+        }
+
+        ServerMap.runLoad2ChunkRegistrations(Collections.singletonList(chunk));
+    }
+
+    public static void runLoad2ChunkRegistrations(List<IsoChunk> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return;
+        }
+
+        if (!GameServer.server || GameServer.mainThread == null) {
+            ServerMap.ServerCell.runLoad2ChunkRegistrationsOnMainThread(chunks);
+            return;
+        }
+
+        ArrayList<IsoChunk> batch = new ArrayList<>(chunks);
+        ServerMap.ServerCell.load2MainThread.submitAndWait(
+            "IsoChunk.nativeChunkRegistrationBatch",
+            () -> ServerMap.ServerCell.runLoad2ChunkRegistrationsOnMainThread(batch)
+        );
+    }
+
     private static final int SAVE_CELL_WORK_THREADS = 1;
     private static final ServerMap.WorkerThread[] workerThreads = new ServerMap.WorkerThread[SAVE_CELL_WORK_THREADS];
     public boolean queuedSaveAll;
@@ -917,7 +947,6 @@ public class ServerMap {
             "load2MainTask",
             "load2PumpIdleWait"
         );
-
         /**
          * Load2 mutates shared, cross-cell world state: EnsureSurroundNotNull()/createNewGridSquare()
          * write directly into a neighbouring ServerCell's grid-square storage for cells across a border.
@@ -985,6 +1014,40 @@ public class ServerMap {
                     }
                 }
             }
+        }
+
+        private static void runLoad2ChunkRegistrationsOnMainThread(List<IsoChunk> chunks) {
+            long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+            for (IsoChunk chunk : chunks) {
+                long apocBrDetailStart = ApocBRServerTelemetry.beginDetail();
+                MapCollisionData.instance.addChunkToWorld(chunk);
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2NativeMapCollision", 1, apocBrDetailStart);
+
+                apocBrDetailStart = ApocBRServerTelemetry.beginDetail();
+                AnimalPopulationManager.getInstance().addChunkToWorld(chunk);
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2NativeAnimalPop", 1, apocBrDetailStart);
+
+                apocBrDetailStart = ApocBRServerTelemetry.beginDetail();
+                ZombiePopulationManager.instance.addChunkToWorld(chunk);
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2NativeZombiePop", 1, apocBrDetailStart);
+
+                apocBrDetailStart = ApocBRServerTelemetry.beginDetail();
+                if (PathfindNative.useNativeCode) {
+                    PathfindNative.instance.addChunkToWorld(chunk);
+                } else {
+                    PolygonalMap2.instance.addChunkToWorld(chunk);
+                }
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2NativePathfind", 1, apocBrDetailStart);
+
+                apocBrDetailStart = ApocBRServerTelemetry.beginDetail();
+                IsoGenerator.chunkLoaded(chunk);
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2IsoGenerator", 1, apocBrDetailStart);
+
+                apocBrDetailStart = ApocBRServerTelemetry.beginDetail();
+                LootRespawn.chunkLoaded(chunk);
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LootRespawn", 1, apocBrDetailStart);
+            }
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2NativeRegistrationBatch", chunks.size(), apocBrPhaseStart);
         }
 
         public void RecalcAll2() {
@@ -1139,13 +1202,26 @@ public class ServerMap {
 
             apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
+            ArrayList<IsoChunk> apocBrNativeRegistrationChunks = new ArrayList<>(64);
+            ArrayList<IsoChunk> apocBrPostRegistrationChunks = new ArrayList<>(64);
             for (int x = 0; x < 8; x++) {
                 for (int y = 0; y < 8; y++) {
-                    if (this.chunks[x][y] != null) {
-                        this.chunks[x][y].doLoadGridsquare();
+                    IsoChunk chunk = this.chunks[x][y];
+                    if (chunk != null) {
+                        if (chunk.doLoadGridsquare(apocBrNativeRegistrationChunks)) {
+                            apocBrPostRegistrationChunks.add(chunk);
+                        }
                         apocBrUnits++;
                     }
                 }
+            }
+
+            if (!apocBrNativeRegistrationChunks.isEmpty()) {
+                ServerMap.runLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
+            }
+
+            for (IsoChunk chunk : apocBrPostRegistrationChunks) {
+                chunk.finishLoadGridsquareAfterChunkRegistration();
             }
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2DoLoadGridSquare", apocBrUnits, apocBrPhaseStart);
 

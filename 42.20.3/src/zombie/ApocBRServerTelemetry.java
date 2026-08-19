@@ -155,7 +155,9 @@ public final class ApocBRServerTelemetry {
         "drainRecalc", "load2LosSuspend", "load2", "load2DrainRecalc", "load2MainPump", "load2MainTask",
         "load2PumpIdleWait", "load2RecalcAll2", "load2Vehicles",
         "removeLoaded2FromToLoad", "load2RoomsDec", "load2LevelScan", "load2EnsureSurround", "load2BorderRecalc",
-        "load2MarkSquares", "load2DoLoadGridSquare", "load2RoomsInc", "load2LosResume", "saveAll", "saveLater",
+        "load2MarkSquares", "load2DoLoadGridSquare", "load2NativeRegistrationBatch", "load2NativeMapCollision",
+        "load2NativeAnimalPop", "load2NativeZombiePop", "load2NativePathfind", "load2IsoGenerator",
+        "load2LootRespawn", "load2RoomsInc", "load2LosResume", "saveAll", "saveLater",
         "entitySave"
     };
     private static final LongAdder[] serverMapPreCalls = newLongAdders(SERVER_MAP_PRE_KEYS.length);
