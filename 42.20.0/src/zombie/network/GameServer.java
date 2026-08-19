@@ -31,6 +31,8 @@ import se.krka.kahlua.vm.KahluaTable;
 import se.krka.kahlua.vm.KahluaTableIterator;
 import zombie.AmbientSoundManager;
 import zombie.AmbientStreamManager;
+import zombie.ApocBRServerTelemetry;
+import zombie.ApocBRTelemetrySampler;
 import zombie.DebugFileWatcher;
 import zombie.GameProfiler;
 import zombie.GameTime;
@@ -832,6 +834,7 @@ public class GameServer {
             }
 
             ServerLOS.init();
+            ApocBRTelemetrySampler.start();
             NetworkAIParams.Init();
             int rconPort = ServerOptions.instance.rconPort.getValue();
             String rconPwd = ServerOptions.instance.rconPassword.getValue();

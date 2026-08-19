@@ -19,15 +19,9 @@ while (type.idToObjectMap.get(id) != null) {
 }
 ```
 
-If every one of the 65536 possible values for a type is currently occupied, this loop probes
-forever with no way out. On a long-running server we hit this for `DeadBody`: the main thread
-hung permanently inside `ObjectIDManager.addObject()`, called from `IsoDeadBody`'s constructor
-while a randomized building story (`RandomizedWorldBase.createRandomDeadBody`, in our case
-triggered by a bandit-raid room, `RDSBanditRaid`) tried to spawn a corpse during chunk load.
+If every one of the 65536 possible values for a type is currently occupied, this loop probes forever with no way out. On a long-running server we hit this for `DeadBody`: the main thread hung permanently inside `ObjectIDManager.addObject()`, called from `IsoDeadBody`'s constructor while a randomized building story (`RandomizedWorldBase.createRandomDeadBody`, in our case triggered by a bandit-raid room, `RDSBanditRaid`) tried to spawn a corpse during chunk load.
 
-CPU usage stayed effectively pegged on the main thread indefinitely; the server stopped
-processing ticks, accepting connections, or responding to RCON. Only a hard restart recovered
-it.
+CPU usage stayed effectively pegged on the main thread indefinitely; the server stopped processing ticks, accepting connections, or responding to RCON. Only a hard restart recovered it.
 
 ## Root cause
 
