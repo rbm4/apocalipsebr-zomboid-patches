@@ -940,8 +940,20 @@ public class ServerMap {
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
-        private static final int RECALC_WORKERS = 6;
-        private static final ExecutorService recalcPool = Executors.newFixedThreadPool(RECALC_WORKERS);
+        /**
+         * Each submitted cell spends most of its RecalcAll2() time parked in
+         * ApocBRMainThreadOrchestrator.submitAndWait() (native chunk registration, then
+         * the erosion/MapObjects/Lua LoadGridsquare/LoadChunk hop chain), not doing CPU work.
+         * A fixed-size platform-thread pool wastes real OS threads sitting in that park, which
+         * caps how many cells can be mid-chain at once and starves the main thread's pump loop
+         * between hops (see load2PumpIdleWait in telemetry). Virtual threads unmount while
+         * parked in submitAndWait()'s future.join(), so the carrier is immediately free for
+         * another cell's chain; this lets every cell in the current checkerboard color round
+         * make progress concurrently instead of queueing behind a small fixed pool, without
+         * needing any new locking (a color round is already guaranteed border-safe by
+         * recalcAllParallel()'s adjacency partitioning below).
+         */
+        private static final ExecutorService recalcPool = Executors.newVirtualThreadPerTaskExecutor();
         private static final ApocBRMainThreadOrchestrator load2MainThread = new ApocBRMainThreadOrchestrator(
             "load2MainPump",
             "load2MainTask",

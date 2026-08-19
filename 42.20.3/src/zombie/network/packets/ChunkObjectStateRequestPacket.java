@@ -138,19 +138,36 @@ public class ChunkObjectStateRequestPacket implements INetworkPacket {
                     this.connection.addChunkObjectState(wy);
                 } else {
                     ByteBufferWriter bbw = this.connection.startPacket();
-                    PacketTypes.PacketType.ChunkObjectStateResponse.doPacket(bbw);
-                    bbw.putShort(wx);
-                    bbw.putShort(wy);
+                    // startPacket() locks UdpConnection.bufferLock; only send()/cancelPacket() release it.
+                    // saveObjectState() (and object-specific save() overrides it calls into, e.g.
+                    // IsoMannequin.save()) can throw unchecked exceptions, not just IOException. Catching
+                    // only IOException here left bufferLock permanently held on any other exception,
+                    // which then hangs every future startPacket() on this connection - including from the
+                    // main thread - for the rest of the server's life. Always resolve the packet.
+                    boolean packetResolved = false;
 
                     try {
+                        PacketTypes.PacketType.ChunkObjectStateResponse.doPacket(bbw);
+                        bbw.putShort(wx);
+                        bbw.putShort(wy);
                         if (chunk.saveObjectState(bbw.bb)) {
                             PacketTypes.PacketType.ChunkObjectStateResponse.send(this.connection);
                         } else {
                             this.connection.cancelPacket();
                         }
+                        packetResolved = true;
                     } catch (IOException var10) {
                         ExceptionLogger.logException(var10);
                         this.connection.cancelPacket();
+                        packetResolved = true;
+                    } finally {
+                        if (!packetResolved) {
+                            try {
+                                this.connection.cancelPacket();
+                            } catch (Throwable unlockFailure) {
+                                ExceptionLogger.logException(unlockFailure);
+                            }
+                        }
                     }
                 }
             }
