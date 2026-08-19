@@ -339,6 +339,7 @@ public final class IsoGridSquare {
     private static final PZArrayList<IsoWorldInventoryObject> tempWorldInventoryObjects = new PZArrayList<>(IsoWorldInventoryObject.class, 16);
     public static final CappedConcurrentQueue<IsoGridSquare> isoGridSquareCache = new CappedConcurrentQueue<>(16384);
     public static ArrayDeque<IsoGridSquare> loadGridSquareCache;
+    private static final ThreadLocal<ArrayDeque<IsoGridSquare>> loadGridSquareThreadCache = new ThreadLocal<>();
     private boolean overlayDone;
     private KahluaTable table;
     private int trapPositionX = -1;
@@ -4688,6 +4689,19 @@ public final class IsoGridSquare {
                 isoGridSquareCacheDest.add(sq);
             }
         }
+    }
+
+    public static void setLoadGridSquareCache(ArrayDeque<IsoGridSquare> cache) {
+        loadGridSquareThreadCache.set(cache);
+    }
+
+    public static void clearLoadGridSquareCache() {
+        loadGridSquareThreadCache.remove();
+    }
+
+    public static ArrayDeque<IsoGridSquare> getLoadGridSquareCache() {
+        ArrayDeque<IsoGridSquare> cache = loadGridSquareThreadCache.get();
+        return cache != null ? cache : loadGridSquareCache;
     }
 
     public static IsoGridSquare getNew(IsoCell cell, SliceY slice, int x, int y, int z) {

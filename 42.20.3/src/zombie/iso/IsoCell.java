@@ -10,6 +10,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -2471,8 +2472,9 @@ public final class IsoCell {
                                     } else {
                                         IsoGridSquare square = this.getGridSquare(x, y, z);
                                         if (square == null) {
-                                            if (IsoGridSquare.loadGridSquareCache != null) {
-                                                square = IsoGridSquare.getNew(IsoGridSquare.loadGridSquareCache, this, null, x, y, z);
+                                            ArrayDeque<IsoGridSquare> loadGridSquareCache = IsoGridSquare.getLoadGridSquareCache();
+                                            if (loadGridSquareCache != null) {
+                                                square = IsoGridSquare.getNew(loadGridSquareCache, this, null, x, y, z);
                                             } else {
                                                 square = IsoGridSquare.getNew(this, null, x, y, z);
                                             }
@@ -2533,8 +2535,9 @@ public final class IsoCell {
 
                                         IsoGridSquare square = ch.getGridSquare(x - wx, y - wy, z);
                                         if (square == null) {
-                                            if (IsoGridSquare.loadGridSquareCache != null) {
-                                                square = IsoGridSquare.getNew(IsoGridSquare.loadGridSquareCache, this, null, x, y, z);
+                                            ArrayDeque<IsoGridSquare> loadGridSquareCache = IsoGridSquare.getLoadGridSquareCache();
+                                            if (loadGridSquareCache != null) {
+                                                square = IsoGridSquare.getNew(loadGridSquareCache, this, null, x, y, z);
                                             } else {
                                                 square = IsoGridSquare.getNew(this, null, x, y, z);
                                             }

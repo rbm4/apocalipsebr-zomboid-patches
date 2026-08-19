@@ -152,7 +152,8 @@ public final class ApocBRServerTelemetry {
 
     private static final String[] SERVER_MAP_PRE_KEYS = new String[] {
         "cancelScan", "collectPendingLoads", "sortPendingLoads", "addLoadJobs", "drainLoaded", "addRecalcJobs",
-        "drainRecalc", "load2LosSuspend", "load2", "load2DrainRecalc", "load2MainPump", "load2MainTask",
+        "drainRecalc", "loadChunkCell", "loadChunkOne", "loadChunkSaveNow", "loadChunkWorldGen",
+        "loadChunkForaging", "load2LosSuspend", "load2", "load2DrainRecalc", "load2MainPump", "load2MainTask",
         "load2PumpIdleWait", "load2RecalcAll2", "load2Vehicles",
         "removeLoaded2FromToLoad", "load2RoomsDec", "load2LevelScan", "load2EnsureSurround", "load2BorderRecalc",
         "load2MarkSquares", "load2DoLoadGridSquare", "load2NativeRegistrationBatch", "load2NativeMapCollision",

@@ -12,6 +12,7 @@ import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.EnumSet;
@@ -240,7 +241,10 @@ public final class IsoChunk {
     public static final int BLOCK_SIZE = 65536;
     private static ByteBuffer sliceBuffer = ByteBuffer.allocate(65536);
     private static ByteBuffer sliceBufferLoad = ByteBuffer.allocate(65536);
+    private static final ThreadLocal<ByteBuffer> sliceBufferLoadThreadLocal = ThreadLocal.withInitial(() -> ByteBuffer.allocate(65536));
     public static final Object WriteLock = new Object();
+    private static final Object loadWorldGenLock = new Object();
+    private static final Object loadForagingLock = new Object();
     private static final ArrayList<RoomDef> tempRoomDefs = new ArrayList<>();
     private static final ArrayList<BuildingDef> tempBuildingDefs = new ArrayList<>();
     private static final ArrayList<IsoBuilding> tempBuildings = new ArrayList<>();
@@ -248,6 +252,7 @@ public final class IsoChunk {
     private static final Stack<IsoChunk.ChunkLock> FreeLocks = new Stack<>();
     private static final IsoChunk.SanityCheck sanityCheck = new IsoChunk.SanityCheck();
     private static final CRC32 crcLoad = new CRC32();
+    private static final ThreadLocal<CRC32> crcLoadThreadLocal = ThreadLocal.withInitial(CRC32::new);
     private static final CRC32 crcSave = new CRC32();
     private ErosionData.Chunk erosion;
     private static final HashMap<String, String> Fix2xMap = new HashMap<>();
@@ -2250,6 +2255,15 @@ public final class IsoChunk {
     private boolean LoadBrandNew(int wx, int wy) {
         this.wx = wx;
         this.wy = wy;
+        long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+        synchronized (loadWorldGenLock) {
+            this.LoadBrandNewLocked(wx, wy);
+        }
+        ApocBRServerTelemetry.recordServerMapPrePhaseSince("loadChunkWorldGen", 1, apocBrPhaseStart);
+        return true;
+    }
+
+    private void LoadBrandNewLocked(int wx, int wy) {
         int wx_t = WorldGenUtils.INSTANCE.getCornerOfGeneration(wx);
         int wy_t = WorldGenUtils.INSTANCE.getCornerOfGeneration(wy);
         ChunksCache chunks = new ChunksCache();
@@ -2282,8 +2296,6 @@ public final class IsoChunk {
                 }
             }
         }
-
-        return true;
     }
 
     public boolean hasEmptySquaresOnLevelZero() {
@@ -2353,7 +2365,11 @@ public final class IsoChunk {
         }
 
         if (doForaging && loaded) {
-            IsoWorld.instance.getZoneGenerator().genForaging(wx, wy);
+            long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+            synchronized (loadForagingLock) {
+                IsoWorld.instance.getZoneGenerator().genForaging(wx, wy);
+            }
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("loadChunkForaging", 1, apocBrPhaseStart);
         }
 
         return loaded;
@@ -3573,8 +3589,8 @@ public final class IsoChunk {
         try {
             ByteBuffer sliceBufferLoad;
             if (bb == null) {
-                IsoChunk.sliceBufferLoad = SafeRead(this.wx, this.wy, IsoChunk.sliceBufferLoad);
-                sliceBufferLoad = IsoChunk.sliceBufferLoad;
+                sliceBufferLoad = SafeRead(this.wx, this.wy, sliceBufferLoadThreadLocal.get());
+                sliceBufferLoadThreadLocal.set(sliceBufferLoad);
             } else {
                 sliceBufferLoad = bb;
             }
@@ -3604,6 +3620,7 @@ public final class IsoChunk {
             int len = sliceBufferLoad.getInt();
             sanityCheck.checkLength(len, sliceBufferLoad.limit());
             long crc = sliceBufferLoad.getLong();
+            CRC32 crcLoad = crcLoadThreadLocal.get();
             crcLoad.reset();
             crcLoad.update(sliceBufferLoad.array(), 17, sliceBufferLoad.limit() - 1 - 4 - 4 - 8);
             sanityCheck.checkCRC(crc, crcLoad.getValue());
@@ -3688,9 +3705,10 @@ public final class IsoChunk {
 
                         if (nx == 1) {
                             if (gs == null) {
-                                if (IsoGridSquare.loadGridSquareCache != null) {
+                                ArrayDeque<IsoGridSquare> loadGridSquareCache = IsoGridSquare.getLoadGridSquareCache();
+                                if (loadGridSquareCache != null) {
                                     gs = IsoGridSquare.getNew(
-                                        IsoGridSquare.loadGridSquareCache, IsoWorld.instance.currentCell, null, x + this.wx * 8, y + this.wy * 8, zz
+                                        loadGridSquareCache, IsoWorld.instance.currentCell, null, x + this.wx * 8, y + this.wy * 8, zz
                                     );
                                 } else {
                                     gs = IsoGridSquare.getNew(IsoWorld.instance.currentCell, null, x + this.wx * 8, y + this.wy * 8, zz);
@@ -5506,9 +5524,11 @@ public final class IsoChunk {
     }
 
     public void assignLoadID() {
-        if (this.loadId != -1) {
-            throw new IllegalStateException("IsoChunk was already assigned a valid loadID");
-        } else {
+        synchronized (IsoChunk.class) {
+            if (this.loadId != -1) {
+                throw new IllegalStateException("IsoChunk was already assigned a valid loadID");
+            }
+
             this.loadId = nextLoadID++;
             if (nextLoadID == 32767) {
                 nextLoadID = 0;
@@ -5712,6 +5732,7 @@ public final class IsoChunk {
         public String saveThread;
         public IsoChunk loadChunk;
         public String loadThread;
+        public final ArrayList<IsoChunk> loadChunks = new ArrayList<>();
         public final ArrayList<String> loadFile = new ArrayList<>();
         public String saveFile;
 
@@ -5734,21 +5755,28 @@ public final class IsoChunk {
         }
 
         public synchronized void beginLoad(IsoChunk chunk) {
-            if (this.loadChunk != null) {
-                this.log("trying to load while already loading, wx,wy=" + chunk.wx + "," + chunk.wy);
+            if (this.loadChunks.contains(chunk)) {
+                this.log("trying to load same chunk while already loading, wx,wy=" + chunk.wx + "," + chunk.wy);
             }
 
             if (this.saveChunk == chunk) {
                 this.log("trying to load the same IsoChunk being saved");
             }
 
+            this.loadChunks.add(chunk);
             this.loadChunk = chunk;
             this.loadThread = Thread.currentThread().getName();
         }
 
         public synchronized void endLoad(IsoChunk chunk) {
-            this.loadChunk = null;
-            this.loadThread = null;
+            this.loadChunks.remove(chunk);
+            if (this.loadChunks.isEmpty()) {
+                this.loadChunk = null;
+                this.loadThread = null;
+            } else {
+                this.loadChunk = this.loadChunks.get(this.loadChunks.size() - 1);
+                this.loadThread = "multiple";
+            }
         }
 
         public synchronized void checkCRC(long saveCRC, long loadCRC) {
@@ -5806,6 +5834,7 @@ public final class IsoChunk {
 
             if (this.loadChunk != null) {
                 sb.append("load wx,wy=" + this.loadChunk.wx + "," + this.loadChunk.wy + " thread=\"" + this.loadThread + "\"\n");
+                sb.append("active load chunks=" + this.loadChunks.size() + "\n");
             } else {
                 sb.append("load chunk=null\n");
             }

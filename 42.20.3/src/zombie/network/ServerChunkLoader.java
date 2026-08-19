@@ -9,6 +9,10 @@ import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Objects;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.zip.CRC32;
 import zombie.ApocBRServerTelemetry;
 import zombie.GameTime;
@@ -32,6 +36,8 @@ public class ServerChunkLoader {
     private final ServerChunkLoader.SaveChunkThread threadSave;
     private final CRC32 crcSave = new CRC32();
     private final ServerChunkLoader.RecalcAllThread threadRecalc;
+    private static final int LOAD_WORKERS = Integer.getInteger("apocbr.loadChunkWorkers", 6);
+    private static final int LOAD_GRID_SQUARE_THREAD_CACHE_SIZE = Math.max(0, Integer.getInteger("apocbr.loadGridSquareThreadCacheSize", 10000));
 
     public ServerChunkLoader() {
         this.threadLoad = new ServerChunkLoader.LoaderThread();
@@ -59,7 +65,7 @@ public class ServerChunkLoader {
     }
 
     public int getLoadQueueSize() {
-        return this.threadLoad.toThread.size();
+        return this.threadLoad.getQueueSize();
     }
 
     public int getLoadedQueueSize() {
@@ -185,14 +191,32 @@ public class ServerChunkLoader {
     private class LoaderThread extends Thread {
         private final LinkedBlockingQueue<ServerMap.ServerCell> toThread;
         private final LinkedBlockingQueue<ServerMap.ServerCell> fromThread;
-        ArrayDeque<IsoGridSquare> isoGridSquareCache;
+        private final ThreadPoolExecutor workers;
+        private final ThreadLocal<ArrayDeque<IsoGridSquare>> workerGridSquareCache = ThreadLocal.withInitial(ArrayDeque::new);
 
         private LoaderThread() {
             Objects.requireNonNull(ServerChunkLoader.this);
             super();
             this.toThread = new LinkedBlockingQueue<>();
             this.fromThread = new LinkedBlockingQueue<>();
-            this.isoGridSquareCache = new ArrayDeque<>();
+            AtomicInteger workerIndex = new AtomicInteger();
+            ThreadFactory threadFactory = new ThreadFactory() {
+                @Override
+                public Thread newThread(Runnable runnable) {
+                    Thread thread = new Thread(runnable, "LoadChunkWorker-" + workerIndex.incrementAndGet());
+                    thread.setDaemon(true);
+                    return thread;
+                }
+            };
+            int workers = Math.max(1, LOAD_WORKERS);
+            this.workers = new ThreadPoolExecutor(
+                workers,
+                workers,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new LinkedBlockingQueue<>(),
+                threadFactory
+            );
         }
 
         @Override
@@ -200,54 +224,79 @@ public class ServerChunkLoader {
             while (true) {
                 try {
                     ServerMap.ServerCell cell = this.toThread.take();
-                    if (this.isoGridSquareCache.size() < 10000) {
-                        IsoGridSquare.getSquaresForThread(this.isoGridSquareCache, 10000);
-                        IsoGridSquare.loadGridSquareCache = this.isoGridSquareCache;
-                    }
-
                     if (cell.wx == -1 && cell.wy == -1) {
+                        this.workers.shutdown();
+                        try {
+                            this.workers.awaitTermination(Long.MAX_VALUE, TimeUnit.MILLISECONDS);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                        }
                         return;
                     }
 
-                    if (cell.cancelLoading) {
-                        if (ServerChunkLoader.this.mapLoading) {
-                            DebugType.MapLoading.debugln("LoaderThread: cancelled " + cell.wx + "," + cell.wy);
-                        }
-
-                        cell.loadingWasCancelled = true;
-                    } else {
-                        long start = System.nanoTime();
-
-                        for (int x = 0; x < 8; x++) {
-                            for (int y = 0; y < 8; y++) {
-                                int wx = cell.wx * 8 + x;
-                                int wy = cell.wy * 8 + y;
-                                if (IsoWorld.instance.metaGrid.isValidChunk(wx, wy)) {
-                                    IsoChunk chunk = IsoChunkMap.chunkStore.poll();
-                                    if (chunk == null) {
-                                        chunk = new IsoChunk((IsoCell)null);
-                                    }
-
-                                    chunk.assignLoadID();
-                                    ServerChunkLoader.this.threadSave.saveNow(wx, wy);
-                                    chunk.LoadChunk(wx, wy, null);
-                                    if (chunk.loaded) {
-                                        cell.chunks[x][y] = chunk;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (GameServer.debug) {
-                        }
-
-                        float time = (float)(System.nanoTime() - start) / 1000000.0F;
-                        this.fromThread.add(cell);
-                    }
+                    this.workers.execute(() -> this.loadCell(cell));
                 } catch (Exception var9) {
                     DebugType.General.printException(var9, LogSeverity.Error);
                     LoggerManager.getLogger("map").write(var9);
                 }
+            }
+        }
+
+        private void loadCell(ServerMap.ServerCell cell) {
+            ArrayDeque<IsoGridSquare> isoGridSquareCache = this.workerGridSquareCache.get();
+            try {
+                if (isoGridSquareCache.size() < LOAD_GRID_SQUARE_THREAD_CACHE_SIZE) {
+                    IsoGridSquare.getSquaresForThread(isoGridSquareCache, LOAD_GRID_SQUARE_THREAD_CACHE_SIZE - isoGridSquareCache.size());
+                }
+                IsoGridSquare.setLoadGridSquareCache(LOAD_GRID_SQUARE_THREAD_CACHE_SIZE == 0 ? null : isoGridSquareCache);
+
+                if (cell.cancelLoading) {
+                    if (ServerChunkLoader.this.mapLoading) {
+                        DebugType.MapLoading.debugln("LoaderThread: cancelled " + cell.wx + "," + cell.wy);
+                    }
+
+                    cell.loadingWasCancelled = true;
+                    return;
+                }
+
+                long start = System.nanoTime();
+                int apocBrUnits = 0;
+
+                for (int x = 0; x < 8; x++) {
+                    for (int y = 0; y < 8; y++) {
+                        int wx = cell.wx * 8 + x;
+                        int wy = cell.wy * 8 + y;
+                        if (IsoWorld.instance.metaGrid.isValidChunk(wx, wy)) {
+                            long apocBrChunkStart = ApocBRServerTelemetry.beginDetail();
+                            IsoChunk chunk = IsoChunkMap.chunkStore.poll();
+                            if (chunk == null) {
+                                chunk = new IsoChunk((IsoCell)null);
+                            }
+
+                            chunk.assignLoadID();
+                            long apocBrSaveStart = ApocBRServerTelemetry.beginDetail();
+                            ServerChunkLoader.this.threadSave.saveNow(wx, wy);
+                            ApocBRServerTelemetry.recordServerMapPrePhaseSince("loadChunkSaveNow", 1, apocBrSaveStart);
+                            chunk.LoadChunk(wx, wy, null);
+                            if (chunk.loaded) {
+                                cell.chunks[x][y] = chunk;
+                            }
+                            apocBrUnits++;
+                            ApocBRServerTelemetry.recordServerMapPrePhaseSince("loadChunkOne", 1, apocBrChunkStart);
+                        }
+                    }
+                }
+
+                if (GameServer.debug) {
+                }
+
+                float time = (float)(System.nanoTime() - start) / 1000000.0F;
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("loadChunkCell", apocBrUnits, start);
+                this.fromThread.add(cell);
+            } catch (Exception var9) {
+                DebugType.General.printException(var9, LogSeverity.Error);
+                LoggerManager.getLogger("map").write(var9);
+                cell.loadingWasCancelled = true;
             }
         }
 
@@ -256,6 +305,10 @@ public class ServerChunkLoader {
             quitCell.wx = -1;
             quitCell.wy = -1;
             this.toThread.add(quitCell);
+        }
+
+        public int getQueueSize() {
+            return this.toThread.size() + this.workers.getQueue().size() + this.workers.getActiveCount();
         }
     }
 
@@ -453,6 +506,7 @@ public class ServerChunkLoader {
         private final ClientChunkRequest ccr;
         private final ArrayList<ServerChunkLoader.SaveTask> toSaveChunk;
         private final ArrayList<ServerChunkLoader.SaveTask> savedChunks;
+        private final Object saveLock = new Object();
 
         private SaveChunkThread() {
             Objects.requireNonNull(ServerChunkLoader.this);
@@ -472,7 +526,9 @@ public class ServerChunkLoader {
 
                 try {
                     task = this.toThread.take();
-                    task.save();
+                    synchronized (this.saveLock) {
+                        task.save();
+                    }
                     this.fromThread.add(task);
                 } catch (InterruptedException var3) {
                 } catch (Exception var4) {
@@ -512,7 +568,7 @@ public class ServerChunkLoader {
             this.toThread.add(ServerChunkLoader.this.new SaveGameTimeTask(gameTime));
         }
 
-        public void saveNow(int chunkX, int chunkY) {
+        public synchronized void saveNow(int chunkX, int chunkY) {
             this.toSaveChunk.clear();
             this.toThread.drainTo(this.toSaveChunk);
 
@@ -521,7 +577,9 @@ public class ServerChunkLoader {
                 if (task.wx() == chunkX && task.wy() == chunkY) {
                     try {
                         this.toSaveChunk.remove(i--);
-                        task.save();
+                        synchronized (this.saveLock) {
+                            task.save();
+                        }
                     } catch (Exception var6) {
                         DebugType.General.printException(var6, LogSeverity.Error);
                         LoggerManager.getLogger("map").write("Error saving chunk " + chunkX + "," + chunkY);
