@@ -181,6 +181,7 @@ public final class IsoChunk {
     public long renderFrame;
     private static int frameDelay;
     private static final int maxFrameDelay = 5;
+    private static final int APOCBR_LOAD_GRID_SQUARE_BATCH_SIZE = Math.max(1, Integer.getInteger("apocbr.load2GridSquareBatchSize", 64));
     public boolean requiresHotSave;
     public boolean preventHotSave;
     private boolean removeFromWorldStarted;
@@ -3909,6 +3910,7 @@ public final class IsoChunk {
         this.treeCount = 0;
         this.scavengeZone = null;
         this.numberOfWaterTiles = 0;
+        ArrayList<IsoGridSquare> apocBRLoadGridSquareBatch = new ArrayList<>(APOCBR_LOAD_GRID_SQUARE_BATCH_SIZE);
 
         for (int zz = this.minLevel; zz <= this.maxLevel; zz++) {
             for (int x = 0; x < 8; x++) {
@@ -3938,40 +3940,18 @@ public final class IsoChunk {
                                 ErosionMain.LoadGridsquare(square);
                             }
 
-                            IsoGridSquare apocBRSquare = square;
-                            boolean apocBRAddZombies = this.addZombies;
-                            ServerMap.runLoad2MainThreadTask("IsoChunk.mapObjectsLoadGridSquare", () -> {
-                                if (apocBRAddZombies) {
-                                    MapObjects.newGridSquare(apocBRSquare);
-                                }
-
-                                MapObjects.loadGridSquare(apocBRSquare);
-                            });
-                            if (this.isNewChunk()) {
-                                this.addRatsAfterLoading(square);
+                            apocBRLoadGridSquareBatch.add(square);
+                            if (apocBRLoadGridSquareBatch.size() >= APOCBR_LOAD_GRID_SQUARE_BATCH_SIZE) {
+                                this.flushLoadGridSquareBatch(apocBRLoadGridSquareBatch);
                             }
-
-                            ServerMap.runLoad2MainThreadTask("LuaEvent.LoadGridsquare", () -> {
-                                try {
-                                    LuaEventManager.triggerEvent("LoadGridsquare", apocBRSquare);
-                                } catch (Throwable var15) {
-                                    ExceptionLogger.logException(var15);
-                                }
-                            });
-                        }
-
-                        ArrayList<IsoMovingObject> staticMovingObjects = square.getStaticMovingObjects();
-                        int staticMovingObjectCount = staticMovingObjects.size();
-                        if (staticMovingObjectCount > 0) {
-                            for (int ix = 0; ix < staticMovingObjectCount; ix++) {
-                                IsoMovingObject objx = staticMovingObjects.get(ix);
-                                objx.addToWorld();
-                            }
+                        } else {
+                            this.addStaticMovingObjectsToWorld(square);
                         }
                     }
                 }
             }
         }
+        this.flushLoadGridSquareBatch(apocBRLoadGridSquareBatch);
 
         if (this.jobType != IsoChunk.JobType.SoftReset) {
             ErosionMain.ChunkLoaded(this);
@@ -4102,6 +4082,56 @@ public final class IsoChunk {
                 LoadGridsquarePerformanceWorkaround.LoadGridsquare(square);
             } catch (Throwable var3) {
                 ExceptionLogger.logException(var3);
+            }
+        }
+    }
+
+    private void flushLoadGridSquareBatch(ArrayList<IsoGridSquare> squares) {
+        if (squares.isEmpty()) {
+            return;
+        }
+
+        IsoGridSquare[] batch = squares.toArray(new IsoGridSquare[squares.size()]);
+        squares.clear();
+        boolean apocBRAddZombies = this.addZombies;
+        ServerMap.runLoad2MainThreadTask("IsoChunk.mapObjectsLoadGridSquareBatch", () -> {
+            for (IsoGridSquare square : batch) {
+                if (apocBRAddZombies) {
+                    MapObjects.newGridSquare(square);
+                }
+
+                MapObjects.loadGridSquare(square);
+            }
+        });
+
+        if (this.isNewChunk()) {
+            for (IsoGridSquare square : batch) {
+                this.addRatsAfterLoading(square);
+            }
+        }
+
+        ServerMap.runLoad2MainThreadTask("LuaEvent.LoadGridsquareBatch", () -> {
+            for (IsoGridSquare square : batch) {
+                try {
+                    LuaEventManager.triggerEvent("LoadGridsquare", square);
+                } catch (Throwable var15) {
+                    ExceptionLogger.logException(var15);
+                }
+            }
+        });
+
+        for (IsoGridSquare square : batch) {
+            this.addStaticMovingObjectsToWorld(square);
+        }
+    }
+
+    private void addStaticMovingObjectsToWorld(IsoGridSquare square) {
+        ArrayList<IsoMovingObject> staticMovingObjects = square.getStaticMovingObjects();
+        int staticMovingObjectCount = staticMovingObjects.size();
+        if (staticMovingObjectCount > 0) {
+            for (int ix = 0; ix < staticMovingObjectCount; ix++) {
+                IsoMovingObject objx = staticMovingObjects.get(ix);
+                objx.addToWorld();
             }
         }
     }
