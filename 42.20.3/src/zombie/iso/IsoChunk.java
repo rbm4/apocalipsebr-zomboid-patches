@@ -3939,11 +3939,14 @@ public final class IsoChunk {
                             }
 
                             IsoGridSquare apocBRSquare = square;
-                            if (this.addZombies) {
-                                ServerMap.runLoad2MainThreadTask("MapObjects.newGridSquare", () -> MapObjects.newGridSquare(apocBRSquare));
-                            }
+                            boolean apocBRAddZombies = this.addZombies;
+                            ServerMap.runLoad2MainThreadTask("IsoChunk.mapObjectsLoadGridSquare", () -> {
+                                if (apocBRAddZombies) {
+                                    MapObjects.newGridSquare(apocBRSquare);
+                                }
 
-                            ServerMap.runLoad2MainThreadTask("MapObjects.loadGridSquare", () -> MapObjects.loadGridSquare(apocBRSquare));
+                                MapObjects.loadGridSquare(apocBRSquare);
+                            });
                             if (this.isNewChunk()) {
                                 this.addRatsAfterLoading(square);
                             }
