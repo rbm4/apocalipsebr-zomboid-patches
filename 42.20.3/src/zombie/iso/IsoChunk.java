@@ -3873,29 +3873,34 @@ public final class IsoChunk {
             for (int i = 0; i < this.vehicles.size(); i++) {
                 BaseVehicle v = this.vehicles.get(i);
                 if (!v.addedToWorld && VehiclesDB2.instance.isVehicleLoaded(v)) {
-                    v.removeFromSquare();
+                    BaseVehicle apocBRVehicle = v;
+                    ServerMap.runLoad2MainThreadTask("BaseVehicle.removeFromSquare", apocBRVehicle::removeFromSquare);
                     this.vehicles.remove(i);
                     i--;
                 } else {
                     if (!v.addedToWorld) {
-                        v.addToWorld();
+                        BaseVehicle apocBRVehicle = v;
+                        ServerMap.runLoad2MainThreadTask("BaseVehicle.addToWorld", apocBRVehicle::addToWorld);
                     }
 
                     if (v.sqlId == -1) {
-                        assert false;
+                        BaseVehicle apocBRVehicle = v;
+                        ServerMap.runLoad2MainThreadTask("VehiclesDB2.addVehicle", () -> {
+                            assert false;
 
-                        if (v.square == null) {
-                            float d = 5.0E-4F;
-                            int minX = this.wx * 8;
-                            int minY = this.wy * 8;
-                            int maxX = minX + 8;
-                            int maxY = minY + 8;
-                            float x = PZMath.clamp(v.getX(), minX + 5.0E-4F, maxX - 5.0E-4F);
-                            float y = PZMath.clamp(v.getY(), minY + 5.0E-4F, maxY - 5.0E-4F);
-                            v.square = this.getGridSquare(PZMath.fastfloor(x) - this.wx * 8, PZMath.fastfloor(y) - this.wy * 8, 0);
-                        }
+                            if (apocBRVehicle.square == null) {
+                                float d = 5.0E-4F;
+                                int minX = this.wx * 8;
+                                int minY = this.wy * 8;
+                                int maxX = minX + 8;
+                                int maxY = minY + 8;
+                                float x = PZMath.clamp(apocBRVehicle.getX(), minX + 5.0E-4F, maxX - 5.0E-4F);
+                                float y = PZMath.clamp(apocBRVehicle.getY(), minY + 5.0E-4F, maxY - 5.0E-4F);
+                                apocBRVehicle.square = this.getGridSquare(PZMath.fastfloor(x) - this.wx * 8, PZMath.fastfloor(y) - this.wy * 8, 0);
+                            }
 
-                        VehiclesDB2.instance.addVehicle(v);
+                            VehiclesDB2.instance.addVehicle(apocBRVehicle);
+                        });
                     }
                 }
             }
@@ -3933,20 +3938,23 @@ public final class IsoChunk {
                                 ErosionMain.LoadGridsquare(square);
                             }
 
+                            IsoGridSquare apocBRSquare = square;
                             if (this.addZombies) {
-                                MapObjects.newGridSquare(square);
+                                ServerMap.runLoad2MainThreadTask("MapObjects.newGridSquare", () -> MapObjects.newGridSquare(apocBRSquare));
                             }
 
-                            MapObjects.loadGridSquare(square);
+                            ServerMap.runLoad2MainThreadTask("MapObjects.loadGridSquare", () -> MapObjects.loadGridSquare(apocBRSquare));
                             if (this.isNewChunk()) {
                                 this.addRatsAfterLoading(square);
                             }
 
-                            try {
-                                LuaEventManager.triggerEvent("LoadGridsquare", square);
-                            } catch (Throwable var15) {
-                                ExceptionLogger.logException(var15);
-                            }
+                            ServerMap.runLoad2MainThreadTask("LuaEvent.LoadGridsquare", () -> {
+                                try {
+                                    LuaEventManager.triggerEvent("LoadGridsquare", apocBRSquare);
+                                } catch (Throwable var15) {
+                                    ExceptionLogger.logException(var15);
+                                }
+                            });
                         }
 
                         ArrayList<IsoMovingObject> staticMovingObjects = square.getStaticMovingObjects();
@@ -3967,7 +3975,9 @@ public final class IsoChunk {
         }
 
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            SGlobalObjects.chunkLoaded(this.wx, this.wy);
+            int apocBRWx = this.wx;
+            int apocBRWy = this.wy;
+            ServerMap.runLoad2MainThreadTask("SGlobalObjects.chunkLoaded", () -> SGlobalObjects.chunkLoaded(apocBRWx, apocBRWy));
         }
 
         ReanimatedPlayers.instance.addReanimatedPlayersToChunk(this);
@@ -4080,7 +4090,7 @@ public final class IsoChunk {
         this.renderFrame = this.loadedFrame + frameDelay;
         frameDelay = (frameDelay + 1) % 5;
         this.preventHotSave = false;
-        LuaEventManager.triggerEvent("LoadChunk", this);
+        ServerMap.runLoad2MainThreadTask("LuaEvent.LoadChunk", () -> LuaEventManager.triggerEvent("LoadChunk", this));
     }
 
     private void loadGridSquareIfNeeded(IsoGridSquare square) {

@@ -152,7 +152,8 @@ public final class ApocBRServerTelemetry {
 
     private static final String[] SERVER_MAP_PRE_KEYS = new String[] {
         "cancelScan", "collectPendingLoads", "sortPendingLoads", "addLoadJobs", "drainLoaded", "addRecalcJobs",
-        "drainRecalc", "load2LosSuspend", "load2", "load2DrainRecalc", "load2RecalcAll2", "load2Vehicles",
+        "drainRecalc", "load2LosSuspend", "load2", "load2DrainRecalc", "load2MainPump", "load2MainTask",
+        "load2PumpIdleWait", "load2RecalcAll2", "load2Vehicles",
         "removeLoaded2FromToLoad", "load2RoomsDec", "load2LevelScan", "load2EnsureSurround", "load2BorderRecalc",
         "load2MarkSquares", "load2DoLoadGridSquare", "load2RoomsInc", "load2LosResume", "saveAll", "saveLater",
         "entitySave"
@@ -280,6 +281,7 @@ public final class ApocBRServerTelemetry {
     private static final ConcurrentHashMap<String, DynamicTiming> luaEvents = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, DynamicTiming> luaCallbacks = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, DynamicTiming> luaDirect = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, DynamicTiming> mainThreadTasks = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, DynamicTiming> netHighPacketsByType = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<String, DynamicTiming> netHighDetails = new ConcurrentHashMap<>();
 
@@ -392,6 +394,16 @@ public final class ApocBRServerTelemetry {
     public static void recordLuaDirect(String callsite, long nanos) {
         if (!DETAIL_ENABLED || callsite == null || nanos < 0L) return;
         recordDynamicTiming(luaDirect, callsite, 1, nanos);
+    }
+
+    public static void recordMainThreadTaskSubmitted(String label) {
+        if (!DETAIL_ENABLED || label == null) return;
+        recordDynamicTiming(mainThreadTasks, label + "|submitted", 1, 0L);
+    }
+
+    public static void recordMainThreadTaskDrained(String label, long nanos) {
+        if (!DETAIL_ENABLED || label == null || nanos < 0L) return;
+        recordDynamicTiming(mainThreadTasks, label, 1, nanos);
     }
 
     public static void recordMainLoopNetHighPacket(String packetType, long nanos) {
@@ -1036,6 +1048,7 @@ public final class ApocBRServerTelemetry {
         appendDynamicTimingMap(json, "luaEvents", luaEvents, LUA_TELEMETRY_TOP_N);
         appendDynamicTimingMap(json, "luaCallbacks", luaCallbacks, LUA_TELEMETRY_TOP_N);
         appendDynamicTimingMap(json, "luaDirect", luaDirect, LUA_TELEMETRY_TOP_N);
+        appendDynamicTimingMap(json, "mainThreadTasks", mainThreadTasks, LUA_TELEMETRY_TOP_N);
         appendDynamicTimingMap(json, "netHighPackets", netHighPacketsByType, LUA_TELEMETRY_TOP_N);
         appendDynamicTimingMap(json, "netHighDetails", netHighDetails, LUA_TELEMETRY_TOP_N);
         json.append("}");
@@ -1181,6 +1194,7 @@ public final class ApocBRServerTelemetry {
         luaEvents.clear();
         luaCallbacks.clear();
         luaDirect.clear();
+        mainThreadTasks.clear();
         netHighPacketsByType.clear();
         netHighDetails.clear();
     }
