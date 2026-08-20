@@ -1232,8 +1232,40 @@ public class ServerMap {
                 ServerMap.runLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
             }
 
-            for (IsoChunk chunk : apocBrPostRegistrationChunks) {
-                chunk.finishLoadGridsquareAfterChunkRegistration();
+            // ApocBR: finishLoadGridsquareAfterChunkRegistration() is a chain of ~6 sequential
+            // submitAndWait() hops to the main thread per chunk (erosion/MapObjects/Lua
+            // LoadGridsquare, randomizeBuildingsEtc, checkAdjacentChunks, chunk-object-state flush,
+            // Lua LoadChunk). Running that loop serially - one chunk's whole chain finishing before
+            // the next chunk's first hop even starts - is what starves the main thread's pump loop
+            // between hops (see load2PumpIdleWait in telemetry): with only one chunk in flight, there
+            // are real gaps where nothing is queued. Fanning all of a cell's chunks out to their own
+            // virtual thread on the same recalcPool means up to 64 chunks' hop chains are in flight
+            // at once, so the main thread's queue - which is already being pumped by
+            // recalcAllParallel()'s color-round wait - stays continuously fed instead of idling
+            // between each chunk. This is safe with respect to the checkerboard border-safety
+            // invariant: it only changes how many chunks *within this one cell* run concurrently,
+            // never across cells, and every method in the chain above that touches shared/adjacent
+            // state (checkAdjacentChunks, the per-connection chunkObjectStateRequests flush,
+            // frameDelay) has been made safe for concurrent chunk callers - see IsoChunk.java.
+            if (!apocBrPostRegistrationChunks.isEmpty()) {
+                CountDownLatch chunkFinishLatch = new CountDownLatch(apocBrPostRegistrationChunks.size());
+                for (IsoChunk chunk : apocBrPostRegistrationChunks) {
+                    recalcPool.execute(() -> {
+                        try {
+                            chunk.finishLoadGridsquareAfterChunkRegistration();
+                        } catch (Throwable t) {
+                            ExceptionLogger.logException(t);
+                        } finally {
+                            chunkFinishLatch.countDown();
+                        }
+                    });
+                }
+
+                try {
+                    chunkFinishLatch.await();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                }
             }
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2DoLoadGridSquare", apocBrUnits, apocBrPhaseStart);
 

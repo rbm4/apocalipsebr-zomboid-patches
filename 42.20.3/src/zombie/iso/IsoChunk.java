@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.zip.CRC32;
 import zombie.ChunkMapFilenames;
@@ -180,7 +181,11 @@ public final class IsoChunk {
     public static boolean doAttachments = true;
     public long loadedFrame;
     public long renderFrame;
-    private static int frameDelay;
+    // ApocBR: was a plain static int, incremented with a non-atomic `frameDelay = (frameDelay + 1) % 5`.
+    // finishLoadGridsquareAfterChunkRegistration() now runs concurrently for every chunk in a cell
+    // (see RecalcAll2()'s chunk-level fan-out), so this needs a real atomic update - getAndUpdate()
+    // still hands out the same round-robin 0..4 sequence, just safely under concurrent callers.
+    private static final AtomicInteger frameDelay = new AtomicInteger();
     private static final int maxFrameDelay = 5;
     private static final int APOCBR_LOAD_GRID_SQUARE_BATCH_SIZE = Math.max(1, Integer.getInteger("apocbr.load2GridSquareBatchSize", 64));
     public boolean requiresHotSave;
@@ -4027,51 +4032,64 @@ public final class IsoChunk {
             ServerMap.runLoad2MainThreadTask("IsoChunk.loadGridSquareIfNeededBatch", this::loadGridSquaresIfNeededMainThread);
         }
 
-        this.checkAdjacentChunks();
+        // ApocBR: checkAdjacentChunks() writes into a *neighbouring* IsoChunk's
+        // adjacentChunkLoadedCounter (a plain int++, not atomic). The chunk-object-state flush below
+        // scans/mutates a shared per-UdpConnection list (chunkObjectStateRequests) that any other
+        // chunk of the same connection's pending requests could also be touching. Neither of these
+        // was a hazard while finishLoadGridsquareAfterChunkRegistration() only ever ran one chunk at
+        // a time on a single worker thread, but RecalcAll2() now fans every chunk in a cell out to its
+        // own virtual thread, so both need to be serialized through the same main-thread orchestrator
+        // as every other Lua/native-affine hop in this method, instead of running directly on
+        // whichever chunk's thread happens to reach them.
+        ServerMap.runLoad2MainThreadTask("IsoChunk.checkAdjacentChunks", this::checkAdjacentChunks);
 
-        try {
-            if (GameServer.server && this.jobType != IsoChunk.JobType.SoftReset) {
-                for (int ixx = 0; ixx < GameServer.udpEngine.connections.size(); ixx++) {
-                    UdpConnection connection = GameServer.udpEngine.connections.get(ixx);
-                    if (!connection.chunkObjectStateRequests.isEmpty()) {
-                        for (int j = 0; j < connection.chunkObjectStateRequests.size(); j += 2) {
-                            short wx1 = connection.chunkObjectStateRequests.get(j);
-                            short wy1 = connection.chunkObjectStateRequests.get(j + 1);
-                            if (wx1 == this.wx && wy1 == this.wy) {
-                                connection.chunkObjectStateRequests.remove(j, 2);
-                                j -= 2;
-                                ByteBufferWriter b = connection.startPacket();
-                                PacketTypes.PacketType.ChunkObjectStateResponse.doPacket(b);
-                                b.putShort(this.wx);
-                                b.putShort(this.wy);
+        ServerMap.runLoad2MainThreadTask("IsoChunk.chunkObjectStateFlush", () -> {
+            try {
+                if (GameServer.server && this.jobType != IsoChunk.JobType.SoftReset) {
+                    for (int ixx = 0; ixx < GameServer.udpEngine.connections.size(); ixx++) {
+                        UdpConnection connection = GameServer.udpEngine.connections.get(ixx);
+                        if (!connection.chunkObjectStateRequests.isEmpty()) {
+                            for (int j = 0; j < connection.chunkObjectStateRequests.size(); j += 2) {
+                                short wx1 = connection.chunkObjectStateRequests.get(j);
+                                short wy1 = connection.chunkObjectStateRequests.get(j + 1);
+                                if (wx1 == this.wx && wy1 == this.wy) {
+                                    connection.chunkObjectStateRequests.remove(j, 2);
+                                    j -= 2;
+                                    ByteBufferWriter b = connection.startPacket();
+                                    PacketTypes.PacketType.ChunkObjectStateResponse.doPacket(b);
+                                    b.putShort(this.wx);
+                                    b.putShort(this.wy);
 
-                                try {
-                                    if (this.saveObjectState(b.bb)) {
-                                        PacketTypes.PacketType.ChunkObjectStateResponse.send(connection);
-                                    } else {
+                                    try {
+                                        if (this.saveObjectState(b.bb)) {
+                                            PacketTypes.PacketType.ChunkObjectStateResponse.send(connection);
+                                        } else {
+                                            connection.cancelPacket();
+                                        }
+                                    } catch (Throwable var14) {
+                                        DebugType.General.printException(var14, LogSeverity.Error);
                                         connection.cancelPacket();
                                     }
-                                } catch (Throwable var14) {
-                                    DebugType.General.printException(var14, LogSeverity.Error);
-                                    connection.cancelPacket();
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            if (GameClient.client) {
-                GameClient.connection.addChunkObjectState((short)this.wx);
-                GameClient.connection.addChunkObjectState((short)this.wy);
+                if (GameClient.client) {
+                    GameClient.connection.addChunkObjectState((short)this.wx);
+                    GameClient.connection.addChunkObjectState((short)this.wy);
+                }
+            } catch (Throwable var17) {
+                ExceptionLogger.logException(var17);
             }
-        } catch (Throwable var17) {
-            ExceptionLogger.logException(var17);
-        }
+        });
 
         this.loadedFrame = IsoWorld.instance.getFrameNo();
-        this.renderFrame = this.loadedFrame + frameDelay;
-        frameDelay = (frameDelay + 1) % 5;
+        // frameDelay is a shared static counter (see field comment) - getAndUpdate() is the atomic
+        // equivalent of the old "read then increment" so concurrent chunks still each get a distinct
+        // round-robin value with no lost updates.
+        this.renderFrame = this.loadedFrame + frameDelay.getAndUpdate(v -> (v + 1) % maxFrameDelay);
         this.preventHotSave = false;
         ServerMap.runLoad2MainThreadTask("LuaEvent.LoadChunk", () -> LuaEventManager.triggerEvent("LoadChunk", this));
     }
