@@ -61,9 +61,8 @@ public class RequestLargeAreaZipPacket implements INetworkPacket {
         }
 
         if (connection.getPlayerDownloadServer() != null) {
-            int chunkMapWidth = GameServer.chunkGridWidthCommandline != -1 ? GameServer.chunkGridWidthCommandline : this.chunkMapWidth;
-            connection.connectArea[0] = new Vector3(this.wx, this.wy, chunkMapWidth);
-            connection.setChunkGridWidth(chunkMapWidth);
+            connection.connectArea[0] = new Vector3(this.wx, this.wy, this.chunkMapWidth);
+            connection.setChunkGridWidth(this.chunkMapWidth);
             ZombiePopulationManager.instance.updateLoadedAreas();
         }
     }

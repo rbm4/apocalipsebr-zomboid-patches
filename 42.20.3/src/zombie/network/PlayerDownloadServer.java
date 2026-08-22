@@ -116,11 +116,7 @@ public final class PlayerDownloadServer {
                     DebugType.Multiplayer
                         .warn("chunk request %d,%d stayed outside the streamed area of %s", held.request.wx, held.request.wy, this.connection.getUserName());
                     this.outOfRangeRequests.remove(i--);
-                    if (GameServer.chunkGridWidthCommandline != -1) {
-                        INetworkPacket.send(this.connection, PacketTypes.PacketType.ChunkNotReady, held.request.requestNumber);
-                    } else {
-                        this.addPendingChunk(held.request);
-                    }
+                    this.addPendingChunk(held.request);
                 }
             }
         }
