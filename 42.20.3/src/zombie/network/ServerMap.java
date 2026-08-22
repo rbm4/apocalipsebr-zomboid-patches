@@ -143,6 +143,9 @@ public class ServerMap {
     public ServerMap.ServerCell[] cellMap;
     public ArrayList<ServerMap.ServerCell> loadedCells = new ArrayList<>();
     public ArrayList<ServerMap.ServerCell> releventNow = new ArrayList<>();
+    private final ArrayList<ServerMap.ServerCell> deferredUnloadCells = new ArrayList<>();
+    private int deferredUnloadQueuedThisTick;
+    private long deferredUnloadTick;
     int width;
     int height;
     IsoMetaGrid grid;
@@ -157,6 +160,7 @@ public class ServerMap {
 
     public void SaveAll() {
         long start = System.nanoTime();
+        this.drainDeferredUnloadsForSave();
         if (!GameServer.softReset && this.loadedCells.size() >= 10) {
             for (int i = 0; i < SAVE_CELL_WORK_THREADS; i++) {
                 workerThreads[i] = new ServerMap.WorkerThread();
@@ -282,6 +286,20 @@ public class ServerMap {
         return this.isInvalidCell(x, y) ? null : this.cellMap[y * this.width + x];
     }
 
+    private ServerMap.ServerCell getDeferredUnloadCell(int x, int y) {
+        int wx = x + this.getMinX();
+        int wy = y + this.getMinY();
+
+        for (int i = 0; i < this.deferredUnloadCells.size(); i++) {
+            ServerMap.ServerCell cell = this.deferredUnloadCells.get(i);
+            if (cell.wx == wx && cell.wy == wy) {
+                return cell;
+            }
+        }
+
+        return null;
+    }
+
     public boolean isInvalidCell(int x, int y) {
         return x < 0 || y < 0 || x >= this.width || y >= this.height;
     }
@@ -290,6 +308,10 @@ public class ServerMap {
         if (!this.isInvalidCell(x, y)) {
             ServerMap.ServerCell cell = this.getCell(x, y);
             if (cell == null) {
+                if (this.getDeferredUnloadCell(x, y) != null) {
+                    return;
+                }
+
                 cell = new ServerMap.ServerCell();
                 cell.wx = x + this.getMinX();
                 cell.wy = y + this.getMinY();
@@ -651,6 +673,152 @@ public class ServerMap {
         ApocBRServerTelemetry.recordTickSectionSince("serverMapPre", apocBrSectionStart);
     }
 
+    private void queueDeferredUnload(ServerMap.ServerCell cell) {
+        if (cell == null || !cell.beginDeferredUnload(this.deferredUnloadTick)) {
+            return;
+        }
+
+        this.deferredUnloadCells.add(cell);
+        this.deferredUnloadQueuedThisTick++;
+    }
+
+    private boolean hasDeferredUnloads() {
+        return !this.deferredUnloadCells.isEmpty();
+    }
+
+    private void processDeferredUnloads() {
+        this.deferredUnloadTick++;
+        this.processDeferredUnloads(
+            ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_NANOS_PER_TICK,
+            ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_CELLS_PER_TICK,
+            ServerMap.ServerCell.DEFERRED_UNLOAD_SLICES_PER_TICK,
+            ServerMap.ServerCell.DEFERRED_UNLOAD_SQUARES_PER_SLICE,
+            true
+        );
+    }
+
+    public long processDeferredUnloadsInIdleWindow(long budgetNanos) {
+        if (!ServerMap.ServerCell.isDeferredUnloadEnabled()
+            || !ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_ENABLED
+            || this.deferredUnloadCells.isEmpty()
+            || budgetNanos <= 0L) {
+            return 0L;
+        }
+
+        long start = System.nanoTime();
+        boolean losSuspended = false;
+
+        try {
+            ServerLOS.instance.suspend();
+            losSuspended = true;
+            this.processDeferredUnloads(
+                Math.min(budgetNanos, ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_MAX_NANOS),
+                ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_MAX_CELLS,
+                ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_SLICES,
+                ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_SQUARES_PER_SLICE,
+                false
+            );
+        } finally {
+            if (losSuspended) {
+                ServerLOS.instance.resume();
+            }
+        }
+
+        return System.nanoTime() - start;
+    }
+
+    private void processDeferredUnloads(long maxNanos, int maxCellsPerTick, int maxSlicesPerTick, int squaresPerSlice, boolean enforceDeadline) {
+        int pendingAtStart = this.deferredUnloadCells.size();
+        int queued = this.deferredUnloadQueuedThisTick;
+        this.deferredUnloadQueuedThisTick = 0;
+        if (pendingAtStart == 0) {
+            ApocBRServerTelemetry.recordServerMapDeferredUnload(0, queued, 0, 0, 0L, 0L);
+            ApocBRServerTelemetry.recordServerMapDeferredUnloadBudget(ServerMap.ServerCell.DEFERRED_UNLOAD_MODE, 0, 0, 0, 0, 0);
+            return;
+        }
+
+        long start = ApocBRServerTelemetry.beginDetail();
+        long deadline = System.nanoTime() + Math.max(1L, maxNanos);
+        int maxCells = PZMath.max(1, maxCellsPerTick);
+        int maxSlices = PZMath.max(1, maxSlicesPerTick);
+        int overdueCells = 0;
+        if (enforceDeadline) {
+            for (int i = 0; i < this.deferredUnloadCells.size(); i++) {
+                if (this.deferredUnloadCells.get(i).getDeferredUnloadAgeTicks(this.deferredUnloadTick) >= ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_TICKS) {
+                    overdueCells++;
+                }
+            }
+        }
+
+        int cellsToTouch = PZMath.min(PZMath.max(maxCells, overdueCells), pendingAtStart);
+        maxSlices = PZMath.max(maxSlices, overdueCells);
+        int attempts = 0;
+        int partialCells = 0;
+        int unloaded = 0;
+
+        for (int touched = 0; touched < cellsToTouch && attempts < maxSlices && !this.deferredUnloadCells.isEmpty(); touched++) {
+            ServerMap.ServerCell cell = this.deferredUnloadCells.remove(0);
+            attempts++;
+            boolean forced = enforceDeadline && cell.getDeferredUnloadAgeTicks(this.deferredUnloadTick) >= ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_TICKS;
+            boolean finished = cell.processDeferredUnloadSlice(forced ? Integer.MAX_VALUE : squaresPerSlice);
+            if (finished) {
+                unloaded++;
+            } else {
+                partialCells++;
+                this.deferredUnloadCells.add(cell);
+            }
+
+            if (!forced && System.nanoTime() >= deadline) {
+                break;
+            }
+        }
+
+        long oldestAgeMs = 0L;
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < this.deferredUnloadCells.size(); i++) {
+            oldestAgeMs = Math.max(oldestAgeMs, now - this.deferredUnloadCells.get(i).getDeferredUnloadQueuedAtMs());
+        }
+
+        ApocBRServerTelemetry.recordServerMapDeferredUnload(
+            this.deferredUnloadCells.size(),
+            queued,
+            0,
+            unloaded,
+            System.nanoTime() - start,
+            oldestAgeMs
+        );
+        ApocBRServerTelemetry.recordServerMapDeferredUnloadBudget(
+            ServerMap.ServerCell.DEFERRED_UNLOAD_MODE,
+            pendingAtStart,
+            maxCells,
+            maxSlices,
+            attempts,
+            partialCells
+        );
+    }
+
+    private void drainDeferredUnloadsForSave() {
+        if (!ServerMap.ServerCell.isDeferredUnloadEnabled() || this.deferredUnloadCells.isEmpty()) {
+            return;
+        }
+
+        boolean losSuspended = false;
+
+        try {
+            ServerLOS.instance.suspend();
+            losSuspended = true;
+            while (!this.deferredUnloadCells.isEmpty()) {
+                ServerMap.ServerCell cell = this.deferredUnloadCells.remove(0);
+                while (!cell.processDeferredUnloadSlice(Integer.MAX_VALUE)) {
+                }
+            }
+        } finally {
+            if (losSuspended) {
+                ServerLOS.instance.resume();
+            }
+        }
+    }
+
     public void postupdate() {
         long apocBrPostStart = ApocBRServerTelemetry.beginDetail();
         boolean pathfindPaused = false;
@@ -658,9 +826,10 @@ public class ServerMap {
         try {
             int apocBrLoadedCellsAtStart = this.loadedCells.size();
             long apocBrLoopStart = ApocBRServerTelemetry.beginDetail();
+            long apocBrPhaseStart;
             for (int n = 0; n < this.loadedCells.size(); n++) {
                 ServerMap.ServerCell cell = this.loadedCells.get(n);
-                long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                 boolean relevant = this.releventNow.contains(cell);
                 ApocBRServerTelemetry.recordServerMapPostPhaseSince("relevantContains", 1, apocBrPhaseStart);
                 boolean outsidePlayerInfluence = false;
@@ -700,7 +869,11 @@ public class ServerMap {
                     int cellMapIndex = y * this.width + x;
                     ServerMap.ServerCell mapCell = this.cellMap[cellMapIndex];
                     apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    mapCell.Unload();
+                    if (ServerMap.ServerCell.isDeferredUnloadEnabled()) {
+                        this.queueDeferredUnload(mapCell);
+                    } else {
+                        mapCell.Unload();
+                    }
                     ApocBRServerTelemetry.recordServerMapPostPhaseSince("cellUnload", 1, apocBrPhaseStart);
                     apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     this.cellMap[cellMapIndex] = null;
@@ -714,6 +887,17 @@ public class ServerMap {
                     cell.update();
                     ApocBRServerTelemetry.recordServerMapPostPhaseSince("cellUpdate", 1, apocBrPhaseStart);
                 }
+            }
+
+            if (ServerMap.ServerCell.isDeferredUnloadEnabled()) {
+                if (this.hasDeferredUnloads() && !pathfindPaused) {
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                    ServerLOS.instance.suspend();
+                    ApocBRServerTelemetry.recordServerMapPostPhaseSince("losSuspend", 1, apocBrPhaseStart);
+                    pathfindPaused = true;
+                }
+
+                this.processDeferredUnloads();
             }
             ApocBRServerTelemetry.recordServerMapPostPhaseSince("loop", apocBrLoadedCellsAtStart, apocBrLoopStart);
         } catch (Exception var10) {
@@ -953,6 +1137,30 @@ public class ServerMap {
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
+        private static final boolean DEFERRED_UNLOAD_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.deferredCellUnload", "true"));
+        private static final boolean DEFERRED_UNLOAD_ALLOW_COOP = "true".equalsIgnoreCase(System.getProperty("apocbr.deferredCellUnloadInCoop", "false"));
+        private static final int DEFERRED_UNLOAD_MODE = DEFERRED_UNLOAD_ENABLED ? 1 : 0;
+        private static final int DEFERRED_UNLOAD_MAX_TICKS = Math.max(1, Integer.getInteger("apocbr.unload.maxTicks", 3));
+        private static final int DEFERRED_UNLOAD_MAX_MS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.unload.maxMsPerTick", 8));
+        private static final long DEFERRED_UNLOAD_MAX_NANOS_PER_TICK = DEFERRED_UNLOAD_MAX_MS_PER_TICK * 1000000L;
+        private static final int DEFERRED_UNLOAD_MAX_CELLS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.unload.maxCellsPerTick", 4));
+        private static final int DEFERRED_UNLOAD_SLICES_PER_TICK = Math.max(1, Integer.getInteger("apocbr.unload.slicesPerTick", 8));
+        private static final int DEFERRED_UNLOAD_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.squaresPerSlice", 1024));
+        private static final boolean DEFERRED_UNLOAD_IDLE_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.unload.idleEnabled", "true"));
+        private static final int DEFERRED_UNLOAD_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.unload.idleMaxMs", 4));
+        private static final long DEFERRED_UNLOAD_IDLE_MAX_NANOS = DEFERRED_UNLOAD_IDLE_MAX_MS * 1000000L;
+        private static final int DEFERRED_UNLOAD_IDLE_MAX_CELLS = Math.max(1, Integer.getInteger("apocbr.unload.idleMaxCells", 8));
+        private static final int DEFERRED_UNLOAD_IDLE_SLICES = Math.max(1, Integer.getInteger("apocbr.unload.idleSlices", 16));
+        private static final int DEFERRED_UNLOAD_IDLE_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.idleSquaresPerSlice", 1024));
+        private boolean deferredUnloadQueued;
+        private long deferredUnloadQueuedAtMs;
+        private long deferredUnloadQueuedAtTick;
+        private int deferredUnloadChunkX;
+        private int deferredUnloadChunkY;
+
+        public static boolean isDeferredUnloadEnabled() {
+            return DEFERRED_UNLOAD_ENABLED && (DEFERRED_UNLOAD_ALLOW_COOP || CoopSlave.instance == null);
+        }
         /**
          * Each submitted cell spends most of its RecalcAll2() time parked in
          * ApocBRMainThreadOrchestrator.submitAndWait() (native chunk registration, then
@@ -1302,6 +1510,108 @@ public class ServerMap {
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2RoomsInc", apocBrUnits, apocBrPhaseStart);
 
             this.isLoaded = true;
+        }
+
+        public boolean beginDeferredUnload(long currentUnloadTick) {
+            if (!this.isLoaded || this.deferredUnloadQueued) {
+                return false;
+            }
+
+            if (ServerMap.mapLoading) {
+                DebugType.MapLoading
+                    .debugln(
+                        "Queueing deferred unload cell: "
+                            + this.wx
+                            + ", "
+                            + this.wy
+                            + " ("
+                            + ServerMap.instance.toWorldCellX(this.wx)
+                            + ", "
+                            + ServerMap.instance.toWorldCellY(this.wy)
+                            + ")"
+                    );
+            }
+
+            this.isLoaded = false;
+            this.deferredUnloadQueued = true;
+            this.deferredUnloadQueuedAtMs = System.currentTimeMillis();
+            this.deferredUnloadQueuedAtTick = currentUnloadTick;
+            this.deferredUnloadChunkX = 0;
+            this.deferredUnloadChunkY = 0;
+            return true;
+        }
+
+        public long getDeferredUnloadQueuedAtMs() {
+            return this.deferredUnloadQueuedAtMs;
+        }
+
+        public long getDeferredUnloadAgeTicks(long currentUnloadTick) {
+            return Math.max(0L, currentUnloadTick - this.deferredUnloadQueuedAtTick);
+        }
+
+        public boolean processDeferredUnloadSlice(int maxSquares) {
+            if (!this.deferredUnloadQueued) {
+                return true;
+            }
+
+            int squaresLeft = Math.max(64, maxSquares);
+
+            while (this.deferredUnloadChunkX < 8) {
+                IsoChunk chunk = this.chunks[this.deferredUnloadChunkX][this.deferredUnloadChunkY];
+                if (chunk != null) {
+                    if (!chunk.isRemoveFromWorldStarted()) {
+                        long phaseStart = ApocBRServerTelemetry.beginDetail();
+                        chunk.beginRemoveFromWorld();
+                        ApocBRServerTelemetry.recordServerMapUnloadPhase("chunkGlobal", 1, System.nanoTime() - phaseStart);
+                    }
+
+                    long phaseStart = ApocBRServerTelemetry.beginDetail();
+                    boolean finishedChunkSquares = chunk.processRemoveFromWorldSquares(squaresLeft);
+                    ApocBRServerTelemetry.recordServerMapUnloadPhase("squareTeardown", 1, System.nanoTime() - phaseStart);
+                    if (!finishedChunkSquares) {
+                        return false;
+                    }
+
+                    squaresLeft -= Math.max(64, (chunk.maxLevel - chunk.minLevel + 1) * 64);
+
+                    phaseStart = ApocBRServerTelemetry.beginDetail();
+                    chunk.finishRemoveFromWorld();
+                    chunk.loadVehiclesObject = null;
+
+                    for (int i = 0; i < chunk.vehicles.size(); i++) {
+                        BaseVehicle vehicle = chunk.vehicles.get(i);
+                        VehiclesDB2.instance.updateVehicle(vehicle);
+                    }
+                    ApocBRServerTelemetry.recordServerMapUnloadPhase("vehicleSave", chunk.vehicles.size(), System.nanoTime() - phaseStart);
+
+                    phaseStart = ApocBRServerTelemetry.beginDetail();
+                    chunkLoader.addSaveUnloadedJob(chunk);
+                    this.chunks[this.deferredUnloadChunkX][this.deferredUnloadChunkY] = null;
+                    ApocBRServerTelemetry.recordServerMapUnloadPhase("saveEnqueue", 1, System.nanoTime() - phaseStart);
+                }
+
+                this.deferredUnloadChunkY++;
+                if (this.deferredUnloadChunkY >= 8) {
+                    this.deferredUnloadChunkY = 0;
+                    this.deferredUnloadChunkX++;
+                }
+
+                if (squaresLeft <= 0 && this.deferredUnloadChunkX < 8) {
+                    return false;
+                }
+            }
+
+            for (RoomDef def : this.unexploredRooms) {
+                def.indoorZombies--;
+            }
+
+            this.unexploredRooms.clear();
+            this.deferredUnloadQueued = false;
+            this.deferredUnloadQueuedAtMs = 0L;
+            this.deferredUnloadQueuedAtTick = 0L;
+            this.deferredUnloadChunkX = 0;
+            this.deferredUnloadChunkY = 0;
+            return true;
         }
 
         public void Unload() {

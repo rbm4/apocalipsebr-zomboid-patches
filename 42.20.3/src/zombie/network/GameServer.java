@@ -978,7 +978,18 @@ public class GameServer {
                         if (delay > 0L) {
                             long apocBrSleepStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             try {
-                                Thread.sleep(delay);
+                                long remainingDelay = delay;
+                                if (delay > 1L) {
+                                    long idleStart = System.nanoTime();
+                                    long idleBudgetNanos = (delay - 1L) * 1000000L;
+                                    ServerMap.instance.processDeferredUnloadsInIdleWindow(idleBudgetNanos);
+                                    long idleElapsedMs = (System.nanoTime() - idleStart + 999999L) / 1000000L;
+                                    remainingDelay = Math.max(0L, delay - idleElapsedMs);
+                                }
+
+                                if (remainingDelay > 0L) {
+                                    Thread.sleep(remainingDelay);
+                                }
                             } catch (InterruptedException var39) {
                                 DebugType.General.printException(var39, "", LogSeverity.Error);
                             } finally {
