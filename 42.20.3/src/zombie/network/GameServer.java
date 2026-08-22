@@ -236,6 +236,7 @@ public class GameServer {
     public static String ipCommandline;
     public static int portCommandline = -1;
     public static int udpPortCommandline = -1;
+    public static int chunkGridWidthCommandline = -1;
     public static Boolean steamVacCommandline;
     public static boolean guiCommandline;
     public static boolean server;
@@ -400,6 +401,36 @@ public class GameServer {
         return false;
     }
 
+    private static int parseChunkGridWidthFromCommandline(String value, String option) {
+        if (value.trim().isEmpty()) {
+            DebugLog.log("empty argument given to \"" + option + "\"");
+            System.exit(0);
+        }
+
+        try {
+            int range = Integer.parseInt(value.trim());
+            if (range < 5 || range > 20 || range % 2 == 0) {
+                DebugLog.log("expected an odd integer from 5 to 19 after \"" + option + "\"");
+                System.exit(0);
+            }
+
+            return range;
+        } catch (NumberFormatException var3) {
+            DebugLog.log("expected an integer after \"" + option + "\"");
+            System.exit(0);
+            return -1;
+        }
+    }
+
+    private static int parseChunkGridWidthFromCommandline(String[] args, int n, String option) {
+        if (n == args.length - 1) {
+            DebugLog.log("expected argument after \"" + option + "\"");
+            System.exit(0);
+        }
+
+        return parseChunkGridWidthFromCommandline(args[n + 1], option);
+    }
+
     public static void setupCoop() throws FileNotFoundException {
         CoopSlave.init();
     }
@@ -534,6 +565,11 @@ public class GameServer {
                         } else if (args[nx].equals("-steamvac")) {
                             steamVacCommandline = parseBooleanFromCommandline(args, nx, "-steamvac");
                             nx++;
+                        } else if (args[nx].equals("-chunkgridwidth")) {
+                            chunkGridWidthCommandline = parseChunkGridWidthFromCommandline(args, nx, "-chunkgridwidth");
+                            nx++;
+                        } else if (args[nx].startsWith("-chunkgridwidth=")) {
+                            chunkGridWidthCommandline = parseChunkGridWidthFromCommandline(args[nx].replace("-chunkgridwidth=", ""), "-chunkgridwidth");
                         } else if (args[nx].equals("-servername")) {
                             if (nx == args.length - 1) {
                                 DebugLog.log("expected argument after \"-servername\"");
@@ -2900,7 +2936,8 @@ public class GameServer {
         int playerIndex = bb.getByte();
         DebugType.DetailedInfo.trace("User: \"%s\" index=%d ip=%s is trying to connect", username, playerIndex, connection.getIP());
         if (playerIndex >= 0 && playerIndex < 4 && connection.getPlayerAt(playerIndex) == null) {
-            byte range = (byte)Math.max(12, Math.min(20, bb.getByte()));
+            byte requestedRange = bb.getByte();
+            byte range = (byte)(chunkGridWidthCommandline != -1 ? chunkGridWidthCommandline : Math.max(12, Math.min(20, requestedRange)));
             connection.setRelevantRange((byte)(range / 2 + 2));
             IsoPlayer player;
             ApocBRServerTelemetry.recordNetHighDetail("PlayerConnect|parseHeader", 1, System.nanoTime() - apocBrPhaseStart);
