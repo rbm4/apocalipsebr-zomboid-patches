@@ -4024,12 +4024,12 @@ public final class IsoChunk {
 
         this.roomLights.clear();
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.randomizeBuildingsEtcLoadGridSquareIfNeeded", () -> {
+            ServerMap.submitLoad2MainThreadTask("IsoChunk.randomizeBuildingsEtcLoadGridSquareIfNeeded", () -> {
                 this.randomizeBuildingsEtcMainThread();
                 this.loadGridSquaresIfNeededMainThread();
             });
         } else {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.loadGridSquareIfNeededBatch", this::loadGridSquaresIfNeededMainThread);
+            ServerMap.submitLoad2MainThreadTask("IsoChunk.loadGridSquareIfNeededBatch", this::loadGridSquaresIfNeededMainThread);
         }
 
         // ApocBR: checkAdjacentChunks() writes into a *neighbouring* IsoChunk's
@@ -4122,8 +4122,9 @@ public final class IsoChunk {
         IsoGridSquare[] batch = squares.toArray(new IsoGridSquare[squares.size()]);
         squares.clear();
         boolean apocBRAddZombies = this.addZombies;
+        boolean apocBRIsNewChunk = this.isNewChunk();
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.erosionMapObjectsLoadGridSquareBatch", () -> {
+            ServerMap.submitLoad2MainThreadTask("IsoChunk.erosionMapObjectsLoadGridSquareBatch", () -> {
                 for (IsoGridSquare square : batch) {
                     ErosionMain.LoadGridsquare(square);
                 }
@@ -4135,9 +4136,12 @@ public final class IsoChunk {
 
                     MapObjects.loadGridSquare(square);
                 }
+
+                this.triggerLoadGridsquareBatch(batch);
+                this.finishLoadGridsquareBatch(batch, apocBRIsNewChunk);
             });
         } else {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.mapObjectsLoadGridSquareBatch", () -> {
+            ServerMap.submitLoad2MainThreadTask("IsoChunk.mapObjectsLoadGridSquareBatch", () -> {
                 for (IsoGridSquare square : batch) {
                     if (apocBRAddZombies) {
                         MapObjects.newGridSquare(square);
@@ -4145,27 +4149,32 @@ public final class IsoChunk {
 
                     MapObjects.loadGridSquare(square);
                 }
+
+                this.triggerLoadGridsquareBatch(batch);
+                this.finishLoadGridsquareBatch(batch, apocBRIsNewChunk);
             });
         }
+    }
 
-        if (this.isNewChunk()) {
+    private void finishLoadGridsquareBatch(IsoGridSquare[] batch, boolean apocBRIsNewChunk) {
+        if (apocBRIsNewChunk) {
             for (IsoGridSquare square : batch) {
                 this.addRatsAfterLoading(square);
             }
         }
 
-        ServerMap.runLoad2MainThreadTask("LuaEvent.LoadGridsquareBatch", () -> {
-            for (IsoGridSquare square : batch) {
-                try {
-                    LuaEventManager.triggerEvent("LoadGridsquare", square);
-                } catch (Throwable var15) {
-                    ExceptionLogger.logException(var15);
-                }
-            }
-        });
-
         for (IsoGridSquare square : batch) {
             this.addStaticMovingObjectsToWorld(square);
+        }
+    }
+
+    private void triggerLoadGridsquareBatch(IsoGridSquare[] batch) {
+        for (IsoGridSquare square : batch) {
+            try {
+                LuaEventManager.triggerEvent("LoadGridsquare", square);
+            } catch (Throwable var15) {
+                ExceptionLogger.logException(var15);
+            }
         }
     }
 

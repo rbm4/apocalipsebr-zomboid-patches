@@ -97,6 +97,19 @@ public class ServerMap {
         ServerMap.ServerCell.load2MainThread.submitAndWait(label, task);
     }
 
+    public static void submitLoad2MainThreadTask(String label, Runnable task) {
+        if (task == null) {
+            return;
+        }
+
+        if (!GameServer.server || GameServer.mainThread == null) {
+            task.run();
+            return;
+        }
+
+        ServerMap.ServerCell.load2MainThreadDeferred.submit(label, task);
+    }
+
     public static void runLoad2ChunkRegistrations(IsoChunk chunk) {
         if (chunk == null) {
             return;
@@ -959,6 +972,11 @@ public class ServerMap {
             "load2MainTask",
             "load2PumpIdleWait"
         );
+        private static final ApocBRMainThreadOrchestrator load2MainThreadDeferred = new ApocBRMainThreadOrchestrator(
+            "load2MainDeferredPump",
+            "load2MainDeferredTask",
+            "load2DeferredPumpIdleWait"
+        );
         /**
          * Load2 mutates shared, cross-cell world state: EnsureSurroundNotNull()/createNewGridSquare()
          * write directly into a neighbouring ServerCell's grid-square storage for cells across a border.
@@ -1012,9 +1030,12 @@ public class ServerMap {
                 }
 
                 load2MainThread.pumpUntil(latch);
+                load2MainThread.drainAll();
+                load2MainThreadDeferred.drainAll();
             }
 
             load2MainThread.drainAll();
+            load2MainThreadDeferred.drainAll();
         }
 
         private void loadVehicles() {
