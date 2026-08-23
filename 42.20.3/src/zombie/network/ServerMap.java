@@ -13,6 +13,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import zombie.ApocBRMainThreadOrchestrator;
 import zombie.ApocBRServerTelemetry;
 import zombie.core.logger.ExceptionLogger;
@@ -617,7 +618,18 @@ public class ServerMap {
 
                     long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
                     for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
-                        this.toLoad.remove(ServerMap.ServerCell.loaded2.get(x));
+                        ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
+                        this.toLoad.remove(cell);
+                        if (cell.loadingWasCancelled && !cell.isLoaded) {
+                            int cx = cell.wx - this.getMinX();
+                            int cy = cell.wy - this.getMinY();
+                            if (!this.isInvalidCell(cx, cy) && this.cellMap[cx + cy * this.width] == cell) {
+                                this.cellMap[cx + cy * this.width] = null;
+                            }
+
+                            this.loadedCells.remove(cell);
+                            this.releventNow.remove(cell);
+                        }
                     }
                     ServerMap.ServerCell.loaded2.clear();
                     ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", apocBrUnits, apocBrRemoveStart);
@@ -1152,6 +1164,7 @@ public class ServerMap {
         private static final int DEFERRED_UNLOAD_IDLE_MAX_CELLS = Math.max(1, Integer.getInteger("apocbr.unload.idleMaxCells", 8));
         private static final int DEFERRED_UNLOAD_IDLE_SLICES = Math.max(1, Integer.getInteger("apocbr.unload.idleSlices", 16));
         private static final int DEFERRED_UNLOAD_IDLE_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.idleSquaresPerSlice", 1024));
+        private static final long LOAD2_CHUNK_FINISH_TIMEOUT_MS = Math.max(1000L, Long.getLong("apocbr.load2ChunkFinishTimeoutMs", 1000L));
         private boolean deferredUnloadQueued;
         private long deferredUnloadQueuedAtMs;
         private long deferredUnloadQueuedAtTick;
@@ -1228,8 +1241,11 @@ public class ServerMap {
                                 float time = (float)(System.nanoTime() - start) / 1000000.0F;
                                 DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
                             }
-                        } catch (Exception e) {
-                            ExceptionLogger.logException(e);
+                        } catch (Throwable t) {
+                            cell.cancelLoading = true;
+                            cell.loadingWasCancelled = true;
+                            cell.isLoaded = false;
+                            ExceptionLogger.logException(t);
                         } finally {
                             latch.countDown();
                             load2MainThread.signalWorkAvailable();
@@ -1237,7 +1253,13 @@ public class ServerMap {
                     });
                 }
 
-                load2MainThread.pumpUntil(latch);
+                if (!load2MainThread.pumpUntil(latch)) {
+                    for (ServerMap.ServerCell cell : group) {
+                        cell.cancelLoading = true;
+                        cell.loadingWasCancelled = true;
+                        cell.isLoaded = false;
+                    }
+                }
                 load2MainThread.drainAll();
                 load2MainThreadDeferred.drainAll();
             }
@@ -1491,7 +1513,18 @@ public class ServerMap {
                 }
 
                 try {
-                    chunkFinishLatch.await();
+                    if (!chunkFinishLatch.await(LOAD2_CHUNK_FINISH_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
+                        throw new RuntimeException(
+                            "Timed out waiting for load2 chunk finish tasks in cell "
+                                + this.wx
+                                + ","
+                                + this.wy
+                                + " after "
+                                + LOAD2_CHUNK_FINISH_TIMEOUT_MS
+                                + " ms, remaining="
+                                + chunkFinishLatch.getCount()
+                        );
+                    }
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }

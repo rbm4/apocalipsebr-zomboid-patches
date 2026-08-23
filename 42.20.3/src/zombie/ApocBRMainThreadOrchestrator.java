@@ -3,14 +3,18 @@ package zombie;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import zombie.core.logger.ExceptionLogger;
 import zombie.debug.DebugLog;
 import zombie.network.GameServer;
 
 public final class ApocBRMainThreadOrchestrator {
     private static final long PUMP_WAIT_NANOS = TimeUnit.MILLISECONDS.toNanos(1L);
+    private static final long PUMP_TIMEOUT_NANOS = TimeUnit.MILLISECONDS.toNanos(Math.max(1000L, Long.getLong("apocbr.load2PumpTimeoutMs", 1000L)));
+    private static final long TASK_TIMEOUT_NANOS = TimeUnit.MILLISECONDS.toNanos(Math.max(1000L, Long.getLong("apocbr.mainThreadTaskTimeoutMs", 1000L)));
     private final ConcurrentLinkedQueue<ApocBRMainThreadOrchestrator.Task> queue = new ConcurrentLinkedQueue<>();
     private final Semaphore wakeSignal = new Semaphore(0);
     private final String pumpPhase;
@@ -54,17 +58,37 @@ public final class ApocBRMainThreadOrchestrator {
         this.queue.offer(new ApocBRMainThreadOrchestrator.Task(label, runnable, future));
         this.wakeSignal.release();
         ApocBRServerTelemetry.recordMainThreadTaskSubmitted(label);
-        future.join();
+        try {
+            future.get(TASK_TIMEOUT_NANOS, TimeUnit.NANOSECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Interrupted waiting for main-thread task " + label, e);
+        } catch (TimeoutException e) {
+            RuntimeException timeout = new RuntimeException(
+                "Timed out waiting for main-thread task "
+                    + label
+                    + " after "
+                    + TimeUnit.NANOSECONDS.toMillis(TASK_TIMEOUT_NANOS)
+                    + " ms"
+            );
+            future.completeExceptionally(timeout);
+            DebugLog.log("[ApocBR] " + timeout.getMessage());
+            throw timeout;
+        } catch (ExecutionException e) {
+            throw new RuntimeException("Main-thread task failed " + label, e.getCause());
+        }
     }
 
     public void signalWorkAvailable() {
         this.wakeSignal.release();
     }
 
-    public void pumpUntil(CountDownLatch latch) {
+    public boolean pumpUntil(CountDownLatch latch) {
         this.assertMainThread("pumpUntil");
         long pumpStart = ApocBRServerTelemetry.beginDetail();
+        long deadline = System.nanoTime() + PUMP_TIMEOUT_NANOS;
         int drained = 0;
+        boolean timedOut = false;
 
         while ((latch != null && latch.getCount() > 0L) || !this.queue.isEmpty()) {
             ApocBRMainThreadOrchestrator.Task task = this.queue.poll();
@@ -75,6 +99,21 @@ public final class ApocBRMainThreadOrchestrator {
             }
 
             if (latch != null && latch.getCount() > 0L) {
+                if (System.nanoTime() >= deadline) {
+                    timedOut = true;
+                    DebugLog.log(
+                        "[ApocBR] Main-thread orchestrator "
+                            + this.pumpPhase
+                            + " timed out after "
+                            + TimeUnit.NANOSECONDS.toMillis(PUMP_TIMEOUT_NANOS)
+                            + " ms, latchRemaining="
+                            + latch.getCount()
+                            + ", queued="
+                            + this.queue.size()
+                    );
+                    break;
+                }
+
                 if (this.queue.isEmpty()) {
                     this.wakeSignal.drainPermits();
                 }
@@ -92,6 +131,7 @@ public final class ApocBRMainThreadOrchestrator {
         }
 
         ApocBRServerTelemetry.recordServerMapPrePhaseSince(this.pumpPhase, drained, pumpStart);
+        return !timedOut;
     }
 
     public void drainAll() {
