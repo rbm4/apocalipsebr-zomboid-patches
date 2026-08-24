@@ -1,4 +1,5 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
+// ApocBR patched: see the ApocBR comments below.
 package zombie.core.raknet;
 
 import java.net.ConnectException;
@@ -31,11 +32,39 @@ import zombie.network.GameClient;
 import zombie.network.GameServer;
 import zombie.network.PacketTypes;
 import zombie.network.RequestDataManager;
+import zombie.network.ZomboidNetDataPool;
 import zombie.network.anticheats.AntiCheat;
 import zombie.network.packets.INetworkPacket;
 import zombie.popman.NetworkZombieManager;
 
 public class UdpEngine {
+    // ApocBR: this was previously a hardcoded SetTimeoutTime(2000). Vanilla never calls it at all,
+    // so RakNet would otherwise use its compiled-in 10000ms default.
+    //
+    // 2000ms is dangerously tight on a host under swap pressure. RakNet expires EVERY connection
+    // once the Java side stops emitting traffic for this long, so any single stall past the
+    // threshold disconnects the entire server in the same second, with no exception and no OOM.
+    // A ZGC old-generation cycle walking a multi-gigabyte live set that is partly paged out
+    // routinely exceeds 2 seconds, which makes a 2000ms timeout effectively a scheduled outage.
+    // The tick loop itself never gets near this: measured worst-case tick is ~265ms.
+    //
+    // Why 12000 and not something larger: RakNet timeouts are evaluated independently by each side,
+    // and clients run the vanilla default of 10000ms. Any server value above that is dead weight,
+    // because the client will have already given up and dropped the player. All a larger number
+    // achieves is holding a dead connection, and its per-connection memory and player slot, long
+    // after the human is back at the main menu. Sitting just above the client's threshold means the
+    // server is never the side that pulls the trigger, without babysitting corpses. A stall long
+    // enough to breach this is unplayable anyway: a clean disconnect beats a frozen client.
+    private static final int RAKNET_TIMEOUT_MS = Integer.getInteger("apocbr.raknetTimeoutMs", 12000);
+    // ApocBR: unreliable packets older than this are dropped inside RakNet instead of being handed
+    // to Java. During a stall this stops a backlog of stale position updates from being copied
+    // onto the heap only to be discarded by the main loop moments later.
+    private static final int RAKNET_UNRELIABLE_TIMEOUT_MS = Integer.getInteger("apocbr.raknetUnreliableTimeoutMs", 2000);
+    // ApocBR: the UdpEngine thread is the only thing keeping connections alive. Vanilla leaves it
+    // at NORM_PRIORITY, below ServerChunkLoader's RecalcAll thread (priority 10). Under CPU steal
+    // and swap it must not be the thread that loses the scheduler race.
+    private static final boolean RAISE_THREAD_PRIORITY = !"false".equalsIgnoreCase(System.getProperty("apocbr.raknetThreadPriority"));
+
     private final int maxConnections;
     private final Map<Long, UdpConnection> connectionMap = new HashMap<>();
     public final List<UdpConnection> connections = new ArrayList<>();
@@ -48,6 +77,9 @@ public class UdpEngine {
     private final Thread thread;
     private volatile boolean quit;
     UdpConnection[] connectionArray = new UdpConnection[256];
+    // ApocBR: primitive mirror of the GUIDs in connectionArray, so the receive path can resolve a
+    // connection without boxing a Long. See lookupConnectionNoAlloc.
+    private final long[] connectionGuidArray = new long[256];
     ByteBufferReader buf = new ByteBufferReader(ByteBuffer.allocate(1000000));
 
     public UdpEngine(int port, int udpPort, int maxConnections, String serverPassword, boolean bListen) throws ConnectException {
@@ -75,13 +107,34 @@ public class UdpEngine {
         if (startupResult != 0) {
             throw new ConnectException("Connection Startup Failed. Code: " + startupResult);
         } else {
-            this.peer.SetTimeoutTime(2000);
+            // ApocBR: was SetTimeoutTime(2000). See RAKNET_TIMEOUT_MS above for why that value was
+            // the direct cause of whole-server disconnects. Guarded because SetUnreliableTimeout
+            // has never been exercised by vanilla; a missing JNI binding must not break startup.
+            try {
+                this.peer.SetTimeoutTime(RAKNET_TIMEOUT_MS);
+                this.peer.SetUnreliableTimeout(RAKNET_UNRELIABLE_TIMEOUT_MS);
+                DebugLog.log("[ApocBR] RakNet timeout=" + RAKNET_TIMEOUT_MS + "ms unreliableTimeout=" + RAKNET_UNRELIABLE_TIMEOUT_MS + "ms");
+            } catch (Throwable t) {
+                DebugType.Network.printException(t, "[ApocBR] Could not apply RakNet timeouts; using RakNet defaults.", LogSeverity.Warning);
+            }
+
             if (bListen) {
                 VoiceManager.instance.InitVMServer();
+                // ApocBR: warm the packet pool before the first client connects so the UdpEngine
+                // thread never has to allocate on the receive path during a main-thread stall.
+                ZomboidNetDataPool.instance.prewarm();
             }
 
             this.thread = new Thread(ThreadGroups.Network, this::threadRun, "UdpEngine");
             this.thread.setDaemon(true);
+            if (RAISE_THREAD_PRIORITY) {
+                try {
+                    this.thread.setPriority(Thread.MAX_PRIORITY);
+                } catch (SecurityException | IllegalArgumentException e) {
+                    DebugType.Network.printException(e, "Could not raise UdpEngine thread priority.", LogSeverity.Warning);
+                }
+            }
+
             this.thread.start();
         }
     }
@@ -296,7 +349,14 @@ public class UdpEngine {
                 short userPacketId = buf.getShort();
                 if (GameServer.server) {
                     long guidx = this.peer.getGuidOfPacket();
-                    UdpConnection con = this.connectionMap.get(guidx);
+                    // ApocBR: was connectionMap.get(guidx). connectionMap is Map<Long, ...>, so
+                    // passing a primitive long autoboxed a fresh Long on EVERY packet: RakNet GUIDs
+                    // are far outside the Long.valueOf cache, so none of them were shared. That is
+                    // an allocation on the UdpEngine thread on the hottest path in the server,
+                    // which is exactly what must not happen: a thread that allocates can be parked
+                    // by ZGC in an allocation stall, and a parked UdpEngine thread drops everyone.
+                    // The array scan below is allocation-free and bounded by maxConnections.
+                    UdpConnection con = this.lookupConnectionNoAlloc(guidx);
                     if (con == null) {
                         DebugType.Network.warn("GOT PACKET FROM UNKNOWN CONNECTION guid=%d packetId=%d", guidx, userPacketId);
                         return;
@@ -322,6 +382,8 @@ public class UdpEngine {
         if (con != null) {
             if (this.connectionArray[con.getIndex()] == con) {
                 this.connectionArray[con.getIndex()] = null;
+                // ApocBR: keep the primitive GUID mirror in step with connectionArray.
+                this.connectionGuidArray[con.getIndex()] = 0L;
             }
 
             if (GameClient.client) {
@@ -349,10 +411,37 @@ public class UdpEngine {
         }
     }
 
+    /**
+     * ApocBR: allocation-free GUID lookup for the packet receive path.
+     *
+     * <p>Scans a primitive {@code long[]} kept in step with {@code connectionArray}. Worst case is
+     * 256 sequential comparisons over a 2 KB array, which is cheaper than the hash lookup it
+     * replaces once the boxing is counted, and more importantly it allocates nothing. The
+     * {@code connectionMap} remains the authority for connect and disconnect, which are rare enough
+     * that their boxing does not matter.
+     */
+    private UdpConnection lookupConnectionNoAlloc(long guid) {
+        for (int i = 0; i < this.connectionGuidArray.length; i++) {
+            if (this.connectionGuidArray[i] == guid) {
+                UdpConnection candidate = this.connectionArray[i];
+                if (candidate != null) {
+                    return candidate;
+                }
+            }
+        }
+
+        // ApocBR: fall back to the authoritative map on a miss. removeConnection only clears the
+        // connectionArray slot when it still points at the same connection, so the mirror can in
+        // principle lag the map. Falling back keeps behaviour byte-for-byte identical to vanilla and
+        // pays the boxing cost only in the rare miss, never on the steady-state hot path.
+        return this.connectionMap.get(guid);
+    }
+
     private UdpConnection addConnection(int id, long guid) {
         UdpConnection connection = new UdpConnection(this, guid, id);
         this.connectionMap.put(guid, connection);
         this.connectionArray[id] = connection;
+        this.connectionGuidArray[id] = guid;
         if (GameServer.server) {
             GameServer.addConnection(connection);
         }

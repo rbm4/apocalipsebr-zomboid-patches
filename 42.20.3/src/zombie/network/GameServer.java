@@ -24,6 +24,8 @@ import java.util.Set;
 import java.util.Map.Entry;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.LongAdder;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import se.krka.kahlua.vm.KahluaTable;
@@ -269,6 +271,25 @@ public class GameServer {
     private static boolean done;
     private static boolean launched;
     private static final ArrayList<String> consoleCommands = new ArrayList<>();
+    // ApocBR: depth tracking for the three main-loop queues. ConcurrentLinkedQueue.size() is O(n)
+    // so it cannot be called on the receive path; keep explicit counters instead.
+    //
+    // Why bound all three: with the RakNet timeout widened from 2000ms to 45s the server is now
+    // expected to survive stalls twenty times longer than before. Unbounded queues would turn that
+    // survivability into an OutOfMemoryError, because the UdpEngine thread keeps enqueuing for the
+    // whole stall. The caps put a hard, predictable ceiling on in-flight packet memory:
+    // (sum of caps) * 2 KB. They are the reason the pool does not need to be sized for the burst.
+    private static final int APOCBR_PLAYER_Q_MAX_DEPTH = Math.max(64, Integer.getInteger("apocbr.playerUpdateQueueMaxDepth", 4096));
+    private static final int APOCBR_HIGH_Q_MAX_DEPTH = Math.max(1024, Integer.getInteger("apocbr.highPriorityQueueMaxDepth", 16384));
+    private static final int APOCBR_NORMAL_Q_MAX_DEPTH = Math.max(64, Integer.getInteger("apocbr.normalQueueMaxDepth", 4096));
+    private static final AtomicInteger APOCBR_PLAYER_Q_DEPTH = new AtomicInteger();
+    private static final AtomicInteger APOCBR_HIGH_Q_DEPTH = new AtomicInteger();
+    private static final AtomicInteger APOCBR_NORMAL_Q_DEPTH = new AtomicInteger();
+    private static final LongAdder apocBrPlayerQDropped = new LongAdder();
+    private static final LongAdder apocBrHighQDropped = new LongAdder();
+    private static final LongAdder apocBrNormalQDropped = new LongAdder();
+    private static final LongAdder apocBrPacketsReclaimed = new LongAdder();
+    private static volatile long apocBrHighQDropLogged;
     private static final ConcurrentLinkedQueue<IZomboidPacket> MainLoopPlayerUpdateQ = new ConcurrentLinkedQueue<>();
     private static final ConcurrentLinkedQueue<IZomboidPacket> MainLoopNetDataHighPriorityQ = new ConcurrentLinkedQueue<>();
     private static final ConcurrentLinkedQueue<IZomboidPacket> MainLoopNetDataQ = new ConcurrentLinkedQueue<>();
@@ -857,6 +878,7 @@ public class GameServer {
 
                     long apocBrNetPhaseStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                     for (IZomboidPacket data = MainLoopNetDataHighPriorityQ.poll(); data != null; data = MainLoopNetDataHighPriorityQ.poll()) {
+                        APOCBR_HIGH_Q_DEPTH.decrementAndGet();
                         MainLoopNetData2.add(data);
                     }
 
@@ -902,6 +924,7 @@ public class GameServer {
 
                     apocBrNetPhaseStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                     for (IZomboidPacket data = MainLoopPlayerUpdateQ.poll(); data != null; data = MainLoopPlayerUpdateQ.poll()) {
+                        APOCBR_PLAYER_Q_DEPTH.decrementAndGet();
                         MainLoopNetData2.add(data);
                     }
 
@@ -922,6 +945,7 @@ public class GameServer {
 
                     apocBrNetPhaseStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                     for (IZomboidPacket data = MainLoopNetDataQ.poll(); data != null; data = MainLoopNetDataQ.poll()) {
+                        APOCBR_NORMAL_Q_DEPTH.decrementAndGet();
                         MainLoopNetData2.add(data);
                     }
 
@@ -943,6 +967,19 @@ public class GameServer {
                             droppedPackets += 2;
                             countOfDroppedPackets = countOfDroppedPackets + (MainLoopNetData2.size() - nxxx);
                             apocBrNormalDropped = MainLoopNetData2.size() - nxxx;
+
+                            // ApocBR: vanilla broke out here without returning the skipped buffers
+                            // to the pool. That drains the pool precisely when the server is
+                            // already too busy, so the next tick allocates for every packet on the
+                            // UdpEngine thread and the overload feeds itself. Reclaim them.
+                            for (int apocBrDrop = nxxx; apocBrDrop < MainLoopNetData2.size(); apocBrDrop++) {
+                                IZomboidPacket dropped = MainLoopNetData2.get(apocBrDrop);
+                                if (dropped instanceof ZomboidNetData droppedData) {
+                                    ZomboidNetDataPool.instance.discard(droppedData);
+                                    apocBrPacketsReclaimed.increment();
+                                }
+                            }
+
                             break;
                         }
 
@@ -1652,6 +1689,12 @@ public class GameServer {
                 try {
                     if (connection == null) {
                         DebugLog.log(DebugType.Network, "Received packet type=" + d.type.name() + " connection is null.");
+                        // ApocBR: vanilla returned without discarding. Every packet still queued
+                        // for a connection that has just gone away leaked its pooled buffer, so a
+                        // mass disconnect permanently drained the pool right when the server was
+                        // least able to absorb the extra allocation.
+                        ZomboidNetDataPool.instance.discard(d);
+                        apocBrPacketsReclaimed.increment();
                         return;
                     }
 
@@ -3231,16 +3274,95 @@ public class GameServer {
             } catch (Exception var5) {
                 DebugType.General.printException(var5, "", LogSeverity.Error);
             }
+
+            // ApocBR: vanilla dropped this buffer on the floor instead of returning it to the
+            // pool. Under a packet-id flood that silently drains the pool and forces the
+            // UdpEngine thread to allocate on every subsequent packet.
+            ZomboidNetDataPool.instance.discard(d);
         } else {
             d.time = System.currentTimeMillis();
             if (d.type == PacketTypes.PacketType.PlayerUpdateUnreliable || d.type == PacketTypes.PacketType.PlayerUpdateReliable) {
-                MainLoopPlayerUpdateQ.add(d);
+                // ApocBR: position updates are the safest thing to shed. They are already stale by
+                // the time a stalled main thread wakes up, so dropping the oldest costs nothing
+                // and immediately returns the buffer to the pool.
+                apocBrEnqueue(MainLoopPlayerUpdateQ, APOCBR_PLAYER_Q_DEPTH, APOCBR_PLAYER_Q_MAX_DEPTH, apocBrPlayerQDropped, d);
             } else if (d.type != PacketTypes.PacketType.VehiclePhysicsReliable && d.type != PacketTypes.PacketType.VehiclePhysicsUnreliable) {
-                MainLoopNetDataHighPriorityQ.add(d);
+                // ApocBR: this queue carries gameplay-critical traffic (Login, ClientCommand,
+                // combat), so its cap is deliberately high and reaching it is an emergency, not
+                // normal shedding. Dropping here loses game state, but the alternative during a
+                // long stall is an OutOfMemoryError that loses the whole server. Log it loudly.
+                int before = APOCBR_HIGH_Q_DEPTH.get();
+                apocBrEnqueue(MainLoopNetDataHighPriorityQ, APOCBR_HIGH_Q_DEPTH, APOCBR_HIGH_Q_MAX_DEPTH, apocBrHighQDropped, d);
+                if (before >= APOCBR_HIGH_Q_MAX_DEPTH) {
+                    long now = System.currentTimeMillis();
+                    if (now - apocBrHighQDropLogged > 5000L) {
+                        apocBrHighQDropLogged = now;
+                        DebugLog.log(
+                            "[ApocBR] High-priority packet queue saturated at "
+                                + APOCBR_HIGH_Q_MAX_DEPTH
+                                + "; shedding gameplay packets. Main thread is stalled. Total dropped="
+                                + apocBrHighQDropped.sum()
+                        );
+                    }
+                }
             } else {
-                MainLoopNetDataQ.add(d);
+                apocBrEnqueue(MainLoopNetDataQ, APOCBR_NORMAL_Q_DEPTH, APOCBR_NORMAL_Q_MAX_DEPTH, apocBrNormalQDropped, d);
             }
         }
+    }
+
+    /**
+     * ApocBR: bounded enqueue with drop-oldest. Keeps in-flight packet memory capped so a long
+     * main-thread stall degrades gracefully instead of exhausting the heap, and recycles the
+     * dropped buffer straight back into the pool so the UdpEngine thread never has to allocate.
+     */
+    private static void apocBrEnqueue(
+        ConcurrentLinkedQueue<IZomboidPacket> queue, AtomicInteger depth, int maxDepth, LongAdder dropped, ZomboidNetData d
+    ) {
+        while (depth.get() >= maxDepth) {
+            IZomboidPacket stale = queue.poll();
+            if (stale == null) {
+                break;
+            }
+
+            depth.decrementAndGet();
+            dropped.increment();
+            if (stale instanceof ZomboidNetData staleData) {
+                ZomboidNetDataPool.instance.discard(staleData);
+            }
+        }
+
+        queue.add(d);
+        depth.incrementAndGet();
+    }
+
+    /** ApocBR: number of stale player updates dropped to keep the receive path allocation free. */
+    public static long getApocBRPlayerQueueDropped() {
+        return apocBrPlayerQDropped.sum();
+    }
+
+    /** ApocBR: gameplay packets shed because the high-priority queue hit its cap. Should stay 0. */
+    public static long getApocBRHighQueueDropped() {
+        return apocBrHighQDropped.sum();
+    }
+
+    /** ApocBR: vehicle-physics packets shed because the normal queue hit its cap. */
+    public static long getApocBRNormalQueueDropped() {
+        return apocBrNormalQDropped.sum();
+    }
+
+    /** ApocBR: number of pooled packet buffers reclaimed from queues drained at disconnect. */
+    public static long getApocBRPacketsReclaimed() {
+        return apocBrPacketsReclaimed.sum();
+    }
+
+    /** ApocBR: current in-flight depths, for telemetry. Order: player, high, normal. */
+    public static int getApocBRQueueDepth(int which) {
+        return switch (which) {
+            case 0 -> APOCBR_PLAYER_Q_DEPTH.get();
+            case 1 -> APOCBR_HIGH_Q_DEPTH.get();
+            default -> APOCBR_NORMAL_Q_DEPTH.get();
+        };
     }
 
     public static void smashWindow(IsoWindow isoWindow) {
