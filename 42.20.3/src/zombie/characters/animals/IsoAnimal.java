@@ -689,7 +689,6 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         }
     }
 
-    @Override
     public void updateStress() {
         if (!this.isWild()) {
             boolean incStress = true;
@@ -866,7 +865,6 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         }
     }
 
-    @Override
     public void initializeStates() {
         this.clearAIStateMap();
         this.registerAIState("idle", AnimalIdleState.instance());
