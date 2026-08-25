@@ -220,13 +220,14 @@ public final class ApocBRMainThreadOrchestrator {
         return (latch == null || latch.getCount() == 0L) && this.queue.isEmpty();
     }
 
-    public void drainAll() {
+    /** @return the number of tasks applied, so anchors can report their own throughput. */
+    public int drainAll() {
         // ApocBR: fast path. drainAll() is called from tick-phase anchors, not just from the load
         // pipeline, so the common case is an empty queue. Bail out before assertMainThread() and
         // beginDetail() (a nanoTime call) so an anchor that finds nothing to do costs a single
         // volatile read instead of a telemetry round trip.
         if (this.queue.isEmpty() || this.draining) {
-            return;
+            return 0;
         }
 
         this.assertMainThread("drainAll");
@@ -245,6 +246,7 @@ public final class ApocBRMainThreadOrchestrator {
         }
 
         ApocBRServerTelemetry.recordServerMapPrePhaseSince(this.pumpPhase, drained, pumpStart);
+        return drained;
     }
 
     private void runTask(ApocBRMainThreadOrchestrator.Task task) {

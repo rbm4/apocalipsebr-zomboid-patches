@@ -681,6 +681,10 @@ public class ServerMap {
      * in-tick and idle-window drivers can retire a finished job.
      */
     private void retireLoad2Job(ServerMap.ServerCell.Load2Job job) {
+        // units = slices the job consumed, so units/calls is "slices to load a cell group" and avgMs
+        // is wall time per job. Those two together say whether slicing is keeping up with demand.
+        ApocBRServerTelemetry.recordServerMapPrePhase("load2JobComplete", job.getSlices(), job.getElapsedNanos());
+
         for (ServerMap.ServerCell cell : job.getCells()) {
             this.toLoad.remove(cell);
             if (cell.loadingWasCancelled && !cell.isLoaded) {
@@ -713,12 +717,16 @@ public class ServerMap {
         }
 
         long start = System.nanoTime();
-        if (job.advance(Math.min(budgetNanos, ServerMap.ServerCell.LOAD2_IDLE_MAX_NANOS))) {
+        boolean done = job.advance(Math.min(budgetNanos, ServerMap.ServerCell.LOAD2_IDLE_MAX_NANOS));
+        long elapsed = System.nanoTime() - start;
+        ApocBRServerTelemetry.recordServerMapPrePhase("load2IdleAdvance", done ? job.getCells().size() : 0, elapsed);
+
+        if (done) {
             this.retireLoad2Job(job);
             ServerMap.ServerCell.load2Job = null;
         }
 
-        return System.nanoTime() - start;
+        return elapsed;
     }
 
     /**
@@ -737,8 +745,12 @@ public class ServerMap {
      * loop; a task drained in that window would see an 8x or 16x timestep and silently miscompute.
      */
     public static void drainLoad2MainThreadTasks() {
-        ServerMap.ServerCell.load2MainThread.drainAll();
-        ServerMap.ServerCell.load2MainThreadDeferred.drainAll();
+        long start = ApocBRServerTelemetry.beginDetail();
+        int applied = ServerMap.ServerCell.load2MainThread.drainAll();
+        applied += ServerMap.ServerCell.load2MainThreadDeferred.drainAll();
+        if (applied > 0) {
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Anchor", applied, start);
+        }
     }
 
     private void queueDeferredUnload(ServerMap.ServerCell cell) {
@@ -1327,7 +1339,9 @@ public class ServerMap {
             private CountDownLatch latch;
             private long lastProgressMs = System.currentTimeMillis();
             private long lastLatchCount = Long.MAX_VALUE;
-            private int ticks;
+            private final long startedAtNanos = System.nanoTime();
+            /** Counts advance() calls, which includes idle-window slices, not just ticks. */
+            private int slices;
 
             Load2Job(ArrayList<ServerMap.ServerCell> src) {
                 this.cells = new ArrayList<>(src);
@@ -1344,8 +1358,12 @@ public class ServerMap {
                 return this.cells;
             }
 
-            int getTicks() {
-                return this.ticks;
+            int getSlices() {
+                return this.slices;
+            }
+
+            long getElapsedNanos() {
+                return System.nanoTime() - this.startedAtNanos;
             }
 
             /**
@@ -1358,7 +1376,7 @@ public class ServerMap {
              */
             boolean advance(long budgetNanos) {
                 long deadline = System.nanoTime() + budgetNanos;
-                this.ticks++;
+                this.slices++;
 
                 while (true) {
                     if (this.latch == null && !this.dispatchNextColor()) {
@@ -1470,14 +1488,18 @@ public class ServerMap {
                         + " cell(s)"
                 );
 
+                int apocBrCancelled = 0;
                 if (this.inFlight != null) {
                     for (ServerMap.ServerCell cell : this.inFlight) {
                         cell.cancelLoading = true;
                         cell.loadingWasCancelled = true;
                         cell.isLoaded = false;
                         cell.loadInProgress = false;
+                        apocBrCancelled++;
                     }
                 }
+
+                ApocBRServerTelemetry.recordServerMapPrePhase("load2StallCancel", apocBrCancelled, (now - this.lastProgressMs) * 1000000L);
 
                 this.latch = null;
                 this.inFlight = null;

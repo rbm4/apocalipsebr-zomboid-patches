@@ -153,13 +153,23 @@ public final class ApocBRServerTelemetry {
     private static final String[] SERVER_MAP_PRE_KEYS = new String[] {
         "cancelScan", "collectPendingLoads", "sortPendingLoads", "addLoadJobs", "drainLoaded", "addRecalcJobs",
         "drainRecalc", "loadChunkCell", "loadChunkOne", "loadChunkSaveNow", "loadChunkWorldGen",
-        "loadChunkForaging", "load2LosSuspend", "load2", "load2DrainRecalc", "load2MainPump", "load2MainTask",
+        "loadChunkForaging", "load2", "load2DrainRecalc", "load2MainPump", "load2MainTask",
         "load2PumpIdleWait", "load2RecalcAll2", "load2Vehicles",
         "removeLoaded2FromToLoad", "load2RoomsDec", "load2LevelScan", "load2EnsureSurround", "load2BorderRecalc",
         "load2MarkSquares", "load2DoLoadGridSquare", "load2NativeRegistrationBatch", "load2NativeMapCollision",
         "load2NativeAnimalPop", "load2NativeZombiePop", "load2NativePathfind", "load2IsoGenerator",
-        "load2LootRespawn", "load2RoomsInc", "load2LosResume", "saveAll", "saveLater",
-        "entitySave"
+        "load2LootRespawn", "load2RoomsInc", "saveAll", "saveLater",
+        "entitySave",
+        // ApocBR: cross-tick load2. "load2" is now one in-tick slice per call rather than a whole
+        // cell group, so these are what make the sliced pipeline legible:
+        //   load2IdleAdvance   - slices run from the throttle-sleep window instead of the tick.
+        //   load2JobComplete   - one call per finished job; units = slices it took, so avgUnits is
+        //                        "ticks to load a cell group". This is the number to watch.
+        //   load2StallCancel   - liveness guard fired; units = cells discarded. Should stay at zero.
+        //   load2Anchor        - drains from tick-phase anchors; units = tasks applied.
+        // load2LosSuspend/load2LosResume were removed: load2 no longer suspends LOS at all, and
+        // leaving them emitting zeros would imply it still does.
+        "load2IdleAdvance", "load2JobComplete", "load2StallCancel", "load2Anchor"
     };
     private static final LongAdder[] serverMapPreCalls = newLongAdders(SERVER_MAP_PRE_KEYS.length);
     private static final LongAdder[] serverMapPreUnits = newLongAdders(SERVER_MAP_PRE_KEYS.length);
