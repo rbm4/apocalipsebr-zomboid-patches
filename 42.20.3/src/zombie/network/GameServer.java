@@ -2955,6 +2955,34 @@ public class GameServer {
         DebugType.DetailedInfo.trace("User: \"%s\" index=%d ip=%s is trying to connect", username, playerIndex, connection.getIP());
         if (playerIndex >= 0 && playerIndex < 4 && connection.getPlayerAt(playerIndex) == null) {
             byte requestedRange = bb.getByte();
+            // ApocBR: DO NOT lower the 20 ceiling here. It looks like a free memory win and it is a
+            // protocol break. Documented so nobody (including us) tries it again.
+            //
+            // This value feeds two things at once:
+            //   1. setRelevantRange(range / 2 + 2), used by ServerMap.outsidePlayerInfluence to
+            //      decide which ServerCells stay resident. This is the memory-relevant use.
+            //   2. new ClientServerMap(..., range), which sizes the ServerMapPacket body as
+            //      width^2 booleans, where width = ceil((range - 1) * 8 / 64).
+            //
+            // The client sizes its ServerMapPacket read loop from its OWN IsoChunkMap.chunkGridWidth
+            // (see ServerMapPacket.parse), which it also sent here as requestedRange. The clamped
+            // value is never transmitted back, so there is no negotiation: both sides must derive
+            // the same width or the packet body desynchronises.
+            //
+            //   width(r) = 1 for r <= 9,  2 for r in [10,17],  3 for r in [18,20]
+            //
+            // A 1080p client computes chunkGridWidth 19 and therefore reads 3*3 = 9 booleans.
+            // Clamping the server to 14 makes it write 2*2 = 4, and the client over-reads by 5.
+            //
+            // Vanilla's bounds are chosen so this cannot happen: the 20 ceiling sits above the
+            // highest value a client can generate (19, capped in IsoChunkMap.CalcChunkWidth), so
+            // min() never binds, and the 12 floor only ever makes the server write MORE booleans
+            // than the client reads, which is harmless because the surplus is left in the buffer.
+            // The invariant is: the server must never write fewer booleans than the client reads.
+            //
+            // There is also no useful reduction hiding here. The lowest ceiling preserving width 3
+            // for a cgw-19 client is 18, and 18 / 2 + 2 == 19 / 2 + 2 == 11, the same relevantRange.
+            // Reducing resident cells requires decoupling use 1 from use 2, not clamping both.
             byte range = (byte)Math.max(12, Math.min(20, requestedRange));
             connection.setRelevantRange((byte)(range / 2 + 2));
             IsoPlayer player;
