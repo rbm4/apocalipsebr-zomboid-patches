@@ -602,41 +602,32 @@ public class ServerMap {
             apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("drainRecalc", ServerMap.ServerCell.loaded2.size(), apocBrPhaseStart);
-            if (!ServerMap.ServerCell.loaded2.isEmpty()) {
-                try {
-                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    ServerLOS.instance.suspend();
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LosSuspend", 1, apocBrPhaseStart);
+            // ApocBR: load2 advances a slice per tick instead of running to completion in one call.
+            // Cells that become ready while a job is in flight accumulate in loaded2 and are admitted
+            // to the next job - they cannot join the running one without breaking its colour
+            // partition, and waiting one job cycle is cheaper than a stall. LOS is no longer suspended
+            // around this: ServerLOS skips cells flagged loadInProgress instead, so it keeps running
+            // for the rest of the world while these cells build.
+            if (ServerMap.ServerCell.load2Job == null && !ServerMap.ServerCell.loaded2.isEmpty()) {
+                ServerMap.ServerCell.load2Job = new ServerMap.ServerCell.Load2Job(ServerMap.ServerCell.loaded2);
+                ServerMap.ServerCell.loaded2.clear();
+            }
 
-                    // Load2 work for every ready cell is fanned out across a 4-color checkerboard
-                    // (see ServerCell.recalcAllParallel). Worker threads own the load flow and
-                    // synchronously hand Lua/main-thread-only mutations to the pump below.
-                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    apocBrUnits = ServerMap.ServerCell.loaded2.size();
-                    ServerMap.ServerCell.recalcAllParallel(ServerMap.ServerCell.loaded2);
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", apocBrUnits, apocBrPhaseStart);
+            if (ServerMap.ServerCell.load2Job != null) {
+                apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                apocBrUnits = ServerMap.ServerCell.load2Job.getCells().size();
+                boolean load2Done = ServerMap.ServerCell.load2Job.advance(ServerMap.ServerCell.LOAD2_MAX_NANOS_PER_TICK);
 
+                // load2 is now one slice per tick, so "calls" counts slices and only the slice that
+                // retires the job may report the cell count - charging it on every slice would
+                // multiply the cell total by however many ticks the job happened to span.
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", load2Done ? apocBrUnits : 0, apocBrPhaseStart);
+
+                if (load2Done) {
                     long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
-                    for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
-                        ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
-                        this.toLoad.remove(cell);
-                        if (cell.loadingWasCancelled && !cell.isLoaded) {
-                            int cx = cell.wx - this.getMinX();
-                            int cy = cell.wy - this.getMinY();
-                            if (!this.isInvalidCell(cx, cy) && this.cellMap[cx + cy * this.width] == cell) {
-                                this.cellMap[cx + cy * this.width] = null;
-                            }
-
-                            this.loadedCells.remove(cell);
-                            this.releventNow.remove(cell);
-                        }
-                    }
-                    ServerMap.ServerCell.loaded2.clear();
+                    this.retireLoad2Job(ServerMap.ServerCell.load2Job);
+                    ServerMap.ServerCell.load2Job = null;
                     ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", apocBrUnits, apocBrRemoveStart);
-                } finally {
-                    long apocBrResumeStart = ApocBRServerTelemetry.beginDetail();
-                    ServerLOS.instance.resume();
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LosResume", 1, apocBrResumeStart);
                 }
             }
             ApocBRServerTelemetry.recordServerMapPreQueues(
@@ -683,6 +674,71 @@ public class ServerMap {
         }
 
         ApocBRServerTelemetry.recordTickSectionSince("serverMapPre", apocBrSectionStart);
+    }
+
+    /**
+     * ApocBR: end-of-job bookkeeping that used to sit inline in preupdate(), lifted out so both the
+     * in-tick and idle-window drivers can retire a finished job.
+     */
+    private void retireLoad2Job(ServerMap.ServerCell.Load2Job job) {
+        for (ServerMap.ServerCell cell : job.getCells()) {
+            this.toLoad.remove(cell);
+            if (cell.loadingWasCancelled && !cell.isLoaded) {
+                int cx = cell.wx - this.getMinX();
+                int cy = cell.wy - this.getMinY();
+                if (!this.isInvalidCell(cx, cy) && this.cellMap[cx + cy * this.width] == cell) {
+                    this.cellMap[cx + cy * this.width] = null;
+                }
+
+                this.loadedCells.remove(cell);
+                this.releventNow.remove(cell);
+            }
+        }
+    }
+
+    /**
+     * ApocBR: load2 counterpart to {@link #processDeferredUnloadsInIdleWindow(long)}.
+     *
+     * The main loop sleeps out the remainder of every cycle it finishes early (throttleSleep averaged
+     * 5.9-21.2ms per tick in telemetry). Draining load2 handoffs there costs nothing that was being
+     * used for anything else and lets a cell finish sooner without taking a single millisecond away
+     * from the tick itself.
+     *
+     * @return nanoseconds consumed, so the caller can charge it against the same idle budget.
+     */
+    public long advanceLoad2InIdleWindow(long budgetNanos) {
+        ServerMap.ServerCell.Load2Job job = ServerMap.ServerCell.load2Job;
+        if (!ServerMap.ServerCell.LOAD2_IDLE_ENABLED || job == null || budgetNanos <= 0L) {
+            return 0L;
+        }
+
+        long start = System.nanoTime();
+        if (job.advance(Math.min(budgetNanos, ServerMap.ServerCell.LOAD2_IDLE_MAX_NANOS))) {
+            this.retireLoad2Job(job);
+            ServerMap.ServerCell.load2Job = null;
+        }
+
+        return System.nanoTime() - start;
+    }
+
+    /**
+     * ApocBR: tick-phase anchor. Applies whatever load2 workers have handed over since the last
+     * anchor, then returns immediately.
+     *
+     * Without these the only drain points are preupdate() and the idle window, so a worker that hands
+     * off a mutation just after preupdate waits a whole tick (~100ms) for it to land, and its chain
+     * stalls behind it. Anchors keep the workers fed while the main thread carries on with the tick.
+     *
+     * Placement is a whitelist, not a sprinkle. These are only safe at top-level tick boundaries where
+     * nothing is mid-iteration over a world collection and no global side-band state is set - drained
+     * tasks run Lua and can add or remove world objects. Specifically they must NOT go inside
+     * MovingObjectUpdateSchedulerUpdateBucket.update() or IsoCell.ProcessIsoObject(), both of which
+     * iterate live collections and hold GameTime.perObjectMultiplier at a non-1 value for the whole
+     * loop; a task drained in that window would see an 8x or 16x timestep and silently miscompute.
+     */
+    public static void drainLoad2MainThreadTasks() {
+        ServerMap.ServerCell.load2MainThread.drainAll();
+        ServerMap.ServerCell.load2MainThreadDeferred.drainAll();
     }
 
     private void queueDeferredUnload(ServerMap.ServerCell cell) {
@@ -869,6 +925,16 @@ public class ServerMap {
                         ApocBRServerTelemetry.recordServerMapPostPhaseSince("cancelLoading", 1, apocBrPhaseStart);
                     }
                 } else if (!shouldBeLoaded) {
+                    // ApocBR: a load2 worker may still be building this cell - jobs now span ticks, so
+                    // a cell can go irrelevant mid-load. beginDeferredUnload() refuses those, but the
+                    // cellMap clear and loadedCells removal below run unconditionally, which would
+                    // orphan the cell: still isLoaded, still being written by its worker, but no
+                    // longer reachable from cellMap and therefore never unloaded or saved. Skip it
+                    // and revisit next tick; loadInProgress clears in the worker's finally.
+                    if (cell.loadInProgress) {
+                        continue;
+                    }
+
                     int x = cell.wx - this.getMinX();
                     int y = cell.wy - this.getMinY();
                     if (!pathfindPaused) {
@@ -1146,6 +1212,22 @@ public class ServerMap {
         private boolean startedLoading;
         public boolean cancelLoading;
         public boolean loadingWasCancelled;
+        /**
+         * ApocBR: true from the moment a cell is handed to a load2 worker until its RecalcAll2()
+         * has finished, including across tick boundaries.
+         *
+         * Deliberately NOT consulted by getGridSquare()/getChunk(). RecalcAll2()'s border pass goes
+         * EnsureSurroundNotNull() -> IsoCell.createNewGridSquare() -> ServerMap.getChunk(), so gating
+         * reads on this flag would make the cell's own border scan create no squares at all and
+         * silently corrupt cell seams. Half-built reads are already a legal, handled state: the
+         * isLoaded gate returns null and every caller copes.
+         *
+         * What it does guard is lifecycle transitions that must not run against a cell a worker is
+         * still building - deferred unload, and cellMap removal - plus ServerLOS, which uses it to
+         * skip mid-load cells instead of the whole LOS subsystem being suspended for the duration of
+         * the job.
+         */
+        public volatile boolean loadInProgress;
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
@@ -1164,7 +1246,16 @@ public class ServerMap {
         private static final int DEFERRED_UNLOAD_IDLE_MAX_CELLS = Math.max(1, Integer.getInteger("apocbr.unload.idleMaxCells", 8));
         private static final int DEFERRED_UNLOAD_IDLE_SLICES = Math.max(1, Integer.getInteger("apocbr.unload.idleSlices", 16));
         private static final int DEFERRED_UNLOAD_IDLE_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.idleSquaresPerSlice", 1024));
-        private static final long LOAD2_CHUNK_FINISH_TIMEOUT_MS = Math.max(1000L, Long.getLong("apocbr.load2ChunkFinishTimeoutMs", 1000L));
+        /**
+         * ApocBR: this waits on other workers' per-chunk hop chains, and every hop in those chains is
+         * a submitAndWait() to the main thread. Now that the main thread drains on a budget instead of
+         * parking until the group finishes, a chain legitimately takes far longer than a second in
+         * wall time. The old 1s default would expire and throw, and RecalcAll2()'s caller turns that
+         * into cancelLoading - so the cell would be discarded and reloaded, which is the churn this
+         * work exists to remove. Kept in step with COOPERATIVE_TASK_TIMEOUT_NANOS: a liveness guard,
+         * not a work-duration bound.
+         */
+        private static final long LOAD2_CHUNK_FINISH_TIMEOUT_MS = Math.max(1000L, Long.getLong("apocbr.load2ChunkFinishTimeoutMs", 30000L));
         private boolean deferredUnloadQueued;
         private long deferredUnloadQueuedAtMs;
         private long deferredUnloadQueuedAtTick;
@@ -1185,19 +1276,39 @@ public class ServerMap {
          * another cell's chain; this lets every cell in the current checkerboard color round
          * make progress concurrently instead of queueing behind a small fixed pool, without
          * needing any new locking (a color round is already guaranteed border-safe by
-         * recalcAllParallel()'s adjacency partitioning below).
+         * Load2Job's adjacency partitioning below).
          */
         private static final ExecutorService recalcPool = Executors.newVirtualThreadPerTaskExecutor();
+        // ApocBR: both queues are now drained cooperatively with pumpFor() across ticks and from the
+        // throttle-sleep idle window, never by parking in pumpUntil(), so they need the longer
+        // task timeout - see ApocBRMainThreadOrchestrator.COOPERATIVE_TASK_TIMEOUT_NANOS.
         private static final ApocBRMainThreadOrchestrator load2MainThread = new ApocBRMainThreadOrchestrator(
             "load2MainPump",
             "load2MainTask",
-            "load2PumpIdleWait"
+            "load2PumpIdleWait",
+            true
         );
         private static final ApocBRMainThreadOrchestrator load2MainThreadDeferred = new ApocBRMainThreadOrchestrator(
             "load2MainDeferredPump",
             "load2MainDeferredTask",
-            "load2DeferredPumpIdleWait"
+            "load2DeferredPumpIdleWait",
+            true
         );
+        static final int LOAD2_MAX_MS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.load2.maxMsPerTick", 8));
+        static final long LOAD2_MAX_NANOS_PER_TICK = LOAD2_MAX_MS_PER_TICK * 1000000L;
+        static final boolean LOAD2_IDLE_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.load2.idleEnabled", "true"));
+        static final int LOAD2_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.load2.idleMaxMs", 4));
+        static final long LOAD2_IDLE_MAX_NANOS = LOAD2_IDLE_MAX_MS * 1000000L;
+        /**
+         * Liveness guard for a colour group that stops counting down entirely.
+         *
+         * The old pumpUntil() timeout served this purpose, but it conflated "a worker is wedged" with
+         * "this is taking a while", so any slow group was destroyed. Now that the main thread never
+         * parks on the latch, a slow group costs nothing and only a group that makes no progress at
+         * all for this long is treated as broken.
+         */
+        static final long LOAD2_JOB_STALL_TIMEOUT_MS = Math.max(1000L, Long.getLong("apocbr.load2.jobStallTimeoutMs", 15000L));
+        static ServerMap.ServerCell.Load2Job load2Job;
         /**
          * Load2 mutates shared, cross-cell world state: EnsureSurroundNotNull()/createNewGridSquare()
          * write directly into a neighbouring ServerCell's grid-square storage for cells across a border.
@@ -1208,64 +1319,171 @@ public class ServerMap {
          * with a full barrier (CountDownLatch) between them. The main thread pumps Lua/main-affinity
          * handoffs while waiting for each color group to finish.
          */
-        private static void recalcAllParallel(ArrayList<ServerMap.ServerCell> cells) {
-            if (cells.isEmpty()) {
-                return;
-            }
+        static final class Load2Job {
+            private final ArrayList<ServerMap.ServerCell> cells;
+            private final ArrayList<ArrayList<ServerMap.ServerCell>> colorGroups = new ArrayList<>(4);
+            private int colorIndex = -1;
+            private ArrayList<ServerMap.ServerCell> inFlight;
+            private CountDownLatch latch;
+            private long lastProgressMs = System.currentTimeMillis();
+            private long lastLatchCount = Long.MAX_VALUE;
+            private int ticks;
 
-            ArrayList<ArrayList<ServerMap.ServerCell>> colorGroups = new ArrayList<>(4);
-            for (int i = 0; i < 4; i++) {
-                colorGroups.add(new ArrayList<>());
-            }
-
-            for (ServerMap.ServerCell cell : cells) {
-                int color = (cell.wx & 1) | ((cell.wy & 1) << 1);
-                colorGroups.get(color).add(cell);
-            }
-
-            for (ArrayList<ServerMap.ServerCell> group : colorGroups) {
-                if (group.isEmpty()) {
-                    continue;
+            Load2Job(ArrayList<ServerMap.ServerCell> src) {
+                this.cells = new ArrayList<>(src);
+                for (int i = 0; i < 4; i++) {
+                    this.colorGroups.add(new ArrayList<>());
                 }
 
-                CountDownLatch latch = new CountDownLatch(group.size());
-                for (ServerMap.ServerCell cell : group) {
-                    recalcPool.execute(() -> {
-                        try {
-                            long start = System.nanoTime();
-                            cell.RecalcAll2();
-                            long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                            ServerMap.runLoad2MainThreadTask("ServerCell.loadVehicles", cell::loadVehicles);
-                            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
-                            if (ServerMap.mapLoading) {
-                                float time = (float)(System.nanoTime() - start) / 1000000.0F;
-                                DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
-                            }
-                        } catch (Throwable t) {
-                            cell.cancelLoading = true;
-                            cell.loadingWasCancelled = true;
-                            cell.isLoaded = false;
-                            ExceptionLogger.logException(t);
-                        } finally {
-                            latch.countDown();
-                            load2MainThread.signalWorkAvailable();
-                        }
-                    });
+                for (ServerMap.ServerCell cell : this.cells) {
+                    this.colorGroups.get((cell.wx & 1) | ((cell.wy & 1) << 1)).add(cell);
                 }
+            }
 
-                if (!load2MainThread.pumpUntil(latch)) {
+            ArrayList<ServerMap.ServerCell> getCells() {
+                return this.cells;
+            }
+
+            int getTicks() {
+                return this.ticks;
+            }
+
+            /**
+             * Drains up to budgetNanos of worker handoffs and returns whether the whole job is done.
+             *
+             * The colour barrier is preserved across ticks: a colour is only dispatched once the
+             * previous one has fully drained (latch clear AND queue empty), so two adjacent cells can
+             * still never run concurrently, which is what makes EnsureSurroundNotNull()'s cross-border
+             * writes safe. Several colours may complete in one call if the budget allows.
+             */
+            boolean advance(long budgetNanos) {
+                long deadline = System.nanoTime() + budgetNanos;
+                this.ticks++;
+
+                while (true) {
+                    if (this.latch == null && !this.dispatchNextColor()) {
+                        return true;
+                    }
+
+                    long remaining = Math.max(0L, deadline - System.nanoTime());
+                    boolean colorDone = load2MainThread.pumpFor(this.latch, remaining);
+                    load2MainThreadDeferred.drainAll();
+
+                    if (!colorDone) {
+                        this.checkStalled();
+                        return false;
+                    }
+
+                    this.latch = null;
+                    this.inFlight = null;
+                    this.lastLatchCount = Long.MAX_VALUE;
+                    this.lastProgressMs = System.currentTimeMillis();
+
+                    if (System.nanoTime() >= deadline) {
+                        return false;
+                    }
+                }
+            }
+
+            private boolean dispatchNextColor() {
+                while (++this.colorIndex < 4) {
+                    ArrayList<ServerMap.ServerCell> group = this.colorGroups.get(this.colorIndex);
+                    if (group.isEmpty()) {
+                        continue;
+                    }
+
+                    CountDownLatch groupLatch = new CountDownLatch(group.size());
                     for (ServerMap.ServerCell cell : group) {
+                        cell.loadInProgress = true;
+                    }
+
+                    // Publish the group as in-flight BEFORE submitting. If execute() throws partway
+                    // through (pool shutdown, rejection), the cells already submitted still count down
+                    // and the rest never will - but with latch/inFlight set, checkStalled() sees a
+                    // latch that stops moving and recovers them. Assigning after the loop instead
+                    // would leave those cells pinned loadInProgress forever: never unloadable, and
+                    // permanently skipped by ServerLOS.
+                    this.latch = groupLatch;
+                    this.inFlight = group;
+                    this.lastLatchCount = group.size();
+                    this.lastProgressMs = System.currentTimeMillis();
+
+                    for (ServerMap.ServerCell cell : group) {
+                        recalcPool.execute(() -> {
+                            try {
+                                long start = System.nanoTime();
+                                cell.RecalcAll2();
+                                long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                                ServerMap.runLoad2MainThreadTask("ServerCell.loadVehicles", cell::loadVehicles);
+                                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
+                                if (ServerMap.mapLoading) {
+                                    float time = (float)(System.nanoTime() - start) / 1000000.0F;
+                                    DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
+                                }
+                            } catch (Throwable t) {
+                                cell.cancelLoading = true;
+                                cell.loadingWasCancelled = true;
+                                cell.isLoaded = false;
+                                ExceptionLogger.logException(t);
+                            } finally {
+                                cell.loadInProgress = false;
+                                groupLatch.countDown();
+                                load2MainThread.signalWorkAvailable();
+                            }
+                        });
+                    }
+
+                    return true;
+                }
+
+                return false;
+            }
+
+            /**
+             * A budget expiry is normal and never cancels anything. Only a colour group that has not
+             * counted down at all for LOAD2_JOB_STALL_TIMEOUT_MS is treated as broken - the case the
+             * old pumpUntil() timeout existed for, where a worker dies or wedges and the latch would
+             * otherwise never clear.
+             */
+            private void checkStalled() {
+                long count = this.latch == null ? 0L : this.latch.getCount();
+                long now = System.currentTimeMillis();
+                if (count != this.lastLatchCount) {
+                    this.lastLatchCount = count;
+                    this.lastProgressMs = now;
+                    return;
+                }
+
+                if (now - this.lastProgressMs < LOAD2_JOB_STALL_TIMEOUT_MS) {
+                    return;
+                }
+
+                DebugLog.log(
+                    "[ApocBR] load2 colour group "
+                        + this.colorIndex
+                        + " made no progress for "
+                        + (now - this.lastProgressMs)
+                        + " ms, latchRemaining="
+                        + count
+                        + "; cancelling "
+                        + (this.inFlight == null ? 0 : this.inFlight.size())
+                        + " cell(s)"
+                );
+
+                if (this.inFlight != null) {
+                    for (ServerMap.ServerCell cell : this.inFlight) {
                         cell.cancelLoading = true;
                         cell.loadingWasCancelled = true;
                         cell.isLoaded = false;
+                        cell.loadInProgress = false;
                     }
                 }
-                load2MainThread.drainAll();
-                load2MainThreadDeferred.drainAll();
-            }
 
-            load2MainThread.drainAll();
-            load2MainThreadDeferred.drainAll();
+                this.latch = null;
+                this.inFlight = null;
+                this.lastLatchCount = Long.MAX_VALUE;
+                this.lastProgressMs = now;
+            }
         }
 
         private void loadVehicles() {
@@ -1492,7 +1710,7 @@ public class ServerMap {
             // are real gaps where nothing is queued. Fanning all of a cell's chunks out to their own
             // virtual thread on the same recalcPool means up to 64 chunks' hop chains are in flight
             // at once, so the main thread's queue - which is already being pumped by
-            // recalcAllParallel()'s color-round wait - stays continuously fed instead of idling
+            // Load2Job's color-round drain - stays continuously fed instead of idling
             // between each chunk. This is safe with respect to the checkerboard border-safety
             // invariant: it only changes how many chunks *within this one cell* run concurrently,
             // never across cells, and every method in the chain above that touches shared/adjacent
@@ -1546,7 +1764,10 @@ public class ServerMap {
         }
 
         public boolean beginDeferredUnload(long currentUnloadTick) {
-            if (!this.isLoaded || this.deferredUnloadQueued) {
+            // ApocBR: load2 now spans ticks, so a cell can be relevant-then-irrelevant while a worker
+            // is still inside RecalcAll2(). Unloading underneath it would tear down squares the
+            // worker is still writing. Leave it queued; it will be picked up once the load settles.
+            if (!this.isLoaded || this.deferredUnloadQueued || this.loadInProgress) {
                 return false;
             }
 

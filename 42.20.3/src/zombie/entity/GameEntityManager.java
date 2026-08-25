@@ -330,7 +330,7 @@ public class GameEntityManager {
                         if (storedOld == entity) {
                             idToEntityMap.remove(oldID);
                         } else {
-                            DebugType.Entity.error("idToEntityMap(%ld)=%s, expected %s", oldID, storedOld, entity);
+                            DebugType.Entity.error("idToEntityMap(%d)=%s, expected %s", oldID, storedOld, entity);
                         }
 
                         if (storedNew instanceof IsoObject newObject) {
@@ -340,7 +340,7 @@ public class GameEntityManager {
                         if (idToEntityMap.get(newID) == null) {
                             idToEntityMap.put(newID, entity);
                         } else {
-                            DebugType.Entity.error("idToEntityMap(%ld)=%s, expected null", newID, idToEntityMap.get(newID), entity);
+                            DebugType.Entity.error("idToEntityMap(%d)=%s, expected null (entity %s)", newID, idToEntityMap.get(newID), entity);
                         }
                     }
                 }

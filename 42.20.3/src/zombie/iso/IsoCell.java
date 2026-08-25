@@ -4263,6 +4263,16 @@ public final class IsoCell {
 
         this.safeToAdd = true;
 
+        // ApocBR: load2 anchor, and the only one inside gameState. Safe specifically here: the
+        // scheduler buckets and ProcessIsoObject have both finished, so GameTime.perObjectMultiplier
+        // is back to 1.0 and no world collection is mid-iteration, and safeToAdd was just restored so
+        // a drained Lua task that spawns an object is handled normally. Do not hoist this earlier -
+        // during ProcessObjects/ProcessIsoObject the multiplier is 8x or 16x and objectList is being
+        // walked by index.
+        if (GameServer.server) {
+            ServerMap.drainLoad2MainThreadTasks();
+        }
+
         apocBrSectionStart = ApocBRServerTelemetry.beginDetail();
         try (GameProfiler.ProfileArea var29 = profiler.profile("Static Updaters")) {
             this.ProcessStaticUpdaters();

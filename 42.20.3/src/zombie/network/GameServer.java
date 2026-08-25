@@ -1019,7 +1019,11 @@ public class GameServer {
                                 if (delay > 1L) {
                                     long idleStart = System.nanoTime();
                                     long idleBudgetNanos = (delay - 1L) * 1000000L;
-                                    ServerMap.instance.processDeferredUnloadsInIdleWindow(idleBudgetNanos);
+                                    // ApocBR: spend the throttle window finishing off-thread work rather
+                                    // than sleeping through it. Load goes first: a cell that is still
+                                    // building is player-visible, a cell that is still unloading is not.
+                                    long apocBrLoad2Nanos = ServerMap.instance.advanceLoad2InIdleWindow(idleBudgetNanos);
+                                    ServerMap.instance.processDeferredUnloadsInIdleWindow(idleBudgetNanos - apocBrLoad2Nanos);
                                     long idleElapsedMs = (System.nanoTime() - idleStart + 999999L) / 1000000L;
                                     remainingDelay = Math.max(0L, delay - idleElapsedMs);
                                 }
@@ -1098,6 +1102,9 @@ public class GameServer {
                                 apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                                 statex.update();
                                 if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("gameState", System.nanoTime() - apocBrSectionStart);
+                                // ApocBR: load2 anchor. gameState is the longest section in the tick,
+                                // so workers that handed off during it have been waiting the longest.
+                                ServerMap.drainLoad2MainThreadTasks();
                                 apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                                 VehicleManager.instance.serverUpdate();
                                 if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("vehicleManager", System.nanoTime() - apocBrSectionStart);
@@ -1156,6 +1163,8 @@ public class GameServer {
                                 }
                             }
                             if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("connectionRelevant", System.nanoTime() - apocBrSectionStart);
+                            // ApocBR: load2 anchor.
+                            ServerMap.drainLoad2MainThreadTasks();
 
                             apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             Set<IsoMovingObject> toRemove = new HashSet<>();
@@ -1170,6 +1179,8 @@ public class GameServer {
                             IsoWorld.instance.currentCell.getObjectList().removeAll(toRemove);
                             toRemove.clear();
                             if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("objectCleanup", System.nanoTime() - apocBrSectionStart);
+                            // ApocBR: load2 anchor.
+                            ServerMap.drainLoad2MainThreadTasks();
                             apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             if (++updateDBCount > 150) {
                                 for (int nxxx = 0; nxxx < udpEngine.connections.size(); nxxx++) {

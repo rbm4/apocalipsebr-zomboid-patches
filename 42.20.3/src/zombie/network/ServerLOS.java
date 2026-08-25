@@ -294,7 +294,14 @@ public class ServerLOS {
                         int cellX = rawCx - ServerMap.instance.getMinX();
                         int cellY = rawCy - ServerMap.instance.getMinY();
                         ServerMap.ServerCell cell = ServerMap.instance.getCell(cellX, cellY);
-                        chunk = cell != null && cell.isLoaded ? cell.chunks[chx][chy] : null;
+                        // ApocBR: loadInProgress replaces suspending the whole LOS subsystem for the
+                        // duration of load2. Unload can suspend/resume per call because all its work
+                        // is synchronous on the main thread, but load2 workers keep mutating squares
+                        // between drain slices, so a job that spans ticks would have held LOS down for
+                        // seconds. Skipping just the cells being built is the same answer LOS already
+                        // gives for a cell that is not loaded yet, and it also avoids suspend()'s
+                        // main-thread spin on freeSlots (measured up to 44ms in losSuspend).
+                        chunk = cell != null && cell.isLoaded && !cell.loadInProgress ? cell.chunks[chx][chy] : null;
                     }
 
                     for (int z = minZ; z < maxZ; z++) {
