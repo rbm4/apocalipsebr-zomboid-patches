@@ -154,9 +154,10 @@ public final class ApocBRServerTelemetry {
         "cancelScan", "collectPendingLoads", "sortPendingLoads", "addLoadJobs", "drainLoaded", "addRecalcJobs",
         "drainRecalc", "loadChunkCell", "loadChunkOne", "loadChunkSaveNow", "loadChunkWorldGen",
         "loadChunkForaging", "load2", "load2DrainRecalc", "load2MainPump", "load2MainTask",
-        "load2PumpIdleWait", "load2RecalcAll2", "load2Vehicles",
+        "load2PumpIdleWait", "load2MainWait", "load2RecalcAll2", "load2Vehicles",
         "removeLoaded2FromToLoad", "load2RoomsDec", "load2LevelScan", "load2EnsureSurround", "load2BorderRecalc",
-        "load2MarkSquares", "load2DoLoadGridSquare", "load2NativeRegistrationBatch", "load2NativeMapCollision",
+        "load2MarkSquares", "load2DoLoadGridSquare", "load2DoLoadGridSquareWall", "load2ChunkFinishWait",
+        "load2NativeRegistrationBatch", "load2NativeMapCollision",
         "load2NativeAnimalPop", "load2NativeZombiePop", "load2NativePathfind", "load2IsoGenerator",
         "load2LootRespawn", "load2RoomsInc", "saveAll", "saveLater",
         "entitySave",
@@ -175,6 +176,7 @@ public final class ApocBRServerTelemetry {
     private static final LongAdder[] serverMapPreUnits = newLongAdders(SERVER_MAP_PRE_KEYS.length);
     private static final LongAdder[] serverMapPreNanos = newLongAdders(SERVER_MAP_PRE_KEYS.length);
     private static final AtomicLong[] serverMapPreMaxNanos = newAtomicLongs(SERVER_MAP_PRE_KEYS.length);
+    private static final ThreadLocal<Long> load2MainWaitNanos = ThreadLocal.withInitial(() -> 0L);
     private static final String[] SERVER_MAP_POST_KEYS = new String[] {
         "loop", "relevantContains", "outsidePlayerInfluence", "cancelLoading", "losSuspend", "cellUnload",
         "cellMapClear", "loadedCellsRemove", "cellUpdate", "losResume", "zombiePost", "updateSaved"
@@ -368,6 +370,16 @@ public final class ApocBRServerTelemetry {
 
     public static long beginDetail() {
         return DETAIL_ENABLED ? System.nanoTime() : 0L;
+    }
+
+    public static long getLoad2MainWaitNanosForCurrentThread() {
+        return DETAIL_ENABLED ? load2MainWaitNanos.get() : 0L;
+    }
+
+    public static void recordLoad2MainWait(long nanos) {
+        if (!DETAIL_ENABLED || nanos < 0L) return;
+        load2MainWaitNanos.set(load2MainWaitNanos.get() + nanos);
+        recordServerMapPrePhase("load2MainWait", 1, nanos);
     }
 
     public static synchronized void recordWorldTick(long nanos) {

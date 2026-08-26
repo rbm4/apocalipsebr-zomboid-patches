@@ -4049,12 +4049,19 @@ public final class IsoChunk {
                     for (int ixx = 0; ixx < GameServer.udpEngine.connections.size(); ixx++) {
                         UdpConnection connection = GameServer.udpEngine.connections.get(ixx);
                         if (!connection.chunkObjectStateRequests.isEmpty()) {
-                            for (int j = 0; j < connection.chunkObjectStateRequests.size(); j += 2) {
+                            int requestSize = connection.chunkObjectStateRequests.size();
+                            if ((requestSize & 1) != 0) {
+                                connection.chunkObjectStateRequests.remove(requestSize - 1, 1);
+                                requestSize--;
+                            }
+
+                            for (int j = 0; j + 1 < requestSize; j += 2) {
                                 short wx1 = connection.chunkObjectStateRequests.get(j);
                                 short wy1 = connection.chunkObjectStateRequests.get(j + 1);
                                 if (wx1 == this.wx && wy1 == this.wy) {
                                     connection.chunkObjectStateRequests.remove(j, 2);
                                     j -= 2;
+                                    requestSize -= 2;
                                     ByteBufferWriter b = connection.startPacket();
                                     PacketTypes.PacketType.ChunkObjectStateResponse.doPacket(b);
                                     b.putShort(this.wx);

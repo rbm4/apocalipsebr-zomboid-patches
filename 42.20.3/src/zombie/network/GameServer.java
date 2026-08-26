@@ -282,6 +282,7 @@ public class GameServer {
     private static final int APOCBR_PLAYER_Q_MAX_DEPTH = Math.max(64, Integer.getInteger("apocbr.playerUpdateQueueMaxDepth", 4096));
     private static final int APOCBR_HIGH_Q_MAX_DEPTH = Math.max(1024, Integer.getInteger("apocbr.highPriorityQueueMaxDepth", 16384));
     private static final int APOCBR_NORMAL_Q_MAX_DEPTH = Math.max(64, Integer.getInteger("apocbr.normalQueueMaxDepth", 4096));
+    private static final long APOCBR_IDLE_WORK_SLICE_NANOS = Math.max(1L, Long.getLong("apocbr.idleWorkSliceMs", 2L)) * 1000000L;
     private static final AtomicInteger APOCBR_PLAYER_Q_DEPTH = new AtomicInteger();
     private static final AtomicInteger APOCBR_HIGH_Q_DEPTH = new AtomicInteger();
     private static final AtomicInteger APOCBR_NORMAL_Q_DEPTH = new AtomicInteger();
@@ -1019,13 +1020,26 @@ public class GameServer {
                                 if (delay > 1L) {
                                     long idleStart = System.nanoTime();
                                     long idleBudgetNanos = (delay - 1L) * 1000000L;
-                                    // ApocBR: spend the throttle window finishing off-thread work rather
-                                    // than sleeping through it. Load goes first: a cell that is still
-                                    // building is player-visible, a cell that is still unloading is not.
-                                    long apocBrLoad2Nanos = ServerMap.instance.advanceLoad2InIdleWindow(idleBudgetNanos);
-                                    ServerMap.instance.processDeferredUnloadsInIdleWindow(idleBudgetNanos - apocBrLoad2Nanos);
-                                    long idleElapsedMs = (System.nanoTime() - idleStart + 999999L) / 1000000L;
-                                    remainingDelay = Math.max(0L, delay - idleElapsedMs);
+
+                                    // ApocBR: spend only the throttle window finishing off-thread work.
+                                    // Do one small slice per non-tick outer-loop pass, then return to
+                                    // the normal packet-drain phase. This preserves vanilla packet
+                                    // ordering instead of running network handlers from inside load2.
+                                    if (!apocBrHasIncomingPacketBacklog()) {
+                                        long sliceNanos = Math.min(idleBudgetNanos, APOCBR_IDLE_WORK_SLICE_NANOS);
+                                        long apocBrLoad2Nanos = ServerMap.instance.advanceLoad2InIdleWindow(sliceNanos);
+                                        long unloadBudgetNanos = Math.min(Math.max(0L, sliceNanos - apocBrLoad2Nanos), idleBudgetNanos - (System.nanoTime() - idleStart));
+                                        long apocBrUnloadNanos = ServerMap.instance.processDeferredUnloadsInIdleWindow(unloadBudgetNanos);
+
+                                        if (apocBrLoad2Nanos > 0L || apocBrUnloadNanos > 0L) {
+                                            remainingDelay = 0L;
+                                        } else {
+                                            long idleElapsedMs = (System.nanoTime() - idleStart + 999999L) / 1000000L;
+                                            remainingDelay = Math.max(0L, delay - idleElapsedMs);
+                                        }
+                                    } else {
+                                        remainingDelay = 0L;
+                                    }
                                 }
 
                                 if (remainingDelay > 0L) {
@@ -1108,9 +1122,15 @@ public class GameServer {
                                 apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                                 VehicleManager.instance.serverUpdate();
                                 if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("vehicleManager", System.nanoTime() - apocBrSectionStart);
+                                // ApocBR: load2 anchor. VehicleManager has finished its top-level
+                                // update, so queued vehicle/chunk mutations do not run inside it.
+                                ServerMap.drainLoad2MainThreadTasks();
                                 apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                                 ObjectIDManager.getInstance().checkForSaveDataFile(false);
                                 if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("objectIdManager", System.nanoTime() - apocBrSectionStart);
+                                // ApocBR: load2 anchor. Keep virtual load workers from waiting until
+                                // the next larger phase boundary when this section is cheap.
+                                ServerMap.drainLoad2MainThreadTasks();
                             } catch (Exception var38) {
                                 DebugType.General.printException(var38, "", LogSeverity.Error);
                             }
@@ -1135,12 +1155,16 @@ public class GameServer {
                                 ServerMap.instance.characterIn(p);
                             }
                             if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("playersRelevant", System.nanoTime() - apocBrSectionStart);
+                            // ApocBR: load2 anchor after the player relevance loop has finished.
+                            ServerMap.drainLoad2MainThreadTasks();
 
                             apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             ImportantAreaManager.getInstance().process(statex.paused);
                             setFastForward(ServerOptions.instance.sleepAllowed.getValue() && playerCount > 0 && asleepCount == playerCount);
                             boolean needCalcCountPlayersInRelevantPosition = calcCountPlayersInRelevantPositionLimiter.Check();
                             if (apocBrDetailTelemetry) ApocBRServerTelemetry.recordTickSection("importantAreas", System.nanoTime() - apocBrSectionStart);
+                            // ApocBR: load2 anchor after important-area/sleep-state updates.
+                            ServerMap.drainLoad2MainThreadTasks();
 
                             apocBrSectionStart = apocBrDetailTelemetry ? System.nanoTime() : 0L;
                             for (int nxxx = 0; nxxx < udpEngine.connections.size(); nxxx++) {
@@ -1240,13 +1264,19 @@ public class GameServer {
                                 connection.getValidator().update();
                                 if (!connection.chunkObjectStateRequests.isEmpty()) {
                                     int chunksPerWidth = 8;
+                                    int requestSize = connection.chunkObjectStateRequests.size();
+                                    if ((requestSize & 1) != 0) {
+                                        connection.chunkObjectStateRequests.remove(requestSize - 1, 1);
+                                        requestSize--;
+                                    }
 
-                                    for (int j = 0; j < connection.chunkObjectStateRequests.size(); j += 2) {
+                                    for (int j = 0; j + 1 < requestSize; j += 2) {
                                         short wx = connection.chunkObjectStateRequests.get(j);
                                         short wy = connection.chunkObjectStateRequests.get(j + 1);
                                         if (!connection.RelevantTo(wx * 8 + 4, wy * 8 + 4, connection.getChunkGridWidth() * 4 * 8)) {
                                             connection.chunkObjectStateRequests.remove(j, 2);
                                             j -= 2;
+                                            requestSize -= 2;
                                         }
                                     }
                                 }
@@ -3402,6 +3432,10 @@ public class GameServer {
             case 1 -> APOCBR_HIGH_Q_DEPTH.get();
             default -> APOCBR_NORMAL_Q_DEPTH.get();
         };
+    }
+
+    private static boolean apocBrHasIncomingPacketBacklog() {
+        return APOCBR_HIGH_Q_DEPTH.get() > 0 || APOCBR_PLAYER_Q_DEPTH.get() > 0 || APOCBR_NORMAL_Q_DEPTH.get() > 0;
     }
 
     public static void smashWindow(IsoWindow isoWindow) {

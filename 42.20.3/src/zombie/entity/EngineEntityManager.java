@@ -14,6 +14,7 @@ public final class EngineEntityManager {
     private final ObjectSet<GameEntity> entitySet = new ObjectSet<>();
     private final ImmutableArray<GameEntity> immutableEntities = new ImmutableArray<>(this.entities);
     private final Array<EngineEntityManager.EntityOperation> pendingOperations = new Array<>(false, 16);
+    private final Array<EngineEntityManager.EntityOperation> processingOperations = new Array<>(false, 16);
     private final EngineEntityManager.EntityOperationPool entityOperationPool = new EngineEntityManager.EntityOperationPool();
     private final ComponentOperationHandler componentOperationHandler;
     private final IBooleanInformer delayed;
@@ -103,28 +104,35 @@ public final class EngineEntityManager {
     }
 
     void processPendingOperations() {
-        for (int i = 0; i < this.pendingOperations.size; i++) {
-            EngineEntityManager.EntityOperation operation = this.pendingOperations.get(i);
-            switch (operation.type) {
-                case Add:
-                    this.addEntityInternal(operation.entity);
-                    break;
-                case Remove:
-                    this.removeEntityInternal(operation.entity);
-                    break;
-                case RemoveAll:
-                    while (operation.entities.size() > 0) {
-                        this.removeEntityInternal(operation.entities.first());
-                    }
-                    break;
-                default:
-                    throw new AssertionError("Unexpected EntityOperation type");
+        this.processingOperations.addAll(this.pendingOperations);
+        this.pendingOperations.clear();
+
+        try {
+            for (int i = 0; i < this.processingOperations.size; i++) {
+                EngineEntityManager.EntityOperation operation = this.processingOperations.get(i);
+                switch (operation.type) {
+                    case Add:
+                        this.addEntityInternal(operation.entity);
+                        break;
+                    case Remove:
+                        this.removeEntityInternal(operation.entity);
+                        break;
+                    case RemoveAll:
+                        while (operation.entities.size() > 0) {
+                            this.removeEntityInternal(operation.entities.first());
+                        }
+                        break;
+                    default:
+                        throw new AssertionError("Unexpected EntityOperation type");
+                }
+            }
+        } finally {
+            for (int i = 0; i < this.processingOperations.size; i++) {
+                this.entityOperationPool.free(this.processingOperations.get(i));
             }
 
-            this.entityOperationPool.free(operation);
+            this.processingOperations.clear();
         }
-
-        this.pendingOperations.clear();
     }
 
     void updateOperations() {
@@ -181,7 +189,9 @@ public final class EngineEntityManager {
 
         @Override
         public void reset() {
+            this.type = null;
             this.entity = null;
+            this.entities = null;
         }
 
         public static enum Type {

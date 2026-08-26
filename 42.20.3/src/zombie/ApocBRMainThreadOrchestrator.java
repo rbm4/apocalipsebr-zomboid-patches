@@ -92,6 +92,7 @@ public final class ApocBRMainThreadOrchestrator {
         this.queue.offer(new ApocBRMainThreadOrchestrator.Task(label, runnable, future));
         this.wakeSignal.release();
         ApocBRServerTelemetry.recordMainThreadTaskSubmitted(label);
+        long waitStart = ApocBRServerTelemetry.beginDetail();
         try {
             future.get(this.taskTimeoutNanos, TimeUnit.NANOSECONDS);
         } catch (InterruptedException e) {
@@ -110,6 +111,8 @@ public final class ApocBRMainThreadOrchestrator {
             throw timeout;
         } catch (ExecutionException e) {
             throw new RuntimeException("Main-thread task failed " + label, e.getCause());
+        } finally {
+            ApocBRServerTelemetry.recordLoad2MainWait(System.nanoTime() - waitStart);
         }
     }
 
@@ -210,6 +213,70 @@ public final class ApocBRMainThreadOrchestrator {
                 drained++;
                 if (System.nanoTime() >= deadline) {
                     break;
+                }
+            }
+        } finally {
+            this.draining = false;
+        }
+
+        ApocBRServerTelemetry.recordServerMapPrePhaseSince(this.pumpPhase, drained, pumpStart);
+        return (latch == null || latch.getCount() == 0L) && this.queue.isEmpty();
+    }
+
+    /**
+     * ApocBR: idle-window pump. Unlike {@link #pumpFor}, this may briefly park while the
+     * colour-group latch is still outstanding, because the main loop would otherwise sleep through
+     * the same time. The absolute deadline is the next server tick threshold, so this cannot stretch
+     * the tick cadence the way the original unbounded pumpUntil() did.
+     */
+    public boolean pumpUntilDeadline(CountDownLatch latch, long deadlineNanos) {
+        boolean latchClear = latch == null || latch.getCount() == 0L;
+        if (latchClear && this.queue.isEmpty()) {
+            return true;
+        }
+
+        if (this.draining) {
+            return false;
+        }
+
+        this.assertMainThread("pumpUntilDeadline");
+        long pumpStart = ApocBRServerTelemetry.beginDetail();
+        int drained = 0;
+
+        this.draining = true;
+        try {
+            while ((latch == null || latch.getCount() > 0L) || !this.queue.isEmpty()) {
+                ApocBRMainThreadOrchestrator.Task task = this.queue.poll();
+                if (task != null) {
+                    this.runTask(task);
+                    drained++;
+                    if (System.nanoTime() >= deadlineNanos) {
+                        break;
+                    }
+                    continue;
+                }
+
+                if (latch == null || latch.getCount() == 0L || System.nanoTime() >= deadlineNanos) {
+                    break;
+                }
+
+                if (this.queue.isEmpty()) {
+                    this.wakeSignal.drainPermits();
+                }
+
+                long remaining = deadlineNanos - System.nanoTime();
+                if (remaining <= 0L) {
+                    break;
+                }
+
+                long waitStart = ApocBRServerTelemetry.beginDetail();
+                try {
+                    this.wakeSignal.tryAcquire(Math.min(PUMP_WAIT_NANOS, remaining), TimeUnit.NANOSECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } finally {
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince(this.idleWaitPhase, 1, waitStart);
                 }
             }
         } finally {

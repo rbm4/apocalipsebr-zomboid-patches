@@ -10,6 +10,7 @@ import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoWorld;
 import zombie.iso.objects.IsoDeadBody;
 import zombie.util.list.PZArrayUtil;
+import zombie.vehicles.BaseVehicle;
 
 public final class MovingObjectUpdateSchedulerUpdateBucket {
     private final UpdateSchedulerSimulationLevel simulationLevel;
@@ -41,6 +42,8 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
             IsoMovingObject isoMovingObject = fullSimulation.get(i);
             if (isoMovingObject instanceof IsoDeadBody) {
                 IsoWorld.instance.getCell().getRemoveList().add(isoMovingObject);
+            } else if (isDetachedVehicle(isoMovingObject)) {
+                IsoWorld.instance.getCell().getRemoveList().add(isoMovingObject);
             } else {
                 if (isoMovingObject instanceof IsoZombie zombie && VirtualZombieManager.instance.isReused(zombie)) {
                     DebugLog.log(DebugType.Zombie, "REUSABLE ZOMBIE IN MovingObjectUpdateSchedulerUpdateBucket IGNORED " + isoMovingObject);
@@ -62,7 +65,9 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
 
         for (int i = 0; i < fullSimulation.size(); i++) {
             IsoMovingObject isoMovingObject = fullSimulation.get(i);
-            if (isoMovingObject instanceof IsoZombie zombie && VirtualZombieManager.instance.isReused(zombie)) {
+            if (isDetachedVehicle(isoMovingObject)) {
+                IsoWorld.instance.getCell().getRemoveList().add(isoMovingObject);
+            } else if (isoMovingObject instanceof IsoZombie zombie && VirtualZombieManager.instance.isReused(zombie)) {
                 DebugLog.log(DebugType.Zombie, "REUSABLE ZOMBIE IN MovingObjectUpdateSchedulerUpdateBucket IGNORED " + isoMovingObject);
             } else {
                 isoMovingObject.postupdate();
@@ -70,6 +75,10 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         }
 
         GameTime.getInstance().perObjectMultiplier = 1.0F;
+    }
+
+    private static boolean isDetachedVehicle(IsoMovingObject object) {
+        return object instanceof BaseVehicle vehicle && vehicle.chunk == null;
     }
 
     public void removeObject(IsoMovingObject object) {

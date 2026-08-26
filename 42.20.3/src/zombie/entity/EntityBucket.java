@@ -22,6 +22,7 @@ public abstract class EntityBucket {
     private final EntityBucket.BucketListenerComparator listenerComparator = new EntityBucket.BucketListenerComparator();
     private final int index;
     private boolean verbose;
+    private boolean needsNullCompaction = true;
 
     private EntityBucket(int index) {
         this.entities = new Array<>(false, 16);
@@ -34,6 +35,9 @@ public abstract class EntityBucket {
     }
 
     public final ImmutableArray<GameEntity> getEntities() {
+        if (this.needsNullCompaction) {
+            this.compactNullEntities();
+        }
         return this.immutableEntities;
     }
 
@@ -44,6 +48,11 @@ public abstract class EntityBucket {
     protected abstract boolean acceptsEntity(GameEntity arg0);
 
     final void updateMembership(GameEntity entity) {
+        if (entity == null) {
+            DebugType.General.warn("EntityBucket.updateMembership: ignoring null entity for bucketIndex=" + this.index);
+            return;
+        }
+
         BitSet bits = entity.getBucketBits();
         boolean containsEntity = bits.get(this.index);
         boolean acceptsEntity = this.acceptsEntity(entity);
@@ -133,8 +142,11 @@ public abstract class EntityBucket {
                 int lastIndex = this.entities.size - 1;
                 GameEntity swapped = this.entities.get(lastIndex);
                 this.entities.removeIndex(slot);
-                if (swapped != entity) {
+                if (swapped != null && swapped != entity) {
                     swapped.setBucketSlot(this.index, slot);
+                } else if (swapped == null && slot < this.entities.size) {
+                    this.needsNullCompaction = true;
+                    this.compactNullEntities();
                 }
             } else {
                 // Entity's bit says it should be a member, but it is nowhere in the
@@ -156,6 +168,25 @@ public abstract class EntityBucket {
                 for (int i = 0; i < this.listeners.size; i++) {
                     this.listeners.get(i).listener.onBucketEntityRemoved(this, entity);
                 }
+            }
+        }
+    }
+
+    private void compactNullEntities() {
+        this.needsNullCompaction = false;
+        for (int i = 0; i < this.entities.size;) {
+            GameEntity entity = this.entities.get(i);
+            if (entity != null) {
+                i++;
+                continue;
+            }
+
+            DebugType.General.warn("EntityBucket.compactNullEntities: removing null entity from bucketIndex=" + this.index + ", slot=" + i);
+            int lastIndex = this.entities.size - 1;
+            GameEntity swapped = this.entities.get(lastIndex);
+            this.entities.removeIndex(i);
+            if (swapped != null && i < this.entities.size) {
+                swapped.setBucketSlot(this.index, i);
             }
         }
     }

@@ -717,7 +717,8 @@ public class ServerMap {
         }
 
         long start = System.nanoTime();
-        boolean done = job.advance(Math.min(budgetNanos, ServerMap.ServerCell.LOAD2_IDLE_MAX_NANOS));
+        long deadline = start + Math.min(budgetNanos, ServerMap.ServerCell.LOAD2_IDLE_MAX_NANOS);
+        boolean done = job.advanceUntilDeadline(deadline);
         long elapsed = System.nanoTime() - start;
         ApocBRServerTelemetry.recordServerMapPrePhase("load2IdleAdvance", done ? job.getCells().size() : 0, elapsed);
 
@@ -1309,7 +1310,7 @@ public class ServerMap {
         static final int LOAD2_MAX_MS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.load2.maxMsPerTick", 8));
         static final long LOAD2_MAX_NANOS_PER_TICK = LOAD2_MAX_MS_PER_TICK * 1000000L;
         static final boolean LOAD2_IDLE_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.load2.idleEnabled", "true"));
-        static final int LOAD2_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.load2.idleMaxMs", 4));
+        static final int LOAD2_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.load2.idleMaxMs", 100));
         static final long LOAD2_IDLE_MAX_NANOS = LOAD2_IDLE_MAX_MS * 1000000L;
         /**
          * Liveness guard for a colour group that stops counting down entirely.
@@ -1401,6 +1402,31 @@ public class ServerMap {
                         return false;
                     }
                 }
+            }
+
+            boolean advanceUntilDeadline(long deadlineNanos) {
+                this.slices++;
+
+                while (System.nanoTime() < deadlineNanos) {
+                    if (this.latch == null && !this.dispatchNextColor()) {
+                        return true;
+                    }
+
+                    boolean colorDone = load2MainThread.pumpUntilDeadline(this.latch, deadlineNanos);
+                    load2MainThreadDeferred.drainAll();
+
+                    if (!colorDone) {
+                        this.checkStalled();
+                        return false;
+                    }
+
+                    this.latch = null;
+                    this.inFlight = null;
+                    this.lastLatchCount = Long.MAX_VALUE;
+                    this.lastProgressMs = System.currentTimeMillis();
+                }
+
+                return false;
             }
 
             private boolean dispatchNextColor() {
@@ -1703,7 +1729,9 @@ public class ServerMap {
             }
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2MarkSquares", apocBrUnits, apocBrPhaseStart);
 
+            long apocBrLoadGridSquareWallStart = ApocBRServerTelemetry.beginDetail();
             apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+            long apocBrWaitBefore = ApocBRServerTelemetry.getLoad2MainWaitNanosForCurrentThread();
             apocBrUnits = 0;
             ArrayList<IsoChunk> apocBrNativeRegistrationChunks = new ArrayList<>(64);
             ArrayList<IsoChunk> apocBrPostRegistrationChunks = new ArrayList<>(64);
@@ -1718,6 +1746,13 @@ public class ServerMap {
                     }
                 }
             }
+            long apocBrDoLoadGridSquareElapsed = System.nanoTime() - apocBrPhaseStart;
+            long apocBrDoLoadGridSquareWait = ApocBRServerTelemetry.getLoad2MainWaitNanosForCurrentThread() - apocBrWaitBefore;
+            ApocBRServerTelemetry.recordServerMapPrePhase(
+                "load2DoLoadGridSquare",
+                apocBrUnits,
+                Math.max(0L, apocBrDoLoadGridSquareElapsed - apocBrDoLoadGridSquareWait)
+            );
 
             if (!apocBrNativeRegistrationChunks.isEmpty()) {
                 ServerMap.runLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
@@ -1739,6 +1774,7 @@ public class ServerMap {
             // state (checkAdjacentChunks, the per-connection chunkObjectStateRequests flush,
             // frameDelay) has been made safe for concurrent chunk callers - see IsoChunk.java.
             if (!apocBrPostRegistrationChunks.isEmpty()) {
+                long apocBrChunkFinishStart = ApocBRServerTelemetry.beginDetail();
                 CountDownLatch chunkFinishLatch = new CountDownLatch(apocBrPostRegistrationChunks.size());
                 for (IsoChunk chunk : apocBrPostRegistrationChunks) {
                     recalcPool.execute(() -> {
@@ -1768,8 +1804,17 @@ public class ServerMap {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                 }
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince(
+                    "load2ChunkFinishWait",
+                    apocBrPostRegistrationChunks.size(),
+                    apocBrChunkFinishStart
+                );
             }
-            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2DoLoadGridSquare", apocBrUnits, apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince(
+                "load2DoLoadGridSquareWall",
+                apocBrUnits,
+                apocBrLoadGridSquareWallStart
+            );
 
             apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
@@ -1851,14 +1896,10 @@ public class ServerMap {
                     squaresLeft -= Math.max(64, (chunk.maxLevel - chunk.minLevel + 1) * 64);
 
                     phaseStart = ApocBRServerTelemetry.beginDetail();
+                    int vehicleCount = this.saveChunkVehiclesBeforeUnload(chunk);
                     chunk.finishRemoveFromWorld();
                     chunk.loadVehiclesObject = null;
-
-                    for (int i = 0; i < chunk.vehicles.size(); i++) {
-                        BaseVehicle vehicle = chunk.vehicles.get(i);
-                        VehiclesDB2.instance.updateVehicle(vehicle);
-                    }
-                    ApocBRServerTelemetry.recordServerMapUnloadPhase("vehicleSave", chunk.vehicles.size(), System.nanoTime() - phaseStart);
+                    ApocBRServerTelemetry.recordServerMapUnloadPhase("vehicleSave", vehicleCount, System.nanoTime() - phaseStart);
 
                     phaseStart = ApocBRServerTelemetry.beginDetail();
                     chunkLoader.addSaveUnloadedJob(chunk);
@@ -1911,13 +1952,14 @@ public class ServerMap {
                     for (int y = 0; y < 8; y++) {
                         IsoChunk chunk = this.chunks[x][y];
                         if (chunk != null) {
-                            chunk.removeFromWorld();
-                            chunk.loadVehiclesObject = null;
+                            chunk.beginRemoveFromWorld();
 
-                            for (int i = 0; i < chunk.vehicles.size(); i++) {
-                                BaseVehicle vehicle = chunk.vehicles.get(i);
-                                VehiclesDB2.instance.updateVehicle(vehicle);
+                            while (!chunk.processRemoveFromWorldSquares(Integer.MAX_VALUE)) {
                             }
+
+                            this.saveChunkVehiclesBeforeUnload(chunk);
+                            chunk.finishRemoveFromWorld();
+                            chunk.loadVehiclesObject = null;
 
                             chunkLoader.addSaveUnloadedJob(chunk);
                             this.chunks[x][y] = null;
@@ -1929,6 +1971,25 @@ public class ServerMap {
                     def.indoorZombies--;
                 }
             }
+        }
+
+        private int saveChunkVehiclesBeforeUnload(IsoChunk chunk) {
+            if (chunk == null || chunk.vehicles.isEmpty()) {
+                return 0;
+            }
+
+            int saved = 0;
+            for (int i = 0; i < chunk.vehicles.size(); i++) {
+                BaseVehicle vehicle = chunk.vehicles.get(i);
+                if (vehicle == null || vehicle.chunk == null) {
+                    continue;
+                }
+
+                VehiclesDB2.instance.updateVehicle(vehicle);
+                saved++;
+            }
+
+            return saved;
         }
 
         public void Save(boolean worker) {
