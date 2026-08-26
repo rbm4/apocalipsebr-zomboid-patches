@@ -34,6 +34,7 @@ public final class ApocBRMainThreadOrchestrator {
     private final String taskPhase;
     private final String idleWaitPhase;
     private final long taskTimeoutNanos;
+    private long completedTaskCount;
     /**
      * ApocBR: reentrancy guard for the drain loop.
      *
@@ -118,6 +119,10 @@ public final class ApocBRMainThreadOrchestrator {
 
     public void signalWorkAvailable() {
         this.wakeSignal.release();
+    }
+
+    public long getCompletedTaskCount() {
+        return this.completedTaskCount;
     }
 
     public boolean pumpUntil(CountDownLatch latch) {
@@ -330,6 +335,7 @@ public final class ApocBRMainThreadOrchestrator {
                 task.future.completeExceptionally(throwable);
             }
         } finally {
+            this.completedTaskCount++;
             long nanos = System.nanoTime() - start;
             ApocBRServerTelemetry.recordServerMapPrePhase(this.taskPhase, 1, nanos);
             ApocBRServerTelemetry.recordMainThreadTaskDrained(task.label, nanos);

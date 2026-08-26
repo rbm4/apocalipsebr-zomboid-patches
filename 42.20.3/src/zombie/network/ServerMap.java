@@ -13,7 +13,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
 import zombie.ApocBRMainThreadOrchestrator;
 import zombie.ApocBRServerTelemetry;
 import zombie.core.logger.ExceptionLogger;
@@ -111,6 +110,19 @@ public class ServerMap {
         ServerMap.ServerCell.load2MainThreadDeferred.submit(label, task);
     }
 
+    public static void submitLoad2OrderedMainThreadTask(String label, Runnable task) {
+        if (task == null) {
+            return;
+        }
+
+        if (!GameServer.server || GameServer.mainThread == null) {
+            task.run();
+            return;
+        }
+
+        ServerMap.ServerCell.load2MainThread.submit(label, task);
+    }
+
     public static void runLoad2ChunkRegistrations(IsoChunk chunk) {
         if (chunk == null) {
             return;
@@ -131,6 +143,23 @@ public class ServerMap {
 
         ArrayList<IsoChunk> batch = new ArrayList<>(chunks);
         ServerMap.ServerCell.load2MainThread.submitAndWait(
+            "IsoChunk.nativeChunkRegistrationBatch",
+            () -> ServerMap.ServerCell.runLoad2ChunkRegistrationsOnMainThread(batch)
+        );
+    }
+
+    public static void submitLoad2ChunkRegistrations(List<IsoChunk> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return;
+        }
+
+        if (!GameServer.server || GameServer.mainThread == null) {
+            ServerMap.ServerCell.runLoad2ChunkRegistrationsOnMainThread(chunks);
+            return;
+        }
+
+        ArrayList<IsoChunk> batch = new ArrayList<>(chunks);
+        ServerMap.ServerCell.load2MainThread.submit(
             "IsoChunk.nativeChunkRegistrationBatch",
             () -> ServerMap.ServerCell.runLoad2ChunkRegistrationsOnMainThread(batch)
         );
@@ -1259,16 +1288,6 @@ public class ServerMap {
         private static final int DEFERRED_UNLOAD_IDLE_MAX_CELLS = Math.max(1, Integer.getInteger("apocbr.unload.idleMaxCells", 8));
         private static final int DEFERRED_UNLOAD_IDLE_SLICES = Math.max(1, Integer.getInteger("apocbr.unload.idleSlices", 16));
         private static final int DEFERRED_UNLOAD_IDLE_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.idleSquaresPerSlice", 1024));
-        /**
-         * ApocBR: this waits on other workers' per-chunk hop chains, and every hop in those chains is
-         * a submitAndWait() to the main thread. Now that the main thread drains on a budget instead of
-         * parking until the group finishes, a chain legitimately takes far longer than a second in
-         * wall time. The old 1s default would expire and throw, and RecalcAll2()'s caller turns that
-         * into cancelLoading - so the cell would be discarded and reloaded, which is the churn this
-         * work exists to remove. Kept in step with COOPERATIVE_TASK_TIMEOUT_NANOS: a liveness guard,
-         * not a work-duration bound.
-         */
-        private static final long LOAD2_CHUNK_FINISH_TIMEOUT_MS = Math.max(1000L, Long.getLong("apocbr.load2ChunkFinishTimeoutMs", 30000L));
         private boolean deferredUnloadQueued;
         private long deferredUnloadQueuedAtMs;
         private long deferredUnloadQueuedAtTick;
@@ -1279,17 +1298,10 @@ public class ServerMap {
             return DEFERRED_UNLOAD_ENABLED && (DEFERRED_UNLOAD_ALLOW_COOP || CoopSlave.instance == null);
         }
         /**
-         * Each submitted cell spends most of its RecalcAll2() time parked in
-         * ApocBRMainThreadOrchestrator.submitAndWait() (native chunk registration, then
-         * the erosion/MapObjects/Lua LoadGridsquare/LoadChunk hop chain), not doing CPU work.
-         * A fixed-size platform-thread pool wastes real OS threads sitting in that park, which
-         * caps how many cells can be mid-chain at once and starves the main thread's pump loop
-         * between hops (see load2PumpIdleWait in telemetry). Virtual threads unmount while
-         * parked in submitAndWait()'s future.join(), so the carrier is immediately free for
-         * another cell's chain; this lets every cell in the current checkerboard color round
-         * make progress concurrently instead of queueing behind a small fixed pool, without
-         * needing any new locking (a color round is already guaranteed border-safe by
-         * Load2Job's adjacency partitioning below).
+         * ApocBR: cells still use virtual threads for cheap off-thread fan-out, but load2 no longer
+         * parks them through a chain of submitAndWait() calls. Each worker now queues ordered
+         * main-thread commit tasks and returns; the colour latch is released by the final queued
+         * cell commit task, so the checkerboard barrier still represents committed world mutation.
          */
         private static final ExecutorService recalcPool = Executors.newVirtualThreadPerTaskExecutor();
         // ApocBR: both queues are now drained cooperatively with pumpFor() across ticks and from the
@@ -1340,6 +1352,7 @@ public class ServerMap {
             private CountDownLatch latch;
             private long lastProgressMs = System.currentTimeMillis();
             private long lastLatchCount = Long.MAX_VALUE;
+            private long lastCompletedTaskCount;
             private final long startedAtNanos = System.nanoTime();
             /** Counts advance() calls, which includes idle-window slices, not just ticks. */
             private int slices;
@@ -1396,6 +1409,7 @@ public class ServerMap {
                     this.latch = null;
                     this.inFlight = null;
                     this.lastLatchCount = Long.MAX_VALUE;
+                    this.lastCompletedTaskCount = load2MainThread.getCompletedTaskCount();
                     this.lastProgressMs = System.currentTimeMillis();
 
                     if (System.nanoTime() >= deadline) {
@@ -1423,6 +1437,7 @@ public class ServerMap {
                     this.latch = null;
                     this.inFlight = null;
                     this.lastLatchCount = Long.MAX_VALUE;
+                    this.lastCompletedTaskCount = load2MainThread.getCompletedTaskCount();
                     this.lastProgressMs = System.currentTimeMillis();
                 }
 
@@ -1450,27 +1465,36 @@ public class ServerMap {
                     this.latch = groupLatch;
                     this.inFlight = group;
                     this.lastLatchCount = group.size();
+                    this.lastCompletedTaskCount = load2MainThread.getCompletedTaskCount();
                     this.lastProgressMs = System.currentTimeMillis();
 
                     for (ServerMap.ServerCell cell : group) {
                         recalcPool.execute(() -> {
+                            long start = System.nanoTime();
                             try {
-                                long start = System.nanoTime();
                                 cell.RecalcAll2();
-                                long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                                ServerMap.runLoad2MainThreadTask("ServerCell.loadVehicles", cell::loadVehicles);
-                                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
-                                if (ServerMap.mapLoading) {
-                                    float time = (float)(System.nanoTime() - start) / 1000000.0F;
-                                    DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
-                                }
+                                ServerMap.submitLoad2OrderedMainThreadTask("ServerCell.load2CommitComplete", () -> {
+                                    try {
+                                        long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                                        cell.loadVehicles();
+                                        ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
+                                        if (ServerMap.mapLoading) {
+                                            float time = (float)(System.nanoTime() - start) / 1000000.0F;
+                                            DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
+                                        }
+                                        ApocBRServerTelemetry.recordServerMapPrePhase("load2CellCommitWall", 1, System.nanoTime() - start);
+                                    } finally {
+                                        cell.loadInProgress = false;
+                                        groupLatch.countDown();
+                                        load2MainThread.signalWorkAvailable();
+                                    }
+                                });
                             } catch (Throwable t) {
                                 cell.cancelLoading = true;
                                 cell.loadingWasCancelled = true;
                                 cell.isLoaded = false;
-                                ExceptionLogger.logException(t);
-                            } finally {
                                 cell.loadInProgress = false;
+                                ExceptionLogger.logException(t);
                                 groupLatch.countDown();
                                 load2MainThread.signalWorkAvailable();
                             }
@@ -1484,16 +1508,18 @@ public class ServerMap {
             }
 
             /**
-             * A budget expiry is normal and never cancels anything. Only a colour group that has not
-             * counted down at all for LOAD2_JOB_STALL_TIMEOUT_MS is treated as broken - the case the
-             * old pumpUntil() timeout existed for, where a worker dies or wedges and the latch would
-             * otherwise never clear.
+             * A budget expiry is normal and never cancels anything. Only a colour group that has no
+             * latch progress and drains no main-thread commit tasks for LOAD2_JOB_STALL_TIMEOUT_MS
+             * is treated as broken - the case where workers or the main-thread commit queue wedge
+             * and the latch would otherwise never clear.
              */
             private void checkStalled() {
                 long count = this.latch == null ? 0L : this.latch.getCount();
+                long completedTaskCount = load2MainThread.getCompletedTaskCount();
                 long now = System.currentTimeMillis();
-                if (count != this.lastLatchCount) {
+                if (count != this.lastLatchCount || completedTaskCount != this.lastCompletedTaskCount) {
                     this.lastLatchCount = count;
+                    this.lastCompletedTaskCount = completedTaskCount;
                     this.lastProgressMs = now;
                     return;
                 }
@@ -1530,6 +1556,7 @@ public class ServerMap {
                 this.latch = null;
                 this.inFlight = null;
                 this.lastLatchCount = Long.MAX_VALUE;
+                this.lastCompletedTaskCount = load2MainThread.getCompletedTaskCount();
                 this.lastProgressMs = now;
             }
         }
@@ -1739,7 +1766,7 @@ public class ServerMap {
                 for (int y = 0; y < 8; y++) {
                     IsoChunk chunk = this.chunks[x][y];
                     if (chunk != null) {
-                        if (chunk.doLoadGridsquare(apocBrNativeRegistrationChunks)) {
+                        if (chunk.doLoadGridsquareLoad2(apocBrNativeRegistrationChunks)) {
                             apocBrPostRegistrationChunks.add(chunk);
                         }
                         apocBrUnits++;
@@ -1755,57 +1782,20 @@ public class ServerMap {
             );
 
             if (!apocBrNativeRegistrationChunks.isEmpty()) {
-                ServerMap.runLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
+                ServerMap.submitLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
             }
 
-            // ApocBR: finishLoadGridsquareAfterChunkRegistration() is a chain of ~6 sequential
-            // submitAndWait() hops to the main thread per chunk (erosion/MapObjects/Lua
-            // LoadGridsquare, randomizeBuildingsEtc, checkAdjacentChunks, chunk-object-state flush,
-            // Lua LoadChunk). Running that loop serially - one chunk's whole chain finishing before
-            // the next chunk's first hop even starts - is what starves the main thread's pump loop
-            // between hops (see load2PumpIdleWait in telemetry): with only one chunk in flight, there
-            // are real gaps where nothing is queued. Fanning all of a cell's chunks out to their own
-            // virtual thread on the same recalcPool means up to 64 chunks' hop chains are in flight
-            // at once, so the main thread's queue - which is already being pumped by
-            // Load2Job's color-round drain - stays continuously fed instead of idling
-            // between each chunk. This is safe with respect to the checkerboard border-safety
-            // invariant: it only changes how many chunks *within this one cell* run concurrently,
-            // never across cells, and every method in the chain above that touches shared/adjacent
-            // state (checkAdjacentChunks, the per-connection chunkObjectStateRequests flush,
-            // frameDelay) has been made safe for concurrent chunk callers - see IsoChunk.java.
+            // ApocBR: queue the post-native chunk commits after the native registration batch.
+            // The worker no longer waits between these hops; the colour latch counts down from the
+            // final cell commit task, so the next colour still cannot start until this cell's queued
+            // main-thread mutations have actually drained.
             if (!apocBrPostRegistrationChunks.isEmpty()) {
                 long apocBrChunkFinishStart = ApocBRServerTelemetry.beginDetail();
-                CountDownLatch chunkFinishLatch = new CountDownLatch(apocBrPostRegistrationChunks.size());
                 for (IsoChunk chunk : apocBrPostRegistrationChunks) {
-                    recalcPool.execute(() -> {
-                        try {
-                            chunk.finishLoadGridsquareAfterChunkRegistration();
-                        } catch (Throwable t) {
-                            ExceptionLogger.logException(t);
-                        } finally {
-                            chunkFinishLatch.countDown();
-                        }
-                    });
-                }
-
-                try {
-                    if (!chunkFinishLatch.await(LOAD2_CHUNK_FINISH_TIMEOUT_MS, TimeUnit.MILLISECONDS)) {
-                        throw new RuntimeException(
-                            "Timed out waiting for load2 chunk finish tasks in cell "
-                                + this.wx
-                                + ","
-                                + this.wy
-                                + " after "
-                                + LOAD2_CHUNK_FINISH_TIMEOUT_MS
-                                + " ms, remaining="
-                                + chunkFinishLatch.getCount()
-                        );
-                    }
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+                    chunk.finishLoadGridsquareAfterChunkRegistrationLoad2();
                 }
                 ApocBRServerTelemetry.recordServerMapPrePhaseSince(
-                    "load2ChunkFinishWait",
+                    "load2ChunkFinishEnqueue",
                     apocBrPostRegistrationChunks.size(),
                     apocBrChunkFinishStart
                 );
