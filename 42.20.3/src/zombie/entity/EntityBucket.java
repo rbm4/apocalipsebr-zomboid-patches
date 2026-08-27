@@ -49,7 +49,6 @@ public abstract class EntityBucket {
 
     final void updateMembership(GameEntity entity) {
         if (entity == null) {
-            DebugType.General.warn("EntityBucket.updateMembership: ignoring null entity for bucketIndex=" + this.index);
             return;
         }
 
