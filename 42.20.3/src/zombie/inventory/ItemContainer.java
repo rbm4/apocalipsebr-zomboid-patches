@@ -3416,13 +3416,23 @@ public final class ItemContainer {
     }
 
     public void addItemsToProcessItems() {
-        IsoWorld.instance.currentCell.addToProcessItems(this.items);
+        ArrayList<InventoryItem> snapshot;
+        synchronized (this.items) {
+            snapshot = new ArrayList<>(this.items);
+        }
+
+        IsoWorld.instance.currentCell.addToProcessItems(snapshot);
     }
 
     public void removeItemsFromProcessItems() {
-        IsoWorld.instance.currentCell.addToProcessItemsRemove(this.items);
+        ArrayList<InventoryItem> snapshot;
+        synchronized (this.items) {
+            snapshot = new ArrayList<>(this.items);
+        }
+
+        IsoWorld.instance.currentCell.addToProcessItemsRemove(snapshot);
         if (!"floor".equals(this.type)) {
-            ItemSoundManager.removeItems(this.items);
+            ItemSoundManager.removeItems(snapshot);
         }
     }
 

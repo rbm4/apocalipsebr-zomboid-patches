@@ -110,6 +110,10 @@ public final class EngineEntityManager {
         try {
             for (int i = 0; i < this.processingOperations.size; i++) {
                 EngineEntityManager.EntityOperation operation = this.processingOperations.get(i);
+                if (operation == null) {
+                    continue;
+                }
+
                 switch (operation.type) {
                     case Add:
                         this.addEntityInternal(operation.entity);
@@ -128,7 +132,10 @@ public final class EngineEntityManager {
             }
         } finally {
             for (int i = 0; i < this.processingOperations.size; i++) {
-                this.entityOperationPool.free(this.processingOperations.get(i));
+                EngineEntityManager.EntityOperation operation = this.processingOperations.get(i);
+                if (operation != null) {
+                    this.entityOperationPool.free(operation);
+                }
             }
 
             this.processingOperations.clear();

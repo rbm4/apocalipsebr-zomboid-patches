@@ -2193,6 +2193,11 @@ public final class IsoCell {
 
         for (int n = 0; n < size; n++) {
             InventoryItem i = this.processItems.get(n);
+            if (i == null) {
+                this.processItemsRemove.add(null);
+                continue;
+            }
+
             i.update();
             if (i.finishupdate()) {
                 this.processItemsRemove.add(i);
@@ -2203,6 +2208,11 @@ public final class IsoCell {
 
         for (int nx = 0; nx < size; nx++) {
             IsoWorldInventoryObject i = this.processWorldItems.get(nx);
+            if (i == null) {
+                this.processWorldItemsRemove.add(null);
+                continue;
+            }
+
             i.update();
             if (i.finishupdate()) {
                 this.processWorldItemsRemove.add(i);
@@ -2366,8 +2376,9 @@ public final class IsoCell {
 
     public void addToProcessItems(ArrayList<InventoryItem> items) {
         if (items != null && !GameClient.client) {
-            for (int i = 0; i < items.size(); i++) {
-                InventoryItem item = items.get(i);
+            ArrayList<InventoryItem> snapshot = new ArrayList<>(items);
+            for (int i = 0; i < snapshot.size(); i++) {
+                InventoryItem item = snapshot.get(i);
                 if (item != null) {
                     this.processItemsRemove.remove(item);
                     if (!this.processItems.contains(item)) {
@@ -2388,8 +2399,9 @@ public final class IsoCell {
 
     public void addToProcessItemsRemove(ArrayList<InventoryItem> items) {
         if (items != null) {
-            for (int i = 0; i < items.size(); i++) {
-                InventoryItem item = items.get(i);
+            ArrayList<InventoryItem> snapshot = new ArrayList<>(items);
+            for (int i = 0; i < snapshot.size(); i++) {
+                InventoryItem item = snapshot.get(i);
                 if (item != null && !this.processItemsRemove.contains(item)) {
                     this.processItemsRemove.add(item);
                 }
