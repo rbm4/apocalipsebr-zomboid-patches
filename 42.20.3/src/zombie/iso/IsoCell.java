@@ -2287,8 +2287,10 @@ public final class IsoCell {
         apocBrSectionStart = ApocBRServerTelemetry.beginDetail();
         for (IsoMovingObject obj : this.objectList) {
             if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
-                animal.updateVocalProperties();
-                animal.updateLoopingSounds();
+                if (animal.getData() != null && animal.getData().getBreed() != null) {
+                    animal.updateVocalProperties();
+                    animal.updateLoopingSounds();
+                }
             }
         }
         ApocBRServerTelemetry.recordTickSectionSince("stateIsoCellAnimalVocals", apocBrSectionStart);
