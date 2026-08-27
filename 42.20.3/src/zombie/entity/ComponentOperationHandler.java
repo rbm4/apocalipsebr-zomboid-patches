@@ -1,16 +1,21 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie.entity;
 
+import zombie.debug.DebugType;
 import zombie.entity.util.Array;
 import zombie.entity.util.SingleThreadPool;
+import zombie.network.GameServer;
 
 public final class ComponentOperationHandler {
+    private static long offMainQueuedOperations;
+    private static long lastOffMainQueuedLogMs;
     private final ComponentOperationHandler.OperationListener operationListener;
     private final IBooleanInformer delayed;
     private final IBucketInformer bucketsUpdating;
     private final ComponentOperationHandler.ComponentOperationPool operationPool = new ComponentOperationHandler.ComponentOperationPool();
     private final Array<ComponentOperationHandler.ComponentOperation> operations = new Array<>();
     private final Array<ComponentOperationHandler.ComponentOperation> processingOperations = new Array<>();
+    private final Object operationsLock = new Object();
 
     protected ComponentOperationHandler(IBooleanInformer delayed, IBucketInformer bucketsUpdating, ComponentOperationHandler.OperationListener listener) {
         this.delayed = delayed;
@@ -23,18 +28,21 @@ public final class ComponentOperationHandler {
             return;
         }
 
-        if (this.bucketsUpdating.value()) {
+        boolean queueOperation = this.shouldQueueOperation();
+        if (this.bucketsUpdating.value() && !queueOperation) {
             throw new IllegalStateException("Cannot perform component operation when buckets are updating.");
         } else {
-            if (this.delayed.value()) {
-                if (entity.scheduledForBucketUpdate) {
-                    return;
-                }
+            if (queueOperation) {
+                synchronized (this.operationsLock) {
+                    if (entity.scheduledForBucketUpdate) {
+                        return;
+                    }
 
-                entity.scheduledForBucketUpdate = true;
-                ComponentOperationHandler.ComponentOperation operation = this.operationPool.obtain();
-                operation.make(entity);
-                this.operations.add(operation);
+                    entity.scheduledForBucketUpdate = true;
+                    ComponentOperationHandler.ComponentOperation operation = this.operationPool.obtain();
+                    operation.make(entity);
+                    this.operations.add(operation);
+                }
             } else {
                 this.operationListener.componentsChanged(entity);
             }
@@ -46,18 +54,21 @@ public final class ComponentOperationHandler {
             return;
         }
 
-        if (this.bucketsUpdating.value()) {
+        boolean queueOperation = this.shouldQueueOperation();
+        if (this.bucketsUpdating.value() && !queueOperation) {
             throw new IllegalStateException("Cannot perform component operation when buckets are updating.");
         } else {
-            if (this.delayed.value()) {
-                if (entity.scheduledForBucketUpdate) {
-                    return;
-                }
+            if (queueOperation) {
+                synchronized (this.operationsLock) {
+                    if (entity.scheduledForBucketUpdate) {
+                        return;
+                    }
 
-                entity.scheduledForBucketUpdate = true;
-                ComponentOperationHandler.ComponentOperation operation = this.operationPool.obtain();
-                operation.make(entity);
-                this.operations.add(operation);
+                    entity.scheduledForBucketUpdate = true;
+                    ComponentOperationHandler.ComponentOperation operation = this.operationPool.obtain();
+                    operation.make(entity);
+                    this.operations.add(operation);
+                }
             } else {
                 this.operationListener.componentsChanged(entity);
             }
@@ -65,12 +76,16 @@ public final class ComponentOperationHandler {
     }
 
     boolean hasOperationsToProcess() {
-        return this.operations.size > 0;
+        synchronized (this.operationsLock) {
+            return this.operations.size > 0;
+        }
     }
 
     void processOperations() {
-        this.processingOperations.addAll(this.operations);
-        this.operations.clear();
+        synchronized (this.operationsLock) {
+            this.processingOperations.addAll(this.operations);
+            this.operations.clear();
+        }
 
         try {
             for (int i = 0; i < this.processingOperations.size; i++) {
@@ -83,14 +98,36 @@ public final class ComponentOperationHandler {
                 operation.entity.scheduledForBucketUpdate = false;
             }
         } finally {
-            for (int i = 0; i < this.processingOperations.size; i++) {
-                ComponentOperationHandler.ComponentOperation operation = this.processingOperations.get(i);
-                if (operation != null) {
-                    this.operationPool.free(operation);
+            synchronized (this.operationsLock) {
+                for (int i = 0; i < this.processingOperations.size; i++) {
+                    ComponentOperationHandler.ComponentOperation operation = this.processingOperations.get(i);
+                    if (operation != null) {
+                        this.operationPool.free(operation);
+                    }
                 }
             }
 
             this.processingOperations.clear();
+        }
+    }
+
+    private boolean shouldQueueOperation() {
+        boolean offMain = GameServer.server && GameServer.mainThread != null && Thread.currentThread() != GameServer.mainThread;
+        if (offMain) {
+            recordOffMainQueuedOperation();
+        }
+
+        return this.delayed.value() || offMain;
+    }
+
+    private static void recordOffMainQueuedOperation() {
+        synchronized (ComponentOperationHandler.class) {
+            offMainQueuedOperations++;
+            long now = System.currentTimeMillis();
+            if (now - lastOffMainQueuedLogMs >= 10000L) {
+                lastOffMainQueuedLogMs = now;
+                DebugType.General.warn("ComponentOperationHandler: queued off-main component operation count=" + offMainQueuedOperations);
+            }
         }
     }
 

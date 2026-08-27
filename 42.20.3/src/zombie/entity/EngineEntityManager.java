@@ -3,18 +3,23 @@ package zombie.entity;
 
 import java.util.Objects;
 import zombie.core.Core;
+import zombie.debug.DebugType;
 import zombie.entity.util.Array;
 import zombie.entity.util.ImmutableArray;
 import zombie.entity.util.ObjectSet;
 import zombie.entity.util.SingleThreadPool;
+import zombie.network.GameServer;
 
 public final class EngineEntityManager {
+    private static long offMainQueuedOperations;
+    private static long lastOffMainQueuedLogMs;
     private final EntityBucketManager bucketManager;
     private final Array<GameEntity> entities = new Array<>(false, 16);
     private final ObjectSet<GameEntity> entitySet = new ObjectSet<>();
     private final ImmutableArray<GameEntity> immutableEntities = new ImmutableArray<>(this.entities);
     private final Array<EngineEntityManager.EntityOperation> pendingOperations = new Array<>(false, 16);
     private final Array<EngineEntityManager.EntityOperation> processingOperations = new Array<>(false, 16);
+    private final Object operationsLock = new Object();
     private final EngineEntityManager.EntityOperationPool entityOperationPool = new EngineEntityManager.EntityOperationPool();
     private final ComponentOperationHandler componentOperationHandler;
     private final IBooleanInformer delayed;
@@ -34,43 +39,55 @@ public final class EngineEntityManager {
     }
 
     void addEntity(GameEntity entity) {
-        if (!this.delayed.value() && !this.bucketsUpdating.value()) {
+        if (entity == null) {
+            return;
+        }
+
+        if (!this.shouldQueueOperation()) {
             this.addEntityInternal(entity);
         } else {
-            if (entity.scheduledForEngineRemoval || entity.removingFromEngine) {
-                throw new IllegalArgumentException("Entity is scheduled for removal.");
-            }
-
-            if (entity.addedToEngine) {
-                if (Core.debug) {
-                    throw new IllegalArgumentException("Entity has already been added to Engine.");
+            synchronized (this.operationsLock) {
+                if (entity.scheduledForEngineRemoval || entity.removingFromEngine) {
+                    throw new IllegalArgumentException("Entity is scheduled for removal.");
                 }
 
-                return;
-            }
+                if (entity.addedToEngine) {
+                    if (Core.debug) {
+                        throw new IllegalArgumentException("Entity has already been added to Engine.");
+                    }
 
-            entity.addedToEngine = true;
-            entity.scheduledDelayedAddToEngine = true;
-            EngineEntityManager.EntityOperation operation = this.entityOperationPool.obtain();
-            operation.entity = entity;
-            operation.type = EngineEntityManager.EntityOperation.Type.Add;
-            this.pendingOperations.add(operation);
+                    return;
+                }
+
+                entity.addedToEngine = true;
+                entity.scheduledDelayedAddToEngine = true;
+                EngineEntityManager.EntityOperation operation = this.entityOperationPool.obtain();
+                operation.entity = entity;
+                operation.type = EngineEntityManager.EntityOperation.Type.Add;
+                this.pendingOperations.add(operation);
+            }
         }
     }
 
     void removeEntity(GameEntity entity) {
-        if (!this.delayed.value() && !this.bucketsUpdating.value()) {
+        if (entity == null) {
+            return;
+        }
+
+        if (!this.shouldQueueOperation()) {
             this.removeEntityInternal(entity);
         } else {
-            if (entity.scheduledForEngineRemoval) {
-                return;
-            }
+            synchronized (this.operationsLock) {
+                if (entity.scheduledForEngineRemoval) {
+                    return;
+                }
 
-            entity.scheduledForEngineRemoval = true;
-            EngineEntityManager.EntityOperation operation = this.entityOperationPool.obtain();
-            operation.entity = entity;
-            operation.type = EngineEntityManager.EntityOperation.Type.Remove;
-            this.pendingOperations.add(operation);
+                entity.scheduledForEngineRemoval = true;
+                EngineEntityManager.EntityOperation operation = this.entityOperationPool.obtain();
+                operation.entity = entity;
+                operation.type = EngineEntityManager.EntityOperation.Type.Remove;
+                this.pendingOperations.add(operation);
+            }
         }
     }
 
@@ -79,19 +96,23 @@ public final class EngineEntityManager {
     }
 
     void removeAllEntities(ImmutableArray<GameEntity> entities) {
-        if (!this.delayed.value() && !this.bucketsUpdating.value()) {
+        if (!this.shouldQueueOperation()) {
             while (entities.size() > 0) {
                 this.removeEntityInternal(entities.first());
             }
         } else {
-            for (GameEntity entity : entities) {
-                entity.scheduledForEngineRemoval = true;
-            }
+            synchronized (this.operationsLock) {
+                for (GameEntity entity : entities) {
+                    if (entity != null) {
+                        entity.scheduledForEngineRemoval = true;
+                    }
+                }
 
-            EngineEntityManager.EntityOperation operation = this.entityOperationPool.obtain();
-            operation.type = EngineEntityManager.EntityOperation.Type.RemoveAll;
-            operation.entities = entities;
-            this.pendingOperations.add(operation);
+                EngineEntityManager.EntityOperation operation = this.entityOperationPool.obtain();
+                operation.type = EngineEntityManager.EntityOperation.Type.RemoveAll;
+                operation.entities = entities;
+                this.pendingOperations.add(operation);
+            }
         }
     }
 
@@ -100,29 +121,37 @@ public final class EngineEntityManager {
     }
 
     boolean hasPendingOperations() {
-        return this.pendingOperations.size > 0;
+        synchronized (this.operationsLock) {
+            return this.pendingOperations.size > 0;
+        }
     }
 
     void processPendingOperations() {
-        this.processingOperations.addAll(this.pendingOperations);
-        this.pendingOperations.clear();
+        synchronized (this.operationsLock) {
+            this.processingOperations.addAll(this.pendingOperations);
+            this.pendingOperations.clear();
+        }
 
         try {
             for (int i = 0; i < this.processingOperations.size; i++) {
                 EngineEntityManager.EntityOperation operation = this.processingOperations.get(i);
-                if (operation == null) {
+                if (operation == null || operation.type == null) {
                     continue;
                 }
 
                 switch (operation.type) {
                     case Add:
-                        this.addEntityInternal(operation.entity);
+                        if (operation.entity != null) {
+                            this.addEntityInternal(operation.entity);
+                        }
                         break;
                     case Remove:
-                        this.removeEntityInternal(operation.entity);
+                        if (operation.entity != null) {
+                            this.removeEntityInternal(operation.entity);
+                        }
                         break;
                     case RemoveAll:
-                        while (operation.entities.size() > 0) {
+                        while (operation.entities != null && operation.entities.size() > 0) {
                             this.removeEntityInternal(operation.entities.first());
                         }
                         break;
@@ -131,14 +160,36 @@ public final class EngineEntityManager {
                 }
             }
         } finally {
-            for (int i = 0; i < this.processingOperations.size; i++) {
-                EngineEntityManager.EntityOperation operation = this.processingOperations.get(i);
-                if (operation != null) {
-                    this.entityOperationPool.free(operation);
+            synchronized (this.operationsLock) {
+                for (int i = 0; i < this.processingOperations.size; i++) {
+                    EngineEntityManager.EntityOperation operation = this.processingOperations.get(i);
+                    if (operation != null) {
+                        this.entityOperationPool.free(operation);
+                    }
                 }
             }
 
             this.processingOperations.clear();
+        }
+    }
+
+    private boolean shouldQueueOperation() {
+        boolean offMain = GameServer.server && GameServer.mainThread != null && Thread.currentThread() != GameServer.mainThread;
+        if (offMain) {
+            recordOffMainQueuedOperation();
+        }
+
+        return this.delayed.value() || this.bucketsUpdating.value() || offMain;
+    }
+
+    private static void recordOffMainQueuedOperation() {
+        synchronized (EngineEntityManager.class) {
+            offMainQueuedOperations++;
+            long now = System.currentTimeMillis();
+            if (now - lastOffMainQueuedLogMs >= 10000L) {
+                lastOffMainQueuedLogMs = now;
+                DebugType.General.warn("EngineEntityManager: queued off-main entity operation count=" + offMainQueuedOperations);
+            }
         }
     }
 
@@ -150,6 +201,10 @@ public final class EngineEntityManager {
     }
 
     void addEntityInternal(GameEntity entity) {
+        if (entity == null) {
+            return;
+        }
+
         if (this.entitySet.contains(entity)) {
             return;
         } else {
@@ -164,6 +219,10 @@ public final class EngineEntityManager {
     }
 
     void removeEntityInternal(GameEntity entity) {
+        if (entity == null) {
+            return;
+        }
+
         boolean removed = this.entitySet.remove(entity);
         if (removed) {
             entity.scheduledForEngineRemoval = false;
