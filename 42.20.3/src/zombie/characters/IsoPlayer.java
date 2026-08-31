@@ -8564,9 +8564,83 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         }
 
         if (GameServer.server) {
+            this.apocBrLogDeathForensics(sender, body);
             this.getNetworkCharacterAI().syncDamage();
             GameServer.sendCharacterDeath(body);
         }
+    }
+
+    private void apocBrLogDeathForensics(IsoGameCharacter sender, IsoDeadBody body) {
+        IsoGameCharacter attacker = this.getAttackedBy();
+        BodyDamage bodyDamage = this.getBodyDamage();
+        StringBuilder stack = new StringBuilder();
+        StackTraceElement[] elements = new Throwable().getStackTrace();
+        int count = 0;
+
+        for (int i = 1; i < elements.length && count < 12; i++) {
+            String className = elements[i].getClassName();
+            if (className.startsWith("java.") || className.startsWith("sun.")) {
+                continue;
+            }
+
+            if (count > 0) {
+                stack.append(" <- ");
+            }
+
+            stack.append(className)
+                .append(".")
+                .append(elements[i].getMethodName())
+                .append(":")
+                .append(elements[i].getLineNumber());
+            count++;
+        }
+
+        DebugLog.log(
+            DebugType.Multiplayer,
+            "[ApocBR][DeathForensics] player="
+                + this.getUsername()
+                + "/onlineId="
+                + this.getOnlineID()
+                + " health="
+                + this.getHealth()
+                + " bodyHealth="
+                + (bodyDamage != null ? bodyDamage.getHealth() : -1.0F)
+                + " attackedBy="
+                + this.apocBrDescribeDeathCharacter(attacker)
+                + " sender="
+                + this.apocBrDescribeDeathCharacter(sender)
+                + " body="
+                + (body != null ? body.getX() + "," + body.getY() + "," + body.getZ() : "null")
+                + " pos="
+                + this.getX()
+                + ","
+                + this.getY()
+                + ","
+                + this.getZ()
+                + " stack="
+                + stack
+        );
+    }
+
+    private String apocBrDescribeDeathCharacter(IsoGameCharacter character) {
+        if (character == null) {
+            return "null";
+        }
+
+        if (character instanceof IsoPlayer player) {
+            return "IsoPlayer(" + player.getUsername() + "/onlineId=" + player.getOnlineID() + ")";
+        }
+
+        return character.getClass().getSimpleName()
+            + "(health="
+            + character.getHealth()
+            + ",pos="
+            + character.getX()
+            + ","
+            + character.getY()
+            + ","
+            + character.getZ()
+            + ")";
     }
 
     public NetworkPlayerAI getNetworkCharacterAI() {
