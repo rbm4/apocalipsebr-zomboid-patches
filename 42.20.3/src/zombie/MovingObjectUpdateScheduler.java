@@ -49,7 +49,7 @@ public final class MovingObjectUpdateScheduler {
             ZombieCountOptimiser.prepareZombiesForDeletion();
         }
 
-        for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
+        for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectListSnapshot()) {
             if (server && isoMovingObject instanceof IsoZombie isoZombie) {
                 if (GameServer.guiCommandline) {
                     isoZombie.updateForServerGui();

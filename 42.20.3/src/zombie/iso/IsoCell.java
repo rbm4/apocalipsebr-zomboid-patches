@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.joml.Vector2i;
@@ -134,7 +135,7 @@ public final class IsoCell {
     public final IsoChunkMap[] chunkMap = new IsoChunkMap[4];
     public final ArrayList<IsoBuilding> buildingList = new ArrayList<>();
     private final ArrayList<IsoWindow> windowList = new ArrayList<>();
-    private final Set<IsoMovingObject> objectList = new HashSet<>();
+    private final Set<IsoMovingObject> objectList = ConcurrentHashMap.newKeySet();
     private final ArrayList<IsoPushableObject> pushableObjectList = new ArrayList<>();
     private final HashMap<Integer, BuildingScore> buildingScores = new HashMap<>();
     private final ArrayList<IsoRoom> roomList = new ArrayList<>();
@@ -142,8 +143,8 @@ public final class IsoCell {
     private final Set<IsoObject> staticUpdaterObjectSet = new HashSet<>();
     private final ArrayList<IsoZombie> zombieList = new ArrayList<>();
     private final ArrayList<IsoGameCharacter> remoteSurvivorList = new ArrayList<>();
-    private final Set<IsoMovingObject> removeList = new HashSet<>();
-    private final Set<IsoMovingObject> addList = new HashSet<>();
+    private final Set<IsoMovingObject> removeList = ConcurrentHashMap.newKeySet();
+    private final Set<IsoMovingObject> addList = ConcurrentHashMap.newKeySet();
     private final ArrayList<IsoObject> processIsoObject = new ArrayList<>();
     private final Set<IsoObject> processIsoObjectSet = new HashSet<>();
     private final Set<IsoObject> processIsoObjectRemove = new HashSet<>();
@@ -2285,7 +2286,7 @@ public final class IsoCell {
         ApocBRServerTelemetry.recordTickSectionSince("stateIsoCellSchedulerUpdate", apocBrSectionStart);
 
         apocBrSectionStart = ApocBRServerTelemetry.beginDetail();
-        for (IsoMovingObject obj : this.objectList) {
+        for (IsoMovingObject obj : this.getObjectListSnapshot()) {
             if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
                 if (animal.getData() != null && animal.getData().getBreed() != null) {
                     animal.updateVocalProperties();
@@ -2748,9 +2749,13 @@ public final class IsoCell {
         return this.objectList;
     }
 
+    public List<IsoMovingObject> getObjectListSnapshot() {
+        return new ArrayList<>(this.objectList);
+    }
+
     @UsedFromLua
     public List<IsoMovingObject> getObjectListForLua() {
-        return this.objectList.stream().toList();
+        return this.getObjectListSnapshot();
     }
 
     public IsoRoom getRoom(int id) {

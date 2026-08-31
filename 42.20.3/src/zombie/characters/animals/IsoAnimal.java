@@ -3640,7 +3640,7 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         float locZ = this.getZ();
         this.spottedList.clear();
 
-        for (IsoMovingObject movingObject : this.getCell().getObjectList()) {
+        for (IsoMovingObject movingObject : this.getCell().getObjectListSnapshot()) {
             if (!(movingObject instanceof IsoPhysicsObject)
                 && !(movingObject instanceof BaseVehicle)
                 && !(movingObject instanceof IsoZombie zombie && zombie.isReanimatedForGrappleOnly())) {
