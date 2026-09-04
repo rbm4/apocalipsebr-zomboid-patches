@@ -43,7 +43,7 @@ public class ServerLOS {
 
     // ApocBR: IsoGridSquare.lighting[] is kept aligned with LosUtil.SLOT_COUNT.
     private static final int LOS_SLOT_COUNT = LosUtil.SLOT_COUNT;
-    private static final int LOS_WORKER_THREADS = 6;
+    private static final int LOS_WORKER_THREADS = Math.max(1, Integer.getInteger("apocbr.losWorkerThreads", 4));
     private final BlockingQueue<Integer> freeSlots = new ArrayBlockingQueue<>(LOS_SLOT_COUNT);
     private final BlockingQueue<PlayerData> losQueue = new LinkedBlockingQueue<>();
     private final ExecutorService losPool = Executors.newFixedThreadPool(

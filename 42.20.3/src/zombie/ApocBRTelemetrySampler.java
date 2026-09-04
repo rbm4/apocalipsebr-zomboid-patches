@@ -23,11 +23,9 @@ import zombie.network.GameServer;
  * requiring a source-level override of that class just to expose them.
  *
  * Runs on its own daemon thread with its own sampling interval, decoupled from
- * the server's per-tick timing hook in {@code GameServer}'s main loop. If the
- * reflected fields are ever renamed/removed by a game update, sampling of the
- * queue-depth metrics is disabled (logged once) rather than throwing on every
- * sample; players/zombies/connections keep working regardless since those do
- * not depend on reflection at all.
+ * the server's per-tick timing hook in {@code GameServer}'s main loop. Queue
+ * depths are read from ApocBR's explicit counters when available, falling back
+ * to reflection only for older partial patch sets.
  */
 public final class ApocBRTelemetrySampler {
     private static final long SAMPLE_INTERVAL_MS = clamp(getLong("apocbr.telemetry.sampleIntervalMs", 5000L), 1000L, 60000L);
@@ -94,13 +92,22 @@ public final class ApocBRTelemetrySampler {
             ? IsoWorld.instance.currentCell.getZombieList().size()
             : 0;
 
-        int highQueue = -1;
-        int playerQueue = -1;
-        int normalQueue = -1;
-        if (ensureQueueFields()) {
-            highQueue = queueSize(highQueueField);
-            playerQueue = queueSize(playerQueueField);
-            normalQueue = queueSize(normalQueueField);
+        int highQueue;
+        int playerQueue;
+        int normalQueue;
+        try {
+            playerQueue = GameServer.getApocBRQueueDepth(0);
+            highQueue = GameServer.getApocBRQueueDepth(1);
+            normalQueue = GameServer.getApocBRQueueDepth(2);
+        } catch (Throwable t) {
+            highQueue = -1;
+            playerQueue = -1;
+            normalQueue = -1;
+            if (ensureQueueFields()) {
+                highQueue = queueSize(highQueueField);
+                playerQueue = queueSize(playerQueueField);
+                normalQueue = queueSize(normalQueueField);
+            }
         }
 
         ApocBRServerTelemetry.recordStateSnapshot(players, zombies, connections, highQueue, playerQueue, normalQueue);

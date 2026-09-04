@@ -274,7 +274,7 @@ public class GameServer {
     // ApocBR: depth tracking for the three main-loop queues. ConcurrentLinkedQueue.size() is O(n)
     // so it cannot be called on the receive path; keep explicit counters instead.
     //
-    // Why bound all three: with the RakNet timeout widened from 2000ms to 45s the server is now
+    // Why bound all three: with the RakNet timeout widened from 2000ms to 12s the server is now
     // expected to survive stalls twenty times longer than before. Unbounded queues would turn that
     // survivability into an OutOfMemoryError, because the UdpEngine thread keeps enqueuing for the
     // whole stall. The caps put a hard, predictable ceiling on in-flight packet memory:

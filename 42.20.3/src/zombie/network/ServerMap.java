@@ -852,7 +852,7 @@ public class ServerMap {
         int maxCells = PZMath.max(1, maxCellsPerTick);
         int maxSlices = PZMath.max(1, maxSlicesPerTick);
         int overdueCells = 0;
-        if (enforceDeadline) {
+        if (enforceDeadline && ServerMap.ServerCell.DEFERRED_UNLOAD_FORCE_OVERDUE) {
             for (int i = 0; i < this.deferredUnloadCells.size(); i++) {
                 if (this.deferredUnloadCells.get(i).getDeferredUnloadAgeTicks(this.deferredUnloadTick) >= ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_TICKS) {
                     overdueCells++;
@@ -860,8 +860,7 @@ public class ServerMap {
             }
         }
 
-        int cellsToTouch = PZMath.min(PZMath.max(maxCells, overdueCells), pendingAtStart);
-        maxSlices = PZMath.max(maxSlices, overdueCells);
+        int cellsToTouch = PZMath.min(maxCells, pendingAtStart);
         int attempts = 0;
         int partialCells = 0;
         int unloaded = 0;
@@ -869,8 +868,10 @@ public class ServerMap {
         for (int touched = 0; touched < cellsToTouch && attempts < maxSlices && !this.deferredUnloadCells.isEmpty(); touched++) {
             ServerMap.ServerCell cell = this.deferredUnloadCells.remove(0);
             attempts++;
-            boolean forced = enforceDeadline && cell.getDeferredUnloadAgeTicks(this.deferredUnloadTick) >= ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_TICKS;
-            boolean finished = cell.processDeferredUnloadSlice(forced ? Integer.MAX_VALUE : squaresPerSlice);
+            boolean forced = enforceDeadline
+                && ServerMap.ServerCell.DEFERRED_UNLOAD_FORCE_OVERDUE
+                && cell.getDeferredUnloadAgeTicks(this.deferredUnloadTick) >= ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_TICKS;
+            boolean finished = cell.processDeferredUnloadSlice(forced ? ServerMap.ServerCell.DEFERRED_UNLOAD_FORCED_SQUARES_PER_SLICE : squaresPerSlice);
             if (finished) {
                 unloaded++;
             } else {
@@ -878,7 +879,7 @@ public class ServerMap {
                 this.deferredUnloadCells.add(cell);
             }
 
-            if (!forced && System.nanoTime() >= deadline) {
+            if (System.nanoTime() >= deadline) {
                 break;
             }
         }
@@ -1282,6 +1283,8 @@ public class ServerMap {
         private static final int DEFERRED_UNLOAD_MAX_CELLS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.unload.maxCellsPerTick", 4));
         private static final int DEFERRED_UNLOAD_SLICES_PER_TICK = Math.max(1, Integer.getInteger("apocbr.unload.slicesPerTick", 8));
         private static final int DEFERRED_UNLOAD_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.squaresPerSlice", 1024));
+        private static final boolean DEFERRED_UNLOAD_FORCE_OVERDUE = "true".equalsIgnoreCase(System.getProperty("apocbr.unload.forceOverdue", "false"));
+        private static final int DEFERRED_UNLOAD_FORCED_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.forcedSquaresPerSlice", 2048));
         private static final boolean DEFERRED_UNLOAD_IDLE_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.unload.idleEnabled", "true"));
         private static final int DEFERRED_UNLOAD_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.unload.idleMaxMs", 4));
         private static final long DEFERRED_UNLOAD_IDLE_MAX_NANOS = DEFERRED_UNLOAD_IDLE_MAX_MS * 1000000L;
@@ -1322,7 +1325,7 @@ public class ServerMap {
         static final int LOAD2_MAX_MS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.load2.maxMsPerTick", 8));
         static final long LOAD2_MAX_NANOS_PER_TICK = LOAD2_MAX_MS_PER_TICK * 1000000L;
         static final boolean LOAD2_IDLE_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.load2.idleEnabled", "true"));
-        static final int LOAD2_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.load2.idleMaxMs", 100));
+        static final int LOAD2_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.load2.idleMaxMs", 4));
         static final long LOAD2_IDLE_MAX_NANOS = LOAD2_IDLE_MAX_MS * 1000000L;
         /**
          * Liveness guard for a colour group that stops counting down entirely.

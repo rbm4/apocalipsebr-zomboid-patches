@@ -250,6 +250,29 @@ FluidContainer's own update callback, we would be freeing the object under our o
 Secondary effects worth confirming, since these were the catch-up amplifiers: `netLoop.normal.dropped`
 (was 30), `queues.high` (was 16), `los.busyMax` (was 36).
 
+## Sep 03 21:00 Incident
+
+The telemetry immediately before the disconnect points at a main-thread unload spike, not a heap-full
+or allocation-stall event:
+
+- `world.maxMs=1382.83`
+- `serverMapPost.maxMs=854.20`
+- `unload.maxMs=837.27`
+- `load2CellCommitWall.maxMs=726.76`
+- `netLoop.high.maxMs=420.37`
+- `normal.dropped=301`, followed by logs showing `Server dropped 505 packets`
+
+The previous deferred-unload deadline logic treated overdue cells as mandatory work and processed them
+with `Integer.MAX_VALUE` squares, while also allowing overdue cells to expand the per-tick cell/slice
+limits. Under player churn this could collapse the intended 8 ms budget into a full-cell teardown on the
+main thread. That matches the warning storm from `IsoChunk.removeFromWorld: vehicle wasn't removed from
+world`, packet handling after connections were already gone, and the later large GC after map/player
+objects became unreachable.
+
+The default now fails slow instead of spiky: overdue unloads stay queued and continue draining under the
+same cell/slice/time caps. `apocbr.unload.forceOverdue=true` exists only as an emergency/manual override,
+and even then it uses `apocbr.unload.forcedSquaresPerSlice` instead of unbounded whole-cell work.
+
 ## Tunables
 
 | Property | Default | Purpose |
@@ -257,6 +280,13 @@ Secondary effects worth confirming, since these were the catch-up amplifiers: `n
 | `apocbr.load2.maxMsPerTick` | 8 | in-tick drain budget |
 | `apocbr.load2.idleEnabled` | true | use the throttle-sleep window |
 | `apocbr.load2.idleMaxMs` | 4 | idle-window drain budget |
+| `apocbr.loadChunkWorkers` | 3 | off-thread chunk-load workers; raise only if CPU/MMU headroom is proven |
+| `apocbr.loadGridSquareThreadCacheSize` | 2048 | per-loader-thread square cache; higher values reduce allocation but enlarge old-gen live set |
+| `apocbr.recalcThreadPriority` | 5 | RecalcAll priority; keep below UdpEngine during latency incidents |
+| `apocbr.losWorkerThreads` | 4 | parallel LOS workers; raise only if LOS is bottleneck and CPU load is healthy |
+| `apocbr.unload.forceOverdue` | false | keep overdue cell unloads bounded instead of forcing full-cell teardown |
+| `apocbr.unload.forcedSquaresPerSlice` | 2048 | emergency forced-unload slice cap when `forceOverdue=true` |
+| `apocbr.unload.vehicleWarnIntervalMs` | 5000 | rate limit repeated vehicle cleanup warnings during chunk teardown |
 | `apocbr.load2.jobStallTimeoutMs` | 15000 | liveness guard on a colour group |
 | `apocbr.cooperativeMainThreadTaskTimeoutMs` | 30000 | `submitAndWait` bound for cooperative queues |
 | `apocbr.load2ChunkFinishTimeoutMs` | 30000 | `chunkFinishLatch` bound in `RecalcAll2` |

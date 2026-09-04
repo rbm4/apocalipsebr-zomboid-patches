@@ -185,6 +185,13 @@ objects per packet, multiplied by packet rate and by player count.
 | `apocbr.playerUpdateQueueMaxDepth` | 4096 | Position update queue cap |
 | `apocbr.highPriorityQueueMaxDepth` | 16384 | Gameplay packet queue cap |
 | `apocbr.normalQueueMaxDepth` | 4096 | Vehicle physics queue cap |
+| `apocbr.loadChunkWorkers` | 3 | Chunk-load worker count, lowered to preserve MMU/UDP responsiveness on 8-core hosts |
+| `apocbr.loadGridSquareThreadCacheSize` | 2048 | Per-loader-thread square cache; keeps permanent old-gen cache smaller |
+| `apocbr.recalcThreadPriority` | 5 | RecalcAll priority, kept below UdpEngine's max priority |
+| `apocbr.losWorkerThreads` | 4 | ServerLOS worker count, lowered to reduce CPU contention during GC pressure |
+| `apocbr.unload.forceOverdue` | false | Prevent overdue unloads from bypassing the main-thread unload budget |
+| `apocbr.unload.forcedSquaresPerSlice` | 2048 | Emergency forced-unload slice cap when `forceOverdue=true` |
+| `apocbr.unload.vehicleWarnIntervalMs` | 5000 | Rate-limit repeated vehicle cleanup warnings during chunk teardown |
 
 ## Sizing rationale
 

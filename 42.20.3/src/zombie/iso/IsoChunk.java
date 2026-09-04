@@ -187,6 +187,9 @@ public final class IsoChunk {
     private static final AtomicInteger frameDelay = new AtomicInteger();
     private static final int maxFrameDelay = 5;
     private static final int APOCBR_LOAD_GRID_SQUARE_BATCH_SIZE = Math.max(1, Integer.getInteger("apocbr.load2GridSquareBatchSize", 64));
+    private static final int APOCBR_REMOVE_VEHICLE_WARN_INTERVAL_MS = Math.max(1000, Integer.getInteger("apocbr.unload.vehicleWarnIntervalMs", 5000));
+    private static long apocbrRemoveVehicleWarnAtMs;
+    private static int apocbrRemoveVehicleWarnSuppressed;
     public boolean requiresHotSave;
     public boolean preventHotSave;
     private boolean removeFromWorldStarted;
@@ -3379,7 +3382,7 @@ public final class IsoChunk {
         for (int i = 0; i < this.vehicles.size(); i++) {
             BaseVehicle vehicle = this.vehicles.get(i);
             if (IsoWorld.instance.currentCell.getVehicles().contains(vehicle) || IsoWorld.instance.currentCell.addVehicles.contains(vehicle)) {
-                DebugLog.log("IsoChunk.removeFromWorld: vehicle wasn't removed from world id=" + vehicle.vehicleId);
+                apocbrLogVehicleNotRemoved(vehicle.vehicleId);
                 vehicle.removeFromWorld();
             }
         }
@@ -3405,6 +3408,21 @@ public final class IsoChunk {
         ApocBRServerTelemetry.recordServerMapUnloadDetail("finishChunkMeta", 1, System.nanoTime() - detailStart);
         this.removeFromWorldLevel = this.minLevel;
         this.removeFromWorldSquareIndex = 0;
+    }
+
+    private static void apocbrLogVehicleNotRemoved(short vehicleId) {
+        long now = System.currentTimeMillis();
+        if (now - apocbrRemoveVehicleWarnAtMs >= APOCBR_REMOVE_VEHICLE_WARN_INTERVAL_MS) {
+            if (apocbrRemoveVehicleWarnSuppressed > 0) {
+                DebugLog.log("IsoChunk.removeFromWorld: suppressed " + apocbrRemoveVehicleWarnSuppressed + " repeated vehicle cleanup warnings");
+                apocbrRemoveVehicleWarnSuppressed = 0;
+            }
+
+            DebugLog.log("IsoChunk.removeFromWorld: vehicle wasn't removed from world id=" + vehicleId);
+            apocbrRemoveVehicleWarnAtMs = now;
+        } else {
+            apocbrRemoveVehicleWarnSuppressed++;
+        }
     }
 
     private void disconnectFromAdjacentChunks(IsoGridSquare sq) {
@@ -4666,7 +4684,7 @@ public final class IsoChunk {
         return !Core.debug ? false : false;
     }
 
-    public ByteBuffer Save(ByteBuffer bb, CRC32 crc, boolean bHotSave) throws IOException {
+    public synchronized ByteBuffer Save(ByteBuffer bb, CRC32 crc, boolean bHotSave) throws IOException {
         bb.rewind();
         bb = ensureCapacity(bb);
         bb.clear();
