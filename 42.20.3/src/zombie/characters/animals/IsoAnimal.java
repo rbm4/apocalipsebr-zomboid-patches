@@ -237,9 +237,9 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
             this.setIsAnimal(true);
             this.type = type;
             this.adef = AnimalDefinitions.getDef(this.getAnimalType());
-            if (this.adef == null) {
-                DebugType.Animal.debugln(type + " is not a valid Animal Type.");
-            } else {
+            if (this.adef == null && type != null) {
+                this.invalidateAnimalDefinition(type, breedName);
+            } else if (this.adef != null) {
                 AnimalBreed breed;
                 if (!StringUtils.isNullOrEmpty(breedName)) {
                     breed = this.adef.getBreedByName(breedName);
@@ -267,7 +267,7 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
             if (!StringUtils.isNullOrEmpty(breedName)) {
                 this.adef = AnimalDefinitions.getDef(this.getAnimalType());
                 if (this.adef == null) {
-                    DebugType.Animal.debugln(type + " is not a valid Animal Type.");
+                    this.invalidateAnimalDefinition(type, breedName);
                     return;
                 }
 
@@ -318,6 +318,11 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
             this.setCollidable(true);
             this.setIsAnimal(true);
             this.type = type;
+            if (type != null && AnimalDefinitions.getDef(this.getAnimalType()) == null) {
+                this.invalidateAnimalDefinition(type, breed == null ? null : breed.getName());
+                return;
+            }
+
             this.init(breed);
             this.setDir(IsoDirections.getRandom());
             this.initAttachedItems("Animal");
@@ -333,10 +338,28 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
             this.setCollidable(true);
             this.setIsAnimal(true);
             this.type = type;
+            if (type != null && AnimalDefinitions.getDef(this.getAnimalType()) == null) {
+                this.invalidateAnimalDefinition(type, breed == null ? null : breed.getName());
+                return;
+            }
+
             this.init(breed);
             this.setDir(IsoDirections.getRandom());
             this.initAttachedItems("Animal");
         }
+    }
+
+    private void invalidateAnimalDefinition(String type, String breedName) {
+        DebugType.Animal.debugln(
+            "Invalid animal definition type=%s breed=%s; removing incomplete animal object",
+            String.valueOf(type),
+            String.valueOf(breedName)
+        );
+        this.setCollidable(false);
+        this.setShootable(false);
+        this.setStateMachineLocked(true);
+        this.removeFromWorld();
+        this.removeFromSquare();
     }
 
     @Override
@@ -1408,7 +1431,13 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         this.getStats().load(input, worldVersion);
         this.type = GameWindow.ReadString(input);
         this.adef = AnimalDefinitions.getDef(this.type);
-        AnimalBreed breed = this.adef.getBreedByName(GameWindow.ReadString(input));
+        String breedName = GameWindow.ReadString(input);
+        if (this.adef == null) {
+            this.invalidateAnimalDefinition(this.type, breedName);
+            throw new IOException("Invalid animal definition while loading animal type=" + this.type + " breed=" + breedName);
+        }
+
+        AnimalBreed breed = this.adef.getBreedByName(breedName);
         String newName = GameWindow.ReadString(input);
         if (!StringUtils.isNullOrEmpty(newName)) {
             this.customName = newName;
@@ -1529,6 +1558,8 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
             if (GameServer.server) {
                 AnimalInstanceManager.getInstance().add(this, AnimalInstanceManager.getInstance().allocateID());
             }
+        } else if (this.getAnimalType() != null) {
+            this.invalidateAnimalDefinition(this.getAnimalType(), breed == null ? null : breed.getName());
         }
     }
 
@@ -1607,7 +1638,7 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
 
     @Override
     public float getAnimalSize() {
-        return this.getData().getSize();
+        return this.getData() == null ? 1.0F : this.getData().getSize();
     }
 
     public float getAnimalOriginalSize() {
@@ -3341,7 +3372,7 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
     }
 
     public boolean canClimbStairs() {
-        return this.adef.canClimbStairs;
+        return this.adef != null && this.adef.canClimbStairs;
     }
 
     public void forceWanderNow() {
@@ -3349,7 +3380,7 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
     }
 
     public boolean canClimbFences() {
-        return this.adef.canClimbFences;
+        return this.adef != null && this.adef.canClimbFences;
     }
 
     @Override
@@ -3602,10 +3633,12 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
     }
 
     private void ensureCorrectSkin() {
-        if (!StringUtils.isNullOrEmpty(AnimalDefinitions.getDef(this.getAnimalType()).textureSkinned)
+        AnimalDefinitions def = AnimalDefinitions.getDef(this.getAnimalType());
+        if (def != null
+            && !StringUtils.isNullOrEmpty(def.textureSkinned)
             && ((KahluaTableImpl)this.getModData()).rawgetBool("skinned")
-            && !this.getAnimalVisual().getSkinTexture().equalsIgnoreCase(AnimalDefinitions.getDef(this.getAnimalType()).textureSkinned)) {
-            this.getAnimalVisual().setSkinTextureName(AnimalDefinitions.getDef(this.getAnimalType()).textureSkinned);
+            && !this.getAnimalVisual().getSkinTexture().equalsIgnoreCase(def.textureSkinned)) {
+            this.getAnimalVisual().setSkinTextureName(def.textureSkinned);
             this.resetModel();
             this.resetModelNextFrame();
         }

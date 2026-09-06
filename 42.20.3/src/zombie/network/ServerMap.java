@@ -244,6 +244,134 @@ public class ServerMap {
         DebugLog.log("SaveAll took " + (System.nanoTime() - start) / 1000000.0 + " ms");
     }
 
+    private void settleLoadingForSaveQuit() {
+        long start = System.nanoTime();
+        long deadline = start + Math.max(1000L, Long.getLong("apocbr.shutdownLoadSettleTimeoutMs", 120000L)) * 1000000L;
+        boolean timedOut = false;
+
+        while (true) {
+            for (int i = 0; i < this.toLoad.size(); i++) {
+                ServerMap.ServerCell cell = this.toLoad.get(i);
+                if (cell.loadingWasCancelled) {
+                    int cx = cell.wx - this.getMinX();
+                    int cy = cell.wy - this.getMinY();
+                    if (!this.isInvalidCell(cx, cy) && this.cellMap[cx + cy * this.width] == cell) {
+                        this.cellMap[cx + cy * this.width] = null;
+                    }
+
+                    this.loadedCells.remove(cell);
+                    this.releventNow.remove(cell);
+                    ServerMap.ServerCell.loaded2.remove(cell);
+                    this.toLoad.remove(i--);
+                }
+            }
+
+            int pendingLoadBefore = ServerMap.ServerCell.chunkLoader.getLoadQueueSize();
+            int pendingLoadedBefore = ServerMap.ServerCell.chunkLoader.getLoadedQueueSize();
+            int pendingRecalcBefore = ServerMap.ServerCell.chunkLoader.getRecalcQueueSize();
+            int pendingRecalcDoneBefore = ServerMap.ServerCell.chunkLoader.getRecalcDoneQueueSize();
+
+            for (int i = 0; i < this.toLoad.size(); i++) {
+                ServerMap.ServerCell cell = this.toLoad.get(i);
+                if (!cell.cancelLoading && !cell.startedLoading) {
+                    ServerMap.ServerCell.chunkLoader.addJob(cell);
+                    cell.startedLoading = true;
+                }
+            }
+
+            ServerMap.ServerCell.chunkLoader.getLoaded(ServerMap.ServerCell.loaded);
+            for (int i = 0; i < ServerMap.ServerCell.loaded.size(); i++) {
+                ServerMap.ServerCell cell = ServerMap.ServerCell.loaded.get(i);
+                if (!cell.doingRecalc) {
+                    ServerMap.ServerCell.chunkLoader.addRecalcJob(cell);
+                    cell.doingRecalc = true;
+                }
+            }
+            ServerMap.ServerCell.loaded.clear();
+
+            ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
+            if (ServerMap.ServerCell.load2Job == null && !ServerMap.ServerCell.loaded2.isEmpty()) {
+                ServerMap.ServerCell.load2Job = new ServerMap.ServerCell.Load2Job(ServerMap.ServerCell.loaded2);
+                ServerMap.ServerCell.loaded2.clear();
+            }
+
+            if (ServerMap.ServerCell.load2Job != null) {
+                boolean load2Done = ServerMap.ServerCell.load2Job.advance(50000000L);
+                if (load2Done) {
+                    this.retireLoad2Job(ServerMap.ServerCell.load2Job);
+                    ServerMap.ServerCell.load2Job = null;
+                }
+            } else {
+                ServerMap.drainLoad2MainThreadTasks();
+            }
+
+            this.drainDeferredUnloadsForSave();
+            ServerMap.ServerCell.chunkLoader.updateSaved();
+
+            boolean hasUnstartedLoads = false;
+            for (int i = 0; i < this.toLoad.size(); i++) {
+                ServerMap.ServerCell cell = this.toLoad.get(i);
+                if (!cell.cancelLoading && !cell.startedLoading) {
+                    hasUnstartedLoads = true;
+                    break;
+                }
+            }
+
+            boolean loadingSettled = !hasUnstartedLoads
+                && this.toLoad.isEmpty()
+                && ServerMap.ServerCell.load2Job == null
+                && ServerMap.ServerCell.loaded2.isEmpty()
+                && ServerMap.ServerCell.chunkLoader.getLoadQueueSize() == 0
+                && ServerMap.ServerCell.chunkLoader.getLoadedQueueSize() == 0
+                && ServerMap.ServerCell.chunkLoader.getRecalcQueueSize() == 0
+                && ServerMap.ServerCell.chunkLoader.getRecalcDoneQueueSize() == 0;
+
+            if (loadingSettled) {
+                break;
+            }
+
+            if (System.nanoTime() >= deadline) {
+                timedOut = true;
+                DebugLog.log(
+                    "[ApocBR] shutdown load-settle timed out, toLoad="
+                        + this.toLoad.size()
+                        + ", loadQueue="
+                        + ServerMap.ServerCell.chunkLoader.getLoadQueueSize()
+                        + ", loadedQueue="
+                        + ServerMap.ServerCell.chunkLoader.getLoadedQueueSize()
+                        + ", recalcQueue="
+                        + ServerMap.ServerCell.chunkLoader.getRecalcQueueSize()
+                        + ", recalcDoneQueue="
+                        + ServerMap.ServerCell.chunkLoader.getRecalcDoneQueueSize()
+                        + ", load2Job="
+                        + (ServerMap.ServerCell.load2Job != null)
+                );
+                break;
+            }
+
+            if (pendingLoadBefore == 0
+                && pendingLoadedBefore == 0
+                && pendingRecalcBefore == 0
+                && pendingRecalcDoneBefore == 0
+                && ServerMap.ServerCell.load2Job == null) {
+                try {
+                    Thread.sleep(10L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+
+        DebugLog.log(
+            "[ApocBR] shutdown load-settle "
+                + (timedOut ? "stopped" : "finished")
+                + " in "
+                + (System.nanoTime() - start) / 1000000.0
+                + " ms"
+        );
+    }
+
     public void QueueSaveAll() {
         this.queuedSaveAll = true;
     }
@@ -447,6 +575,7 @@ public class ServerMap {
 
     public void QueuedQuit() {
         ZipBackup.waitFinish();
+        this.settleLoadingForSaveQuit();
         this.QueuedSaveAll(true);
         ByteBufferWriter b = GameServer.udpEngine.startPacket();
         PacketTypes.PacketType.ServerQuit.doPacket(b);
