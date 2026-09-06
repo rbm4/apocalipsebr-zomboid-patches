@@ -6016,7 +6016,8 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         float maxDistance = Math.max(20.0F, GameTime.getInstance().getViewDist());
         float maxDistanceSq = maxDistance * maxDistance;
 
-        for (IsoZombie zombie : cell.getZombieList()) {
+        ArrayList<IsoZombie> zombies = new ArrayList<>(cell.getZombieList());
+        for (IsoZombie zombie : zombies) {
             if (zombie == null || zombie.isDead() || zombie.isFakeDead() || zombie.isUseless() || zombie.isReanimatedForGrappleOnly()) {
                 continue;
             }

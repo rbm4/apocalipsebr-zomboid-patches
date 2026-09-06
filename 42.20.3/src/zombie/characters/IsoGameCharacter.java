@@ -10501,7 +10501,8 @@ public abstract class IsoGameCharacter
     protected float calculateSneakLimpSpeedScale() {
         float sneakLimpSpeedScale = 1.0F;
         boolean bIsSneaking = this.isSneaking();
-        boolean bNearWallCrouching = this.getVariable("nearWallCrouching").getValueBool();
+        IAnimationVariableSlot nearWallCrouching = this.getVariable("nearWallCrouching");
+        boolean bNearWallCrouching = nearWallCrouching != null && nearWallCrouching.getValueBool();
         if (bIsSneaking) {
             if (bNearWallCrouching) {
                 sneakLimpSpeedScale = 0.45F;
