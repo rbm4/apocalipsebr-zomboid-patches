@@ -20,6 +20,7 @@ import zombie.network.packets.INetworkPacket;
 @PacketSetting(ordering = 0, priority = 2, reliability = 4, requiredCapability = Capability.LoginOnServer, handlingType = 3)
 public class PlayerDamagePacket extends PlayerID implements INetworkPacket {
     private static final float APOCBR_DAMAGE_DROP_LOG_THRESHOLD = 25.0F;
+    private static final int APOCBR_UNKNOWN_MAX_WEIGHT = Integer.MIN_VALUE;
 
     @Override
     public void setData(Object... values) {
@@ -48,6 +49,7 @@ public class PlayerDamagePacket extends PlayerID implements INetworkPacket {
 
         IsoPlayer player = this.getPlayer();
         if (!this.isOwnedByConnection(connection, player)) {
+            int claimedMaxWeight = this.peekClaimedMaxWeight(b);
             DebugLog.log(
                 DebugType.Multiplayer,
                 "[ApocBR][PlayerDamageGuard] rejected unowned PlayerDamage"
@@ -59,6 +61,8 @@ public class PlayerDamagePacket extends PlayerID implements INetworkPacket {
                     + this.getPlayerIndex()
                     + " resolved="
                     + this.describePlayer(player)
+                    + " claimedMaxWeight="
+                    + (claimedMaxWeight == APOCBR_UNKNOWN_MAX_WEIGHT ? "unreadable" : String.valueOf(claimedMaxWeight))
             );
             return;
         }
@@ -133,6 +137,18 @@ public class PlayerDamagePacket extends PlayerID implements INetworkPacket {
         }
 
         return GameServer.getPlayerFromConnection(connection, index) == player && connection.hasPlayer(player.getOnlineID());
+    }
+
+    private int peekClaimedMaxWeight(ByteBufferReader b) {
+        int position = b.bb.position();
+
+        try {
+            return b.getInt();
+        } catch (RuntimeException var6) {
+            return APOCBR_UNKNOWN_MAX_WEIGHT;
+        } finally {
+            b.bb.position(position);
+        }
     }
 
     private String describeConnection(IConnection connection) {
