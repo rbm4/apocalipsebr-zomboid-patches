@@ -3,11 +3,15 @@ package zombie.characters.animals;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
+import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.HashMap;
 import zombie.ZomboidFileSystem;
@@ -32,6 +36,7 @@ public final class AnimalCell {
     AnimalChunk[] chunks;
     boolean loaded;
     boolean fileLoaded;
+    boolean fileLoadFailed;
     boolean dataChanged;
     long loadedTime;
     BooleanGrid loadedChunks;
@@ -46,22 +51,41 @@ public final class AnimalCell {
         return this;
     }
 
-    void save() {
-        if (this.isLoaded() && !Core.getInstance().isNoSave()) {
-            synchronized (SliceY.SliceBufferLock) {
-                String fileName = ZomboidFileSystem.instance.getFileNameInCurrentSave("apop", "apop_" + this.x + "_" + this.y + ".bin");
+    boolean save() {
+        if (!this.isLoaded() || Core.getInstance().isNoSave()) {
+            return false;
+        }
 
-                try (
-                    FileOutputStream fos = new FileOutputStream(fileName);
-                    BufferedOutputStream bos = new BufferedOutputStream(fos);
-                ) {
-                    SliceY.SliceBuffer.clear();
-                    this.save(SliceY.SliceBuffer);
-                    bos.write(SliceY.SliceBuffer.array(), 0, SliceY.SliceBuffer.position());
-                } catch (IOException var12) {
-                    ExceptionLogger.logException(var12);
-                }
+        synchronized (SliceY.SliceBufferLock) {
+            String fileName = ZomboidFileSystem.instance.getFileNameInCurrentSave("apop", "apop_" + this.x + "_" + this.y + ".bin");
+
+            try {
+                SliceY.SliceBuffer.clear();
+                this.save(SliceY.SliceBuffer);
+                this.writeSaveFile(fileName, SliceY.SliceBuffer.array(), SliceY.SliceBuffer.position());
+                return true;
+            } catch (IOException var12) {
+                ExceptionLogger.logException(var12);
+                return false;
             }
+        }
+    }
+
+    private void writeSaveFile(String fileName, byte[] bytes, int length) throws IOException {
+        File outFile = new File(fileName);
+        File tempFile = new File(fileName + ".tmp");
+
+        try (
+            FileOutputStream fos = new FileOutputStream(tempFile);
+            BufferedOutputStream bos = new BufferedOutputStream(fos);
+        ) {
+            bos.write(bytes, 0, length);
+        }
+
+        try {
+            Files.move(tempFile.toPath(), outFile.toPath(), StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (AtomicMoveNotSupportedException e) {
+            Files.move(tempFile.toPath(), outFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
         }
     }
 
@@ -101,19 +125,23 @@ public final class AnimalCell {
         }
     }
 
-    void saveToBufferMap(SaveBufferMap bufferMap) {
-        if (this.isLoaded() && !Core.getInstance().isNoSave()) {
-            synchronized (SliceY.SliceBufferLock) {
-                try {
-                    SliceY.SliceBuffer.clear();
-                    this.save(SliceY.SliceBuffer);
-                    String fileName = ZomboidFileSystem.instance.getFileNameInCurrentSave("apop", "apop_" + this.x + "_" + this.y + ".bin");
-                    ByteBufferPooledObject buffer = bufferMap.allocate(SliceY.SliceBuffer.position());
-                    buffer.put(SliceY.SliceBuffer.array(), 0, SliceY.SliceBuffer.position());
-                    bufferMap.put(fileName, buffer);
-                } catch (IOException var6) {
-                    ExceptionLogger.logException(var6);
-                }
+    boolean saveToBufferMap(SaveBufferMap bufferMap) {
+        if (!this.isLoaded() || Core.getInstance().isNoSave()) {
+            return false;
+        }
+
+        synchronized (SliceY.SliceBufferLock) {
+            try {
+                SliceY.SliceBuffer.clear();
+                this.save(SliceY.SliceBuffer);
+                String fileName = ZomboidFileSystem.instance.getFileNameInCurrentSave("apop", "apop_" + this.x + "_" + this.y + ".bin");
+                ByteBufferPooledObject buffer = bufferMap.allocate(SliceY.SliceBuffer.position());
+                buffer.put(SliceY.SliceBuffer.array(), 0, SliceY.SliceBuffer.position());
+                bufferMap.put(fileName, buffer);
+                return true;
+            } catch (IOException var6) {
+                ExceptionLogger.logException(var6);
+                return false;
             }
         }
     }
@@ -123,10 +151,11 @@ public final class AnimalCell {
 
         this.loaded = true;
         this.chunks = new AnimalChunk[1024];
+        this.fileLoadFailed = false;
         this.checkAnimalZonesGenerated();
         String fileName = ZomboidFileSystem.instance.getFileNameInCurrentSave("apop", "apop_" + this.x + "_" + this.y + ".bin");
         this.fileLoaded = this.load(fileName);
-        if (!this.fileLoaded) {
+        if (!this.fileLoaded && !this.fileLoadFailed) {
             AnimalZones.getInstance().spawnAnimalsInCell(this);
         }
     }
@@ -197,7 +226,32 @@ public final class AnimalCell {
             return false;
         } catch (Exception var18) {
             ExceptionLogger.logException(var18);
+            this.fileLoadFailed = true;
+            this.releaseLoadedChunks();
             return false;
+        }
+    }
+
+    private void releaseLoadedChunks() {
+        if (this.chunks == null) {
+            return;
+        }
+
+        for (int i = 0; i < this.chunks.length; i++) {
+            if (this.chunks[i] != null) {
+                this.chunks[i].release();
+                this.chunks[i] = null;
+            }
+        }
+
+        if (this.saveRealAnimalHack != null) {
+            this.saveRealAnimalHack.clear();
+            this.saveRealAnimalHack = null;
+        }
+
+        if (this.animalListToReattach != null) {
+            this.animalListToReattach.clear();
+            this.animalListToReattach = null;
         }
     }
 
@@ -218,8 +272,7 @@ public final class AnimalCell {
         assert this.isLoaded();
 
         if (this.dataChanged) {
-            this.dataChanged = false;
-            this.save();
+            this.dataChanged = !this.save();
         }
 
         for (int i = 0; i < this.chunks.length; i++) {
@@ -346,6 +399,7 @@ public final class AnimalCell {
         this.chunks = null;
         this.loaded = false;
         this.fileLoaded = false;
+        this.fileLoadFailed = false;
         this.dataChanged = false;
         this.loadedTime = 0L;
         if (this.loadedChunks != null) {

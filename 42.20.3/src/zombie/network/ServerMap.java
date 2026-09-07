@@ -1403,7 +1403,10 @@ public class ServerMap {
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
-        private static final boolean DEFERRED_UNLOAD_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.deferredCellUnload", "true"));
+        // ApocBR: default back to vanilla-style same-tick unload. The deferred path changes the
+        // persistence semantics by unlinking cells before all chunk/animal unload work is durable,
+        // which creates a crash window for apop animal-cell state.
+        private static final boolean DEFERRED_UNLOAD_ENABLED = "true".equalsIgnoreCase(System.getProperty("apocbr.deferredCellUnload", "false"));
         private static final boolean DEFERRED_UNLOAD_ALLOW_COOP = "true".equalsIgnoreCase(System.getProperty("apocbr.deferredCellUnloadInCoop", "false"));
         private static final int DEFERRED_UNLOAD_MODE = DEFERRED_UNLOAD_ENABLED ? 1 : 0;
         private static final int DEFERRED_UNLOAD_MAX_TICKS = Math.max(1, Integer.getInteger("apocbr.unload.maxTicks", 12));

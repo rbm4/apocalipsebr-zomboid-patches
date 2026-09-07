@@ -13776,14 +13776,15 @@ public abstract class IsoGameCharacter
                 randomPart = true;
             }
 
-            this.getItemVisuals(tempItemVisuals);
+            ItemVisuals itemVisuals = new ItemVisuals();
+            this.getItemVisuals(itemVisuals);
 
             for (int i = 0; i < nbr; i++) {
                 if (randomPart) {
                     part = BloodBodyPartType.FromIndex(OutfitRNG.Next(0, BloodBodyPartType.MAX.index()));
                 }
 
-                BloodClothingType.addDirt(part, humanVisual, tempItemVisuals, allLayers);
+                BloodClothingType.addDirt(part, humanVisual, itemVisuals, allLayers);
             }
 
             this.updateModelTextures = true;
@@ -13805,14 +13806,15 @@ public abstract class IsoGameCharacter
                 randomPart = true;
             }
 
-            this.getItemVisuals(tempItemVisuals);
+            ItemVisuals itemVisuals = new ItemVisuals();
+            this.getItemVisuals(itemVisuals);
 
             for (int i = 0; i < nbr; i++) {
                 if (randomPart) {
                     part = BloodBodyPartType.FromIndex(OutfitRNG.Next(0, BloodBodyPartType.MAX.index()));
                 }
 
-                BloodClothingType.addDirt(part, Rand.Next(0.01F, 1.0F), humanVisual, tempItemVisuals, allLayers);
+                BloodClothingType.addDirt(part, Rand.Next(0.01F, 1.0F), humanVisual, itemVisuals, allLayers);
             }
 
             this.updateModelTextures = true;
@@ -13851,7 +13853,8 @@ public abstract class IsoGameCharacter
                 nbr += 8;
             }
 
-            this.getItemVisuals(tempItemVisuals);
+            ItemVisuals itemVisuals = new ItemVisuals();
+            this.getItemVisuals(itemVisuals);
 
             for (int i = 0; i < nbr; i++) {
                 if (randomPart) {
@@ -13863,7 +13866,7 @@ public abstract class IsoGameCharacter
                     }
                 }
 
-                BloodClothingType.addBlood(part, humanVisual, tempItemVisuals, allLayers);
+                BloodClothingType.addBlood(part, humanVisual, itemVisuals, allLayers);
             }
 
             this.updateModelTextures = true;
