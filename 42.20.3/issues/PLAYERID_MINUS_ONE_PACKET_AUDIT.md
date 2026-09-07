@@ -29,6 +29,11 @@ That fallback is correct for some server/client and remote-player references, bu
   - `syncParams == -1` carries full nutrition, including body weight.
   - Logs `syncParams` and whether the packet attempted to send a nutrition payload.
 
+- `src/zombie/network/packets/character/PlayerEffectsPacket.java`
+  - Added overlay patch.
+  - Rejects server-side packets unless the resolved player is owned by the sending connection.
+  - Payload carries sleeping tablet, beta blocker, depression, and pain effect timers.
+
 ## High-Risk Unpatched Candidates
 
 These vanilla packets also use `PlayerID` as an actor-like mutable target and should get the same connection-owner guard if they are accepted from clients in this build:
@@ -40,10 +45,6 @@ These vanilla packets also use `PlayerID` as an actor-like mutable target and sh
 - `SyncPlayerFieldsPacket`
   - Can mutate recipes, traits, already-read books, main body-damage fields, reading state, and fitness.
   - Abuse impact: character-state corruption or unauthorized progression/state edits.
-
-- `PlayerEffectsPacket`
-  - Mutates medication/effect timers: sleeping tablets, beta blockers, depression, pain.
-  - Abuse impact: forced player effect state changes.
 
 - `EatFoodPacket`
   - Loads nutrition for the resolved player during parse.
