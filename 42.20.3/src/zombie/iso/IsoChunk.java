@@ -3953,44 +3953,47 @@ public final class IsoChunk {
         }
 
         LoadGridsquarePerformanceWorkaround.init(this.wx, this.wy);
-        int chunksPerWidth = 8;
         if (!GameClient.client) {
-            for (int i = 0; i < this.vehicles.size(); i++) {
-                BaseVehicle v = this.vehicles.get(i);
+            ArrayList<BaseVehicle> apocBRVehicles = new ArrayList<>(this.vehicles);
+            for (int i = 0; i < apocBRVehicles.size(); i++) {
+                BaseVehicle v = apocBRVehicles.get(i);
                 if (!v.addedToWorld && VehiclesDB2.instance.isVehicleLoaded(v)) {
                     BaseVehicle apocBRVehicle = v;
                     this.runLoad2MainThreadTask("BaseVehicle.removeFromSquare", () -> {
-                        apocBRVehicle.removeFromSquare();
-                        this.vehicles.remove(apocBRVehicle);
+                        if (this.vehicles.contains(apocBRVehicle)) {
+                            apocBRVehicle.removeFromSquare();
+                            this.vehicles.remove(apocBRVehicle);
+                        }
                     }, asyncCommit);
-                    if (!asyncCommit) {
-                        i--;
-                    }
                 } else {
-                    if (!v.addedToWorld) {
-                        BaseVehicle apocBRVehicle = v;
-                        this.runLoad2MainThreadTask("BaseVehicle.addToWorld", apocBRVehicle::addToWorld, asyncCommit);
-                    }
+                    BaseVehicle apocBRVehicle = v;
+                    boolean apocBRNeedsVehicleDbAdd = v.sqlId == -1;
+                    this.runLoad2MainThreadTask("BaseVehicle.load2AddToWorldAndDB", () -> {
+                        if (!this.vehicles.contains(apocBRVehicle)) {
+                            return;
+                        }
 
-                    if (v.sqlId == -1) {
-                        BaseVehicle apocBRVehicle = v;
-                        this.runLoad2MainThreadTask("VehiclesDB2.addVehicle", () -> {
-                            assert false;
+                        this.apocBRPrepareVehicleForLoad2MainThread(apocBRVehicle);
+                        if (!apocBRVehicle.addedToWorld) {
+                            apocBRVehicle.addToWorld();
+                        }
 
-                            if (apocBRVehicle.square == null) {
-                                float d = 5.0E-4F;
-                                int minX = this.wx * 8;
-                                int minY = this.wy * 8;
-                                int maxX = minX + 8;
-                                int maxY = minY + 8;
-                                float x = PZMath.clamp(apocBRVehicle.getX(), minX + 5.0E-4F, maxX - 5.0E-4F);
-                                float y = PZMath.clamp(apocBRVehicle.getY(), minY + 5.0E-4F, maxY - 5.0E-4F);
-                                apocBRVehicle.square = this.getGridSquare(PZMath.fastfloor(x) - this.wx * 8, PZMath.fastfloor(y) - this.wy * 8, 0);
+                        if (apocBRNeedsVehicleDbAdd) {
+                            if (apocBRVehicle.chunk == null) {
+                                DebugLog.log(
+                                    "IsoChunk.doLoadGridsquare: skipped VehiclesDB2.addVehicle for vehicle with null chunk at "
+                                        + apocBRVehicle.getX()
+                                        + ","
+                                        + apocBRVehicle.getY()
+                                        + ","
+                                        + apocBRVehicle.getZ()
+                                );
+                                return;
                             }
 
                             VehiclesDB2.instance.addVehicle(apocBRVehicle);
-                        }, asyncCommit);
-                    }
+                        }
+                    }, asyncCommit);
                 }
             }
         }
@@ -4182,6 +4185,26 @@ public final class IsoChunk {
             } catch (Throwable var3) {
                 ExceptionLogger.logException(var3);
             }
+        }
+    }
+
+    private void apocBRPrepareVehicleForLoad2MainThread(BaseVehicle vehicle) {
+        if (vehicle == null) {
+            return;
+        }
+
+        if (vehicle.square == null) {
+            int minX = this.wx * 8;
+            int minY = this.wy * 8;
+            int maxX = minX + 8;
+            int maxY = minY + 8;
+            float x = PZMath.clamp(vehicle.getX(), minX + 5.0E-4F, maxX - 5.0E-4F);
+            float y = PZMath.clamp(vehicle.getY(), minY + 5.0E-4F, maxY - 5.0E-4F);
+            vehicle.square = this.getGridSquare(PZMath.fastfloor(x) - minX, PZMath.fastfloor(y) - minY, PZMath.fastfloor(vehicle.getZ()));
+        }
+
+        if (vehicle.chunk == null) {
+            vehicle.chunk = vehicle.square != null && vehicle.square.chunk != null ? vehicle.square.chunk : this;
         }
     }
 
