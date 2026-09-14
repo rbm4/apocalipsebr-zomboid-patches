@@ -3869,6 +3869,8 @@ public final class IsoChunk {
     private void submitLoad2MainThreadTask(String label, Runnable task, boolean orderedCommit) {
         if (orderedCommit) {
             ServerMap.submitLoad2OrderedMainThreadTask(label, task);
+        } else if (ServerMap.isVanillaLoad2Enabled()) {
+            ServerMap.runLoad2MainThreadTask(label, task);
         } else {
             ServerMap.submitLoad2MainThreadTask(label, task);
         }

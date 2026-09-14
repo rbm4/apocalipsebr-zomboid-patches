@@ -97,6 +97,10 @@ public class ServerMap {
         ServerMap.ServerCell.load2MainThread.submitAndWait(label, task);
     }
 
+    public static boolean isVanillaLoad2Enabled() {
+        return ServerMap.ServerCell.LOAD2_VANILLA;
+    }
+
     public static void submitLoad2MainThreadTask(String label, Runnable task) {
         if (task == null) {
             return;
@@ -290,19 +294,23 @@ public class ServerMap {
             ServerMap.ServerCell.loaded.clear();
 
             ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
-            if (ServerMap.ServerCell.load2Job == null && !ServerMap.ServerCell.loaded2.isEmpty()) {
-                ServerMap.ServerCell.load2Job = new ServerMap.ServerCell.Load2Job(ServerMap.ServerCell.loaded2);
-                ServerMap.ServerCell.loaded2.clear();
-            }
-
-            if (ServerMap.ServerCell.load2Job != null) {
-                boolean load2Done = ServerMap.ServerCell.load2Job.advance(50000000L);
-                if (load2Done) {
-                    this.retireLoad2Job(ServerMap.ServerCell.load2Job);
-                    ServerMap.ServerCell.load2Job = null;
-                }
+            if (ServerMap.ServerCell.LOAD2_VANILLA) {
+                this.processLoaded2Vanilla();
             } else {
-                ServerMap.drainLoad2MainThreadTasks();
+                if (ServerMap.ServerCell.load2Job == null && !ServerMap.ServerCell.loaded2.isEmpty()) {
+                    ServerMap.ServerCell.load2Job = new ServerMap.ServerCell.Load2Job(ServerMap.ServerCell.loaded2);
+                    ServerMap.ServerCell.loaded2.clear();
+                }
+
+                if (ServerMap.ServerCell.load2Job != null) {
+                    boolean load2Done = ServerMap.ServerCell.load2Job.advance(50000000L);
+                    if (load2Done) {
+                        this.retireLoad2Job(ServerMap.ServerCell.load2Job);
+                        ServerMap.ServerCell.load2Job = null;
+                    }
+                } else {
+                    ServerMap.drainLoad2MainThreadTasks();
+                }
             }
 
             this.drainDeferredUnloadsForSave();
@@ -760,32 +768,39 @@ public class ServerMap {
             apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("drainRecalc", ServerMap.ServerCell.loaded2.size(), apocBrPhaseStart);
-            // ApocBR: load2 advances a slice per tick instead of running to completion in one call.
-            // Cells that become ready while a job is in flight accumulate in loaded2 and are admitted
-            // to the next job - they cannot join the running one without breaking its colour
-            // partition, and waiting one job cycle is cheaper than a stall. LOS is no longer suspended
-            // around this: ServerLOS skips cells flagged loadInProgress instead, so it keeps running
-            // for the rest of the world while these cells build.
-            if (ServerMap.ServerCell.load2Job == null && !ServerMap.ServerCell.loaded2.isEmpty()) {
-                ServerMap.ServerCell.load2Job = new ServerMap.ServerCell.Load2Job(ServerMap.ServerCell.loaded2);
-                ServerMap.ServerCell.loaded2.clear();
-            }
-
-            if (ServerMap.ServerCell.load2Job != null) {
+            if (ServerMap.ServerCell.LOAD2_VANILLA) {
                 apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                apocBrUnits = ServerMap.ServerCell.load2Job.getCells().size();
-                boolean load2Done = ServerMap.ServerCell.load2Job.advance(ServerMap.ServerCell.LOAD2_MAX_NANOS_PER_TICK);
+                int apocBrVanillaUnits = ServerMap.ServerCell.loaded2.size();
+                this.processLoaded2Vanilla();
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vanilla", apocBrVanillaUnits, apocBrPhaseStart);
+            } else {
+                // ApocBR: load2 advances a slice per tick instead of running to completion in one call.
+                // Cells that become ready while a job is in flight accumulate in loaded2 and are admitted
+                // to the next job - they cannot join the running one without breaking its colour
+                // partition, and waiting one job cycle is cheaper than a stall. LOS is no longer suspended
+                // around this: ServerLOS skips cells flagged loadInProgress instead, so it keeps running
+                // for the rest of the world while these cells build.
+                if (ServerMap.ServerCell.load2Job == null && !ServerMap.ServerCell.loaded2.isEmpty()) {
+                    ServerMap.ServerCell.load2Job = new ServerMap.ServerCell.Load2Job(ServerMap.ServerCell.loaded2);
+                    ServerMap.ServerCell.loaded2.clear();
+                }
 
-                // load2 is now one slice per tick, so "calls" counts slices and only the slice that
-                // retires the job may report the cell count - charging it on every slice would
-                // multiply the cell total by however many ticks the job happened to span.
-                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", load2Done ? apocBrUnits : 0, apocBrPhaseStart);
+                if (ServerMap.ServerCell.load2Job != null) {
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                    apocBrUnits = ServerMap.ServerCell.load2Job.getCells().size();
+                    boolean load2Done = ServerMap.ServerCell.load2Job.advance(ServerMap.ServerCell.LOAD2_MAX_NANOS_PER_TICK);
 
-                if (load2Done) {
-                    long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
-                    this.retireLoad2Job(ServerMap.ServerCell.load2Job);
-                    ServerMap.ServerCell.load2Job = null;
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", apocBrUnits, apocBrRemoveStart);
+                    // load2 is now one slice per tick, so "calls" counts slices and only the slice that
+                    // retires the job may report the cell count - charging it on every slice would
+                    // multiply the cell total by however many ticks the job happened to span.
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", load2Done ? apocBrUnits : 0, apocBrPhaseStart);
+
+                    if (load2Done) {
+                        long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
+                        this.retireLoad2Job(ServerMap.ServerCell.load2Job);
+                        ServerMap.ServerCell.load2Job = null;
+                        ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", apocBrUnits, apocBrRemoveStart);
+                    }
                 }
             }
             ApocBRServerTelemetry.recordServerMapPreQueues(
@@ -858,6 +873,25 @@ public class ServerMap {
         }
     }
 
+    private void processLoaded2Vanilla() {
+        if (ServerMap.ServerCell.loaded2.isEmpty()) {
+            return;
+        }
+
+        try {
+            ServerLOS.instance.suspend();
+            for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
+                ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
+                if (cell.Load2Vanilla()) {
+                    x--;
+                    this.toLoad.remove(cell);
+                }
+            }
+        } finally {
+            ServerLOS.instance.resume();
+        }
+    }
+
     /**
      * ApocBR: load2 counterpart to {@link #processDeferredUnloadsInIdleWindow(long)}.
      *
@@ -870,7 +904,7 @@ public class ServerMap {
      */
     public long advanceLoad2InIdleWindow(long budgetNanos) {
         ServerMap.ServerCell.Load2Job job = ServerMap.ServerCell.load2Job;
-        if (!ServerMap.ServerCell.LOAD2_IDLE_ENABLED || job == null || budgetNanos <= 0L) {
+        if (ServerMap.ServerCell.LOAD2_VANILLA || !ServerMap.ServerCell.LOAD2_IDLE_ENABLED || job == null || budgetNanos <= 0L) {
             return 0L;
         }
 
@@ -1456,6 +1490,7 @@ public class ServerMap {
         );
         static final int LOAD2_MAX_MS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.load2.maxMsPerTick", 8));
         static final long LOAD2_MAX_NANOS_PER_TICK = LOAD2_MAX_MS_PER_TICK * 1000000L;
+        static final boolean LOAD2_VANILLA = "true".equalsIgnoreCase(System.getProperty("apocbr.load2.vanilla", "false"));
         static final boolean LOAD2_IDLE_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.load2.idleEnabled", "true"));
         static final int LOAD2_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.load2.idleMaxMs", 4));
         static final long LOAD2_IDLE_MAX_NANOS = LOAD2_IDLE_MAX_MS * 1000000L;
@@ -1707,6 +1742,30 @@ public class ServerMap {
             }
         }
 
+        public boolean Load2Vanilla() {
+            for (int i = 0; i < ServerMap.ServerCell.loaded2.size(); i++) {
+                if (ServerMap.ServerCell.loaded2.get(i) == this) {
+                    long start = System.nanoTime();
+                    this.RecalcAll2();
+                    ServerMap.ServerCell.loaded2.remove(i);
+                    if (ServerMap.mapLoading) {
+                        DebugType.MapLoading.debugln("loaded2=" + ServerMap.ServerCell.loaded2);
+                    }
+
+                    float time = (float)(System.nanoTime() - start) / 1000000.0F;
+                    if (ServerMap.mapLoading) {
+                        DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
+                    }
+
+                    this.loadVehicles();
+                    this.loadInProgress = false;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static void runLoad2ChunkRegistrationsOnMainThread(List<IsoChunk> chunks) {
             long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             for (IsoChunk chunk : chunks) {
@@ -1901,7 +1960,10 @@ public class ServerMap {
                 for (int y = 0; y < 8; y++) {
                     IsoChunk chunk = this.chunks[x][y];
                     if (chunk != null) {
-                        if (chunk.doLoadGridsquareLoad2(apocBrNativeRegistrationChunks)) {
+                        boolean apocBrLoadedGridSquare = ServerMap.ServerCell.LOAD2_VANILLA
+                            ? chunk.doLoadGridsquare(apocBrNativeRegistrationChunks)
+                            : chunk.doLoadGridsquareLoad2(apocBrNativeRegistrationChunks);
+                        if (apocBrLoadedGridSquare) {
                             apocBrPostRegistrationChunks.add(chunk);
                         }
                         apocBrUnits++;
@@ -1917,7 +1979,11 @@ public class ServerMap {
             );
 
             if (!apocBrNativeRegistrationChunks.isEmpty()) {
-                ServerMap.submitLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
+                if (ServerMap.ServerCell.LOAD2_VANILLA) {
+                    ServerMap.runLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
+                } else {
+                    ServerMap.submitLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
+                }
             }
 
             // ApocBR: queue the post-native chunk commits after the native registration batch.
@@ -1927,7 +1993,11 @@ public class ServerMap {
             if (!apocBrPostRegistrationChunks.isEmpty()) {
                 long apocBrChunkFinishStart = ApocBRServerTelemetry.beginDetail();
                 for (IsoChunk chunk : apocBrPostRegistrationChunks) {
-                    chunk.finishLoadGridsquareAfterChunkRegistrationLoad2();
+                    if (ServerMap.ServerCell.LOAD2_VANILLA) {
+                        chunk.finishLoadGridsquareAfterChunkRegistration();
+                    } else {
+                        chunk.finishLoadGridsquareAfterChunkRegistrationLoad2();
+                    }
                 }
                 ApocBRServerTelemetry.recordServerMapPrePhaseSince(
                     "load2ChunkFinishEnqueue",
