@@ -1040,7 +1040,7 @@ public final class PolygonalMap2 {
                             this.adjustGoalData.graph.edges.remove(this.adjustGoalData.newEdge);
                         }
 
-                        return (boolean)adjusted;
+                        return adjusted != 0;
                     }
 
                     if (render) {

@@ -20,7 +20,7 @@ import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.LosUtil;
-import zombie.iso.Meta;
+import zombie.meta.Meta;
 
 public class ServerLOS {
     public static ServerLOS instance;
