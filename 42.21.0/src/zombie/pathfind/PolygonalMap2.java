@@ -7,6 +7,7 @@ import gnu.trove.procedure.TObjectProcedure;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import org.joml.Vector2f;
@@ -101,6 +102,9 @@ public final class PolygonalMap2 {
     public static final int BIT_HOPPABLE_W = 33554432;
     public static final int ALL_STAIR_BITS = 504;
     private static final int ALL_SOLID_BITS = 1025;
+    private static final int VEHICLE_GRAPH_UPDATE_INTERVAL_FRAMES = Math.max(
+        1, Integer.getInteger("apocbr.pathfind.vehicleGraphUpdateFrames", 20)
+    );
     private static final IsoDirections[] DIRECTIONS = IsoDirections.values();
     public final Object renderLock = new Object();
     public final ClosestPointOnEdge closestPointOnEdge = new ClosestPointOnEdge();
@@ -125,6 +129,8 @@ public final class PolygonalMap2 {
     private final TestRequest testRequest = new TestRequest();
     private final PathFindBehavior2.PointOnPath pointOnPath = new PathFindBehavior2.PointOnPath();
     private final HashMap<BaseVehicle, VehicleState> vehicleState = new HashMap<>();
+    private final HashSet<BaseVehicle> dirtyVehicleUpdates = new HashSet<>();
+    private int vehicleGraphUpdateFrame;
     private final TObjectProcedure<Node> releaseNodeProc = new TObjectProcedure<Node>() {
         {
             Objects.requireNonNull(PolygonalMap2.this);
@@ -1741,6 +1747,7 @@ public final class PolygonalMap2 {
         this.vehicleTaskQueue.add(task);
         VehicleState state = VehicleState.alloc().init(vehicle);
         this.vehicleState.put(vehicle, state);
+        this.dirtyVehicleUpdates.remove(vehicle);
         this.thread.wake();
     }
 
@@ -1756,6 +1763,7 @@ public final class PolygonalMap2 {
             VehicleRemoveTask task = VehicleRemoveTask.alloc();
             task.init(this, vehicle);
             this.vehicleTaskQueue.add(task);
+            this.dirtyVehicleUpdates.remove(vehicle);
             VehicleState state = this.vehicleState.remove(vehicle);
             if (state != null) {
                 state.vehicle = null;
@@ -1922,6 +1930,8 @@ public final class PolygonalMap2 {
         this.requestMap.clear();
         this.vehicles.clear();
         this.vehicleState.clear();
+        this.dirtyVehicleUpdates.clear();
+        this.vehicleGraphUpdateFrame = 0;
         this.vehicleMap.clear();
         this.cells = null;
         this.thread = null;
@@ -1932,8 +1942,18 @@ public final class PolygonalMap2 {
         for (BaseVehicle vehicle : IsoWorld.instance.currentCell.getVehicles()) {
             VehicleState state = this.vehicleState.get(vehicle);
             if (state != null && state.check()) {
-                this.updateVehicle(vehicle);
+                this.dirtyVehicleUpdates.add(vehicle);
             }
+        }
+
+        if (++this.vehicleGraphUpdateFrame >= VEHICLE_GRAPH_UPDATE_INTERVAL_FRAMES) {
+            this.vehicleGraphUpdateFrame = 0;
+            for (BaseVehicle vehicle : this.dirtyVehicleUpdates) {
+                if (this.vehicleState.containsKey(vehicle)) {
+                    this.updateVehicle(vehicle);
+                }
+            }
+            this.dirtyVehicleUpdates.clear();
         }
 
         for (PathFindRequest request = this.requestToMain.poll(); request != null; request = this.requestToMain.poll()) {

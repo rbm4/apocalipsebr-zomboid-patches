@@ -7,6 +7,8 @@ import zombie.core.math.PZMath;
 import zombie.vehicles.BaseVehicle;
 
 final class VehicleState {
+    private static final float POSITION_EPSILON = 0.01F;
+    private static final float POSITION_EPSILON_SQUARED = POSITION_EPSILON * POSITION_EPSILON;
     BaseVehicle vehicle;
     float x;
     float y;
@@ -26,7 +28,10 @@ final class VehicleState {
     }
 
     boolean check() {
-        boolean changed = this.x != this.vehicle.getX() || this.y != this.vehicle.getY() || PZMath.fastfloor(this.z) != PZMath.fastfloor(this.vehicle.getZ());
+        float deltaX = this.x - this.vehicle.getX();
+        float deltaY = this.y - this.vehicle.getY();
+        boolean changed = deltaX * deltaX + deltaY * deltaY >= POSITION_EPSILON_SQUARED
+            || PZMath.fastfloor(this.z) != PZMath.fastfloor(this.vehicle.getZ());
         if (!changed) {
             BaseVehicle.Vector3fObjectPool pool = BaseVehicle.TL_vector3f_pool.get();
             Vector3f forward2 = this.vehicle.getForwardVector(pool.alloc());
