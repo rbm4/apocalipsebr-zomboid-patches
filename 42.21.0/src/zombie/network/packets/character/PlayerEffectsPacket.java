@@ -6,6 +6,7 @@ import zombie.characters.Capability;
 import zombie.characters.IsoPlayer;
 import zombie.core.network.ByteBufferReader;
 import zombie.core.network.ByteBufferWriter;
+import zombie.network.ApocBRPacketOwnershipGuard;
 import zombie.network.IConnection;
 import zombie.network.PacketSetting;
 import zombie.network.fields.character.PlayerID;
@@ -35,7 +36,11 @@ public class PlayerEffectsPacket extends PlayerID implements INetworkPacket {
     @Override
     public void parse(ByteBufferReader b, IConnection connection) {
         super.parse(b, connection);
-        if (this.isConsistent(connection) && GameTime.instance.calender != null) {
+        if (ApocBRPacketOwnershipGuard.validate(
+                "PlayerEffects", connection, this.getID(), this.getPlayerIndex(), this.getPlayer()
+            )
+            && this.isConsistent(connection)
+            && GameTime.instance.calender != null) {
             this.getPlayer().setSleepingTabletEffect(b.getFloat());
             this.getPlayer().setSleepingTabletDelta(b.getFloat());
             this.getPlayer().setSleepingPillsTaken(b.getInt());

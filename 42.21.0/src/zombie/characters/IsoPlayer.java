@@ -235,6 +235,7 @@ import zombie.network.statistics.data.ConnectionQueueStatistic;
 import zombie.pathfind.PathFindBehavior2;
 import zombie.pathfind.Point;
 import zombie.pathfind.PolygonalMap2;
+import zombie.popman.NetworkZombieManager;
 import zombie.popman.animal.AnimalInstanceManager;
 import zombie.savefile.ClientPlayerDB;
 import zombie.savefile.PlayerDB;
@@ -5755,6 +5756,11 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
     }
 
     public void updateLOS() {
+        if (GameServer.server) {
+            this.updateServerZombieAuthorityLOS();
+            return;
+        }
+
         this.spottedList.clear();
         this.stats.numVisibleZombies = 0;
         this.stats.setLastNumberChasingZombies(this.stats.numChasingZombies);
@@ -5968,6 +5974,69 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
 
             this.stats.lastNumVisibleZombies = this.stats.numVisibleZombies;
             this.stats.lastVeryCloseZombies = vclose;
+        }
+    }
+
+    private void updateServerZombieAuthorityLOS() {
+        this.spottedList.clear();
+        this.lastSpotted.clear();
+        this.stats.numVisibleZombies = 0;
+        this.stats.setLastNumberChasingZombies(this.stats.numChasingZombies);
+        this.stats.numChasingZombies = 0;
+        this.stats.musicZombiesTargetingDistantNotMoving = 0;
+        this.stats.musicZombiesTargetingNearbyNotMoving = 0;
+        this.stats.musicZombiesTargetingDistantMoving = 0;
+        this.stats.musicZombiesTargetingNearbyMoving = 0;
+        this.stats.musicZombiesVisible = 0;
+        this.numSurvivorsInVicinity = 0;
+        this.closestZombie = 1000000.0F;
+        this.stats.lastNumVisibleZombies = 0;
+        this.stats.lastVeryCloseZombies = 0;
+        IsoGridSquare currentSquare = this.getCurrentSquare();
+        IsoCell cell = this.getCell();
+        if (currentSquare == null || cell == null) {
+            return;
+        }
+
+        float playerX = this.getX();
+        float playerY = this.getY();
+        int playerZ = PZMath.fastfloor(this.getZ());
+        float maxDistance = Math.max(20.0F, GameTime.getInstance().getViewDist());
+        float maxDistanceSquared = maxDistance * maxDistance;
+        ArrayList<IsoZombie> zombies = new ArrayList<>(cell.getZombieList());
+        for (IsoZombie zombie : zombies) {
+            if (zombie == null || zombie.isDead() || zombie.isFakeDead() || zombie.isUseless() || zombie.isReanimatedForGrappleOnly()) {
+                continue;
+            }
+
+            IsoGridSquare zombieSquare = zombie.getCurrentSquare();
+            if (zombieSquare == null || PZMath.fastfloor(zombie.getZ()) != playerZ) {
+                continue;
+            }
+
+            float distanceSquared = IsoUtils.DistanceToSquared(zombie.getX(), zombie.getY(), playerX, playerY);
+            if (distanceSquared > maxDistanceSquared) {
+                continue;
+            }
+
+            boolean targetsPlayer = zombie.getTarget() == this;
+            boolean leadAggro = !targetsPlayer && zombie.isLeadAggro(this);
+            if (!leadAggro && !targetsPlayer && !NetworkZombieManager.canSpotted(zombie)) {
+                continue;
+            }
+
+            if (!ServerLOS.instance.isCouldSee(this, zombieSquare)) {
+                continue;
+            }
+
+            if (leadAggro) {
+                INetworkPacket.send(zombie.getOwner(), PacketTypes.PacketType.ZombieControl, zombie, this);
+            } else {
+                zombie.spotted(this, false);
+                if (distanceSquared < this.closestZombie * this.closestZombie && !zombie.isOnFloor()) {
+                    this.closestZombie = (float)Math.sqrt(distanceSquared);
+                }
+            }
         }
     }
 

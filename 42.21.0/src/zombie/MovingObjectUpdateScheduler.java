@@ -1,14 +1,18 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie;
 
+import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
+import zombie.characters.animals.IsoAnimal;
 import zombie.core.math.PZMath;
 import zombie.iso.IsoMovingObject;
 import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
+import zombie.popman.NetworkZombiePacker;
 import zombie.popman.ZombieCountOptimiser;
 import zombie.util.list.PZArrayUtil;
+import zombie.vehicles.BaseVehicle;
 
 public final class MovingObjectUpdateScheduler {
     public static final MovingObjectUpdateScheduler instance = new MovingObjectUpdateScheduler();
@@ -31,8 +35,10 @@ public final class MovingObjectUpdateScheduler {
     public void startFrame() {
         this.frameCounter++;
         PZArrayUtil.forEach(this.simulationLevels, MovingObjectUpdateSchedulerUpdateBucket::clear);
-        float averageFps = GameWindow.averageFPS;
-        if (GameServer.server) {
+        boolean server = GameServer.server;
+        float averageFps = server ? 0.0F : GameWindow.averageFPS;
+        if (server) {
+            NetworkZombiePacker.getInstance().awaitWorkers();
             ZombieCountOptimiser.prepareZombiesForDeletion();
         }
 
@@ -53,7 +59,15 @@ public final class MovingObjectUpdateScheduler {
     }
 
     private UpdateSchedulerSimulationLevel getUpdateSchedulerSimulationLevelForObject(IsoMovingObject isoMovingObject, float averageFps) {
-        if (this.isEnabled && !GameServer.server) {
+        if (GameServer.server) {
+            if (isoMovingObject instanceof BaseVehicle baseVehicle) {
+                return getServerSimulationLevelForVehicle(baseVehicle);
+            } else if (isoMovingObject instanceof IsoAnimal isoAnimal) {
+                return getServerSimulationLevelForAnimal(isoAnimal);
+            } else {
+                return isoMovingObject.getMinimumSimulationLevel();
+            }
+        } else if (this.isEnabled) {
             UpdateSchedulerSimulationLevel minSim = isoMovingObject.getMinimumSimulationLevel();
             if (minSim == UpdateSchedulerSimulationLevel.FULL) {
                 return minSim;
@@ -135,6 +149,49 @@ public final class MovingObjectUpdateScheduler {
         } else {
             return UpdateSchedulerSimulationLevel.FULL;
         }
+    }
+
+    private static UpdateSchedulerSimulationLevel getServerSimulationLevelForVehicle(BaseVehicle vehicle) {
+        if (vehicle.getDriver() != null
+            || vehicle.isMechanicUIOpen()
+            || vehicle.needPartsUpdate()
+            || vehicle.getEngineState() != BaseVehicle.engineStateTypes.Idle
+            || vehicle.isAlarmActive()
+            || vehicle.isSirenActive()
+            || vehicle.lightbarLightsMode.isEnable()
+            || vehicle.lightbarSirenMode.isEnable()
+            || vehicle.getVehicleTowedBy() != null
+            || vehicle.getVehicleTowing() != null
+            || !vehicle.isAtRest()
+            || !vehicle.getAnimals().isEmpty()) {
+            return UpdateSchedulerSimulationLevel.FULL;
+        }
+
+        for (int seat = 0; seat < vehicle.getMaxPassengers(); seat++) {
+            IsoGameCharacter character = vehicle.getCharacter(seat);
+            if (character != null) {
+                return UpdateSchedulerSimulationLevel.FULL;
+            }
+        }
+
+        return UpdateSchedulerSimulationLevel.SIXTEENTH;
+    }
+
+    private static UpdateSchedulerSimulationLevel getServerSimulationLevelForAnimal(IsoAnimal animal) {
+        if (animal.heldBy != null
+            || animal.luredBy != null
+            || animal.atkTarget != null
+            || animal.fightingOpponent != null
+            || animal.thumpTarget != null
+            || animal.alerted
+            || animal.alertedChr != null
+            || animal.walkToCharLuring
+            || animal.getVehicle() != null
+            || animal.isOnHook()) {
+            return UpdateSchedulerSimulationLevel.HALF;
+        }
+
+        return UpdateSchedulerSimulationLevel.SIXTEENTH;
     }
 
     public void update() {

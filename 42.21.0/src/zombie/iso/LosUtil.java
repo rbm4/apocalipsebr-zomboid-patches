@@ -7,11 +7,12 @@ import zombie.core.math.PZMath;
 
 @UsedFromLua
 public final class LosUtil {
+    public static final int SLOT_COUNT = 4;
     public static int sizeX = 200;
     public static int sizeY = 200;
     public static int sizeZ = 16;
-    public static LosUtil.PerPlayerData[] cachedresults = new LosUtil.PerPlayerData[4];
-    public static boolean[] cachecleared = new boolean[4];
+    public static LosUtil.PerPlayerData[] cachedresults = new LosUtil.PerPlayerData[SLOT_COUNT];
+    public static boolean[] cachecleared = new boolean[SLOT_COUNT];
 
     public static void init(int width, int height) {
         sizeX = Math.min(width, 200);
@@ -785,7 +786,7 @@ public final class LosUtil {
     }
 
     static {
-        for (int n = 0; n < 4; n++) {
+        for (int n = 0; n < SLOT_COUNT; n++) {
             cachecleared[n] = true;
             cachedresults[n] = new LosUtil.PerPlayerData();
         }

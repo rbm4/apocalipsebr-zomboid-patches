@@ -9,6 +9,7 @@ import zombie.core.network.ByteBufferWriter;
 import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.iso.IsoWorld;
+import zombie.network.ApocBRPacketOwnershipGuard;
 import zombie.network.IConnection;
 import zombie.network.PacketSetting;
 import zombie.network.fields.character.PlayerID;
@@ -37,7 +38,10 @@ public class PlayerDamagePacket extends PlayerID implements INetworkPacket {
     @Override
     public void parse(ByteBufferReader b, IConnection connection) {
         super.parse(b, connection);
-        if (this.isConsistent(connection)) {
+        if (ApocBRPacketOwnershipGuard.validate(
+                "PlayerDamage", connection, this.getID(), this.getPlayerIndex(), this.getPlayer()
+            )
+            && this.isConsistent(connection)) {
             try {
                 this.getPlayer().setMaxWeight(b.getInt());
                 this.getPlayer().setCorpseSicknessRate(b.getFloat());

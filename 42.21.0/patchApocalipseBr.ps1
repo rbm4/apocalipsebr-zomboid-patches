@@ -1,9 +1,9 @@
 ﻿<#
 .SYNOPSIS
-    Compiles and deploys ApocBR client-side Project Zomboid 42.19 patches.
+    Compiles and deploys ApocBR server-side Project Zomboid 42.21.0 patches.
 
 .DESCRIPTION
-    Client-only patch script. It compiles every patched Java source under
+    Server-only patch script. It compiles every patched Java source under
     .\src\zombie and deploys the generated .class files as loose classpath
     overrides next to projectzomboid.jar. Before compiling/deploying, it shows
     a Portuguese feature summary and waits for the player to press a key.
@@ -22,7 +22,7 @@ param(
 $ErrorActionPreference = "Stop"
 $ForceJdk = $true
 
-$PatchName = "ApocBR Server optimization Patch (Build 42.20.1)"
+$PatchName = "ApocBR Server optimization Patch (Build 42.21.0)"
 $RequiredMajor = 25
 
 if ([string]::IsNullOrWhiteSpace($ToolsDir)) {
@@ -42,10 +42,10 @@ if (-not (Test-Path -LiteralPath $GameJar)) { $GameJar = Join-Path $PZDir "java\
 
 $DeployRoot = if (Test-Path -LiteralPath (Join-Path $PZDir "java")) { Join-Path $PZDir "java" } else { $PZDir }
 $SrcRoot = Join-Path $ToolsDir "src"
-$BackupDir = Join-Path $ToolsDir "backups\ApocalipseBrClient"
+$BackupDir = Join-Path $ToolsDir "backups\ApocalipseBrServer"
 $LocalJdkDir = Join-Path $ToolsDir "jdk"
 $TempRoot = if (-not [string]::IsNullOrWhiteSpace($env:TEMP)) { $env:TEMP } elseif (-not [string]::IsNullOrWhiteSpace($env:TMP)) { $env:TMP } else { [System.IO.Path]::GetTempPath() }
-$WorkDir = Join-Path $TempRoot ("pzpatch_apocbr_client_" + [System.Diagnostics.Process]::GetCurrentProcess().Id + "_" + [DateTime]::UtcNow.Ticks)
+$WorkDir = Join-Path $TempRoot ("pzpatch_apocbr_server_" + [System.Diagnostics.Process]::GetCurrentProcess().Id + "_" + [DateTime]::UtcNow.Ticks)
 $OutputDir = Join-Path $WorkDir "classes"
 $ZuluApiUrl = "https://api.azul.com/metadata/v1/zulu/packages/?java_version=$RequiredMajor&os=windows&arch=x64&archive_type=zip&java_package_type=jdk&latest=true"
 
@@ -218,13 +218,13 @@ if ($Sources.Count -eq 0) {
 $ClassRoots = @($Sources | ForEach-Object { Get-RelativeClassPathForSource $_ })
 
 if ($Revert) {
-    Write-Host "[*] Reverting client patch class overrides from $DeployRoot..." -ForegroundColor Yellow
+    Write-Host "[*] Reverting server patch class overrides from $DeployRoot..." -ForegroundColor Yellow
     $totalRemoved = 0
     foreach ($rel in $ClassRoots) {
         $totalRemoved += Remove-DeployedClassFamily -RelativeClassPath $rel
     }
     if ($totalRemoved -eq 0) {
-        Write-Host "    No client patch class overrides found." -ForegroundColor Yellow
+        Write-Host "    No server patch class overrides found." -ForegroundColor Yellow
     }
     Write-Host ""
     Write-Host "=== Revert complete ===" -ForegroundColor White
@@ -237,11 +237,11 @@ if (-not $javac) { $javac = Install-Jdk }
 Write-Host "[*] PZ dir:  $PZDir" -ForegroundColor Cyan
 Write-Host "[*] JAR:     $GameJar" -ForegroundColor Cyan
 Write-Host "[*] Deploy:  $DeployRoot" -ForegroundColor Cyan
-Write-Host "[*] Sources: $($Sources.Count) client Java files" -ForegroundColor Cyan
+Write-Host "[*] Sources: $($Sources.Count) server Java files" -ForegroundColor Cyan
 Write-Host "[*] javac:   $javac ($(& $javac -version 2>&1))" -ForegroundColor Cyan
 Write-Host ""
 
-Write-Host "[*] Compiling client patched sources..." -ForegroundColor Cyan
+Write-Host "[*] Compiling server patched sources..." -ForegroundColor Cyan
 New-Item -Path $OutputDir -ItemType Directory -Force | Out-Null
 
 $JavacOut = Join-Path $WorkDir "javac.out.log"
@@ -286,7 +286,7 @@ if ($CompiledClasses.Count -eq 0) {
 
 Write-Host ""
 if ($DryRun) {
-    Write-Host "[*] DRY RUN: Would deploy $($CompiledClasses.Count) client class files to $DeployRoot" -ForegroundColor Yellow
+    Write-Host "[*] DRY RUN: Would deploy $($CompiledClasses.Count) server class files to $DeployRoot" -ForegroundColor Yellow
     foreach ($class in $CompiledClasses) {
         $rel = $class.FullName.Substring($OutputDir.Length).TrimStart('\', '/')
         Write-Host "    $rel" -ForegroundColor Yellow
@@ -294,7 +294,7 @@ if ($DryRun) {
     Write-Host ""
     Write-Host "=== Dry run complete. No files changed. ===" -ForegroundColor Green
 } else {
-    Write-Host "[*] Deploying client class overrides..." -ForegroundColor Cyan
+    Write-Host "[*] Deploying server class overrides..." -ForegroundColor Cyan
     New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
     $ts = Get-Date -Format "yyyyMMdd_HHmmss"
     $deployed = 0
@@ -317,7 +317,7 @@ if ($DryRun) {
         $deployed++
     }
 
-    Write-Host "    Deployed $deployed client class files." -ForegroundColor Green
+    Write-Host "    Deployed $deployed server class files." -ForegroundColor Green
 }
 
 Remove-Item -LiteralPath $WorkDir -Recurse -Force -ErrorAction SilentlyContinue
@@ -326,7 +326,7 @@ Write-Host ""
 Write-Host "=== Done ===" -ForegroundColor White
 if ($DryRun) { Write-Host "Patch verified: $PatchName" -ForegroundColor Green } else { Write-Host "Patch deployed: $PatchName" -ForegroundColor Green }
 Write-Host ""
-Write-Host "Included client source roots:" -ForegroundColor Gray
+Write-Host "Included server source roots:" -ForegroundColor Gray
 foreach ($src in $Sources) {
     $rel = $src.Substring($SrcRoot.Length).TrimStart('\', '/')
     Write-Host "  - $rel" -ForegroundColor Gray

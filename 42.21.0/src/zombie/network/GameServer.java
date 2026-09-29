@@ -30,6 +30,7 @@ import se.krka.kahlua.vm.KahluaTable;
 import se.krka.kahlua.vm.KahluaTableIterator;
 import zombie.AmbientSoundManager;
 import zombie.AmbientStreamManager;
+import zombie.ApocBRServerTelemetryLite;
 import zombie.DebugFileWatcher;
 import zombie.GameProfiler;
 import zombie.GameTime;
@@ -193,6 +194,7 @@ import zombie.network.statistics.StatisticManager;
 import zombie.network.statistics.data.NetworkStatistic;
 import zombie.pathfind.nativeCode.PathfindNative;
 import zombie.popman.NetworkZombieManager;
+import zombie.popman.NetworkZombiePacker;
 import zombie.popman.PoolCaps;
 import zombie.popman.ZombiePopulationManager;
 import zombie.popman.animal.AnimalInstanceManager;
@@ -862,6 +864,7 @@ public class GameServer {
             while (!done) {
                 try {
                     long startServerCycle = System.nanoTime();
+                    NetworkZombiePacker.getInstance().awaitWorkers();
                     PoolCaps.updateServerCaps();
                     MainLoopNetData2.clear();
 
@@ -1168,6 +1171,7 @@ public class GameServer {
                             NetworkPlayerManager.getInstance().update();
                             GameWindow.fileSystem.updateAsyncTransactions();
                             WorldMapVisitedServer.getInstance().update();
+                            ApocBRServerTelemetryLite.recordTick(System.nanoTime() - startServerCycle);
                         } catch (Exception var59) {
                             if (mainCycleExceptionLogCount-- > 0) {
                                 DebugType.Multiplayer.printException(var59, "Server processing error", LogSeverity.Error);

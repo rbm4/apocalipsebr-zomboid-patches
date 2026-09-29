@@ -2,6 +2,9 @@
 package zombie.popman;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import zombie.ai.State;
 import zombie.ai.states.GenericDefaultState;
 import zombie.ai.states.ZombieEatBodyState;
@@ -11,6 +14,7 @@ import zombie.ai.states.ZombieTurnAlerted;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
 import zombie.core.Core;
+import zombie.core.math.PZMath;
 import zombie.core.raknet.UdpConnection;
 import zombie.debug.DebugLog;
 import zombie.debug.DebugType;
@@ -28,6 +32,9 @@ public class NetworkZombieManager {
     private static final NetworkZombieManager instance = new NetworkZombieManager();
     private final NetworkZombieList owns = new NetworkZombieList();
     private static final float NospottedDistanceSquared = 16.0F;
+    private static final int AUTH_GRID_CELL_SIZE = 64;
+    private final Map<Long, ArrayList<NetworkZombieManager.AuthCandidate>> authGrid = new HashMap<>();
+    private boolean authGridBuilt;
 
     public static NetworkZombieManager getInstance() {
         return instance;
@@ -57,8 +64,16 @@ public class NetworkZombieManager {
         }
     }
 
+    public void beginAuthUpdate() {
+        this.rebuildAuthGrid();
+    }
+
     public void updateAuth(IsoZombie zombie) {
         if (GameServer.server) {
+            if (!this.authGridBuilt) {
+                this.rebuildAuthGrid();
+            }
+
             if (System.currentTimeMillis() - zombie.lastChangeOwner >= 2000L || zombie.getOwner() == null) {
                 if (ServerOptions.getInstance().switchZombiesOwnershipEachUpdate.getValue() && GameServer.getPlayerCount() > 1) {
                     if (zombie.getOwner() == null) {
@@ -107,18 +122,16 @@ public class NetworkZombieManager {
                         distance = connection.getRelevantAndDistance(zombie.getX(), zombie.getY(), zombie.getZ());
                     }
 
-                    for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
-                        UdpConnection c = GameServer.udpEngine.connections.get(n);
+                    List<NetworkZombieManager.AuthCandidate> candidates = this.getAuthCandidates(zombie);
+                    for (NetworkZombieManager.AuthCandidate candidate : candidates) {
+                        UdpConnection c = candidate.connection;
+                        IsoPlayer p = candidate.player;
                         if (c != connection && !GameServer.isDelayedDisconnect(c)) {
-                            for (IsoPlayer p : c.players) {
-                                if (p != null && p.isAlive()) {
-                                    float d = p.getRelevantAndDistance(zombie.getX(), zombie.getY(), c.getRelevantRange() - 2);
-                                    if (!Float.isInfinite(d) && (connection == null || distance > d * 1.618034F)) {
-                                        connection = c;
-                                        distance = d;
-                                        player = p;
-                                    }
-                                }
+                            float d = p.getRelevantAndDistance(zombie.getX(), zombie.getY(), candidate.relevantRange);
+                            if (!Float.isInfinite(d) && (connection == null || distance > d * 1.618034F)) {
+                                connection = c;
+                                distance = d;
+                                player = p;
                             }
                         }
                     }
@@ -227,6 +240,7 @@ public class NetworkZombieManager {
         }
 
         if (GameServer.server) {
+            this.beginAuthUpdate();
             for (int i = 0; i < IsoWorld.instance.currentCell.getZombieList().size(); i++) {
                 IsoZombie zombie = IsoWorld.instance.currentCell.getZombieList().get(i);
                 if (zombie.target == player) {
@@ -272,6 +286,58 @@ public class NetworkZombieManager {
             if (nz != null) {
                 nz.zombies.removeIf(zombie -> zombie.getOwner() != connection);
             }
+        }
+    }
+
+    private void rebuildAuthGrid() {
+        this.authGrid.clear();
+        for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
+            UdpConnection connection = GameServer.udpEngine.connections.get(n);
+            if (connection != null && connection.isFullyConnected() && !GameServer.isDelayedDisconnect(connection)) {
+                int relevantRange = connection.getRelevantRange() - 2;
+                int radius = relevantRange * 8;
+                for (IsoPlayer player : connection.players) {
+                    if (player != null && player.isAlive()) {
+                        NetworkZombieManager.AuthCandidate candidate = new NetworkZombieManager.AuthCandidate(connection, player, relevantRange);
+                        int minCellX = cellFor(player.getX() - radius);
+                        int maxCellX = cellFor(player.getX() + radius);
+                        int minCellY = cellFor(player.getY() - radius);
+                        int maxCellY = cellFor(player.getY() + radius);
+                        for (int cellX = minCellX; cellX <= maxCellX; cellX++) {
+                            for (int cellY = minCellY; cellY <= maxCellY; cellY++) {
+                                this.authGrid.computeIfAbsent(key(cellX, cellY), ignored -> new ArrayList<>()).add(candidate);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        this.authGridBuilt = true;
+    }
+
+    private List<NetworkZombieManager.AuthCandidate> getAuthCandidates(IsoZombie zombie) {
+        List<NetworkZombieManager.AuthCandidate> candidates = this.authGrid.get(key(cellFor(zombie.getX()), cellFor(zombie.getY())));
+        return candidates == null ? List.of() : candidates;
+    }
+
+    private static int cellFor(float value) {
+        return PZMath.fastfloor(value / AUTH_GRID_CELL_SIZE);
+    }
+
+    private static long key(int cellX, int cellY) {
+        return ((long)cellX & 4294967295L) << 32 | (long)cellY & 4294967295L;
+    }
+
+    private static final class AuthCandidate {
+        final UdpConnection connection;
+        final IsoPlayer player;
+        final int relevantRange;
+
+        AuthCandidate(UdpConnection connection, IsoPlayer player, int relevantRange) {
+            this.connection = connection;
+            this.player = player;
+            this.relevantRange = relevantRange;
         }
     }
 }

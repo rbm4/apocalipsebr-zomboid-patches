@@ -223,9 +223,9 @@ public final class IsoGridSquare {
     public static final byte PCF_WEST = 2;
     private static final ThreadLocal<ArrayList<Zone>> threadLocalZones = ThreadLocal.withInitial(ArrayList::new);
     private static final IsoDirections[] DIRECTIONS = IsoDirections.values();
-    public final IsoGridSquare.ILighting[] lighting = new IsoGridSquare.ILighting[4];
-    private static final Vector2 tempo = new Vector2();
-    private static final Vector2 tempo2 = new Vector2();
+    public final IsoGridSquare.ILighting[] lighting = new IsoGridSquare.ILighting[LosUtil.SLOT_COUNT];
+    private static final ThreadLocal<Vector2> tempoTL = ThreadLocal.withInitial(Vector2::new);
+    private static final ThreadLocal<Vector2> tempo2TL = ThreadLocal.withInitial(Vector2::new);
     public static float rmod;
     public static float gmod;
     public static float bmod;
@@ -4433,11 +4433,9 @@ public final class IsoGridSquare {
         this.pathMatrix = 134217727;
         this.visionMatrix = 0;
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < this.lighting.length; i++) {
             if (GameServer.server) {
-                if (i == 0) {
-                    this.lighting[i] = new ServerLOS.ServerLighting();
-                }
+                this.lighting[i] = new ServerLOS.ServerLighting();
             } else if (LightingJNI.init) {
                 this.lighting[i] = new LightingJNI.JNILighting(i, this);
             } else {
@@ -8973,6 +8971,8 @@ public final class IsoGridSquare {
     }
 
     public void CalcVisibility(int playerIndex, IsoGameCharacter isoGameCharacter, VisibilityData visibilityData) {
+        Vector2 tempo = tempoTL.get();
+        Vector2 tempo2 = tempo2TL.get();
         IsoGridSquare.ILighting lighting = this.lighting[playerIndex];
         lighting.bCanSee(false);
         lighting.bCouldSee(false);
@@ -9031,7 +9031,7 @@ public final class IsoGridSquare {
                     float cone = visibilityData.getCone();
                     if (!(dot > cone) && test != LosUtil.TestResults.Blocked) {
                         lighting.bCouldSee(true);
-                        if (this.room != null && this.room.def != null) {
+                        if (!GameServer.server && this.room != null && this.room.def != null) {
                             if (!this.room.def.explored) {
                                 int dist1 = 10;
                                 if (lightInfo.square != null && lightInfo.square.getBuilding() == this.room.building) {
@@ -10642,23 +10642,24 @@ public final class IsoGridSquare {
     }
 
     public void checkRoomSeen(int playerIndex) {
-        IsoRoom room = this.getRoom();
-        if (room != null && room.def != null && !room.def.explored) {
-            IsoPlayer player = IsoPlayer.players[playerIndex];
-            if (player != null) {
-                if (this.z == PZMath.fastfloor(player.getZ())) {
-                    int dist = 10;
-                    if (player.getBuilding() == room.building) {
-                        dist = 50;
-                    }
+        this.checkRoomSeen(IsoPlayer.players[playerIndex]);
+    }
 
-                    if (IsoUtils.DistanceToSquared(player.getX(), player.getY(), this.x + 0.5F, this.y + 0.5F) < dist * dist) {
-                        room.def.explored = true;
-                        room.onSee();
-                        room.seen = 0;
-                        if (player.isLocalPlayer()) {
-                            player.triggerMusicIntensityEvent("SeeUnexploredRoom");
-                        }
+    public void checkRoomSeen(IsoPlayer player) {
+        IsoRoom room = this.getRoom();
+        if (room != null && room.def != null && !room.def.explored && player != null) {
+            if (this.z == PZMath.fastfloor(player.getZ())) {
+                int dist = 10;
+                if (player.getBuilding() == room.building) {
+                    dist = 50;
+                }
+
+                if (IsoUtils.DistanceToSquared(player.getX(), player.getY(), this.x + 0.5F, this.y + 0.5F) < dist * dist) {
+                    room.def.explored = true;
+                    room.onSee();
+                    room.seen = 0;
+                    if (player.isLocalPlayer()) {
+                        player.triggerMusicIntensityEvent("SeeUnexploredRoom");
                     }
                 }
             }
