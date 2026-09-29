@@ -2069,6 +2069,10 @@ public final class PolygonalMap2 {
     }
 
     public void supercover(float x0, float y0, float x1, float y1, int z, PointPool pointPool, ArrayList<Point> pts) {
+        if (!Float.isFinite(x0) || !Float.isFinite(y0) || !Float.isFinite(x1) || !Float.isFinite(y1)) {
+            return;
+        }
+
         double dx = Math.abs(x1 - x0);
         double dy = Math.abs(y1 - y0);
         int x = PZMath.fastfloor(x0);
