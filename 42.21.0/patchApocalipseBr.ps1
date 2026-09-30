@@ -43,7 +43,10 @@ if (-not (Test-Path -LiteralPath $GameJar)) { $GameJar = Join-Path $PZDir "java\
 $DeployRoot = if (Test-Path -LiteralPath (Join-Path $PZDir "java")) { Join-Path $PZDir "java" } else { $PZDir }
 $SrcRoot = Join-Path $ToolsDir "src"
 $BackupDir = Join-Path $ToolsDir "backups\ApocalipseBrServer"
-$LocalJdkDir = Join-Path $ToolsDir "jdk"
+# Keep the downloaded JDK beside the version directories so every current and
+# future patch version can reuse the same installation.
+$PatchRepositoryRoot = Split-Path -Parent ([System.IO.Path]::GetFullPath($ToolsDir))
+$LocalJdkDir = Join-Path $PatchRepositoryRoot "jdk"
 $TempRoot = if (-not [string]::IsNullOrWhiteSpace($env:TEMP)) { $env:TEMP } elseif (-not [string]::IsNullOrWhiteSpace($env:TMP)) { $env:TMP } else { [System.IO.Path]::GetTempPath() }
 $WorkDir = Join-Path $TempRoot ("pzpatch_apocbr_server_" + [System.Diagnostics.Process]::GetCurrentProcess().Id + "_" + [DateTime]::UtcNow.Ticks)
 $OutputDir = Join-Path $WorkDir "classes"
