@@ -17,8 +17,8 @@ public class AntiCheatSafeHouseMember extends AbstractAntiCheat {
             if (!connection.hasPlayer(field.getUsername()) && !connection.hasPlayer(field.getSafehouse().getOwner())) {
                 return "player not found and sender is not owner";
             } else {
-                SafeHouse safeHouse = SafeHouse.hasSafehouse(field.getUsername());
-                return safeHouse != null && safeHouse.getOnlineID() == field.getSafehouse().getOnlineID()
+                SafeHouse safeHouse = SafeHouse.hasSafehouse(field.getUsername(), field.getSafehouse());
+                return safeHouse != null
                     ? result
                     : "player is not member or owner of safehouse";
             }

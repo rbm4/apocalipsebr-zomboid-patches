@@ -107,6 +107,23 @@ public class SafeHouse extends Invite {
         return null;
     }
 
+    public static SafeHouse hasSafehouse(String username, SafeHouse expectedSafehouse) {
+        if (expectedSafehouse == null) {
+            return null;
+        }
+
+        for (SafeHouse safe : safehouseList) {
+            if (
+                safe.getOnlineID() == expectedSafehouse.getOnlineID()
+                    && (safe.getPlayers().contains(username) || safe.getOwner().equals(username))
+            ) {
+                return safe;
+            }
+        }
+
+        return null;
+    }
+
     public static SafeHouse getSafehouseByOwner(String username) {
         for (SafeHouse safe : safehouseList) {
             if (safe.getOwner().equals(username)) {

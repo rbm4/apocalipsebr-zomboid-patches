@@ -51,9 +51,9 @@ public class SafehouseChangeOwnerPacket
                 DebugType.Multiplayer.error("player is already owner");
                 return false;
             } else {
-                SafeHouse newSafeHouse = SafeHouse.hasSafehouse(isoPlayer);
+                SafeHouse newSafeHouse = SafeHouse.getSafehouseByOwner(this.getUsername());
                 if (newSafeHouse != null && newSafeHouse != this.getSafehouse()) {
-                    DebugType.Multiplayer.error("player is already member");
+                    DebugType.Multiplayer.error("player already owns another safehouse");
                     return false;
                 } else {
                     return true;
