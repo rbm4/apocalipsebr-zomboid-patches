@@ -919,106 +919,112 @@ public class ServerMap {
             int minLevel = Integer.MAX_VALUE;
             int maxLevel = Integer.MIN_VALUE;
 
-            for (int chunkY = 0; chunkY < 8; chunkY++) {
-                for (int chunkX = 0; chunkX < 8; chunkX++) {
-                    IsoChunk chunk = this.getChunk(chunkX, chunkY);
-                    if (chunk != null) {
-                        minLevel = PZMath.min(minLevel, chunk.getMinLevel());
-                        maxLevel = PZMath.max(maxLevel, chunk.getMaxLevel());
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.boundarySetup")) {
+                for (int chunkY = 0; chunkY < 8; chunkY++) {
+                    for (int chunkX = 0; chunkX < 8; chunkX++) {
+                        IsoChunk chunk = this.getChunk(chunkX, chunkY);
+                        if (chunk != null) {
+                            minLevel = PZMath.min(minLevel, chunk.getMinLevel());
+                            maxLevel = PZMath.max(maxLevel, chunk.getMaxLevel());
+                        }
+                    }
+                }
+
+                for (int z = 1; z <= maxLevel; z++) {
+                    for (int x = -1; x < 65; x++) {
+                        IsoGridSquare sq = ServerMap.instance.getGridSquare(sx + x, sy - 1, z);
+                        if (sq != null && !sq.getObjects().isEmpty()) {
+                            IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                        } else if (x >= 0 && x < 64) {
+                            sq = ServerMap.instance.getGridSquare(sx + x, sy, z);
+                            if (sq != null && !sq.getObjects().isEmpty()) {
+                                IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                            }
+                        }
+
+                        sq = ServerMap.instance.getGridSquare(sx + x, sy + 64, z);
+                        if (sq != null && !sq.getObjects().isEmpty()) {
+                            IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                        } else if (x >= 0 && x < 64) {
+                            ServerMap.instance.getGridSquare(sx + x, sy + 64 - 1, z);
+                            if (sq != null && !sq.getObjects().isEmpty()) {
+                                IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                            }
+                        }
+                    }
+
+                    for (int y = 0; y < 64; y++) {
+                        IsoGridSquare sqx = ServerMap.instance.getGridSquare(sx - 1, sy + y, z);
+                        if (sqx != null && !sqx.getObjects().isEmpty()) {
+                            IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                        } else {
+                            sqx = ServerMap.instance.getGridSquare(sx, sy + y, z);
+                            if (sqx != null && !sqx.getObjects().isEmpty()) {
+                                IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                            }
+                        }
+
+                        sqx = ServerMap.instance.getGridSquare(sx + 64, sy + y, z);
+                        if (sqx != null && !sqx.getObjects().isEmpty()) {
+                            IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                        } else {
+                            sqx = ServerMap.instance.getGridSquare(sx + 64 - 1, sy + y, z);
+                            if (sqx != null && !sqx.getObjects().isEmpty()) {
+                                IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                            }
+                        }
                     }
                 }
             }
 
-            for (int z = 1; z <= maxLevel; z++) {
-                for (int x = -1; x < 65; x++) {
-                    IsoGridSquare sq = ServerMap.instance.getGridSquare(sx + x, sy - 1, z);
-                    if (sq != null && !sq.getObjects().isEmpty()) {
-                        IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
-                    } else if (x >= 0 && x < 64) {
-                        sq = ServerMap.instance.getGridSquare(sx + x, sy, z);
-                        if (sq != null && !sq.getObjects().isEmpty()) {
-                            IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.borderRecalc")) {
+                for (int z = minLevel; z <= maxLevel; z++) {
+                    for (int x = 0; x < 64; x++) {
+                        IsoGridSquare sqxx = this.getGridSquareLocal(x, 0, z);
+                        if (sqxx != null) {
+                            sqxx.RecalcAllWithNeighbours(true);
+                        }
+
+                        sqxx = this.getGridSquareLocal(x, 63, z);
+                        if (sqxx != null) {
+                            sqxx.RecalcAllWithNeighbours(true);
                         }
                     }
 
-                    sq = ServerMap.instance.getGridSquare(sx + x, sy + 64, z);
-                    if (sq != null && !sq.getObjects().isEmpty()) {
-                        IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
-                    } else if (x >= 0 && x < 64) {
-                        ServerMap.instance.getGridSquare(sx + x, sy + 64 - 1, z);
-                        if (sq != null && !sq.getObjects().isEmpty()) {
-                            IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+                    for (int y = 1; y < 63; y++) {
+                        IsoGridSquare sqxxx = this.getGridSquareLocal(0, y, z);
+                        if (sqxxx != null) {
+                            sqxxx.RecalcAllWithNeighbours(true);
                         }
-                    }
-                }
 
-                for (int y = 0; y < 64; y++) {
-                    IsoGridSquare sqx = ServerMap.instance.getGridSquare(sx - 1, sy + y, z);
-                    if (sqx != null && !sqx.getObjects().isEmpty()) {
-                        IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
-                    } else {
-                        sqx = ServerMap.instance.getGridSquare(sx, sy + y, z);
-                        if (sqx != null && !sqx.getObjects().isEmpty()) {
-                            IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+                        sqxxx = this.getGridSquareLocal(63, y, z);
+                        if (sqxxx != null) {
+                            sqxxx.RecalcAllWithNeighbours(true);
                         }
-                    }
-
-                    sqx = ServerMap.instance.getGridSquare(sx + 64, sy + y, z);
-                    if (sqx != null && !sqx.getObjects().isEmpty()) {
-                        IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
-                    } else {
-                        sqx = ServerMap.instance.getGridSquare(sx + 64 - 1, sy + y, z);
-                        if (sqx != null && !sqx.getObjects().isEmpty()) {
-                            IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
-                        }
-                    }
-                }
-            }
-
-            for (int z = minLevel; z <= maxLevel; z++) {
-                for (int x = 0; x < 64; x++) {
-                    IsoGridSquare sqxx = ServerMap.instance.getGridSquare(sx + x, sy, z);
-                    if (sqxx != null) {
-                        sqxx.RecalcAllWithNeighbours(true);
-                    }
-
-                    sqxx = ServerMap.instance.getGridSquare(sx + x, ey - 1, z);
-                    if (sqxx != null) {
-                        sqxx.RecalcAllWithNeighbours(true);
-                    }
-                }
-
-                for (int y = 0; y < 64; y++) {
-                    IsoGridSquare sqxxx = ServerMap.instance.getGridSquare(sx, sy + y, z);
-                    if (sqxxx != null) {
-                        sqxxx.RecalcAllWithNeighbours(true);
-                    }
-
-                    sqxxx = ServerMap.instance.getGridSquare(ex - 1, sy + y, z);
-                    if (sqxxx != null) {
-                        sqxxx.RecalcAllWithNeighbours(true);
                     }
                 }
             }
 
             int nSquares = 64;
 
-            for (int cx = 0; cx < 8; cx++) {
-                for (int cy = 0; cy < 8; cy++) {
-                    IsoChunk chunk = this.chunks[cx][cy];
-                    if (chunk != null) {
-                        chunk.loaded = true;
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.markSquares")) {
+                for (int cx = 0; cx < 8; cx++) {
+                    for (int cy = 0; cy < 8; cy++) {
+                        IsoChunk chunk = this.chunks[cx][cy];
+                        if (chunk != null) {
+                            chunk.loaded = true;
 
-                        for (int i = 0; i < 64; i++) {
-                            for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
-                                int squaresIndexOfLevel = chunk.squaresIndexOfLevel(z);
-                                IsoGridSquare g = chunk.squares[squaresIndexOfLevel][i];
-                                if (g != null) {
-                                    if (g.getRoom() != null && !g.getRoom().def.explored) {
-                                        this.unexploredRooms.add(g.getRoom().def);
+                            for (int i = 0; i < 64; i++) {
+                                for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
+                                    int squaresIndexOfLevel = chunk.squaresIndexOfLevel(z);
+                                    IsoGridSquare g = chunk.squares[squaresIndexOfLevel][i];
+                                    if (g != null) {
+                                        if (g.getRoom() != null && !g.getRoom().def.explored) {
+                                            this.unexploredRooms.add(g.getRoom().def);
+                                        }
+
+                                        g.propertiesDirty = true;
                                     }
-
-                                    g.propertiesDirty = true;
                                 }
                             }
                         }
@@ -1026,11 +1032,13 @@ public class ServerMap {
                 }
             }
 
-            for (int x = 0; x < 8; x++) {
-                for (int y = 0; y < 8; y++) {
-                    if (this.chunks[x][y] != null) {
-                        ApocBRServerTelemetryLite.count(this.chunks[x][y].isNewChunk() ? "chunks.newIntegrated" : "chunks.existingIntegrated", 1L);
-                        this.chunks[x][y].doLoadGridsquare();
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.doLoadGridsquare")) {
+                for (int x = 0; x < 8; x++) {
+                    for (int y = 0; y < 8; y++) {
+                        if (this.chunks[x][y] != null) {
+                            ApocBRServerTelemetryLite.count(this.chunks[x][y].isNewChunk() ? "chunks.newIntegrated" : "chunks.existingIntegrated", 1L);
+                            this.chunks[x][y].doLoadGridsquare();
+                        }
                     }
                 }
             }
@@ -1169,6 +1177,15 @@ public class ServerMap {
             }
 
             return null;
+        }
+
+        private IsoGridSquare getGridSquareLocal(int localX, int localY, int z) {
+            if (localX < 0 || localX >= 64 || localY < 0 || localY >= 64) {
+                return null;
+            }
+
+            IsoChunk chunk = this.chunks[localX / 8][localY / 8];
+            return chunk == null ? null : chunk.getGridSquare(localX % 8, localY % 8, z);
         }
 
         public int getWX() {
