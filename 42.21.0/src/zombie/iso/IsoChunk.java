@@ -993,7 +993,9 @@ public final class IsoChunk {
                     chance = switch (SandboxOptions.instance.carSpawnRate.getValue()) {
                         case 2 -> (int)Math.ceil(chance / 10.0F);
                         case 3 -> (int)Math.ceil(chance / 1.5F);
+			case 4 -> 2;
                         case 5 -> 2;
+			default -> 2;
                     };
                     if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue() || type.forceSpawn) {
                         chance = 100;
