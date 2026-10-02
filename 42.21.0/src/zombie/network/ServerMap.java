@@ -83,6 +83,8 @@ public class ServerMap {
     public ServerMap.ServerCell[] cellMap;
     public ArrayList<ServerMap.ServerCell> loadedCells = new ArrayList<>();
     public ArrayList<ServerMap.ServerCell> releventNow = new ArrayList<>();
+    private final HashSet<ServerMap.ServerCell> releventNowLookup = new HashSet<>();
+    private final HashSet<ServerMap.ServerCell> completedLoad2 = new HashSet<>();
     int width;
     int height;
     IsoMetaGrid grid;
@@ -246,7 +248,8 @@ public class ServerMap {
                 this.toLoad.add(cell);
                 this.loadedCells.add(cell);
                 this.releventNow.add(cell);
-            } else if (!this.releventNow.contains(cell)) {
+                this.releventNowLookup.add(cell);
+            } else if (this.releventNowLookup.add(cell)) {
                 this.releventNow.add(cell);
             }
         }
@@ -458,6 +461,7 @@ public class ServerMap {
                 this.cellMap[cx + cy * this.width] = null;
                 this.loadedCells.remove(cell);
                 this.releventNow.remove(cell);
+                this.releventNowLookup.remove(cell);
                 ServerMap.ServerCell.loaded2.remove(cell);
                 this.toLoad.remove(i--);
             }
@@ -497,18 +501,26 @@ public class ServerMap {
             ServerMap.ServerCell.loaded.clear();
             ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
             if (!ServerMap.ServerCell.loaded2.isEmpty()) {
+                this.completedLoad2.clear();
                 try {
                     ServerLOS.instance.suspend();
 
                     for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
                         ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
-                        if (cell.Load2()) {
-                            x--;
-                            this.toLoad.remove(cell);
+                        if (cell != null && cell.load2At(x)) {
+                            this.completedLoad2.add(cell);
                         }
                     }
                 } finally {
-                    ServerLOS.instance.resume();
+                    try {
+                        compactLoaded2();
+                        if (!this.completedLoad2.isEmpty()) {
+                            this.toLoad.removeIf(this.completedLoad2::contains);
+                        }
+                    } finally {
+                        this.completedLoad2.clear();
+                        ServerLOS.instance.resume();
+                    }
                 }
             }
         }
@@ -534,6 +546,7 @@ public class ServerMap {
         }
 
         this.releventNow.clear();
+        this.releventNowLookup.clear();
         this.updateLosThisFrame = LOS_TICK.Check();
         if (TIME_TICK.Check()) {
             ServerMap.ServerCell.chunkLoader.saveLater(GameTime.instance);
@@ -544,13 +557,28 @@ public class ServerMap {
         }
     }
 
+    private static void compactLoaded2() {
+        ArrayList<ServerMap.ServerCell> loaded2 = ServerMap.ServerCell.loaded2;
+        int write = 0;
+        for (int read = 0; read < loaded2.size(); read++) {
+            ServerMap.ServerCell cell = loaded2.get(read);
+            if (cell != null) {
+                loaded2.set(write++, cell);
+            }
+        }
+
+        if (write < loaded2.size()) {
+            loaded2.subList(write, loaded2.size()).clear();
+        }
+    }
+
     public void postupdate() {
         boolean pathfindPaused = false;
 
         try {
             for (int n = 0; n < this.loadedCells.size(); n++) {
                 ServerMap.ServerCell cell = this.loadedCells.get(n);
-                boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
+                boolean shouldBeLoaded = this.releventNowLookup.contains(cell) || !this.outsidePlayerInfluence(cell);
                 if (!cell.isLoaded) {
                     if (!shouldBeLoaded && !cell.cancelLoading) {
                         if (mapLoading) {
@@ -817,29 +845,52 @@ public class ServerMap {
 
             for (int i = 0; i < loaded2.size(); i++) {
                 if (loaded2.get(i) == this) {
-                    long start = System.nanoTime();
-                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.integrate")) {
-                        this.RecalcAll2();
-                    }
-                    loaded2.remove(i);
-                    if (ServerMap.mapLoading) {
-                        DebugType.MapLoading.debugln("loaded2=" + loaded2);
-                    }
-
-                    float time = (float)(System.nanoTime() - start) / 1000000.0F;
-                    if (ServerMap.mapLoading) {
-                        DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
-                    }
-
-                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.loadVehicles")) {
-                        this.loadVehicles();
-                    }
-                    ApocBRServerTelemetryLite.count("cells.integrated", 1L);
-                    return true;
+                    return this.load2(i, false);
                 }
             }
 
             return false;
+        }
+
+        private boolean load2At(int index) {
+            chunkLoader.getRecalc(loaded2);
+            if (index < 0 || index >= loaded2.size() || loaded2.get(index) != this) {
+                return false;
+            }
+
+            return this.load2(index, true);
+        }
+
+        private boolean load2(int index, boolean compactQueueLater) {
+            long start = System.nanoTime();
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.integrate")) {
+                this.RecalcAll2();
+            }
+            if (compactQueueLater) {
+                loaded2.set(index, null);
+            } else {
+                loaded2.remove(index);
+            }
+            if (ServerMap.mapLoading) {
+                DebugType.MapLoading.debugln("loaded2=" + loaded2ForLogging());
+            }
+
+            float time = (float)(System.nanoTime() - start) / 1000000.0F;
+            if (ServerMap.mapLoading) {
+                DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
+            }
+
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.loadVehicles")) {
+                this.loadVehicles();
+            }
+            ApocBRServerTelemetryLite.count("cells.integrated", 1L);
+            return true;
+        }
+
+        private static ArrayList<ServerMap.ServerCell> loaded2ForLogging() {
+            ArrayList<ServerMap.ServerCell> pending = new ArrayList<>(loaded2);
+            pending.removeIf(Objects::isNull);
+            return pending;
         }
 
         private void loadVehicles() {

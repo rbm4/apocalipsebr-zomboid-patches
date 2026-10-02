@@ -23,6 +23,7 @@ import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.zip.CRC32;
+import zombie.ApocBRServerTelemetryLite;
 import zombie.ChunkMapFilenames;
 import zombie.FliesSound;
 import zombie.GameProfiler;
@@ -3209,6 +3210,8 @@ public final class IsoChunk {
         }
 
         int to = 64;
+        long unloadSquaresStart = GameServer.server ? System.nanoTime() : 0L;
+        long unloadedMovingObjects = 0L;
 
         for (int n = this.minLevel; n <= this.maxLevel; n++) {
             for (int m = 0; m < 64; m++) {
@@ -3226,9 +3229,13 @@ public final class IsoChunk {
                     }
 
                     ArrayList<IsoMovingObject> mov = sq.getMovingObjects();
+                    if (GameServer.server) {
+                        unloadedMovingObjects += mov.size();
+                    }
 
                     for (int a = 0; a < mov.size(); a++) {
                         IsoMovingObject obj = mov.get(a);
+                        boolean wasInSquareMovingList = obj.current == sq || obj.last == sq;
                         if (obj instanceof IsoSurvivor) {
                             IsoWorld.instance.currentCell.getSurvivorList().remove(obj);
                             obj.Despawn();
@@ -3247,7 +3254,7 @@ public final class IsoChunk {
                             VirtualVehicleManager.getInstance().addToMeta(vehicle);
                         }
 
-                        if (!mov.contains(obj)) {
+                        if (wasInSquareMovingList) {
                             a--;
                         }
                     }
@@ -3269,6 +3276,11 @@ public final class IsoChunk {
                     sq.chunk = null;
                 }
             }
+        }
+
+        if (GameServer.server) {
+            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares", System.nanoTime() - unloadSquaresStart);
+            ApocBRServerTelemetryLite.count("chunks.unloadedMovingObjects", unloadedMovingObjects);
         }
 
         for (int i = 0; i < this.vehicles.size(); i++) {
