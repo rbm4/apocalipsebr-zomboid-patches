@@ -8,20 +8,6 @@ The patches replace complete game classes at runtime through loose `.class` file
 
 Treat this repository as production game-server and game-client code. Preserve vanilla behavior unless the requested change explicitly requires altering it.
 
-## Skill bridge
-
-Use the project skill at `.devin/skills/zomboid-java-patches/SKILL.md` for feature analysis, Java patch implementation, patch review, regression diagnosis, and version-to-version porting. It turns this file's repository rules into an executable workflow and must read this `AGENTS.md` before making changes.
-
-Typical invocations are:
-
-```text
-/zomboid-java-patches analyze 42.21.0 <feature or behavior>
-/zomboid-java-patches implement 42.21.0 <feature or fix>
-/zomboid-java-patches port 42.20.3 42.21.0 <optional scope>
-/zomboid-java-patches review 42.21.0 <optional scope>
-```
-
-For a full version port, omit the scope only when every source patch is intended to move. The skill must inventory every source patched class, perform a three-way comparison between source vanilla, source patched, and target vanilla, account for custom helper classes, and report every item rather than silently skipping difficult files.
 
 ## Repository model
 

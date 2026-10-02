@@ -212,12 +212,14 @@ public class ServerLOS {
             }
         }
 
-        while (this.freeSlots.size() < LOS_SLOT_COUNT) {
-            try {
-                Thread.sleep(1L);
-            } catch (InterruptedException exception) {
-                Thread.currentThread().interrupt();
-                break;
+        try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.losSuspendWait")) {
+            while (this.freeSlots.size() < LOS_SLOT_COUNT) {
+                try {
+                    Thread.sleep(1L);
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
             }
         }
 

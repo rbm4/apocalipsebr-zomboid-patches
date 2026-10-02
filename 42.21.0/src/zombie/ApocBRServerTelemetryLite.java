@@ -1,6 +1,12 @@
 package zombie;
 
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.GarbageCollectorMXBean;
+import java.util.List;
+import zombie.core.Core;
+import zombie.iso.IsoWorld;
+import zombie.network.ServerMap;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,6 +34,14 @@ public final class ApocBRServerTelemetryLite {
     private static final LongAdder tickCount = new LongAdder();
     private static final LongAdder tickNanos = new LongAdder();
     private static final AtomicLong tickMaxNanos = new AtomicLong();
+    private static final ConcurrentHashMap<String, LuaTiming> phases = new ConcurrentHashMap<>();
+    private static final ConcurrentHashMap<String, LongAdder> counters = new ConcurrentHashMap<>();
+    private static final List<GarbageCollectorMXBean> gcBeans = ManagementFactory.getGarbageCollectorMXBeans();
+    private static long previousGcCount = gcCount();
+    private static long previousGcMillis = gcMillis();
+    private static final LongAdder overBudgetTicks = new LongAdder();
+    private static final LongAdder loopCount = new LongAdder();
+    private static final LongAdder loopNanos = new LongAdder();
     private static final ConcurrentHashMap<String, LuaTiming> luaEvents = new ConcurrentHashMap<>();
     private static volatile long intervalStartedMillis = System.currentTimeMillis();
     private static volatile long nextOutputMillis = intervalStartedMillis + INTERVAL_MILLIS;
@@ -57,10 +71,56 @@ public final class ApocBRServerTelemetryLite {
         tickCount.increment();
         tickNanos.add(nanos);
         tickMaxNanos.accumulateAndGet(nanos, Math::max);
+        if (nanos > 100000000L) {
+            overBudgetTicks.increment();
+        }
+    }
+
+    // Called for every outer loop, including packet-only iterations. Unlike tick.avgMs,
+    // loop.totalMs accounts for all iterations. Emission itself is excluded.
+    public static void recordLoop(long nanos) {
+        loopCount.increment();
+        loopNanos.add(Math.max(0L, nanos));
         long now = System.currentTimeMillis();
         if (now >= nextOutputMillis) {
+            long emitStarted = System.nanoTime();
             emit(now);
+            recordPhase("telemetry.emit", System.nanoTime() - emitStarted);
         }
+    }
+
+    public static void recordPhase(String name, long nanos) {
+        phases.computeIfAbsent(name, ignored -> new LuaTiming()).record(0, Math.max(0L, nanos));
+    }
+
+    public static Scope phase(String name) {
+        return new Scope(name);
+    }
+
+    public static void count(String name, long amount) {
+        counters.computeIfAbsent(name, ignored -> new LongAdder()).add(amount);
+    }
+
+    public static final class Scope implements AutoCloseable {
+        private final String name;
+        private final long started = System.nanoTime();
+        private Scope(String name) { this.name = name; }
+        @Override
+        public void close() {
+            phases.computeIfAbsent(this.name, ignored -> new LuaTiming()).record(0, System.nanoTime() - this.started);
+        }
+    }
+
+    private static long gcCount() {
+        long total = 0L;
+        for (GarbageCollectorMXBean bean : gcBeans) total += Math.max(0L, bean.getCollectionCount());
+        return total;
+    }
+
+    private static long gcMillis() {
+        long total = 0L;
+        for (GarbageCollectorMXBean bean : gcBeans) total += Math.max(0L, bean.getCollectionTime());
+        return total;
     }
 
     public static void recordLuaEvent(String eventName, int callbackCount, long nanos) {
@@ -82,13 +142,57 @@ public final class ApocBRServerTelemetryLite {
         long elapsedMillis = Math.max(1L, now - intervalStartedMillis);
         int players = Math.max(GameServer.IDToPlayerMap.size(), GameServer.Players.size());
         StringBuilder json = new StringBuilder(512);
-        json.append("{\"schemaVersion\":1");
+        json.append("{\"schemaVersion\":2");
+        json.append(",\"gameVersion\":\"").append(escape(Core.getInstance().getVersionNumber())).append("\"");
+        json.append(",\"intervalMs\":").append(elapsedMillis);
         json.append(",\"seq\":").append(sequence.incrementAndGet());
         json.append(",\"ts\":").append(now);
         json.append(",\"tick\":{\"count\":").append(ticks);
         json.append(",\"rate\":").append(decimal(ticks * 1000.0 / elapsedMillis));
         json.append(",\"avgMs\":").append(decimal(ticks == 0L ? 0.0 : nanos / 1000000.0 / ticks));
         json.append(",\"maxMs\":").append(decimal(maxNanos / 1000000.0)).append('}');
+        json.append(",\"overBudgetTicks\":").append(overBudgetTicks.sumThenReset());
+        json.append(",\"loop\":{\"count\":").append(loopCount.sumThenReset());
+        json.append(",\"totalMs\":").append(decimal(loopNanos.sumThenReset() / 1000000.0)).append('}');
+        json.append(",\"phases\":[");
+        boolean firstPhase = true;
+        for (Map.Entry<String, LuaTiming> entry : phases.entrySet()) {
+            LuaSnapshot snapshot = entry.getValue().snapshotAndReset();
+            if (snapshot.calls == 0L) continue;
+            if (!firstPhase) json.append(',');
+            firstPhase = false;
+            json.append("{\"name\":\"").append(escape(entry.getKey())).append("\"");
+            json.append(",\"calls\":").append(snapshot.calls);
+            json.append(",\"totalMs\":").append(decimal(snapshot.nanos / 1000000.0));
+            json.append(",\"avgMs\":").append(decimal(snapshot.nanos / 1000000.0 / snapshot.calls));
+            json.append(",\"maxMs\":").append(decimal(snapshot.maxNanos / 1000000.0)).append('}');
+        }
+        json.append(']');
+        json.append(",\"counters\":{");
+        boolean firstCounter = true;
+        for (Map.Entry<String, LongAdder> entry : counters.entrySet()) {
+            if (!firstCounter) json.append(',');
+            firstCounter = false;
+            json.append('"').append(escape(entry.getKey())).append("\":").append(entry.getValue().sumThenReset());
+        }
+        json.append('}');
+        json.append(",\"world\":{\"loadedCells\":").append(ServerMap.instance.loadedCells.size());
+        json.append(",\"pendingCells\":").append(ServerMap.instance.telemetryPendingCells());
+        if (IsoWorld.instance.currentCell != null) {
+            json.append(",\"zombies\":").append(IsoWorld.instance.currentCell.getZombieList().size());
+            json.append(",\"movingObjects\":").append(IsoWorld.instance.currentCell.getObjectList().size());
+        }
+        json.append('}');
+        Runtime runtime = Runtime.getRuntime();
+        long gcCount = gcCount();
+        long gcMillis = gcMillis();
+        json.append(",\"jvm\":{\"heapUsedBytes\":").append(runtime.totalMemory() - runtime.freeMemory());
+        json.append(",\"heapCommittedBytes\":").append(runtime.totalMemory());
+        json.append(",\"heapMaxBytes\":").append(runtime.maxMemory());
+        json.append(",\"gcCount\":").append(Math.max(0L, gcCount - previousGcCount));
+        json.append(",\"gcMs\":").append(Math.max(0L, gcMillis - previousGcMillis)).append('}');
+        previousGcCount = gcCount;
+        previousGcMillis = gcMillis;
         json.append(",\"playersOnline\":").append(players);
         json.append(",\"dropped\":").append(dropped.sum());
         json.append(",\"lua\":{\"enabled\":").append(LUA_ENABLED);
@@ -110,6 +214,7 @@ public final class ApocBRServerTelemetryLite {
                 json.append("{\"name\":\"").append(escape(entry.getKey())).append("\"");
                 json.append(",\"calls\":").append(snapshot.calls);
                 json.append(",\"callbacks\":").append(snapshot.callbacks);
+                json.append(",\"totalMs\":").append(decimal(snapshot.nanos / 1000000.0));
                 json.append(",\"avgMs\":").append(decimal(snapshot.nanos / 1000000.0 / snapshot.calls));
                 json.append(",\"maxMs\":").append(decimal(snapshot.maxNanos / 1000000.0)).append('}');
             }

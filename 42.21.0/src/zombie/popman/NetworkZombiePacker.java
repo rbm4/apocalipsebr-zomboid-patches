@@ -1,6 +1,8 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie.popman;
 
+import zombie.ApocBRServerTelemetryLite;
+
 import java.nio.BufferOverflowException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -120,7 +122,9 @@ public class NetworkZombiePacker {
         CountDownLatch latch = this.pendingLatch;
         if (latch != null) {
             try {
-                latch.await();
+                try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("network.zombies.workerWait")) {
+                    latch.await();
+                }
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
             } finally {
@@ -130,14 +134,18 @@ public class NetworkZombiePacker {
 
         NetworkZombiePacker.ConnectionResult result;
         while ((result = this.completedJobs.poll()) != null) {
-            this.send(result.connection, result.requestSnapshot, result.forceExtraUpdate);
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("network.zombies.send")) {
+                this.send(result.connection, result.requestSnapshot, result.forceExtraUpdate);
+            }
         }
     }
 
     public void postupdate() {
         this.awaitWorkers();
         this.zombiesToSend.clear();
-        this.updateAuth();
+        try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("network.zombies.auth")) {
+            this.updateAuth();
+        }
         synchronized (this.zombiesReceived) {
             this.zombiesProcessing.clear();
             this.zombiesProcessing.addAll(this.zombiesReceived);
@@ -158,6 +166,7 @@ public class NetworkZombiePacker {
             }
         }
 
+        ApocBRServerTelemetryLite.count("zombieJobs.submitted", connections.size());
         boolean forceExtraUpdate = this.extraUpdateAll.getAndSet(false);
         CountDownLatch latch = new CountDownLatch(connections.size());
         for (UdpConnection connection : connections) {

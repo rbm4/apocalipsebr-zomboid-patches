@@ -1,6 +1,8 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie.network;
 
+import zombie.ApocBRServerTelemetryLite;
+
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -433,6 +435,10 @@ public class ServerMap {
         DebugLog.log("Saving took " + (System.nanoTime() - this.saveStartTime) / 1000000.0 + " ms");
     }
 
+    public int telemetryPendingCells() {
+        return this.toLoad.size();
+    }
+
     public void preupdate() {
         this.lastTick = System.nanoTime();
         mapLoading = DebugType.MapLoading.isEnabled();
@@ -518,7 +524,9 @@ public class ServerMap {
 
         if (this.queuedSaveAll && !ZipBackup.isRunning()) {
             this.queuedSaveAll = false;
-            this.QueuedSaveAll(false);
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.saveAll")) {
+                this.QueuedSaveAll(false);
+            }
         }
 
         if (this.queuedQuit) {
@@ -565,12 +573,17 @@ public class ServerMap {
                         pathfindPaused = true;
                     }
 
-                    this.cellMap[y * this.width + x].Unload();
+                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.unload")) {
+                        this.cellMap[y * this.width + x].Unload();
+                    }
+                    ApocBRServerTelemetryLite.count("cells.unloaded", 1L);
                     this.cellMap[y * this.width + x] = null;
                     this.loadedCells.remove(cell);
                     n--;
                 } else {
-                    cell.update();
+                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.update")) {
+                        cell.update();
+                    }
                 }
             }
         } catch (Exception var10) {
@@ -582,7 +595,9 @@ public class ServerMap {
         }
 
         NetworkZombiePacker.getInstance().postupdate();
-        ServerMap.ServerCell.chunkLoader.updateSaved();
+        try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.saveCompletions")) {
+            ServerMap.ServerCell.chunkLoader.updateSaved();
+        }
     }
 
     public void physicsCheck(int x, int y) {
@@ -803,7 +818,9 @@ public class ServerMap {
             for (int i = 0; i < loaded2.size(); i++) {
                 if (loaded2.get(i) == this) {
                     long start = System.nanoTime();
-                    this.RecalcAll2();
+                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.integrate")) {
+                        this.RecalcAll2();
+                    }
                     loaded2.remove(i);
                     if (ServerMap.mapLoading) {
                         DebugType.MapLoading.debugln("loaded2=" + loaded2);
@@ -814,7 +831,10 @@ public class ServerMap {
                         DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
                     }
 
-                    this.loadVehicles();
+                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.loadVehicles")) {
+                        this.loadVehicles();
+                    }
+                    ApocBRServerTelemetryLite.count("cells.integrated", 1L);
                     return true;
                 }
             }
@@ -958,6 +978,7 @@ public class ServerMap {
             for (int x = 0; x < 8; x++) {
                 for (int y = 0; y < 8; y++) {
                     if (this.chunks[x][y] != null) {
+                        ApocBRServerTelemetryLite.count(this.chunks[x][y].isNewChunk() ? "chunks.newIntegrated" : "chunks.existingIntegrated", 1L);
                         this.chunks[x][y].doLoadGridsquare();
                     }
                 }
