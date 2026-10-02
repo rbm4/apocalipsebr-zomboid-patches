@@ -8,6 +8,8 @@ public class EntitySimulation {
     private static final double SECONDS_PER_TICK = 0.1;
     private static long currentTimeMillis;
     private static int simulationTicksThisFrame;
+    private static int effectiveSimulationTicksThisFrame;
+    private static long totalSimulationTicks;
     private static long lastTimeStamp;
 
     public static long getMillisPerTick() {
@@ -26,6 +28,22 @@ public class EntitySimulation {
         return simulationTicksThisFrame;
     }
 
+    public static long getTotalSimulationTicks() {
+        return totalSimulationTicks;
+    }
+
+    public static int getEffectiveSimulationTicksThisFrame() {
+        return effectiveSimulationTicksThisFrame;
+    }
+
+    static void setEffectiveSimulationTicksThisFrame(int ticks) {
+        effectiveSimulationTicksThisFrame = ticks;
+    }
+
+    public static double getEffectiveGameSecondsThisFrame() {
+        return getGameSecondsPerTick() * (double)effectiveSimulationTicksThisFrame;
+    }
+
     public static double getGameSecondsPerTick() {
         return 2.4000000000000004;
     }
@@ -36,15 +54,20 @@ public class EntitySimulation {
         long elapsed = currentTimeMillis - lastTimeStamp;
         if (elapsed >= 100L) {
             simulationTicksThisFrame = (int)(elapsed / 100L);
+            totalSimulationTicks += simulationTicksThisFrame;
             lastTimeStamp = currentTimeMillis - (elapsed - simulationTicksThisFrame * 100L);
         } else {
             simulationTicksThisFrame = 0;
         }
+
+        effectiveSimulationTicksThisFrame = simulationTicksThisFrame;
     }
 
     protected static void reset() {
         currentTimeMillis = 0L;
         simulationTicksThisFrame = 0;
+        effectiveSimulationTicksThisFrame = 0;
+        totalSimulationTicks = 0L;
         lastTimeStamp = 0L;
     }
 }

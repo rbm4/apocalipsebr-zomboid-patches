@@ -6,7 +6,9 @@ import zombie.entity.ComponentType;
 import zombie.entity.Engine;
 import zombie.entity.EngineSystem;
 import zombie.entity.EntityBucket;
+import zombie.entity.EntitySimulation;
 import zombie.entity.Family;
+import zombie.entity.MetaSimulationThrottle;
 import zombie.entity.GameEntity;
 import zombie.entity.util.ImmutableArray;
 import zombie.network.GameClient;
@@ -34,7 +36,7 @@ public class ResourceUpdateSystem extends EngineSystem {
             if (entities.size() != 0) {
                 for (int i = 0; i < entities.size(); i++) {
                     GameEntity entity = entities.get(i);
-                    if (this.isValidEntity(entity)) {
+                    if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         Resources resources = entity.getComponent(ComponentType.Resources);
                         if (resources.isValid()) {
                             List<Resource> resourcesArray = resources.getResources();
@@ -44,7 +46,7 @@ public class ResourceUpdateSystem extends EngineSystem {
                                 if (resource.getType() == ResourceType.Energy && !resource.isEmpty()) {
                                     ResourceEnergy resourceEnergy = (ResourceEnergy)resource;
                                     if (resource.isAutoDecay() && !resource.isDirty()) {
-                                        float amount = resourceEnergy.getEnergyCapacity() * 0.05F;
+                                        float amount = resourceEnergy.getEnergyCapacity() * 0.05F * EntitySimulation.getEffectiveSimulationTicksThisFrame();
                                         resourceEnergy.setEnergyAmount(resourceEnergy.getEnergyAmount() - amount);
                                     }
                                 }

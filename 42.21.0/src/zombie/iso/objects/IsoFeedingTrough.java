@@ -59,6 +59,10 @@ public final class IsoFeedingTrough extends IsoObject {
 
     public void checkContainer() {
         if (this.getFluidContainer() != null && !this.getFluidContainer().isEmpty()) {
+            if (this.getContainer() != null && !this.getContainer().isEmpty()) {
+                return;
+            }
+
             this.setContainer(null);
         } else if (this.getContainer() == null) {
             ItemContainer container1 = new ItemContainer();
@@ -434,6 +438,10 @@ public final class IsoFeedingTrough extends IsoObject {
 
     public void addWater(FluidType type, float amount) {
         this.getFluidContainer().addFluid(type, amount);
+        if (this.getContainer() != null && !this.getContainer().isEmpty() && this.getFluidContainer() != null && !this.getFluidContainer().isEmpty()) {
+            this.setContainer(null);
+        }
+
         this.checkContainer();
         this.checkOverlayAfterAnimalEat();
         this.updateLuaObject();

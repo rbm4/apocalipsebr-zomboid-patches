@@ -55,18 +55,18 @@ public class DryingCraftLogic extends CraftLogic {
 
     @Override
     public void onUpdate(CraftRecipeData craftRecipeData) {
-        double thisTickElapsedTime = EntitySimulation.getGameSecondsPerTick();
+        double thisTickElapsedTime = EntitySimulation.getEffectiveGameSecondsThisFrame();
         if (ClimateManager.getInstance().getPrecipitationIntensity() > 0.0F && this.getGameEntity().isOutside()) {
             double snowModifier = 1.0;
             if (ClimateManager.getInstance().getPrecipitationIsSnow()) {
                 snowModifier = 0.5;
             }
 
-            double rainAmount = 0.001 * ClimateManager.getInstance().getPrecipitationIntensity() * snowModifier * EntitySimulation.getGameSecondsPerTick();
+            double rainAmount = 0.001 * ClimateManager.getInstance().getPrecipitationIntensity() * snowModifier * thisTickElapsedTime;
             double wetness = Math.min(this.temporaryWetnesses.get(craftRecipeData) + rainAmount, 1.0);
             this.temporaryWetnesses.put(craftRecipeData, wetness);
         } else if (this.temporaryWetnesses.get(craftRecipeData) > 0.0) {
-            double dryingAmount = 2.0E-4 * this.getDryingFactor() * EntitySimulation.getGameSecondsPerTick();
+            double dryingAmount = 2.0E-4 * this.getDryingFactor() * thisTickElapsedTime;
             double wetness = Math.max(this.temporaryWetnesses.get(craftRecipeData) - dryingAmount, 0.0);
             this.temporaryWetnesses.put(craftRecipeData, wetness);
         }

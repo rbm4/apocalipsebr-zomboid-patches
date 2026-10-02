@@ -12,6 +12,7 @@ import zombie.entity.EntitySimulation;
 import zombie.entity.Family;
 import zombie.entity.GameEntity;
 import zombie.entity.MetaEntity;
+import zombie.entity.MetaSimulationThrottle;
 import zombie.entity.components.crafting.recipe.CraftRecipeData;
 import zombie.entity.components.resources.ResourceGroup;
 import zombie.entity.components.resources.Resources;
@@ -60,7 +61,7 @@ public class CraftLogicSystem extends EngineSystem {
                     GameEntity entity = entities.get(i);
                     if (entity.hasComponent(ComponentType.DryingCraftLogic) && this.isDetachedFromWorld(entity)) {
                         entity.removeFromWorld();
-                    } else if (this.isValidEntity(entity)) {
+                    } else if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         CraftLogic craftLogic = entity.getComponentAny(ComponentType.CraftLogic, ComponentType.DryingCraftLogic);
                         Resources resources = entity.getComponent(ComponentType.Resources);
                         if (craftLogic.isValid() && resources.isValid()) {
@@ -92,7 +93,7 @@ public class CraftLogicSystem extends EngineSystem {
                     return;
                 }
 
-                craftData.setElapsedTime(craftData.getElapsedTime() + EntitySimulation.getGameSecondsPerTick());
+                craftData.setElapsedTime(craftData.getElapsedTime() + EntitySimulation.getEffectiveGameSecondsThisFrame());
                 if (craftData.getElapsedTime() > craftData.getRecipe().getTime()) {
                     craftData.setElapsedTime(craftData.getRecipe().getTime());
                 }

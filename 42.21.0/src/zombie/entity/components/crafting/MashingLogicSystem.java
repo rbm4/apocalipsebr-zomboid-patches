@@ -11,6 +11,7 @@ import zombie.entity.EngineSystem;
 import zombie.entity.EntityBucket;
 import zombie.entity.Family;
 import zombie.entity.GameEntity;
+import zombie.entity.MetaSimulationThrottle;
 import zombie.entity.components.fluids.Fluid;
 import zombie.entity.components.fluids.FluidContainer;
 import zombie.entity.components.resources.ResourceFluid;
@@ -31,7 +32,7 @@ public class MashingLogicSystem extends EngineSystem {
     private EntityBucket mashingEntities;
 
     public MashingLogicSystem(int updatePriority) {
-        super(true, false, updatePriority);
+        super(false, true, updatePriority);
     }
 
     @Override
@@ -44,7 +45,7 @@ public class MashingLogicSystem extends EngineSystem {
     }
 
     @Override
-    public void update() {
+    public void updateSimulation() {
         if (!GameClient.client) {
             ImmutableArray<GameEntity> entities = this.mashingEntities.getEntities();
             if (entities.size() != 0) {
@@ -52,7 +53,7 @@ public class MashingLogicSystem extends EngineSystem {
 
                 for (int i = 0; i < entities.size(); i++) {
                     GameEntity entity = entities.get(i);
-                    if (this.isValidEntity(entity)) {
+                    if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
                         MashingLogic mashingLogic = entity.getComponent(ComponentType.MashingLogic);
                         Resources resources = entity.getComponent(ComponentType.Resources);
                         if (mashingLogic.isValid() && resources.isValid()) {

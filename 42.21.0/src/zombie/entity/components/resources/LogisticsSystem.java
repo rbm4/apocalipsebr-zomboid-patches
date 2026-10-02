@@ -14,7 +14,7 @@ public class LogisticsSystem extends EngineSystem {
     private EntityBucket resourcesEntities;
 
     public LogisticsSystem(int updatePriority) {
-        super(false, true, updatePriority);
+        super(false, false, updatePriority);
     }
 
     @Override

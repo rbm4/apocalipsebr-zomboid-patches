@@ -99,9 +99,7 @@ public class GameEntityManager {
         EntitySimulation.update();
         int simulationTicks = GameClient.client ? 0 : EntitySimulation.getSimulationTicksThisFrame();
         if (simulationTicks > 0) {
-            for (int i = 0; i < simulationTicks; i++) {
-                engine.updateSimulation();
-            }
+            engine.updateSimulation();
         }
 
         MetaEntity m;
