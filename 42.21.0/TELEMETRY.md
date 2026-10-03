@@ -240,3 +240,117 @@ for large herds, vehicle starts/stops/towing, animal alert/lure/hook changes, ma
 despawn/chunk unload, density-independent alert cooldowns, local zombie stress and
 fleeing, distant human detection, and threaded animation if enabled. Fixture timing is not a
 server benchmark.
+
+## Simulation work selection and child timings
+
+The server entity systems now obtain candidates through persistent family-bucket
+indexes. Meta phase membership is maintained at bucket insertion/removal and
+component changes; ID load/reset also refreshes it. Selected candidates retain
+the current engine bucket order, including its swap-removal behavior. The index
+also removes indexed bucket members by their known position. Group order is
+sorted only after mutation; a merge of selected groups preserves bucket order
+without sorting all selected entities on every pass. The existing
+`MetaSimulationThrottle` still computes each entity's effective elapsed ticks.
+It runs every ten simulation ticks by default, not necessarily ten server frames.
+Loaded entities retain their original cadence. Drying-craft detachment candidates
+remain checked every simulation pass before throttling. Unknown entity subclasses
+retain the exhaustive checks. Client and single-player family views are unchanged.
+
+`ProcessIsoObject` retains its mutable list traversal, ID-derived phase checks,
+trap/generator exceptions and per-object multiplier. Square object-list `indexOf`
+queries now reuse an identity-position index on server lists of at least eight
+entries when the queried type uses Object identity equality. Every supported list
+mutation invalidates that cache; duplicates retain their first position and custom
+equality retains vanilla lookup. Exposing the backing array disables caching until
+array reallocation, because retained raw arrays can be changed without list calls.
+This reduces repeated square scans; it does not remove the world-object frame scan.
+
+Animal synchronization uses persistent 64-tile connection coverage for changed
+animal routing. Both connect-area rectangles and all four relevance positions are
+covered, including connections with no live player object. Exact `RelevantTo`,
+screen-distance, timer and extra-update checks still run in the sender. Candidate
+order follows the original changed-ID iteration order. Overlapping coverage is
+deduplicated per animal/connection; disconnects and coverage changes unlink old
+entries. Oversized or unrepresentable coverage uses a bounded full-candidate
+fallback. Packet batches retain the 150-animal limit and reliable cadence.
+Overflow batches now use independent input sets: vanilla recursively passed the
+packet's own pending set into a call that cleared it, losing overflow updates.
+Packet declarations and serialization are unchanged.
+
+Lua callbacks retain the public ArrayList field and backed-view mutation behavior.
+Dispatch skips the post-callback linear membership check only when no structural
+or replacement mutation occurred. Mutated lists retain the vanilla check and loop
+adjustment, including duplicate callbacks and self-removal. The server also skips
+the client-only zombie vocal traversal, skips zero/fulfilled zombie culling quotas
+without consuming additional RNG, and counts building room tiles using list sizes.
+Fake-dead corpse checks reject ineligible or out-of-annulus players before LOS,
+while retaining current player traversal, final visibility checks, and all decay,
+random skeleton trials and reanimation timing.
+
+New inclusive phases:
+
+| Phase | Measured work |
+| --- | --- |
+| `simulation.world` | IsoWorld update, including cell, physics and auxiliary world work |
+| `simulation.cell` | IsoCell update, including scheduling, items, IsoObjects and corpses |
+| `simulation.isoObjects` | ProcessIsoObject phase filtering and update bodies |
+| `simulation.items`, `simulation.staticUpdaters`, `simulation.spottedRooms` | Respective cell processing passes |
+| `simulation.corpses`, `simulation.fishing` | Corpse and fishing update calls |
+| `simulation.entities` | Entire GameEntityManager.Update call |
+| `simulation.entities.frame`, `simulation.entities.simulation` | Engine frame and simulation passes |
+| `simulation.entities.system.<ClassName>` | Individual simulation-system calls; excludes subsequent queued engine operations |
+| `simulation.animals.sync`, `simulation.animals.syncCoverage` | Animal synchronization and its coverage/routing child |
+| `simulation.physics` | Full WorldSimulation call, including native data readback |
+| `simulation.physics.prepare`, `simulation.physics.step` | Java vehicle preparation and native Bullet step, one call per fixed substep |
+| `simulation.vehicles.network` | VehicleManager call inside IsoWorld; separate from the outer `vehicles.update` call |
+| `simulation.contacts`, `simulation.hutches`, `simulation.climate` | Collision contact, hutch and climate updates |
+| `simulation.buildings`, `simulation.databases`, `simulation.animals.virtual`, `simulation.designationZones` | Auxiliary world passes |
+| `simulation.animation.inline`, `simulation.animation.wait` | Inline postupdate and joins of optional previous animation work |
+| `simulation.misc` | IngameState.UpdateStuff, including the following population/sound/fire phases |
+| `simulation.worldSounds`, `simulation.fire`, `simulation.zombies.virtual`, `simulation.zombies.population` | Respective UpdateStuff manager calls |
+| `simulation.collision.main`, `simulation.pathfinding.nativeMain`, `simulation.pathfinding.javaMain`, `simulation.lootRespawn` | Respective main-thread manager calls; only the selected pathfinding implementation executes |
+| `simulation.zombies.cullPrepare` | Scheduler-start culling preparation, preceding lifecycle/activity timings |
+| `simulation.radio`, `simulation.onTick`, `simulation.managers` | Radio, OnTick dispatch and transaction/action/ping manager updates |
+
+With optional threaded world work, buildings/databases/virtual-animal timings can
+overlap cell work. Animation waits can also be measured outside this parent at
+other callers. Do not sum these phases indiscriminately or equate their elapsed
+durations with main-thread CPU use. Physics step calls can substantially exceed
+simulation.update calls; fixed 10 ms integration and step count are unchanged.
+
+Interval work counters:
+
+- `entities.simulationCandidates`, `entities.simulationSkippedByIndex`: selected
+  candidates and omitted members per indexed system pass, including repeated
+  observations of one entity across systems. Drying cleanup candidates can still
+  be rejected by the original throttle after their cleanup check.
+- `entities.simulationIndexSorted`: group entries sorted after membership/order
+  mutations; stable selected groups contribute zero.
+- `isoObjects.checked`, `isoObjects.updateAttempts`,
+  `isoObjects.alwaysUpdateAttempts`: actual list visits and attempted updates;
+  always-update attempts are a subset of all attempts.
+- `isoObjects.squareIndexRebuilt`, `isoObjects.squareIndexEntries`: cache rebuilds
+  and entries indexed, including lookups outside ProcessIsoObject or simulation.
+- `animals.sync.coverageChanged`: changed coverage rectangles, not connections.
+- `animals.sync.coverageCandidatesVisited`: spatial bucket entries plus fallback
+  entries examined before overlap deduplication and exact relevance filtering.
+- `animals.sync.candidatePairs`: deduplicated connection/animal pairs routed to
+  sender checks, including conservative false positives.
+- `animals.sync.packets`, `animals.sync.updated`: server batches sent and update
+  IDs included in those batches; update counts can repeat across connections.
+- `corpses.checked`: complete corpse-registry entries copied for decay processing.
+- `physics.substeps`: fixed Bullet steps, not outer simulation frames.
+
+`python tools/test_simulation_algorithms.py` exercises production entity buckets,
+meta identity/throttle/index, Lua dispatcher, mutable square lists, animal coverage
+and synchronization manager. It compares entity selection/order/owed ticks and
+callback mutations with exhaustive traversal, tests pooled re-entry, backed views,
+raw arrays and custom equality, compares randomized coverage with the exact vanilla
+relevance predicate, verifies packet overflow/requests/deletions/urgent timers, and
+compares the extracted production corpse predicates with vanilla. Scale fixtures
+check 30,000 meta members, zero stable callback membership searches and sparse
+30,000-animal routing across 100 connections. These are algorithm fixtures, not
+live server performance measurements. Run the normal patch script with `-DryRun`
+for real game-JAR compilation. Live checks still cover chunk unload/reload,
+craft/resource transitions, mass corpse decay and fake-dead wakeups, large herd
+sync, split-screen/reconnect, and optional threaded animation/world work.

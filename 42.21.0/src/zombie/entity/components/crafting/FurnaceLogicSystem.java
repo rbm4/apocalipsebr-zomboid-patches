@@ -48,7 +48,7 @@ public class FurnaceLogicSystem extends EngineSystem {
     @Override
     public void updateSimulation() {
         if (!GameClient.client) {
-            ImmutableArray<GameEntity> entities = this.furnaceLogicEntities.getEntities();
+            ImmutableArray<GameEntity> entities = this.furnaceLogicEntities.getSimulationEntities();
             if (entities.size() != 0) {
                 for (int i = 0; i < entities.size(); i++) {
                     GameEntity entity = entities.get(i);

@@ -22,6 +22,7 @@ public abstract class EntityBucket {
     private final EntityBucket.BucketListenerComparator listenerComparator = new EntityBucket.BucketListenerComparator();
     private final int index;
     private boolean verbose;
+    private ServerEntitySimulationIndex simulationIndex;
 
     private EntityBucket(int index) {
         this.entities = new Array<>(false, 16);
@@ -35,6 +36,15 @@ public abstract class EntityBucket {
 
     public final ImmutableArray<GameEntity> getEntities() {
         return this.immutableEntities;
+    }
+
+    public final ImmutableArray<GameEntity> getSimulationEntities() {
+        if (!zombie.network.GameServer.server) return this.immutableEntities;
+        if (this.simulationIndex == null) {
+            this.simulationIndex = new ServerEntitySimulationIndex();
+            for (int i = 0; i < this.entities.size; i++) this.simulationIndex.add(this.entities.get(i), i);
+        }
+        return this.simulationIndex.select();
     }
 
     public final void setVerbose(boolean b) {
@@ -73,6 +83,7 @@ public abstract class EntityBucket {
             }
 
             this.entities.add(entity);
+            if (this.simulationIndex != null) this.simulationIndex.add(entity, this.entities.size - 1);
             bits.set(this.index);
             if (Core.debug && this.verbose) {
                 DebugType.Entity.println("bits = " + bits.get(this.index));
@@ -92,13 +103,17 @@ public abstract class EntityBucket {
                 throw new RuntimeException("Entity should exist in bucket but does not.");
             }
 
-            this.entities.removeValue(entity, true);
+            int position = this.simulationIndex == null ? -1 : this.simulationIndex.remove(entity, this.entities.peek());
+            if (position >= 0) this.entities.removeIndex(position);
+            else this.entities.removeValue(entity, true);
             bits.clear(this.index);
             if (this.listeners.size > 0) {
                 for (int i = 0; i < this.listeners.size; i++) {
                     this.listeners.get(i).listener.onBucketEntityRemoved(this, entity);
                 }
             }
+        } else if (containsEntity && this.simulationIndex != null) {
+            this.simulationIndex.refresh(entity);
         }
     }
 

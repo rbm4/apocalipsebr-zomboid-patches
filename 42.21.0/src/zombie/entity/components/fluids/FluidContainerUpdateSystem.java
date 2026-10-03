@@ -37,7 +37,7 @@ public class FluidContainerUpdateSystem extends EngineSystem {
     public void updateSimulation() {
         if (!GameClient.client) {
             boolean doSync = this.objectSyncLimiter.Check();
-            ImmutableArray<GameEntity> entities = this.fluidContainerEntities.getEntities();
+            ImmutableArray<GameEntity> entities = this.fluidContainerEntities.getSimulationEntities();
             if (entities.size() != 0) {
                 for (int i = 0; i < entities.size(); i++) {
                     GameEntity entity = entities.get(i);

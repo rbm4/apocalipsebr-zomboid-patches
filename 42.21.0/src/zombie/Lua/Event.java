@@ -20,7 +20,7 @@ public final class Event {
     public static final int NUM_FUNCTIONS = 1;
     private final Event.Add add;
     private final Event.Remove remove;
-    public final ArrayList<LuaClosure> callbacks = new ArrayList<>();
+    public final ArrayList<LuaClosure> callbacks = new zombie.util.list.MutationTrackedArrayList<>();
     public String name;
     private final int index;
 
@@ -37,6 +37,7 @@ public final class Event {
             if (DebugOptions.instance.checks.slowLuaEvents.getValue()) {
                 for (int n = 0; n < this.callbacks.size(); n++) {
                     LuaClosure closure = this.callbacks.get(n);
+                    long callbackVersion = ((zombie.util.list.MutationTrackedArrayList<LuaClosure>)this.callbacks).mutationVersion();
                     try (GameProfiler.ProfileArea area = profiler.profile("Lua - " + this.name)) {
                         long start = System.nanoTime();
                         caller.protectedCallVoid(LuaManager.thread, closure, params);
@@ -48,20 +49,23 @@ public final class Event {
                         ExceptionLogger.logException(exception);
                     }
 
-                    if (!this.callbacks.contains(closure)) {
+                    if (((zombie.util.list.MutationTrackedArrayList<LuaClosure>)this.callbacks).mutationVersion() != callbackVersion
+                        && !this.callbacks.contains(closure)) {
                         n--;
                     }
                 }
             } else {
                 for (int n = 0; n < this.callbacks.size(); n++) {
                     LuaClosure closure = this.callbacks.get(n);
+                    long callbackVersion = ((zombie.util.list.MutationTrackedArrayList<LuaClosure>)this.callbacks).mutationVersion();
                     try (GameProfiler.ProfileArea area = profiler.profile("Lua - " + this.name)) {
                         caller.protectedCallVoid(LuaManager.thread, closure, params);
                     } catch (Exception exception) {
                         ExceptionLogger.logException(exception);
                     }
 
-                    if (!this.callbacks.contains(closure)) {
+                    if (((zombie.util.list.MutationTrackedArrayList<LuaClosure>)this.callbacks).mutationVersion() != callbackVersion
+                        && !this.callbacks.contains(closure)) {
                         n--;
                     }
                 }

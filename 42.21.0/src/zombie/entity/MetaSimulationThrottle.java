@@ -6,6 +6,10 @@ public final class MetaSimulationThrottle {
     private MetaSimulationThrottle() {
     }
 
+    static int getInterval() {
+        return INTERVAL;
+    }
+
     public static boolean shouldSkip(GameEntity entity) {
         int ticksThisFrame = EntitySimulation.getSimulationTicksThisFrame();
         if (!entity.isMeta()) {

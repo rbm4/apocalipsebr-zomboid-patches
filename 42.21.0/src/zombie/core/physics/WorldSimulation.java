@@ -84,11 +84,16 @@ public final class WorldSimulation {
         this.localTime = this.localTime + GameTime.instance.getPhysicsSecondsSinceLastUpdate();
         if (this.localTime >= 0.01F) {
             numSimulationSubSteps = (int)(this.localTime / 0.01F);
+            if (GameServer.server) zombie.ApocBRServerTelemetryLite.count("physics.substeps", numSimulationSubSteps);
             this.localTime -= numSimulationSubSteps * 0.01F;
 
             for (int i = 0; i < numSimulationSubSteps; i++) {
-                this.updateVehiclePhysics();
-                Bullet.stepSimulation(0.01F, 0, 0.0F);
+                try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.physics.prepare")) {
+                    this.updateVehiclePhysics();
+                }
+                try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.physics.step")) {
+                    Bullet.stepSimulation(0.01F, 0, 0.0F);
+                }
             }
 
             this.periodSec = numSimulationSubSteps * 0.01F;

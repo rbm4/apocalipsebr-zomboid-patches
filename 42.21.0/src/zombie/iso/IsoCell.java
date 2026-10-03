@@ -2239,14 +2239,18 @@ public final class IsoCell {
         int mod = APOC_BR_PROCESS_ISO_OBJECT_FRAME_MOD;
         int frame = IsoWorld.instance.getFrameNo() % mod;
         float modMultiplier = (float)mod;
+        int checked = 0, updated = 0, alwaysUpdated = 0;
         GameTime.getInstance().perObjectMultiplier = modMultiplier;
 
         try {
             for (int n = 0; n < size; n++) {
                 IsoObject i = this.processIsoObject.get(n);
                 if (i != null) {
+                    checked++;
                     boolean always = i instanceof IsoTrap || i instanceof IsoGenerator;
                     if (always || getIsoObjectUpdatePhase(i, mod) == frame) {
+                        updated++;
+                        if (always) alwaysUpdated++;
                         if (always) {
                             GameTime.getInstance().perObjectMultiplier = 1.0F;
                         }
@@ -2265,6 +2269,11 @@ public final class IsoCell {
             }
         } finally {
             GameTime.getInstance().perObjectMultiplier = 1.0F;
+            if (GameServer.server) {
+                ApocBRServerTelemetryLite.count("isoObjects.checked", checked);
+                ApocBRServerTelemetryLite.count("isoObjects.updateAttempts", updated);
+                ApocBRServerTelemetryLite.count("isoObjects.alwaysUpdateAttempts", alwaysUpdated);
+            }
         }
     }
 
@@ -2290,6 +2299,7 @@ public final class IsoCell {
     }
 
     private void updateZombieVocals() {
+        if (GameServer.server) return;
         for (int n = 0; n < this.zombieList.size(); n++) {
             IsoZombie zombie = this.zombieList.get(n);
             zombie.updateVocalProperties();
@@ -4197,7 +4207,7 @@ public final class IsoCell {
         IsoGridSquare.gridSquareCacheEmptyTimer++;
         GameProfiler profiler = GameProfiler.getInstance();
 
-        try (GameProfiler.ProfileArea itemsFuture = profiler.profile("SpottedRooms")) {
+        try (GameProfiler.ProfileArea itemsFuture = profiler.profile("SpottedRooms"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.spottedRooms")) {
             this.ProcessSpottedRooms();
         }
 
@@ -4216,14 +4226,14 @@ public final class IsoCell {
         if (!GameClient.client && !GameServer.server || GameServer.server && System.currentTimeMillis() - this.lastServerItemsUpdate > 5000L) {
             this.lastServerItemsUpdate = System.currentTimeMillis();
 
-            try (GameProfiler.ProfileArea var3 = profiler.profile("Items")) {
+            try (GameProfiler.ProfileArea var3 = profiler.profile("Items"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.items")) {
                 this.ProcessItems(null);
             }
         }
 
         this.ProcessRemoveItems(null);
 
-        try (GameProfiler.ProfileArea var26 = profiler.profile("IsoObject")) {
+        try (GameProfiler.ProfileArea var26 = profiler.profile("IsoObject"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.isoObjects")) {
             this.ProcessIsoObject();
         }
 
@@ -4244,24 +4254,24 @@ public final class IsoCell {
         }
 
         if (itemsFuture != null) {
-            try (GameProfiler.ProfileArea var28 = profiler.profile("Items")) {
+            try (GameProfiler.ProfileArea var28 = profiler.profile("Items"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.items")) {
                 itemsFuture.join();
             }
         }
 
         this.safeToAdd = true;
 
-        try (GameProfiler.ProfileArea var29 = profiler.profile("Static Updaters")) {
+        try (GameProfiler.ProfileArea var29 = profiler.profile("Static Updaters"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.staticUpdaters")) {
             this.ProcessStaticUpdaters();
         }
 
         this.ObjectDeletionAddition();
 
-        try (GameProfiler.ProfileArea var30 = profiler.profile("Update Dead Bodies")) {
+        try (GameProfiler.ProfileArea var30 = profiler.profile("Update Dead Bodies"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.corpses")) {
             IsoDeadBody.updateBodies();
         }
 
-        try (GameProfiler.ProfileArea var31 = profiler.profile("Update Fish")) {
+        try (GameProfiler.ProfileArea var31 = profiler.profile("Update Fish"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.fishing")) {
             FishSchoolManager.getInstance().update();
         }
 

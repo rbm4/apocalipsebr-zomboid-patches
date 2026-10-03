@@ -47,7 +47,7 @@ public class MashingLogicSystem extends EngineSystem {
     @Override
     public void updateSimulation() {
         if (!GameClient.client) {
-            ImmutableArray<GameEntity> entities = this.mashingEntities.getEntities();
+            ImmutableArray<GameEntity> entities = this.mashingEntities.getSimulationEntities();
             if (entities.size() != 0) {
                 currentWorldAge = GameTime.instance.getWorldAgeHours();
 

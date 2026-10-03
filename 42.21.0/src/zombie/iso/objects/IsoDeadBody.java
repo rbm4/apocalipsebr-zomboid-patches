@@ -1598,6 +1598,7 @@ public final class IsoDeadBody
                 for (IIdentifiable ii : ObjectIDType.DeadBody.getObjects()) {
                     tempBodies.add(ii);
                 }
+                if (GameServer.server) zombie.ApocBRServerTelemetryLite.count("corpses.checked", tempBodies.size());
 
                 for (int i = 0; i < tempBodies.size(); i++) {
                     IsoDeadBody body = (IsoDeadBody)tempBodies.get(i);
@@ -1805,6 +1806,12 @@ public final class IsoDeadBody
         if (GameServer.server) {
             for (int i = 0; i < GameServer.Players.size(); i++) {
                 IsoPlayer player = GameServer.Players.get(i);
+                // Keep per-corpse current player traversal/order; reject impossible
+                // wakeup candidates before querying LOS. All final predicates remain.
+                if (this.square == null || player == null || player.isDead() || player.isGhostMode()
+                    || player.isInvisible() || player.getVehicle() != null) continue;
+                float distanceSquared = player.DistToSquared(this);
+                if (distanceSquared < 4.0F || distanceSquared > 16.0F) continue;
                 boolean bCanSee = this.square != null && ServerLOS.instance.isCouldSee(player, this.square);
                 if (this.isPlayerNearby(player, bCanSee)) {
                     return true;
@@ -1872,6 +1879,7 @@ public final class IsoDeadBody
                 min = 168.0F;
                 yield 336.0F;
             }
+            default -> 0.0F;
         };
         if (Core.tutorial) {
             max = 0.25F;

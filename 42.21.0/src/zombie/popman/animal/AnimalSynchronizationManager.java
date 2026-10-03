@@ -28,6 +28,7 @@ public class AnimalSynchronizationManager {
     private static final short SHORT_DISTANCE_ANIMAL_UPDATE_RATE_MS = 800;
     private static final short LONG_DISTANCE_ANIMAL_UPDATE_RATE_MS = 1000;
     private static final short MAX_ANIMALS_PER_PACKET = 150;
+    private final ServerAnimalUpdateCoverage coverage = new ServerAnimalUpdateCoverage();
 
     public static AnimalSynchronizationManager getInstance() {
         return instance;
@@ -79,16 +80,24 @@ public class AnimalSynchronizationManager {
             sendAsReliable.Reset();
         }
 
+        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.animals.syncCoverage")) {
+            this.coverage.prepare(GameServer.udpEngine.connections, receivedToSend);
+        }
         for (UdpConnection connection : GameServer.udpEngine.connections) {
             if (connection != null && connection.isFullyConnected()) {
-                this.sendUpdateToClient(connection, isReliable, receivedToSend);
+                this.sendUpdateToClient(connection, isReliable, this.coverage.candidates(connection));
             }
         }
 
         receivedToSend.clear();
     }
 
-    private void sendUpdateToClient(UdpConnection connection, boolean isReliable, HashSet<Short> toSendList) {
+    private void sendUpdateToClient(UdpConnection connection, boolean isReliable, Iterable<Short> toSendList) {
+        Iterable<Short> remaining = toSendList;
+        while (remaining != null) remaining = this.sendUpdateBatch(connection, isReliable, remaining);
+    }
+
+    private HashSet<Short> sendUpdateBatch(UdpConnection connection, boolean isReliable, Iterable<Short> toSendList) {
         PacketTypes.PacketType packetType;
         AnimalUpdatePacket packet;
         if (isReliable) {
@@ -154,13 +163,14 @@ public class AnimalSynchronizationManager {
         deleted.clear();
         deleted.addAll(deletedToSend);
         if (!updated.isEmpty() || !requested.isEmpty() || !deleted.isEmpty()) {
+            zombie.ApocBRServerTelemetryLite.count("animals.sync.packets", 1);
+            zombie.ApocBRServerTelemetryLite.count("animals.sync.updated", updated.size());
             packet.sendToClient(packetType, connection);
             requests.computeIfAbsent(connection.getConnectedGUID(), k -> new HashSet<>()).clear();
         }
 
-        if (!pending.isEmpty()) {
-            this.sendUpdateToClient(connection, isReliable, pending);
-        }
+        // The packet owns pending and clears it at the next batch. Never alias the input.
+        return pending.isEmpty() ? null : new HashSet<>(pending);
     }
 
     public void delete(short onlineID) {

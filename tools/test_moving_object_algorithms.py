@@ -20,7 +20,7 @@ public class GameTime {
 """,
     "zombie/GameWindow.java": "package zombie; public class GameWindow { public static float averageFPS=60; }",
     "zombie/network/GameServer.java": "package zombie.network; public class GameServer { public static boolean server=true, guiCommandline=false; }",
-    "zombie/ApocBRServerTelemetryLite.java": "package zombie; public class ApocBRServerTelemetryLite { public static void recordPhase(String n,long t){} public static final java.util.Map<String,Long> counts=new java.util.HashMap<>(); public static void count(String n,long v){counts.merge(n,v,Long::sum);} }",
+    "zombie/ApocBRServerTelemetryLite.java": "package zombie; public class ApocBRServerTelemetryLite { public static void recordPhase(String n,long t){} public static final java.util.Map<String,Long> counts=new java.util.HashMap<>(); public static void count(String n,long v){counts.merge(n,v,Long::sum);} public static Scope phase(String n){return new Scope();} public static class Scope implements AutoCloseable {public void close(){}} }",
     "zombie/VirtualZombieManager.java": "package zombie; import zombie.characters.IsoZombie; public class VirtualZombieManager { public static final VirtualZombieManager instance=new VirtualZombieManager(); public boolean isReused(IsoZombie z){return false;} }",
     "zombie/popman/NetworkZombiePacker.java": "package zombie.popman; public class NetworkZombiePacker { private static final NetworkZombiePacker i=new NetworkZombiePacker(); public static NetworkZombiePacker getInstance(){return i;} public void awaitWorkers(){} }",
     "zombie/popman/ZombieCountOptimiser.java": "package zombie.popman; public class ZombieCountOptimiser { public static void prepareZombiesForDeletion(){} public static void deleteZombies(){} }",

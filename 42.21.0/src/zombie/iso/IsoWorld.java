@@ -2094,10 +2094,10 @@ public final class IsoWorld {
             DebugType.General.println("ItemConfigurator.Preprocess() start");
             ItemConfigurator.Preprocess();
             DebugType.General.println("ItemConfigurator.Preprocess() end");
-            boolean isPlayerAlive = (boolean)0;
+            boolean isPlayerAlive = false;
             if (GameClient.client) {
                 if (ClientPlayerDB.getInstance().clientLoadNetworkPlayer() && ClientPlayerDB.getInstance().isAliveMainNetworkPlayer()) {
-                    isPlayerAlive = (boolean)1;
+                    isPlayerAlive = true;
                 }
             } else {
                 isPlayerAlive = PlayerDBHelper.isPlayerAlive(ZomboidFileSystem.instance.getCurrentSaveDir(), 1);
@@ -2113,7 +2113,7 @@ public final class IsoWorld {
 
             boolean bLoadCharacter;
             if (isPlayerAlive) {
-                bLoadCharacter = (boolean)1;
+                bLoadCharacter = true;
                 if (!this.LoadPlayerForInfo()) {
                     return;
                 }
@@ -2121,7 +2121,7 @@ public final class IsoWorld {
                 worldX = IsoChunkMap.SWorldX[IsoPlayer.getPlayerIndex()];
                 worldY = IsoChunkMap.SWorldY[IsoPlayer.getPlayerIndex()];
             } else {
-                bLoadCharacter = (boolean)0;
+                bLoadCharacter = false;
                 if (GameClient.client && !ServerOptions.instance.spawnPoint.getValue().isEmpty()) {
                     String[] spawnPoint = ServerOptions.instance.spawnPoint.getValue().split(",");
                     if (spawnPoint.length == 3) {
@@ -2428,12 +2428,12 @@ public final class IsoWorld {
             ReanimatedPlayers.instance.loadReanimatedPlayers();
             if (IsoPlayer.getInstance() != null) {
                 if (GameClient.client) {
-                    isPlayerAlive = (boolean)PZMath.fastfloor(IsoPlayer.getInstance().getX());
-                    bLoadCharacter = (boolean)PZMath.fastfloor(IsoPlayer.getInstance().getY());
+                    int playerX = PZMath.fastfloor(IsoPlayer.getInstance().getX());
+                    int playerY = PZMath.fastfloor(IsoPlayer.getInstance().getY());
                     int z = PZMath.fastfloor(IsoPlayer.getInstance().getZ());
 
                     while (z > 0) {
-                        IsoGridSquare sqx = this.currentCell.getGridSquare(isPlayerAlive, bLoadCharacter, PZMath.fastfloor((float)z));
+                        IsoGridSquare sqx = this.currentCell.getGridSquare(playerX, playerY, PZMath.fastfloor((float)z));
                         if (sqx != null && sqx.TreatAsSolidFloor()) {
                             break;
                         }
@@ -2970,14 +2970,18 @@ public final class IsoWorld {
     }
 
     private void updateWorld() {
-        this.currentCell.update();
+        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.cell")) {
+            this.currentCell.update();
+        }
         IsoRegions.update();
         HaloTextHelper.update();
-        CollisionManager.instance.ResolveContacts();
+        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.contacts")) {
+            CollisionManager.instance.ResolveContacts();
+        }
         if (DebugOptions.instance.threadAnimation.getValue()) {
             animationThread = CompletableFuture.runAsync(MovingObjectUpdateScheduler.instance::postupdate);
         } else {
-            try (GameProfiler.ProfileArea var1 = GameProfiler.getInstance().profile("Animation")) {
+            try (GameProfiler.ProfileArea var1 = GameProfiler.getInstance().profile("Animation"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.animation.inline")) {
                 MovingObjectUpdateScheduler.instance.postupdate();
             }
         }
@@ -2985,7 +2989,7 @@ public final class IsoWorld {
 
     public void FinishAnimation() {
         if (animationThread != null) {
-            try (GameProfiler.ProfileArea var1 = GameProfiler.getInstance().profile("Wait Animation")) {
+            try (GameProfiler.ProfileArea var1 = GameProfiler.getInstance().profile("Wait Animation"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.animation.wait")) {
                 animationThread.join();
             }
 
@@ -2998,7 +3002,7 @@ public final class IsoWorld {
             this.updateInternal();
         }
 
-        try (GameProfiler.ProfileArea var8 = GameProfiler.getInstance().profile("Update DZ")) {
+        try (GameProfiler.ProfileArea var8 = GameProfiler.getInstance().profile("Update DZ"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.designationZones")) {
             DesignationZone.update();
         }
     }
@@ -3007,14 +3011,20 @@ public final class IsoWorld {
         this.frameNo++;
         if (GameServer.server) {
             try {
-                VehicleManager.instance.serverUpdate();
+                try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.vehicles.network")) {
+                    VehicleManager.instance.serverUpdate();
+                }
             } catch (Exception var10) {
                 DebugType.General.printException(var10, LogSeverity.Error);
             }
         }
 
-        WorldSimulation.instance.update();
-        HutchManager.getInstance().updateAll();
+        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.physics")) {
+            WorldSimulation.instance.update();
+        }
+        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.hutches")) {
+            HutchManager.getInstance().updateAll();
+        }
         ImprovedFog.update();
         this.helicopter.update();
         long currentMS = System.currentTimeMillis();
@@ -3065,7 +3075,7 @@ public final class IsoWorld {
 
         GameProfiler profiler = GameProfiler.getInstance();
 
-        try (GameProfiler.ProfileArea var17 = profiler.profile("Update Climate")) {
+        try (GameProfiler.ProfileArea var17 = profiler.profile("Update Climate"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.climate")) {
             ClimateManager.getInstance().update();
         }
 
@@ -3084,7 +3094,7 @@ public final class IsoWorld {
     private void updateThread() {
         GameProfiler profiler = GameProfiler.getInstance();
 
-        try (GameProfiler.ProfileArea i = profiler.profile("Update Buildings")) {
+        try (GameProfiler.ProfileArea i = profiler.profile("Update Buildings"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.buildings")) {
             this.updateBuildings();
         }
 
@@ -3104,7 +3114,7 @@ public final class IsoWorld {
             IsoPlayer.UpdateRemovedEmitters();
         }
 
-        try (GameProfiler.ProfileArea var17 = profiler.profile("Update DBs")) {
+        try (GameProfiler.ProfileArea var17 = profiler.profile("Update DBs"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.databases")) {
             this.updateDBs();
         }
 
@@ -3116,7 +3126,7 @@ public final class IsoWorld {
             }
         }
 
-        try (GameProfiler.ProfileArea var18 = profiler.profile("Update VA")) {
+        try (GameProfiler.ProfileArea var18 = profiler.profile("Update VA"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.animals.virtual")) {
             AnimalZones.updateVirtualAnimals();
         }
 

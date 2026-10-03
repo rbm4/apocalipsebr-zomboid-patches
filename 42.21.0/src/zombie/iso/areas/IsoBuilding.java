@@ -133,10 +133,7 @@ public final class IsoBuilding {
             for (int n = 0; n < this.rooms.size(); n++) {
                 IsoRoom room = this.rooms.get(n);
                 if (room.layer == 0) {
-                    for (int z = 0; z < room.tileList.size(); z++) {
-                        tilecount++;
-                        IsoGridSquare var6 = room.tileList.get(z);
-                    }
+                    tilecount += room.tileList.size();
                 }
             }
 

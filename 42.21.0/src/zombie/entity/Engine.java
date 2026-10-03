@@ -11,6 +11,9 @@ public final class Engine {
     private final EntityBucketManager bucketManager;
     private Engine.EntityListener entityListener;
     private boolean processing;
+    private static final ClassValue<String> simulationPhase = new ClassValue<>() {
+        @Override protected String computeValue(Class<?> type) { return "simulation.entities.system." + type.getSimpleName(); }
+    };
 
     public Engine() {
         boolean enableDynamicSystems = false;
@@ -119,7 +122,9 @@ public final class Engine {
 
                 for (int i = 0; i < systems.size(); i++) {
                     EngineSystem system = systems.get(i);
-                    system.updateSimulation();
+                    try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase(simulationPhase.get(system.getClass()))) {
+                        system.updateSimulation();
+                    }
                     this.entityManager.updateOperations();
                 }
             } finally {

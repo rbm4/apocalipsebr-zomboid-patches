@@ -71,6 +71,7 @@ public class MetaEntity extends GameEntity {
 
     public final void loadMetaEntity(ByteBuffer input, int worldVersion) throws IOException {
         this.entityNetId = input.getLong();
+        ServerEntitySimulationIndex.identityChanged(this);
         this.originalEntityType = GameEntityType.FromID(input.get());
         this.x = input.getFloat();
         this.y = input.getFloat();
@@ -150,6 +151,7 @@ public class MetaEntity extends GameEntity {
         super.reset();
         this.scheduleForReleaseToPool = false;
         this.entityNetId = Long.MIN_VALUE;
+        ServerEntitySimulationIndex.identityChanged(this);
         this.x = 0.0F;
         this.y = 0.0F;
         this.z = 0.0F;

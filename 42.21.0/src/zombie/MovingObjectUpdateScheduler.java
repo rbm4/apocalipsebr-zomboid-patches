@@ -70,7 +70,9 @@ public final class MovingObjectUpdateScheduler {
         }
         if (server) {
             NetworkZombiePacker.getInstance().awaitWorkers();
-            ZombieCountOptimiser.prepareZombiesForDeletion();
+            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("simulation.zombies.cullPrepare")) {
+                ZombieCountOptimiser.prepareZombiesForDeletion();
+            }
             long started = System.nanoTime();
             ServerMovingObjectIndex index = ServerMovingObjectIndex.forCell(cell);
             this.drainLifecycleRemovals(index);

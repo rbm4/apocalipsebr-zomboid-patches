@@ -6,6 +6,7 @@ import java.util.AbstractList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Iterator;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.ListIterator;
 import java.util.RandomAccess;
@@ -16,10 +17,21 @@ import zombie.util.lambda.Invokers;
 public final class PZArrayList<E> extends AbstractList<E> implements List<E>, RandomAccess {
     private E[] elements;
     private int numElements;
+    private final boolean isoObjectList;
+    private boolean elementsExposed;
+    private boolean identityIndexDirty = true;
+    private IdentityHashMap<Object, Integer> identityPositions;
+    private static final ClassValue<Boolean> identityEquals = new ClassValue<>() {
+        @Override protected Boolean computeValue(Class<?> type) {
+            try { return type.getMethod("equals", Object.class).getDeclaringClass() == Object.class; }
+            catch (ReflectiveOperationException | SecurityException exception) { return false; }
+        }
+    };
     private static final PZArrayList<Object> instance = new PZArrayList<>(Object.class, 0);
 
     public PZArrayList(Class<E> elementType, int initialCapacity) {
         this.elements = (E[])((Object[])Array.newInstance(elementType, initialCapacity));
+        this.isoObjectList = elementType == zombie.iso.IsoObject.class;
     }
 
     @Override
@@ -38,7 +50,26 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
 
     @Override
     public int indexOf(Object o) {
+        if (this.isoObjectList && zombie.network.GameServer.server && !this.elementsExposed
+            && this.numElements >= 8 && (o == null || identityEquals.get(o.getClass()))) {
+            if (this.identityPositions == null) this.identityPositions = new IdentityHashMap<>();
+            if (this.identityIndexDirty) {
+                this.identityPositions.clear();
+                for (int i = 0; i < this.numElements; i++) this.identityPositions.putIfAbsent(this.elements[i], i);
+                this.identityIndexDirty = false;
+                zombie.ApocBRServerTelemetryLite.count("isoObjects.squareIndexRebuilt", 1);
+                zombie.ApocBRServerTelemetryLite.count("isoObjects.squareIndexEntries", this.numElements);
+            }
+            Integer index = this.identityPositions.get(o);
+            return index == null ? -1 : index;
+        }
         return this.indexOf(o, PZArrayList::objectsEqual);
+    }
+
+    private void objectIndexChanged() {
+        this.identityIndexDirty = true;
+        // Release removed lifetimes immediately, even if no subsequent lookup occurs.
+        if (this.identityPositions != null) this.identityPositions.clear();
     }
 
     public <E1> int indexOf(E1 o, Invokers.Params2.Boolean.ICallback<E1, E> comparator) {
@@ -107,10 +138,12 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
             }
 
             this.elements = Arrays.copyOf(this.elements, capacity);
+            this.elementsExposed = false;
         }
 
         this.elements[this.numElements] = e;
         this.numElements++;
+        this.objectIndexChanged();
         return true;
     }
 
@@ -124,11 +157,13 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
                 }
 
                 this.elements = Arrays.copyOf(this.elements, capacity);
+                this.elementsExposed = false;
             }
 
             System.arraycopy(this.elements, index, this.elements, index + 1, this.numElements - index);
             this.elements[index] = e;
             this.numElements++;
+            this.objectIndexChanged();
         } else {
             throw new IndexOutOfBoundsException("Index: " + index + " Size: " + this.numElements);
         }
@@ -145,6 +180,7 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
 
             this.elements[this.numElements - 1] = null;
             this.numElements--;
+            this.objectIndexChanged();
             return old;
         } else {
             throw new IndexOutOfBoundsException("Index: " + index + " Size: " + this.numElements);
@@ -162,6 +198,7 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
 
                 this.elements[this.numElements - 1] = null;
                 this.numElements--;
+                this.objectIndexChanged();
                 return true;
             }
         }
@@ -189,6 +226,7 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
         if (index >= 0 && index < this.numElements) {
             E old = this.elements[index];
             this.elements[index] = e;
+            this.objectIndexChanged();
             return old;
         } else {
             throw new IndexOutOfBoundsException("Index: " + index + " Size: " + this.numElements);
@@ -202,6 +240,7 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
         }
 
         this.numElements = 0;
+        this.objectIndexChanged();
     }
 
     @Override
@@ -228,6 +267,9 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
     }
 
     public E[] getElements() {
+        // A retained raw array can be modified without any List method. Never cache it.
+        this.elementsExposed = true;
+        this.identityPositions = null;
         return this.elements;
     }
 
@@ -242,6 +284,8 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
             int prefGrowth = oldLength >> 1;
             int prefLength = oldLength + Math.max(minGrowth, prefGrowth);
             this.elements = Arrays.copyOf(this.elements, prefLength);
+            this.elementsExposed = false;
+            this.objectIndexChanged();
         }
     }
 

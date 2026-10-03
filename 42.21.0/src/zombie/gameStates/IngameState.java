@@ -590,13 +590,13 @@ public final class IngameState extends GameState {
         }
 
         if (!this.paused) {
-            try (GameProfiler.ProfileArea var56 = profiler.profile("WorldSoundManager.update")) {
+            try (GameProfiler.ProfileArea var56 = profiler.profile("WorldSoundManager.update"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.worldSounds")) {
                 WorldSoundManager.instance.update();
             } catch (Exception var55) {
                 ExceptionLogger.logException(var55);
             }
 
-            try (GameProfiler.ProfileArea var57 = profiler.profile("IsoFireManager.Update")) {
+            try (GameProfiler.ProfileArea var57 = profiler.profile("IsoFireManager.Update"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.fire")) {
                 IsoFireManager.Update();
             } catch (Exception var53) {
                 ExceptionLogger.logException(var53);
@@ -613,15 +613,15 @@ public final class IngameState extends GameState {
             }
 
             try {
-                try (GameProfiler.ProfileArea var60 = profiler.profile("VirtualZombieManager.update")) {
+                try (GameProfiler.ProfileArea var60 = profiler.profile("VirtualZombieManager.update"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.zombies.virtual")) {
                     VirtualZombieManager.instance.update();
                 }
 
-                try (GameProfiler.ProfileArea var61 = profiler.profile("MapCollisionData.updateMain")) {
+                try (GameProfiler.ProfileArea var61 = profiler.profile("MapCollisionData.updateMain"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.collision.main")) {
                     MapCollisionData.instance.updateMain();
                 }
 
-                try (GameProfiler.ProfileArea var62 = profiler.profile("ZombiePopulationManager.updateMain")) {
+                try (GameProfiler.ProfileArea var62 = profiler.profile("ZombiePopulationManager.updateMain"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.zombies.population")) {
                     ZombiePopulationManager.instance.updateMain();
                 }
 
@@ -630,11 +630,11 @@ public final class IngameState extends GameState {
                 }
 
                 if (PathfindNative.useNativeCode) {
-                    try (GameProfiler.ProfileArea var64 = profiler.profile("PathfindNative.updateMain")) {
+                    try (GameProfiler.ProfileArea var64 = profiler.profile("PathfindNative.updateMain"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.pathfinding.nativeMain")) {
                         PathfindNative.instance.updateMain();
                     }
                 } else {
-                    try (GameProfiler.ProfileArea var65 = profiler.profile("PolygonalMap2.updateMain")) {
+                    try (GameProfiler.ProfileArea var65 = profiler.profile("PolygonalMap2.updateMain"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.pathfinding.javaMain")) {
                         PolygonalMap2.instance.updateMain();
                     }
                 }
@@ -642,7 +642,7 @@ public final class IngameState extends GameState {
                 ExceptionLogger.logException(var49);
             }
 
-            try (GameProfiler.ProfileArea var66 = profiler.profile("LootRespawn.update")) {
+            try (GameProfiler.ProfileArea var66 = profiler.profile("LootRespawn.update"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.lootRespawn")) {
                 LootRespawn.update();
             } catch (Exception var42) {
                 ExceptionLogger.logException(var42);
@@ -1538,17 +1538,21 @@ public final class IngameState extends GameState {
                             this.debugTimes.add(System.nanoTime());
                         }
 
-                        IsoWorld.instance.update();
+                        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.world")) {
+
+                            IsoWorld.instance.update();
+
+                        }
                         CompletableFuture<Void> objAmbEmit = null;
                         if (DebugOptions.instance.threadAmbient.getValue() && !GameServer.server) {
                             objAmbEmit = CompletableFuture.runAsync(ObjectAmbientEmitters.getInstance()::update, PZForkJoinPool.commonPool());
                         }
 
-                        try (GameProfiler.ProfileArea var36 = profiler.profile("GEM Update")) {
+                        try (GameProfiler.ProfileArea var36 = profiler.profile("GEM Update"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities")) {
                             GameEntityManager.Update();
                         }
 
-                        try (GameProfiler.ProfileArea var37 = profiler.profile("Animal")) {
+                        try (GameProfiler.ProfileArea var37 = profiler.profile("Animal"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.animals.sync")) {
                             AnimalController.getInstance().update();
                         }
 
@@ -1556,15 +1560,15 @@ public final class IngameState extends GameState {
                             this.debugTimes.add(System.nanoTime());
                         }
 
-                        try (GameProfiler.ProfileArea var38 = profiler.profile("Radio")) {
+                        try (GameProfiler.ProfileArea var38 = profiler.profile("Radio"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.radio")) {
                             ZomboidRadio.getInstance().update();
                         }
 
-                        try (GameProfiler.ProfileArea var39 = profiler.profile("Stuff")) {
+                        try (GameProfiler.ProfileArea var39 = profiler.profile("Stuff"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.misc")) {
                             this.UpdateStuff();
                         }
 
-                        try (GameProfiler.ProfileArea var40 = profiler.profile("On Tick")) {
+                        try (GameProfiler.ProfileArea var40 = profiler.profile("On Tick"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.onTick")) {
                             this.onTick();
                         }
 
@@ -1646,7 +1650,7 @@ public final class IngameState extends GameState {
             }
 
             if (GameClient.client || GameServer.server) {
-                try (GameProfiler.ProfileArea var35 = profiler.profile("Update Managers")) {
+                try (GameProfiler.ProfileArea var35 = profiler.profile("Update Managers"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.managers")) {
                     updateManagers();
                 }
             }

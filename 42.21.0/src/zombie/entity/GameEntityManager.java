@@ -95,11 +95,15 @@ public class GameEntityManager {
             debugger.beginUpdate();
         }
 
-        engine.update();
+        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.frame")) {
+            engine.update();
+        }
         EntitySimulation.update();
         int simulationTicks = GameClient.client ? 0 : EntitySimulation.getSimulationTicksThisFrame();
         if (simulationTicks > 0) {
-            engine.updateSimulation();
+            try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.simulation")) {
+                engine.updateSimulation();
+            }
         }
 
         MetaEntity m;

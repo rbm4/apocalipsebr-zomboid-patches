@@ -55,7 +55,7 @@ public class CraftLogicSystem extends EngineSystem {
     @Override
     public void updateSimulation() {
         if (!GameClient.client) {
-            ImmutableArray<GameEntity> entities = this.craftLogicEntities.getEntities();
+            ImmutableArray<GameEntity> entities = this.craftLogicEntities.getSimulationEntities();
             if (entities.size() != 0) {
                 for (int i = 0; i < entities.size(); i++) {
                     GameEntity entity = entities.get(i);
