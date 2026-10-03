@@ -15,6 +15,8 @@ import org.joml.Matrix4f;
 import org.joml.Vector3f;
 import se.krka.kahlua.j2se.KahluaTableImpl;
 import zombie.GameTime;
+import zombie.ServerMovingObjectIndex;
+import zombie.ApocBRServerTelemetryLite;
 import zombie.GameWindow;
 import zombie.IndieGL;
 import zombie.SandboxOptions;
@@ -681,7 +683,6 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         }
     }
 
-    @Override
     public void updateStress() {
         if (!this.isWild()) {
             boolean incStress = true;
@@ -858,7 +859,6 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
         }
     }
 
-    @Override
     public void initializeStates() {
         this.clearAIStateMap();
         this.registerAIState("idle", AnimalIdleState.instance());
@@ -3632,41 +3632,66 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
 
     @Override
     public void updateLOS() {
-        float locX = this.getX();
-        float locY = this.getY();
-        float locZ = this.getZ();
-        this.spottedList.clear();
+        long perceptionStarted = GameServer.server ? System.nanoTime() : 0L;
+        int visited = 0;
+        try {
+            float locX = this.getX();
+            float locY = this.getY();
+            float locZ = this.getZ();
+            this.spottedList.clear();
 
-        for (IsoMovingObject movingObject : this.getCell().getObjectList()) {
-            if (!(movingObject instanceof IsoPhysicsObject)
-                && !(movingObject instanceof BaseVehicle)
-                && !(movingObject instanceof IsoZombie zombie && zombie.isReanimatedForGrappleOnly())) {
-                if (movingObject == this) {
-                    this.spottedList.add(movingObject);
-                } else {
-                    float movingObjectX = movingObject.getX();
-                    float movingObjectY = movingObject.getY();
-                    float movingObjectZ = movingObject.getZ();
-                    if (!(PZMath.abs(movingObjectZ - this.getZ()) > 1.0F)) {
-                        float distanceToMovingObject = IsoUtils.DistanceTo(movingObjectX, movingObjectY, locX, locY);
-                        IsoGridSquare chrCurrentSquare = movingObject.getCurrentSquare();
-                        if (chrCurrentSquare != null) {
-                            IsoGameCharacter movingCharacter = Type.tryCastTo(movingObject, IsoGameCharacter.class);
-                            IsoPlayer movingPlayer = Type.tryCastTo(movingCharacter, IsoPlayer.class);
-                            IsoZombie movingZombie = Type.tryCastTo(movingCharacter, IsoZombie.class);
-                            if (movingZombie != null) {
-                                this.getBehavior().spotted(movingZombie, false, distanceToMovingObject);
-                            }
+            // The server view retains world iteration order among actual perception targets.
+            // Self is the only animal vanilla adds to spottedList; other animals never cause
+            // a spotted() callback, so avoid traversing them (and cars/physics props) at all.
+            Iterable<IsoMovingObject> targets;
+            if (GameServer.server) {
+                if (this.getCell().getObjectList().contains(this)) {
+                    this.spottedList.add(this);
+                }
+                targets = ServerMovingObjectIndex.getPerceptionTargets(this.getCell());
+            } else {
+                targets = this.getCell().getObjectList();
+            }
+            for (IsoMovingObject movingObject : targets) {
+                visited++;
+                if (GameServer.server && !this.getCell().getObjectList().contains(movingObject)) {
+                    continue;
+                }
+                if (!(movingObject instanceof IsoPhysicsObject)
+                    && !(movingObject instanceof BaseVehicle)
+                    && !(movingObject instanceof IsoZombie zombie && zombie.isReanimatedForGrappleOnly())) {
+                    if (movingObject == this) {
+                        this.spottedList.add(movingObject);
+                    } else {
+                        float movingObjectX = movingObject.getX();
+                        float movingObjectY = movingObject.getY();
+                        float movingObjectZ = movingObject.getZ();
+                        if (!(PZMath.abs(movingObjectZ - this.getZ()) > 1.0F)) {
+                            float distanceToMovingObject = IsoUtils.DistanceTo(movingObjectX, movingObjectY, locX, locY);
+                            IsoGridSquare chrCurrentSquare = movingObject.getCurrentSquare();
+                            if (chrCurrentSquare != null) {
+                                IsoGameCharacter movingCharacter = Type.tryCastTo(movingObject, IsoGameCharacter.class);
+                                IsoPlayer movingPlayer = Type.tryCastTo(movingCharacter, IsoPlayer.class);
+                                IsoZombie movingZombie = Type.tryCastTo(movingCharacter, IsoZombie.class);
+                                if (movingZombie != null) {
+                                    this.getBehavior().spotted(movingZombie, false, distanceToMovingObject);
+                                }
 
-                            if (!(movingCharacter instanceof IsoAnimal)
-                                && movingCharacter instanceof IsoPlayer player
-                                && !movingCharacter.isInvisible()
-                                && !player.isGhostMode()) {
-                                this.getBehavior().spotted(movingCharacter, false, distanceToMovingObject);
+                                if (!(movingCharacter instanceof IsoAnimal)
+                                    && movingCharacter instanceof IsoPlayer player
+                                    && !movingCharacter.isInvisible()
+                                    && !player.isGhostMode()) {
+                                    this.getBehavior().spotted(movingCharacter, false, distanceToMovingObject);
+                                }
                             }
                         }
                     }
                 }
+            }
+        } finally {
+            if (GameServer.server) {
+                ApocBRServerTelemetryLite.recordPhase("simulation.animals.perception", System.nanoTime() - perceptionStarted);
+                ApocBRServerTelemetryLite.count("animals.perceptionCandidatesVisited", visited);
             }
         }
     }

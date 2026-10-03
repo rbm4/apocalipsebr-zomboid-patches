@@ -32,6 +32,8 @@ bounded asynchronous writer queue. `dropped` counts lost telemetry records.
 - `world`: end-of-window gauges. `loadedCells` is the engine list size, including
   cells pending activation; `pendingCells` is the loading list size. Zombies and
   movingObjects are active cell list sizes, not virtual population totals.
+  `movingObjectsByClass` groups that same moving-object set by full Java class
+  name, sampled once per emission (including animals separately from players).
 - `jvm`: used/committed/max heap bytes and GC collection count/time deltas. GC time
   comes from MXBeans; it is not a precise sum of stop-the-world pauses.
 
@@ -71,3 +73,62 @@ Do not identify a mod from an event aggregate alone: the Lua metrics time all
 callbacks together. Live validation is still required for overhead, threading,
 and the actual bottleneck. No scheduling, packet, save, or gameplay behavior is
 intentionally changed by this instrumentation.
+
+## Moving-object algorithm patch
+
+The 42.21.0 server scheduler now retains phase-bucket membership between frames.
+One authoritative world-set pass still checks activity every frame, promotes or
+demotes vehicles/animals immediately according to the existing predicates, and
+populates shared animal/perception views. Stable members are not cleared and
+reinserted. Direct removals that bypass the scheduler are reconciled when the
+world pass detects missing members; cell changes reset retained membership.
+
+Server removal uses identity lookups to the object's level and slot. Removed
+slots become null until stable compaction at the next frame boundary. Update and
+postupdate skip those slots, preventing self-removal from skipping the successor.
+Optional threaded animation is joined before changing frame membership; scheduler
+mutation and execution share a reentrant monitor. Normal client classification
+and per-frame bucket rebuilding remain in place. Persistent server buckets retain
+their existing order until members enter/leave/change level, rather than adopting
+the HashSet's full iteration order again on every frame.
+
+Server animal perception traverses shared zombies/human-player candidates rather
+than every animal, vehicle, prop, or physics object. Candidates retain world-set
+order at classification time. Existing height, square, visibility, ghost/grapple
+checks, distances and spotted callbacks remain in place; no distance cutoff or
+additional perception throttle is introduced. Removed targets are rejected by
+current world membership. Normal immediate additions invalidate the view; size
+increases also trigger a refresh. Mods replacing entries directly through the
+exposed Set at equal cardinality during a frame should call
+`ServerMovingObjectIndex.invalidate()`; otherwise those additions appear at the
+next frame's classification pass.
+
+Server animal sound work uses the shared animal view and is distributed every four
+frames by ID. Set `-Dapocbr.animalSoundFrameMod=1` to restore its previous cadence,
+or another positive interval to change this cosmetic-work throttle. Client sound
+cadence and existing car/animal simulation frequencies are retained.
+
+New inclusive phases:
+
+- `simulation.movingObjects.classify`: index maintenance, dirty-bucket compaction,
+  classification and membership reconciliation; excludes preceding zombie waits.
+- `simulation.movingObjects.update`: scheduled moving-object updates.
+- `simulation.movingObjects.postupdate`: scheduler postupdate/animation; can run
+  outside the parent simulation timing with optional threaded animation.
+- `simulation.animals.perception`: individual animal perception calls, nested in
+  moving-object update. Do not add it to its parent as an independent cost.
+- `simulation.animals.sounds`: server animal sound dispatch, including any index
+  refresh required by immediate additions.
+
+Counters `movingObjects.classified`, `movingObjects.schedulerAdded`,
+`movingObjects.schedulerLevelChanges`, `movingObjects.schedulerRemoved`, and
+`animals.perceptionCandidatesVisited` are interval totals. Classification sums
+the world size per frame, not unique objects. Removed counts cover registered
+members removed through the scheduler API; direct-set reconciliation is excluded.
+
+Verification: `python tools/test_moving_object_algorithms.py` exercises production
+scheduler/bucket/index sources using isolated engine fixtures. Run the normal
+42.21.0 patch script with `-DryRun` for game-JAR compilation. Live scenarios still
+needed: large herds, vehicle starts/stops and towing, animal alert/lure/hook changes,
+mass despawn/chunk unload, threaded animation if enabled, and before/after
+telemetry at comparable populations. Fixture timing is not a server benchmark.

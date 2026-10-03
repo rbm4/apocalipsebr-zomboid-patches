@@ -36,6 +36,8 @@ import zombie.GameWindow;
 import zombie.IndieGL;
 import zombie.MainThread;
 import zombie.MovingObjectUpdateScheduler;
+import zombie.ServerMovingObjectIndex;
+import zombie.ApocBRServerTelemetryLite;
 import zombie.ReanimatedPlayers;
 import zombie.SandboxOptions;
 import zombie.UsedFromLua;
@@ -2268,10 +2270,16 @@ public final class IsoCell {
     private void ProcessObjects(Iterator<IsoMovingObject> it) {
         MovingObjectUpdateScheduler.instance.update();
 
-        for (IsoMovingObject obj : this.objectList) {
-            if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
-                animal.updateVocalProperties();
-                animal.updateLoopingSounds();
+        if (GameServer.server) {
+            long soundStarted = System.nanoTime();
+            ServerMovingObjectIndex.updateAnimalSounds(this, MovingObjectUpdateScheduler.instance.getFrameCounter());
+            ApocBRServerTelemetryLite.recordPhase("simulation.animals.sounds", System.nanoTime() - soundStarted);
+        } else {
+            for (IsoMovingObject obj : this.objectList) {
+                if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
+                    animal.updateVocalProperties();
+                    animal.updateLoopingSounds();
+                }
             }
         }
 
@@ -2784,7 +2792,9 @@ public final class IsoCell {
 
     public void addMovingObject(IsoMovingObject o) {
         if (this.isSafeToAdd()) {
-            this.objectList.add(o);
+            if (this.objectList.add(o) && GameServer.server) {
+                ServerMovingObjectIndex.invalidate();
+            }
         } else {
             this.addList.add(o);
         }

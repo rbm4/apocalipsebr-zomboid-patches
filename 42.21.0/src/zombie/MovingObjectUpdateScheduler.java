@@ -1,12 +1,16 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie;
 
+import java.util.IdentityHashMap;
+import java.util.Iterator;
+import java.util.Map;
 import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
 import zombie.characters.animals.IsoAnimal;
 import zombie.core.math.PZMath;
 import zombie.iso.IsoMovingObject;
+import zombie.iso.IsoCell;
 import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
 import zombie.popman.NetworkZombiePacker;
@@ -19,6 +23,18 @@ public final class MovingObjectUpdateScheduler {
     private final MovingObjectUpdateSchedulerUpdateBucket[] simulationLevels;
     private long frameCounter;
     private boolean isEnabled = true;
+    private final IdentityHashMap<IsoMovingObject, ServerMembership> serverMembership = new IdentityHashMap<>();
+    private IsoCell serverCell;
+
+    private static final class ServerMembership {
+        UpdateSchedulerSimulationLevel level;
+        long seenFrame;
+
+        ServerMembership(UpdateSchedulerSimulationLevel level, long frame) {
+            this.level = level;
+            this.seenFrame = frame;
+        }
+    }
 
     private MovingObjectUpdateScheduler() {
         this.simulationLevels = new MovingObjectUpdateSchedulerUpdateBucket[UpdateSchedulerSimulationLevel.numValues()];
@@ -33,16 +49,43 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void startFrame() {
+        if (GameServer.server) {
+            // Optional threaded animation must finish using the previous frame's buckets
+            // before persistent membership or the frame counter can change. Join outside
+            // the scheduler monitor: postupdate/removal callbacks acquire that monitor.
+            IsoWorld.instance.FinishAnimation();
+        }
+        synchronized (this) {
+            this.startFrameInternal();
+        }
+    }
+
+    private void startFrameInternal() {
         this.frameCounter++;
-        PZArrayUtil.forEach(this.simulationLevels, MovingObjectUpdateSchedulerUpdateBucket::clear);
         boolean server = GameServer.server;
         float averageFps = server ? 0.0F : GameWindow.averageFPS;
+        IsoCell cell = IsoWorld.instance.getCell();
+        if (!server || this.serverCell != cell) {
+            PZArrayUtil.forEach(this.simulationLevels, MovingObjectUpdateSchedulerUpdateBucket::clear);
+            this.serverMembership.clear();
+            this.serverCell = server ? cell : null;
+        }
+        long classificationStarted = 0L;
         if (server) {
             NetworkZombiePacker.getInstance().awaitWorkers();
             ZombieCountOptimiser.prepareZombiesForDeletion();
+            classificationStarted = System.nanoTime();
+            ServerMovingObjectIndex.beginFrame(cell);
+            for (MovingObjectUpdateSchedulerUpdateBucket bucket : this.simulationLevels) {
+                bucket.compact();
+            }
         }
 
-        for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
+        int scheduled = 0;
+        for (IsoMovingObject isoMovingObject : cell.getObjectList()) {
+            if (server) {
+                ServerMovingObjectIndex.classify(isoMovingObject);
+            }
             if (GameServer.server && isoMovingObject instanceof IsoZombie isoZombie) {
                 if (GameServer.guiCommandline) {
                     isoZombie.updateForServerGui();
@@ -53,8 +96,45 @@ public final class MovingObjectUpdateScheduler {
                 }
 
                 UpdateSchedulerSimulationLevel sim = this.getUpdateSchedulerSimulationLevelForObject(isoMovingObject, averageFps);
-                this.simulationLevels[sim.getUpdateOrderIndex()].add(isoMovingObject);
+                if (server) {
+                    scheduled++;
+                    ServerMembership membership = this.serverMembership.get(isoMovingObject);
+                    if (membership == null) {
+                        membership = new ServerMembership(sim, this.frameCounter);
+                        this.serverMembership.put(isoMovingObject, membership);
+                        this.simulationLevels[sim.getUpdateOrderIndex()].add(isoMovingObject);
+                        ApocBRServerTelemetryLite.count("movingObjects.schedulerAdded", 1L);
+                    } else {
+                        membership.seenFrame = this.frameCounter;
+                        if (membership.level != sim) {
+                            this.simulationLevels[membership.level.getUpdateOrderIndex()].removeObject(isoMovingObject);
+                            this.simulationLevels[sim.getUpdateOrderIndex()].add(isoMovingObject);
+                            membership.level = sim;
+                            ApocBRServerTelemetryLite.count("movingObjects.schedulerLevelChanges", 1L);
+                        }
+                    }
+                } else {
+                    this.simulationLevels[sim.getUpdateOrderIndex()].add(isoMovingObject);
+                }
             }
+        }
+
+        if (server) {
+            // Mods and animal virtualization can remove directly from objectList, bypassing
+            // removeObject. Sweep only when the authoritative pass found missing members.
+            if (scheduled != this.serverMembership.size()) {
+                Iterator<Map.Entry<IsoMovingObject, ServerMembership>> entries = this.serverMembership.entrySet().iterator();
+                while (entries.hasNext()) {
+                    Map.Entry<IsoMovingObject, ServerMembership> entry = entries.next();
+                    if (entry.getValue().seenFrame != this.frameCounter) {
+                        this.simulationLevels[entry.getValue().level.getUpdateOrderIndex()].removeObject(entry.getKey());
+                        entries.remove();
+                    }
+                }
+            }
+            ServerMovingObjectIndex.finishFrameIndex();
+            ApocBRServerTelemetryLite.recordPhase("simulation.movingObjects.classify", System.nanoTime() - classificationStarted);
+            ApocBRServerTelemetryLite.count("movingObjects.classified", cell.getObjectList().size());
         }
     }
 
@@ -194,19 +274,33 @@ public final class MovingObjectUpdateScheduler {
         return UpdateSchedulerSimulationLevel.SIXTEENTH;
     }
 
-    public void update() {
-        for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
-            simulation.update((int)this.frameCounter);
+    public synchronized void update() {
+        long started = GameServer.server ? System.nanoTime() : 0L;
+        try {
+            for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
+                simulation.update((int)this.frameCounter);
+            }
+        } finally {
+            if (GameServer.server) {
+                ApocBRServerTelemetryLite.recordPhase("simulation.movingObjects.update", System.nanoTime() - started);
+            }
         }
     }
 
-    public void postupdate() {
-        if (GameServer.server) {
-            ZombieCountOptimiser.deleteZombies();
-        }
+    public synchronized void postupdate() {
+        long started = GameServer.server ? System.nanoTime() : 0L;
+        try {
+            if (GameServer.server) {
+                ZombieCountOptimiser.deleteZombies();
+            }
 
-        for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
-            simulation.postupdate((int)this.frameCounter);
+            for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
+                simulation.postupdate((int)this.frameCounter);
+            }
+        } finally {
+            if (GameServer.server) {
+                ApocBRServerTelemetryLite.recordPhase("simulation.movingObjects.postupdate", System.nanoTime() - started);
+            }
         }
     }
 
@@ -218,7 +312,15 @@ public final class MovingObjectUpdateScheduler {
         this.isEnabled = enabled;
     }
 
-    public void removeObject(IsoMovingObject object) {
-        PZArrayUtil.forEach(this.simulationLevels, object, MovingObjectUpdateSchedulerUpdateBucket::removeObject);
+    public synchronized void removeObject(IsoMovingObject object) {
+        if (GameServer.server) {
+            ServerMembership membership = this.serverMembership.remove(object);
+            if (membership != null) {
+                this.simulationLevels[membership.level.getUpdateOrderIndex()].removeObject(object);
+                ApocBRServerTelemetryLite.count("movingObjects.schedulerRemoved", 1L);
+            }
+        } else {
+            PZArrayUtil.forEach(this.simulationLevels, object, MovingObjectUpdateSchedulerUpdateBucket::removeObject);
+        }
     }
 }

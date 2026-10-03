@@ -8,6 +8,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
@@ -51,6 +52,7 @@ public final class PZXmlUtil {
 
     public static Element parseXml(String source) throws PZXmlParserException {
         String fileName = ZomboidFileSystem.instance.resolveFileOrGUID(source);
+        fileName = resolveXmlFileCase(fileName);
 
         Element root;
         try {
@@ -71,6 +73,36 @@ public final class PZXmlUtil {
         } else {
             return root;
         }
+    }
+
+    private static String resolveXmlFileCase(String fileName) {
+        File file = new File(fileName);
+        if (file.isFile()) {
+            return fileName;
+        }
+
+        // Relative XML references can be lowercased by ZomboidFileSystem.
+        // Recover on-disk casing only when the resolved file is missing.
+        Path path = file.toPath().toAbsolutePath();
+        File current = path.getRoot().toFile();
+        for (Path component : path) {
+            String name = component.toString();
+            File exact = new File(current, name);
+            if (exact.exists()) {
+                current = exact;
+                continue;
+            }
+
+            File[] matches = current.listFiles(entry -> entry.getName().equalsIgnoreCase(name));
+            if (matches == null || matches.length != 1) {
+                // Missing, unreadable, or ambiguous: preserve the original error.
+                return fileName;
+            }
+
+            current = matches[0];
+        }
+
+        return current.isFile() ? current.getPath() : fileName;
     }
 
     private static Element includeAnotherFile(Element root, String fileName) throws PZXmlParserException {

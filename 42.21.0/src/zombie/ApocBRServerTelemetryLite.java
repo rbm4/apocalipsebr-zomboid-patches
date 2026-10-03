@@ -14,6 +14,7 @@ import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -181,6 +182,19 @@ public final class ApocBRServerTelemetryLite {
         if (IsoWorld.instance.currentCell != null) {
             json.append(",\"zombies\":").append(IsoWorld.instance.currentCell.getZombieList().size());
             json.append(",\"movingObjects\":").append(IsoWorld.instance.currentCell.getObjectList().size());
+            // Once per reporting window, not per frame or per animal.
+            TreeMap<String, int[]> movingObjectsByClass = new TreeMap<>();
+            for (zombie.iso.IsoMovingObject object : IsoWorld.instance.currentCell.getObjectList()) {
+                movingObjectsByClass.computeIfAbsent(object.getClass().getName(), ignored -> new int[1])[0]++;
+            }
+            json.append(",\"movingObjectsByClass\":{");
+            boolean firstClass = true;
+            for (Map.Entry<String, int[]> entry : movingObjectsByClass.entrySet()) {
+                if (!firstClass) json.append(',');
+                firstClass = false;
+                json.append('"').append(escape(entry.getKey())).append("\":").append(entry.getValue()[0]);
+            }
+            json.append('}');
         }
         json.append('}');
         Runtime runtime = Runtime.getRuntime();
