@@ -65,6 +65,8 @@ package zombie.iso;
 import zombie.UpdateSchedulerSimulationLevel;
 public class IsoMovingObject {
     public int id, updates, posts;
+    public float x,y;
+    public float getX(){return x;} public float getY(){return y;}
     public Runnable onUpdate, onPost;
     public static int equalsCalls;
     public UpdateSchedulerSimulationLevel minimum=UpdateSchedulerSimulationLevel.FULL;
@@ -247,6 +249,60 @@ public class MovingObjectAlgorithmsTest {
         c.objects.addAll(List.of(animal,zombie));c.objects.clear();s.startFrame();
         check(ServerMovingObjectIndex.forCell(c).getScheduledMembers().isEmpty(),"clear releases scheduled/type entries");
     }
+    static void spatialTests(){
+        var c=new IsoCell();IsoWorld.instance.cell=c;
+        var out=new ArrayList<IsoMovingObject>();
+        var z=new IsoZombie();z.x=-16;z.y=-16;c.objects.add(z);
+        var edge=new IsoZombie();edge.x=-6;edge.y=-16;c.objects.add(edge);
+        var distant=new IsoZombie();distant.x=10000;c.objects.add(distant);
+        var human=new IsoPlayer();human.x=10000;c.objects.add(human);
+        long beforeHumanOnly=ApocBRServerTelemetryLite.counts.getOrDefault("animals.perceptionGridChecked",0L);
+        ServerMovingObjectIndex.queryPerceptionTargets(c,0,-16,-16,false,out);
+        check(out.equals(List.of(human)),"human-only query works before spatial initialization");
+        check(ApocBRServerTelemetryLite.counts.getOrDefault("animals.perceptionGridChecked",0L)==beforeHumanOnly,"human-only query performs no zombie reconciliation");
+        ServerMovingObjectIndex.queryPerceptionTargets(c,1,-16,-16,true,out);
+        check(out.equals(List.of(z,edge,human)),"negative cells, inclusive radius, global humans, stable order");
+        long checked=ApocBRServerTelemetryLite.counts.get("animals.perceptionGridChecked");
+        ServerMovingObjectIndex.queryPerceptionTargets(c,1,-16,-16,true,out);
+        check(ApocBRServerTelemetryLite.counts.get("animals.perceptionGridChecked")==checked,"one movement traversal per frame");
+        z.x=500;edge.x=-5.999f;
+        ServerMovingObjectIndex.queryPerceptionTargets(c,2,-16,-16,true,out);
+        check(out.equals(List.of(human)),"bucket relocation and exact radius rejection");
+        distant.x=-16;distant.y=-16;
+        ServerMovingObjectIndex.queryPerceptionTargets(c,3,-16,-16,true,out);
+        check(out.equals(List.of(distant,human)),"distant zombie enters query after movement");
+        c.objects.remove(distant);
+        ServerMovingObjectIndex.queryPerceptionTargets(c,3,-16,-16,true,out);
+        check(out.equals(List.of(human)),"same-frame removal releases spatial slot");
+        c.objects.add(distant);
+        ServerMovingObjectIndex.queryPerceptionTargets(c,3,-16,-16,true,out);
+        check(out.equals(List.of(human,distant)),"same-instance re-entry gets new lifetime order");
+        ServerMovingObjectIndex.queryPerceptionTargets(c,3,-16,-16,false,out);
+        check(out.equals(List.of(human)),"fleeZombies=false keeps human perception");
+        c.objects.clear();
+        ServerMovingObjectIndex.queryPerceptionTargets(c,4,0,0,true,out);
+        check(out.isEmpty(),"clear releases all spatial entries");
+        var random=new Random(713);
+        var zombies=new ArrayList<IsoZombie>();
+        for(int i=0;i<400;i++){var o=new IsoZombie();o.x=random.nextFloat()*200-100;o.y=random.nextFloat()*200-100;zombies.add(o);c.objects.add(o);}
+        for(int frame=5;frame<45;frame++){
+            for(var o:zombies){o.x+=random.nextFloat()*40-20;o.y+=random.nextFloat()*40-20;}
+            for(int q=0;q<10;q++){
+                float x=random.nextFloat()*200-100,y=random.nextFloat()*200-100;
+                ServerMovingObjectIndex.queryPerceptionTargets(c,frame,x,y,true,out);
+                var expected=new ArrayList<IsoMovingObject>();
+                for(var o:zombies){float dx=o.x-x,dy=o.y-y;if(dx*dx+dy*dy<=100)expected.add(o);}
+                check(out.equals(expected),"spatial query matches exhaustive reference after movement");
+            }
+        }
+        c.objects.clear();
+        for(int i=0;i<30000;i++){var o=new IsoZombie();o.x=i*32;c.objects.add(o);}
+        long before=ApocBRServerTelemetryLite.counts.get("animals.perceptionGridChecked");
+        long visits=ApocBRServerTelemetryLite.counts.get("animals.perceptionBucketCandidatesVisited");
+        for(int i=0;i<100;i++)ServerMovingObjectIndex.queryPerceptionTargets(c,100,i*32,0,true,out);
+        check(ApocBRServerTelemetryLite.counts.get("animals.perceptionGridChecked")-before==30000,"30k zombies refreshed once for 100 animal queries");
+        check(ApocBRServerTelemetryLite.counts.get("animals.perceptionBucketCandidatesVisited")-visits==100,"sparse queries visit local buckets instead of 3 million targets");
+    }
     static void removalScaleTest(){
         var b=new MovingObjectUpdateSchedulerUpdateBucket(UpdateSchedulerSimulationLevel.SIXTEENTH);
         var objects=new ArrayList<IsoMovingObject>();for(int i=0;i<30000;i++){var o=object(i);objects.add(o);b.add(o);}
@@ -259,7 +315,7 @@ public class MovingObjectAlgorithmsTest {
         System.out.printf("30,000 objects / 1,000 indexed removals: %.3f ms (fixture, not server benchmark)%n",elapsed/1e6);
     }
     public static void main(String[] args) throws Exception {
-        bucketTests();schedulerTests();indexTests();threadedFrameTest();lifecycleTests();removalScaleTest();
+        bucketTests();schedulerTests();indexTests();threadedFrameTest();lifecycleTests();spatialTests();removalScaleTest();
         System.out.println("Passed "+assertions+" lifecycle and algorithm assertions.");
     }
 }
@@ -284,6 +340,7 @@ def main():
             "MovingObjectUpdateSchedulerUpdateBucket.java",
             "ServerMovingObjectIndex.java",
             "ServerMovingObjectSet.java",
+            "ServerAnimalPerceptionGrid.java",
         ])
         sources.append(ROOT / "42.21.0/decompiled/zombie/UpdateSchedulerSimulationLevel.java")
         output = work / "classes"

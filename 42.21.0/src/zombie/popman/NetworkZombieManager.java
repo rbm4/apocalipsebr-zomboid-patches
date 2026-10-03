@@ -2,10 +2,10 @@
 package zombie.popman;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.List;
-import java.util.Map;
 import zombie.ai.State;
+import zombie.ApocBRServerTelemetryLite;
 import zombie.ai.states.GenericDefaultState;
 import zombie.ai.states.ZombieEatBodyState;
 import zombie.ai.states.ZombieIdleState;
@@ -14,7 +14,6 @@ import zombie.ai.states.ZombieTurnAlerted;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
 import zombie.core.Core;
-import zombie.core.math.PZMath;
 import zombie.core.raknet.UdpConnection;
 import zombie.debug.DebugLog;
 import zombie.debug.DebugType;
@@ -30,11 +29,19 @@ import zombie.util.hash.PZHash;
 
 public class NetworkZombieManager {
     private static final NetworkZombieManager instance = new NetworkZombieManager();
-    private final NetworkZombieList owns = new NetworkZombieList();
+    private final ZombieOwnershipIndex owns = new ZombieOwnershipIndex();
     private static final float NospottedDistanceSquared = 16.0F;
-    private static final int AUTH_GRID_CELL_SIZE = 64;
-    private final Map<Long, ArrayList<NetworkZombieManager.AuthCandidate>> authGrid = new HashMap<>();
+    private final ZombieAuthCoverage authCoverage = new ZombieAuthCoverage();
+    private final IdentityHashMap<IsoZombie, AuthState> authStates = new IdentityHashMap<>();
+    private long lastStateCleanup;
     private boolean authGridBuilt;
+
+    private static final class AuthState {
+        UdpConnection owner;
+        Object target, grapple;
+        short onlineId;
+        long nextCheck;
+    }
 
     public static NetworkZombieManager getInstance() {
         return instance;
@@ -65,16 +72,46 @@ public class NetworkZombieManager {
     }
 
     public void beginAuthUpdate() {
-        this.rebuildAuthGrid();
+        long started = System.nanoTime();
+        this.authCoverage.refresh();
+        this.authGridBuilt = true;
+        long now = System.currentTimeMillis();
+        if (now - this.lastStateCleanup >= 1000L || now < this.lastStateCleanup) {
+            this.authStates.keySet().removeIf(z -> !IsoWorld.instance.currentCell.getObjectList().contains(z));
+            this.lastStateCleanup = now;
+        }
+        ApocBRServerTelemetryLite.recordPhase("network.zombies.authGrid", System.nanoTime() - started);
     }
 
     public void updateAuth(IsoZombie zombie) {
+        this.updateAuth(zombie, System.currentTimeMillis());
+    }
+
+    void updateAuth(IsoZombie zombie, long now) {
         if (GameServer.server) {
             if (!this.authGridBuilt) {
-                this.rebuildAuthGrid();
+                this.beginAuthUpdate();
             }
 
-            if (System.currentTimeMillis() - zombie.lastChangeOwner >= 2000L || zombie.getOwner() == null) {
+            UdpConnection owner = zombie.getOwner();
+            Object grapple = zombie.getWrappedGrappleable().getGrappledBy();
+            AuthState state = this.authStates.get(zombie);
+            boolean invalidOwner = owner != null && !this.authCoverage.eligible(owner);
+            boolean debugRotation = ServerOptions.getInstance().switchZombiesOwnershipEachUpdate.getValue() && GameServer.getPlayerCount() > 1;
+            boolean urgent = owner == null || invalidOwner || zombie.isDead() || state == null
+                || state.owner != owner || state.target != zombie.target || state.grapple != grapple || state.onlineId != zombie.onlineId;
+            if (!debugRotation && !urgent && now < state.nextCheck && now >= state.nextCheck - 500L) {
+                ApocBRServerTelemetryLite.count("zombies.auth.cadenceSkipped", 1L);
+                return;
+            }
+            // Preserve vanilla's two-second transfer cooldown for valid living owners.
+            // Owner loss/disconnect and death must not wait for it.
+            if (now - zombie.lastChangeOwner >= 2000L || owner == null || invalidOwner || zombie.isDead()) {
+                if (state == null) { state = new AuthState(); this.authStates.put(zombie, state); }
+                state.owner = owner; state.target = zombie.target; state.grapple = grapple; state.onlineId = zombie.onlineId;
+                // Spread stable checks across 100 ms slots; each interval is at most 500 ms.
+                state.nextCheck = now + 500L - Math.floorMod(now + Math.floorMod(zombie.getID(), 5) * 100L, 500L);
+                ApocBRServerTelemetryLite.count("zombies.auth.reassessed", 1L);
                 if (ServerOptions.getInstance().switchZombiesOwnershipEachUpdate.getValue() && GameServer.getPlayerCount() > 1) {
                     if (zombie.getOwner() == null) {
                         for (int i = 0; i < GameServer.udpEngine.connections.size(); i++) {
@@ -115,15 +152,16 @@ public class NetworkZombieManager {
                         }
                     }
 
-                    UdpConnection connection = zombie.getOwner();
-                    IsoPlayer player = zombie.getOwnerPlayer();
+                    UdpConnection connection = invalidOwner ? null : owner;
+                    IsoPlayer player = invalidOwner ? null : zombie.getOwnerPlayer();
                     float distance = Float.POSITIVE_INFINITY;
                     if (connection != null) {
                         distance = connection.getRelevantAndDistance(zombie.getX(), zombie.getY(), zombie.getZ());
                     }
 
-                    List<NetworkZombieManager.AuthCandidate> candidates = this.getAuthCandidates(zombie);
-                    for (NetworkZombieManager.AuthCandidate candidate : candidates) {
+                    List<ZombieAuthCoverage.Candidate> candidates = this.authCoverage.candidates(zombie.getX(), zombie.getY());
+                    for (ZombieAuthCoverage.Candidate candidate : candidates) {
+                        ApocBRServerTelemetryLite.count("zombies.auth.candidatesVisited", 1L);
                         UdpConnection c = candidate.connection;
                         IsoPlayer p = candidate.player;
                         if (c != connection && !GameServer.isDelayedDisconnect(c)) {
@@ -156,6 +194,8 @@ public class NetworkZombieManager {
 
                     this.moveZombie(zombie, connection, player);
                 }
+            } else {
+                ApocBRServerTelemetryLite.count("zombies.auth.transferCooldownSkipped", 1L);
             }
         }
     }
@@ -166,6 +206,11 @@ public class NetworkZombieManager {
                 zombie.die();
             } else if (NetworkVariables.ZombieState.OnGround == zombie.realState) {
                 synchronized (this.owns.lock) {
+                    ZombieOwnershipIndex.Group previous = this.owns.getNetworkZombie(zombie.getOwner());
+                    if (previous != null) {
+                        previous.zombies.remove(zombie);
+                        if (previous.zombies.isEmpty()) this.owns.release(zombie.getOwner());
+                    }
                     zombie.setOwner(null);
                     zombie.setOwnerPlayer(null);
                     zombie.getNetworkCharacterAI().resetSpeedLimiter();
@@ -186,14 +231,15 @@ public class NetworkZombieManager {
             if (zombie.getOwner() != to) {
                 synchronized (this.owns.lock) {
                     if (zombie.getOwner() != null) {
-                        NetworkZombieList.NetworkZombie nz = this.owns.getNetworkZombie(zombie.getOwner());
+                        ZombieOwnershipIndex.Group nz = this.owns.getNetworkZombie(zombie.getOwner());
                         if (nz != null && !nz.zombies.remove(zombie)) {
                             DebugLog.log("moveZombie: There are no zombies in nz.zombies.");
                         }
+                        if (nz != null && nz.zombies.isEmpty()) this.owns.release(zombie.getOwner());
                     }
 
                     if (to != null) {
-                        NetworkZombieList.NetworkZombie nz2 = this.owns.getNetworkZombie(to);
+                        ZombieOwnershipIndex.Group nz2 = this.owns.getNetworkZombie(to);
                         if (nz2 != null) {
                             nz2.zombies.add(zombie);
                             zombie.setOwner(to);
@@ -209,6 +255,8 @@ public class NetworkZombieManager {
                 }
 
                 zombie.lastChangeOwner = System.currentTimeMillis();
+                this.authStates.remove(zombie);
+                ApocBRServerTelemetryLite.count("zombies.auth.ownerChanged", 1L);
                 NetworkZombiePacker.getInstance().setExtraUpdate();
             }
         }
@@ -216,9 +264,10 @@ public class NetworkZombieManager {
 
     public int getZombieAuth(UdpConnection connection, ZombieListPacket packet) {
         int hash = PZHash.fnv_32_init();
-        NetworkZombieList.NetworkZombie nz = this.owns.getNetworkZombie(connection);
         packet.zombiesAuth.clear();
         synchronized (this.owns.lock) {
+            ZombieOwnershipIndex.Group nz = this.owns.getNetworkZombie(connection);
+            if (nz == null) return hash;
             nz.zombies.removeIf(zombiex -> zombiex.onlineId == -1);
 
             for (IsoZombie zombie : nz.zombies) {
@@ -248,12 +297,17 @@ public class NetworkZombieManager {
                 }
 
                 if (zombie.getOwner() == connection) {
+                    synchronized (this.owns.lock) {
+                        ZombieOwnershipIndex.Group previous = this.owns.getNetworkZombie(connection);
+                        if (previous != null) previous.zombies.remove(zombie);
+                    }
                     zombie.setOwner(null);
                     zombie.setOwnerPlayer(null);
                     zombie.getNetworkCharacterAI().resetSpeedLimiter();
                     getInstance().updateAuth(zombie);
                 }
             }
+            synchronized (this.owns.lock) { this.owns.release(connection); }
         }
     }
 
@@ -282,62 +336,11 @@ public class NetworkZombieManager {
 
     public void recheck(IConnection connection) {
         synchronized (this.owns.lock) {
-            NetworkZombieList.NetworkZombie nz = this.owns.getNetworkZombie(connection);
+            ZombieOwnershipIndex.Group nz = this.owns.getNetworkZombie(connection);
             if (nz != null) {
                 nz.zombies.removeIf(zombie -> zombie.getOwner() != connection);
             }
         }
     }
 
-    private void rebuildAuthGrid() {
-        this.authGrid.clear();
-        for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
-            UdpConnection connection = GameServer.udpEngine.connections.get(n);
-            if (connection != null && connection.isFullyConnected() && !GameServer.isDelayedDisconnect(connection)) {
-                int relevantRange = connection.getRelevantRange() - 2;
-                int radius = relevantRange * 8;
-                for (IsoPlayer player : connection.players) {
-                    if (player != null && player.isAlive()) {
-                        NetworkZombieManager.AuthCandidate candidate = new NetworkZombieManager.AuthCandidate(connection, player, relevantRange);
-                        int minCellX = cellFor(player.getX() - radius);
-                        int maxCellX = cellFor(player.getX() + radius);
-                        int minCellY = cellFor(player.getY() - radius);
-                        int maxCellY = cellFor(player.getY() + radius);
-                        for (int cellX = minCellX; cellX <= maxCellX; cellX++) {
-                            for (int cellY = minCellY; cellY <= maxCellY; cellY++) {
-                                this.authGrid.computeIfAbsent(key(cellX, cellY), ignored -> new ArrayList<>()).add(candidate);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        this.authGridBuilt = true;
-    }
-
-    private List<NetworkZombieManager.AuthCandidate> getAuthCandidates(IsoZombie zombie) {
-        List<NetworkZombieManager.AuthCandidate> candidates = this.authGrid.get(key(cellFor(zombie.getX()), cellFor(zombie.getY())));
-        return candidates == null ? List.of() : candidates;
-    }
-
-    private static int cellFor(float value) {
-        return PZMath.fastfloor(value / AUTH_GRID_CELL_SIZE);
-    }
-
-    private static long key(int cellX, int cellY) {
-        return ((long)cellX & 4294967295L) << 32 | (long)cellY & 4294967295L;
-    }
-
-    private static final class AuthCandidate {
-        final UdpConnection connection;
-        final IsoPlayer player;
-        final int relevantRange;
-
-        AuthCandidate(UdpConnection connection, IsoPlayer player, int relevantRange) {
-            this.connection = connection;
-            this.player = player;
-            this.relevantRange = relevantRange;
-        }
-    }
 }

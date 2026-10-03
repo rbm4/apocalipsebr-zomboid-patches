@@ -188,11 +188,18 @@ public class NetworkZombiePacker {
     private void updateAuth() {
         ArrayList<IsoZombie> zombies = IsoWorld.instance.currentCell.getZombieList();
         NetworkZombieManager.getInstance().beginAuthUpdate();
+        long ownershipNanos = 0L, packetNanos = 0L;
         for (int i = 0; i < zombies.size(); i++) {
             IsoZombie zombie = zombies.get(i);
+            long started = System.nanoTime();
             NetworkZombieManager.getInstance().updateAuth(zombie);
+            long prepared = System.nanoTime();
             zombie.zombiePacket.set(zombie);
+            ownershipNanos += prepared - started;
+            packetNanos += System.nanoTime() - prepared;
         }
+        ApocBRServerTelemetryLite.recordPhase("network.zombies.ownership", ownershipNanos);
+        ApocBRServerTelemetryLite.recordPhase("network.zombies.packetPrepare", packetNanos);
     }
 
     public int getZombieData(UdpConnection connection, ZombieSynchronizationPacket packet) {

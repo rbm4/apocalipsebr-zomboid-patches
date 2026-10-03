@@ -16,6 +16,7 @@ import org.joml.Vector3f;
 import se.krka.kahlua.j2se.KahluaTableImpl;
 import zombie.GameTime;
 import zombie.ServerMovingObjectIndex;
+import zombie.MovingObjectUpdateScheduler;
 import zombie.ApocBRServerTelemetryLite;
 import zombie.GameWindow;
 import zombie.IndieGL;
@@ -3640,15 +3641,17 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
             float locZ = this.getZ();
             this.spottedList.clear();
 
-            // The server view retains active-lifetime insertion order among perception targets.
-            // Self is the only animal vanilla adds to spottedList; other animals never cause
-            // a spotted() callback, so avoid traversing them (and cars/physics props) at all.
+            // Spatial candidates retain active-lifetime order. Human detection remains global.
             Iterable<IsoMovingObject> targets;
             if (GameServer.server) {
                 if (this.getCell().getObjectList().contains(this)) {
                     this.spottedList.add(this);
                 }
-                targets = ServerMovingObjectIndex.getPerceptionTargets(this.getCell());
+                this.getBehavior().beginServerPerception();
+                ServerMovingObjectIndex.queryPerceptionTargets(this.getCell(),
+                    MovingObjectUpdateScheduler.instance.getFrameCounter(), locX, locY,
+                    this.adef.fleeZombies, this.serverPerceptionTargets);
+                targets = this.serverPerceptionTargets;
             } else {
                 targets = this.getCell().getObjectList();
             }
@@ -3674,14 +3677,16 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
                                 IsoPlayer movingPlayer = Type.tryCastTo(movingCharacter, IsoPlayer.class);
                                 IsoZombie movingZombie = Type.tryCastTo(movingCharacter, IsoZombie.class);
                                 if (movingZombie != null) {
-                                    this.getBehavior().spotted(movingZombie, false, distanceToMovingObject);
+                                    if (GameServer.server) this.getBehavior().spottedFromServerPerception(movingZombie, distanceToMovingObject);
+                                    else this.getBehavior().spotted(movingZombie, false, distanceToMovingObject);
                                 }
 
                                 if (!(movingCharacter instanceof IsoAnimal)
                                     && movingCharacter instanceof IsoPlayer player
                                     && !movingCharacter.isInvisible()
                                     && !player.isGhostMode()) {
-                                    this.getBehavior().spotted(movingCharacter, false, distanceToMovingObject);
+                                    if (GameServer.server) this.getBehavior().spottedFromServerPerception(movingCharacter, distanceToMovingObject);
+                                    else this.getBehavior().spotted(movingCharacter, false, distanceToMovingObject);
                                 }
                             }
                         }
@@ -3690,11 +3695,14 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
             }
         } finally {
             if (GameServer.server) {
+                this.serverPerceptionTargets.clear();
                 ApocBRServerTelemetryLite.recordPhase("simulation.animals.perception", System.nanoTime() - perceptionStarted);
                 ApocBRServerTelemetryLite.count("animals.perceptionCandidatesVisited", visited);
             }
         }
     }
+
+    private final ArrayList<IsoMovingObject> serverPerceptionTargets = new ArrayList<>();
 
     public boolean canBePutInHutch(IsoHutch hutch) {
         return this.adef != null && this.adef.hutches != null ? this.adef.hutches.contains(hutch.type) : false;

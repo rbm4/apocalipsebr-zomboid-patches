@@ -1528,6 +1528,10 @@ public class BaseAnimalBehavior {
     }
 
     public void spotted(IsoMovingObject other, boolean bForced, float dist) {
+        this.spotted(other, bForced, dist, true);
+    }
+
+    public void beginServerPerception() {
         this.parent.spottedChr = null;
         if (this.lastAlerted > 0.0F) {
             this.lastAlerted = this.lastAlerted - GameTime.getInstance().getMultiplier();
@@ -1536,6 +1540,14 @@ public class BaseAnimalBehavior {
         if (this.lastAlerted < 0.0F) {
             this.lastAlerted = 0.0F;
         }
+    }
+
+    public void spottedFromServerPerception(IsoMovingObject other, float dist) {
+        this.spotted(other, false, dist, false);
+    }
+
+    private void spotted(IsoMovingObject other, boolean bForced, float dist, boolean bookkeeping) {
+        if (bookkeeping) this.beginServerPerception();
 
         if (!GameClient.client) {
             if (this.parent.getCurrentSquare() != null) {

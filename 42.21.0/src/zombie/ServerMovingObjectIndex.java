@@ -22,6 +22,7 @@ public final class ServerMovingObjectIndex {
         public boolean active = true;
         int scheduleSlot = -1;
         int typeSlot = -1;
+        ServerAnimalPerceptionGrid.Entry perceptionEntry;
 
         Member(IsoMovingObject object) {
             this.object = object;
@@ -41,6 +42,7 @@ public final class ServerMovingObjectIndex {
     private final ArrayList<IsoMovingObject> targetObjects = new ArrayList<>();
     private final List<IsoMovingObject> targetView = Collections.unmodifiableList(this.targetObjects);
     private boolean scheduledDirty, animalsDirty, targetsDirty;
+    private final ServerAnimalPerceptionGrid perceptionGrid = new ServerAnimalPerceptionGrid();
 
     Member add(IsoMovingObject object) {
         Member member = new Member(object);
@@ -52,6 +54,8 @@ public final class ServerMovingObjectIndex {
             member.typeSlot = this.animals.size();
             this.animals.add(member);
         } else if (member.kind == ZOMBIE || member.kind == HUMAN) {
+            if (member.kind == HUMAN) this.perceptionGrid.addHuman(member);
+            else this.perceptionGrid.invalidate();
             member.typeSlot = this.targets.size();
             this.targets.add(member);
             this.targetObjects.add(object);
@@ -61,6 +65,7 @@ public final class ServerMovingObjectIndex {
 
     void remove(Member member) {
         member.active = false;
+        this.perceptionGrid.remove(member);
         if (member.scheduleSlot >= 0) {
             this.scheduled.set(member.scheduleSlot, null);
             this.removed.add(member);
@@ -122,6 +127,12 @@ public final class ServerMovingObjectIndex {
 
     public static List<IsoMovingObject> getPerceptionTargets(IsoCell cell) {
         return forCell(cell).targetView;
+    }
+
+    public static void queryPerceptionTargets(IsoCell cell, long frame, float x, float y,
+                                             boolean includeZombies, ArrayList<IsoMovingObject> output) {
+        ServerMovingObjectIndex index = forCell(cell);
+        index.perceptionGrid.query(index.targets, frame, x, y, includeZombies, output);
     }
 
     public static void updateAnimalSounds(IsoCell cell, long frame) {
