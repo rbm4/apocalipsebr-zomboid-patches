@@ -20,7 +20,7 @@ public class GameTime {
 """,
     "zombie/GameWindow.java": "package zombie; public class GameWindow { public static float averageFPS=60; }",
     "zombie/network/GameServer.java": "package zombie.network; public class GameServer { public static boolean server=true, guiCommandline=false; }",
-    "zombie/ApocBRServerTelemetryLite.java": "package zombie; public class ApocBRServerTelemetryLite { public static void recordPhase(String n,long t){} public static void count(String n,long v){} }",
+    "zombie/ApocBRServerTelemetryLite.java": "package zombie; public class ApocBRServerTelemetryLite { public static void recordPhase(String n,long t){} public static final java.util.Map<String,Long> counts=new java.util.HashMap<>(); public static void count(String n,long v){counts.merge(n,v,Long::sum);} }",
     "zombie/VirtualZombieManager.java": "package zombie; import zombie.characters.IsoZombie; public class VirtualZombieManager { public static final VirtualZombieManager instance=new VirtualZombieManager(); public boolean isReused(IsoZombie z){return false;} }",
     "zombie/popman/NetworkZombiePacker.java": "package zombie.popman; public class NetworkZombiePacker { private static final NetworkZombiePacker i=new NetworkZombiePacker(); public static NetworkZombiePacker getInstance(){return i;} public void awaitWorkers(){} }",
     "zombie/popman/ZombieCountOptimiser.java": "package zombie.popman; public class ZombieCountOptimiser { public static void prepareZombiesForDeletion(){} public static void deleteZombies(){} }",
@@ -45,7 +45,7 @@ public class PZArrayUtil {
 package zombie.iso;
 import java.util.*;
 public class IsoCell {
-    public final Set<IsoMovingObject> objects=new LinkedHashSet<>(), removed=new HashSet<>();
+    public final Set<IsoMovingObject> objects=new zombie.ServerMovingObjectSet(), removed=new HashSet<>();
     public Set<IsoMovingObject> getObjectList(){return objects;}
     public Set<IsoMovingObject> getRemoveList(){return removed;}
 }
@@ -132,7 +132,7 @@ import zombie.network.GameServer;
 public class MovingObjectAlgorithmsTest {
     static int assertions;
     static void check(boolean ok,String message){assertions++;if(!ok)throw new AssertionError(message);}
-    static IsoMovingObject object(int id){IsoMovingObject o=new IsoMovingObject();o.id=id;return o;}
+    static IsoMovingObject object(int id){IsoMovingObject o=new IsoMovingObject();o.id=id;IsoWorld.instance.cell.objects.add(o);return o;}
     static void resetWorld(){IsoWorld.instance.cell=new IsoCell();}
     static MovingObjectUpdateSchedulerUpdateBucket[] buckets() throws Exception {
         Field f=MovingObjectUpdateScheduler.class.getDeclaredField("simulationLevels");f.setAccessible(true);
@@ -177,7 +177,7 @@ public class MovingObjectAlgorithmsTest {
         car.active=false;animal.alerted=false;s.startFrame();
         check(!full.getBucket(0).contains(car)&&slow.getBucket(0).contains(car),"car demotion");
         var replacement=object(64);cell.objects.remove(regular);cell.objects.add(replacement);s.startFrame();
-        check(!full.getBucket(0).contains(regular)&&full.getBucket(0).contains(replacement),"unhooked removal with same world cardinality reconciled");
+        check(!full.getBucket(0).contains(regular)&&full.getBucket(0).contains(replacement),"direct removal with same world cardinality updates lifecycle");
         s.removeObject(replacement);s.removeObject(replacement);cell.objects.remove(replacement);
         check(!full.getBucket(0).contains(replacement),"scheduler removal is idempotent");
         resetWorld();s.startFrame();for(var b:buckets())for(int phase=0;phase<16;phase++)check(b.getBucket(phase).isEmpty(),"new cell clears retained references");
@@ -186,20 +186,19 @@ public class MovingObjectAlgorithmsTest {
     }
     static void indexTests(){
         resetWorld();var c=IsoWorld.instance.cell;var p=new IsoPlayer();var a=new IsoAnimal();var z=new IsoZombie();var car=new BaseVehicle();
-        c.objects.addAll(List.of(a,car,z,object(6),p));ServerMovingObjectIndex.beginFrame(c);
-        for(var o:c.objects)ServerMovingObjectIndex.classify(o);ServerMovingObjectIndex.finishFrameIndex();
-        check(ServerMovingObjectIndex.getPerceptionTargets(c).equals(List.of(z,p)),"filter preserves target order; animals are not human players");
+        c.objects.addAll(List.of(a,car,z,object(6),p));
+        check(ServerMovingObjectIndex.getPerceptionTargets(c).equals(List.of(z,p)),"filter retains lifetime order; animals are not human players");
         for(int frame=0;frame<4;frame++)ServerMovingObjectIndex.updateAnimalSounds(c,frame);
         check(a.sounds==1,"sound work distributed once per four frames");
         a.onHook=true;for(int frame=4;frame<8;frame++)ServerMovingObjectIndex.updateAnimalSounds(c,frame);
         check(a.sounds==1,"hooked animals do not run sound work");
-        var newcomer=new IsoPlayer();c.objects.add(newcomer);ServerMovingObjectIndex.invalidate();
-        check(ServerMovingObjectIndex.getPerceptionTargets(c).contains(newcomer),"addition before perception refreshes index");
+        var newcomer=new IsoPlayer();c.objects.add(newcomer);
+        check(ServerMovingObjectIndex.getPerceptionTargets(c).contains(newcomer),"insertion immediately registers perception target");
         var cached=ServerMovingObjectIndex.getPerceptionTargets(c);c.objects.remove(p);
         check(ServerMovingObjectIndex.getPerceptionTargets(c)==cached,"removal does not cause repeated world rebuilds");
-        check(!c.objects.contains(p),"removed cached targets are rejected by caller membership check");
-        c.objects.remove(z);c.objects.add(new IsoZombie());ServerMovingObjectIndex.invalidate();
-        check(!ServerMovingObjectIndex.getPerceptionTargets(c).contains(z),"same-cardinality hooked replacement refreshes index");
+        check(!cached.contains(p),"removal immediately tombstones perception membership");
+        c.objects.remove(z);c.objects.add(new IsoZombie());
+        check(!ServerMovingObjectIndex.getPerceptionTargets(c).contains(z),"same-cardinality direct replacement maintains index");
     }
     static void threadedFrameTest() throws Exception {
         resetWorld();var s=MovingObjectUpdateScheduler.instance;var o=object(7);
@@ -224,6 +223,30 @@ public class MovingObjectAlgorithmsTest {
         nextFrame.get(5,java.util.concurrent.TimeUnit.SECONDS);
         check(position(buckets()[0],o)==null,"animation removal and frame transition complete without deadlock");
     }
+    static void lifecycleTests() throws Exception {
+        resetWorld();var c=IsoWorld.instance.cell;var s=MovingObjectUpdateScheduler.instance;
+        var human=new IsoPlayer();var animal=new IsoAnimal();var zombie=new IsoZombie();
+        c.objects.addAll(List.of(human,animal,zombie));
+        long classified=ApocBRServerTelemetryLite.counts.getOrDefault("movingObjects.classified",0L);
+        check(!c.objects.add(animal),"duplicate add does not create another lifetime");
+        s.startFrame();s.startFrame();
+        check(ApocBRServerTelemetryLite.counts.get("movingObjects.classified")==classified,"stable frames perform zero type classifications");
+        var pooled=object(16);s.startFrame();
+        c.objects.remove(pooled);c.objects.add(pooled);s.update();
+        check(pooled.updates==0,"re-addition cannot resurrect the old update slot");
+        s.postupdate();check(pooled.posts==0,"old lifetime cannot postupdate after re-addition");
+        s.startFrame();s.update();check(pooled.updates==1,"new lifetime schedules normally next frame");
+        c.objects.removeIf(o->o instanceof IsoAnimal);
+        ServerMovingObjectIndex.updateAnimalSounds(c,0);check(animal.sounds==0,"removeIf updates type index");
+        var iterator=c.objects.iterator();while(iterator.hasNext()){if(iterator.next()==zombie){iterator.remove();break;}}
+        check(!ServerMovingObjectIndex.getPerceptionTargets(c).contains(zombie),"iterator.remove updates perception index");
+        c.objects.addAll(List.of(animal,zombie));c.objects.retainAll(List.of(human));s.startFrame();
+        check(ServerMovingObjectIndex.getPerceptionTargets(c).stream().filter(Objects::nonNull).toList().equals(List.of(human)),"retainAll updates all indexes");
+        c.objects.add(zombie);c.objects.removeAll(List.of(human,zombie));s.startFrame();
+        check(ServerMovingObjectIndex.getPerceptionTargets(c).isEmpty(),"removeAll updates all indexes");
+        c.objects.addAll(List.of(animal,zombie));c.objects.clear();s.startFrame();
+        check(ServerMovingObjectIndex.forCell(c).getScheduledMembers().isEmpty(),"clear releases scheduled/type entries");
+    }
     static void removalScaleTest(){
         var b=new MovingObjectUpdateSchedulerUpdateBucket(UpdateSchedulerSimulationLevel.SIXTEENTH);
         var objects=new ArrayList<IsoMovingObject>();for(int i=0;i<30000;i++){var o=object(i);objects.add(o);b.add(o);}
@@ -236,7 +259,7 @@ public class MovingObjectAlgorithmsTest {
         System.out.printf("30,000 objects / 1,000 indexed removals: %.3f ms (fixture, not server benchmark)%n",elapsed/1e6);
     }
     public static void main(String[] args) throws Exception {
-        bucketTests();schedulerTests();indexTests();threadedFrameTest();removalScaleTest();
+        bucketTests();schedulerTests();indexTests();threadedFrameTest();lifecycleTests();removalScaleTest();
         System.out.println("Passed "+assertions+" lifecycle and algorithm assertions.");
     }
 }
@@ -260,6 +283,7 @@ def main():
             "MovingObjectUpdateScheduler.java",
             "MovingObjectUpdateSchedulerUpdateBucket.java",
             "ServerMovingObjectIndex.java",
+            "ServerMovingObjectSet.java",
         ])
         sources.append(ROOT / "42.21.0/decompiled/zombie/UpdateSchedulerSimulationLevel.java")
         output = work / "classes"

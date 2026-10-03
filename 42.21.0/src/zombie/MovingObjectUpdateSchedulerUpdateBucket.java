@@ -24,10 +24,12 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
     private static final class Position {
         final int phase;
         int index;
+        final ServerMovingObjectIndex.Member lifetime;
 
-        Position(int phase, int index) {
+        Position(int phase, int index, IsoMovingObject object) {
             this.phase = phase;
             this.index = index;
+            this.lifetime = ((ServerMovingObjectSet)IsoWorld.instance.getCell().getObjectList()).member(object);
         }
     }
 
@@ -52,7 +54,7 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
             if (this.positions.containsKey(o)) {
                 return;
             }
-            this.positions.put(o, new Position(index, this.buckets[index].size()));
+            this.positions.put(o, new Position(index, this.buckets[index].size(), o));
         }
         this.buckets[index].add(o);
     }
@@ -85,7 +87,7 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         try {
             for (int i = 0; i < fullSimulation.size(); i++) {
                 IsoMovingObject isoMovingObject = fullSimulation.get(i);
-                if (isoMovingObject == null) {
+                if (isoMovingObject == null || GameServer.server && !this.isActiveLifetime(isoMovingObject)) {
                     continue;
                 }
                 if (isoMovingObject instanceof IsoDeadBody) {
@@ -115,7 +117,7 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         try {
             for (int i = 0; i < fullSimulation.size(); i++) {
                 IsoMovingObject isoMovingObject = fullSimulation.get(i);
-                if (isoMovingObject == null) {
+                if (isoMovingObject == null || GameServer.server && !this.isActiveLifetime(isoMovingObject)) {
                     continue;
                 }
                 IsoZombie zombie = Type.tryCastTo(isoMovingObject, IsoZombie.class);
@@ -129,6 +131,11 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         } finally {
             GameTime.getInstance().perObjectMultiplier = 1.0F;
         }
+    }
+
+    private boolean isActiveLifetime(IsoMovingObject object) {
+        Position position = this.positions.get(object);
+        return position != null && (position.lifetime == null || position.lifetime.active);
     }
 
     public void removeObject(IsoMovingObject object) {

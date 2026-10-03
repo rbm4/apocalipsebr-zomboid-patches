@@ -37,6 +37,7 @@ import zombie.IndieGL;
 import zombie.MainThread;
 import zombie.MovingObjectUpdateScheduler;
 import zombie.ServerMovingObjectIndex;
+import zombie.ServerMovingObjectSet;
 import zombie.ApocBRServerTelemetryLite;
 import zombie.ReanimatedPlayers;
 import zombie.SandboxOptions;
@@ -135,7 +136,7 @@ public final class IsoCell {
     public final IsoChunkMap[] chunkMap = new IsoChunkMap[4];
     public final ArrayList<IsoBuilding> buildingList = new ArrayList<>();
     private final ArrayList<IsoWindow> windowList = new ArrayList<>();
-    private final Set<IsoMovingObject> objectList = new HashSet<>();
+    private final Set<IsoMovingObject> objectList = new ServerMovingObjectSet();
     private final ArrayList<IsoPushableObject> pushableObjectList = new ArrayList<>();
     private final HashMap<Integer, BuildingScore> buildingScores = new HashMap<>();
     private final ArrayList<IsoRoom> roomList = new ArrayList<>();
@@ -2792,9 +2793,7 @@ public final class IsoCell {
 
     public void addMovingObject(IsoMovingObject o) {
         if (this.isSafeToAdd()) {
-            if (this.objectList.add(o) && GameServer.server) {
-                ServerMovingObjectIndex.invalidate();
-            }
+            this.objectList.add(o);
         } else {
             this.addList.add(o);
         }

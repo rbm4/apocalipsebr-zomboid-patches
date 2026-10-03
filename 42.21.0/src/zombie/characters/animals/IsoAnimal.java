@@ -3640,7 +3640,7 @@ public class IsoAnimal extends IsoPlayer implements IAnimalVisual {
             float locZ = this.getZ();
             this.spottedList.clear();
 
-            // The server view retains world iteration order among actual perception targets.
+            // The server view retains active-lifetime insertion order among perception targets.
             // Self is the only animal vanilla adds to spottedList; other animals never cause
             // a spotted() callback, so avoid traversing them (and cars/physics props) at all.
             Iterable<IsoMovingObject> targets;

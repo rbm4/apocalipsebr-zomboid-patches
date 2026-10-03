@@ -74,61 +74,74 @@ callbacks together. Live validation is still required for overhead, threading,
 and the actual bottleneck. No scheduling, packet, save, or gameplay behavior is
 intentionally changed by this instrumentation.
 
-## Moving-object algorithm patch
+## Moving-object lifecycle indexes
 
-The 42.21.0 server scheduler now retains phase-bucket membership between frames.
-One authoritative world-set pass still checks activity every frame, promotes or
-demotes vehicles/animals immediately according to the existing predicates, and
-populates shared animal/perception views. Stable members are not cleared and
-reinserted. Direct removals that bypass the scheduler are reconciled when the
-world pass detects missing members; cell changes reset retained membership.
+The 42.21.0 server classifies an object on successful insertion into the active
+`IsoCell.objectList`, using its immutable Java type only. This can occur inside a
+constructor; subclass activity fields are not read until scheduling at a frame
+boundary. Constructed objects that never enter the active set are not indexed.
+`ServerMovingObjectSet` preserves the exposed Set API and observes direct add,
+remove, iterator removal, addAll, removeAll, retainAll, removeIf and clear. Duplicate
+additions create no extra entry. Each removal/re-addition creates a new active
+lifetime, even when a pooled instance retains its identity or changes its ID.
 
-Server removal uses identity lookups to the object's level and slot. Removed
-slots become null until stable compaction at the next frame boundary. Update and
-postupdate skip those slots, preventing self-removal from skipping the successor.
-Optional threaded animation is joined before changing frame membership; scheduler
-mutation and execution share a reentrant monitor. Normal client classification
-and per-frame bucket rebuilding remain in place. Persistent server buckets retain
-their existing order until members enter/leave/change level, rather than adopting
-the HashSet's full iteration order again on every frame.
+Indexes are owned by each cell, with persistent views for schedulable non-zombies,
+animals, and perception targets (zombies and human players). No full-world server
+classification or reconciliation pass runs per frame. The scheduler checks only
+preclassified schedulable members for activity/minimum-level changes, using the
+existing vehicle and animal predicates. Server-GUI zombie updates run separately
+only when that GUI is enabled. Client render/distance scheduling retains its
+world pass. Telemetry's class histogram still samples the whole set once per
+reporting window, not per frame.
 
-Server animal perception traverses shared zombies/human-player candidates rather
-than every animal, vehicle, prop, or physics object. Candidates retain world-set
-order at classification time. Existing height, square, visibility, ghost/grapple
-checks, distances and spotted callbacks remain in place; no distance cutoff or
-additional perception throttle is introduced. Removed targets are rejected by
-current world membership. Normal immediate additions invalidate the view; size
-increases also trigger a refresh. Mods replacing entries directly through the
-exposed Set at equal cardinality during a frame should call
-`ServerMovingObjectIndex.invalidate()`; otherwise those additions appear at the
-next frame's classification pass.
+Server buckets remain persistent. Removals use identity lookups and leave empty
+slots until compaction at a frame boundary. Only affected type views/buckets are
+compacted. Removed lifetime entries immediately become inactive; update and
+postupdate reject them even if the same object is re-added before the next frame.
+Lifecycle removal queues drain at frame/update/postupdate boundaries. Newly
+inserted objects join scheduling at the next frame, while perception indexes
+reflect insertion immediately. Optional threaded animation is joined before
+changing frame membership; scheduler mutation/execution share a reentrant monitor.
 
-Server animal sound work uses the shared animal view and is distributed every four
-frames by ID. Set `-Dapocbr.animalSoundFrameMod=1` to restore its previous cadence,
-or another positive interval to change this cosmetic-work throttle. Client sound
-cadence and existing car/animal simulation frequencies are retained.
+Perception and bucket traversal now retain active-lifetime insertion order rather
+than re-adopting world HashSet order each frame. Existing height, square,
+visibility, ghost/grapple checks, distances and spotted callbacks remain; no
+spatial cutoff or extra perception throttle is introduced. Perception views can
+contain temporary empty slots until compaction; callers skip removed targets.
+Direct same-cardinality Set replacements no longer require manual invalidation.
 
-New inclusive phases:
+Server animal sound work is distributed every four frames by ID. Set
+`-Dapocbr.animalSoundFrameMod=1` to restore its previous cadence. Client sounds and
+existing car/animal simulation frequencies are retained.
 
-- `simulation.movingObjects.classify`: index maintenance, dirty-bucket compaction,
-  classification and membership reconciliation; excludes preceding zombie waits.
+Inclusive phases:
+
+- `simulation.movingObjects.classify`: successful lifecycle insertion/classification
+  work, measured at the Set boundary; may be inside chunk integration or spawning.
+- `simulation.movingObjects.lifecycle`: removal-queue draining and dirty compaction
+  at the frame boundary; excludes preceding zombie waits.
+- `simulation.movingObjects.activity`: preclassified non-zombie scheduling checks
+  and membership changes; no full-world type discovery.
 - `simulation.movingObjects.update`: scheduled moving-object updates.
 - `simulation.movingObjects.postupdate`: scheduler postupdate/animation; can run
   outside the parent simulation timing with optional threaded animation.
-- `simulation.animals.perception`: individual animal perception calls, nested in
-  moving-object update. Do not add it to its parent as an independent cost.
-- `simulation.animals.sounds`: server animal sound dispatch, including any index
-  refresh required by immediate additions.
+- `simulation.animals.perception`: individual perception calls, nested in object
+  update. Do not add it to its parent as an independent cost.
+- `simulation.animals.sounds`: server animal sound dispatch.
 
-Counters `movingObjects.classified`, `movingObjects.schedulerAdded`,
-`movingObjects.schedulerLevelChanges`, `movingObjects.schedulerRemoved`, and
-`animals.perceptionCandidatesVisited` are interval totals. Classification sums
-the world size per frame, not unique objects. Removed counts cover registered
-members removed through the scheduler API; direct-set reconciliation is excluded.
+`movingObjects.classified` now counts successful active-world insertions in the
+interval, including re-entry of pooled objects. It is no longer a sum of repeated
+frame visits: zero is expected in stable windows. `movingObjects.activityChecked`
+counts scheduling checks on preclassified non-zombies. Scheduler added/removed/
+level-change counters and `animals.perceptionCandidatesVisited` remain interval
+totals. Scheduler removal counts now also include lifecycle queue removals.
 
 Verification: `python tools/test_moving_object_algorithms.py` exercises production
-scheduler/bucket/index sources using isolated engine fixtures. Run the normal
-42.21.0 patch script with `-DryRun` for game-JAR compilation. Live scenarios still
-needed: large herds, vehicle starts/stops and towing, animal alert/lure/hook changes,
-mass despawn/chunk unload, threaded animation if enabled, and before/after
-telemetry at comparable populations. Fixture timing is not a server benchmark.
+Set/index/scheduler/bucket sources using isolated engine fixtures. The tests cover
+bulk and iterator mutations, same-cardinality replacements, duplicate additions,
+pooled re-entry, zero frame reclassification, removal during callbacks, activity
+changes, cell reset, and threaded frame transitions. Run the normal 42.21.0 patch
+script with `-DryRun` for game-JAR compilation. Live validation remains necessary
+for large herds, vehicle starts/stops/towing, animal alert/lure/hook changes, mass
+despawn/chunk unload, and threaded animation if enabled. Fixture timing is not a
+server benchmark.
