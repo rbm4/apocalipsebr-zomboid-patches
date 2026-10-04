@@ -42,12 +42,13 @@ STUBS = {
     "zombie/entity/IBucketListener.java": "package zombie.entity; public interface IBucketListener {void onBucketEntityAdded(EntityBucket b,GameEntity e);void onBucketEntityRemoved(EntityBucket b,GameEntity e);}",
     "zombie/entity/GameEntity.java": """package zombie.entity; public class GameEntity {
  public boolean removingFromEngine, scheduledForEngineRemoval, addedToEngine=true, drying, accepted=true;
+ ServerUsingPlayerIndex.Member usingPlayerMemberships; private zombie.characters.IsoPlayer usingPlayer;
  private final zombie.entity.util.BitSet bits=new zombie.entity.util.BitSet(); public zombie.entity.util.BitSet getBucketBits(){return bits;}
  public boolean hasComponent(ComponentType t){return drying;} public boolean hasRenderers(){return false;} public long getEntityNetID(){return 0;} public boolean isMeta(){return false;}
  public boolean isEntityValid(){return true;} public boolean isValidEngineEntity(){return addedToEngine&&!scheduledForEngineRemoval&&!removingFromEngine;}
  public zombie.iso.IsoGridSquare getSquare(){return null;} public float getX(){return 0;} public float getY(){return 0;} public float getZ(){return 0;}
  public GameEntityType getGameEntityType(){return GameEntityType.MetaEntity;} public boolean isOutside(){return false;}
- public boolean isUsingPlayer(zombie.characters.IsoPlayer p){return false;} public zombie.characters.IsoPlayer getUsingPlayer(){return null;} public void setUsingPlayer(zombie.characters.IsoPlayer p){}
+ public boolean isUsingPlayer(zombie.characters.IsoPlayer p){return false;} public zombie.characters.IsoPlayer getUsingPlayer(){return usingPlayer;} public void setUsingPlayer(zombie.characters.IsoPlayer p){usingPlayer=p;ServerUsingPlayerIndex.changed(this);}
  public void reset(){drying=false;} public void saveEntity(java.nio.ByteBuffer b){} public void loadEntity(java.nio.ByteBuffer b,int v){}
 } """,
     "zombie/iso/IsoGridSquare.java": "package zombie.iso; public class IsoGridSquare {public boolean isOutside(){return false;}public boolean isCanSee(int i){return true;}}",
@@ -238,7 +239,7 @@ def main():
             path.write_text(content, encoding="utf-8")
             sources.append(path)
         src = ROOT / "42.21.0/src/zombie"
-        sources.extend(src / name for name in ["entity/EntityBucket.java", "entity/MetaEntity.java",
+        sources.extend(src / name for name in ["entity/EntityBucket.java", "entity/ServerUsingPlayerIndex.java", "entity/MetaEntity.java",
             "entity/EntitySimulation.java", "entity/MetaSimulationThrottle.java", "entity/ServerEntitySimulationIndex.java",
             "Lua/Event.java", "util/list/MutationTrackedArrayList.java", "util/list/PZArrayList.java",
             "popman/animal/ServerAnimalUpdateCoverage.java", "popman/animal/AnimalSynchronizationManager.java"])

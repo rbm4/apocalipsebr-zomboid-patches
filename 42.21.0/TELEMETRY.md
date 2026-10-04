@@ -354,3 +354,87 @@ live server performance measurements. Run the normal patch script with `-DryRun`
 for real game-JAR compilation. Live checks still cover chunk unload/reload,
 craft/resource transitions, mass corpse decay and fake-dead wakeups, large herd
 sync, split-screen/reconnect, and optional threaded animation/world work.
+
+
+## Production hot-spot breakdown (sequences 127/128 follow-up)
+
+See [PRODUCTION-HOTSPOTS.md](PRODUCTION-HOTSPOTS.md) for source findings,
+production measurements, optimization constraints and validation.
+
+Moving-object callback chains now have fixed `simulation.movingObjects.update`
+and `.postupdate` children for `zombie`, `vehicle`, `animal`, `player`, `giblet`
+and `other`. The corresponding `movingObjects.updateAttempts.<kind>` and
+`postupdateAttempts.<kind>` counters count attempted chains, including throws.
+Phase calls describe per-class **bucket batches**; divide totalMs by attempt
+counts to estimate mean object cost. Class dispatch retains the existing order,
+mutation checks and scheduling. Animation inline includes postupdate.
+
+Entity frame callbacks appear under `simulation.entities.frameSystem.<Class>`.
+`frameOperations` and `simulationOperations` measure entity/component queue drains
+at their original post-system points. `frameSystemOperations` and
+`simulationSystemOperations` measure pending system registration changes.
+`simulation.misc.gameTime`, `.scripts`, `.rain` and `.meta` provide
+selected children of UpdateStuff; gameTime includes periodic Lua event execution.
+
+`map.chunk.unloadSquares` now contains `cleanup`, `moving`, `isoObjects`,
+`staticObjects` and `detach` children, aggregated per chunk, not per square.
+`chunks.unloadedSquares`, `.unloadedIsoObjectAttempts` and
+`.unloadedStaticObjectAttempts` report non-null squares and actual object-loop
+visits. Existing `.unloadedMovingObjects` reports starting moving-list entries.
+Incomplete exceptional removal does not flush these aggregate child metrics.
+`map.chunk.unloadVehiclePersistence` and `.unloadSaveEnqueue` measure subsequent
+ServerCell.Unload calls; they do not measure asynchronous save completion.
+
+`jvm.collectors` adds per-collector `name`, `count` and `totalMs` interval deltas.
+This is additive to existing `gcCount`/`gcMs`; collector time can include concurrent
+work and is not a direct stop-the-world pause measurement. Bean readings occur
+sequentially, so collection completions at window boundaries can cause slight
+aggregate/per-collector differences.
+
+Optional JVM flag `-Dapocbr.telemetry.squareLookups.enabled=true` adds counters
+`isoObjects.squareLookup.rawArrayExposed`, `.smallList`, `.customEquality`,
+`.cacheEligible` and `.listEntries` for server IsoObject-list `indexOf(Object)`
+queries. Reasons are mutually exclusive in that order; listEntries sums queried
+list sizes, not comparisons. Diagnostic counters are disabled by default to avoid
+counter overhead on each lookup. Other lookup overloads are not instrumented.
+
+
+## Using-player active index
+
+The dedicated-server `UsingPlayerUpdateSystem` now traverses entities whose
+using-player field is non-null. Membership is updated at bucket admission/removal
+and every vanilla assignment (setter, receive packets, synchronization and reset).
+The first indexed pass bootstraps the existing bucket once; later frames do not
+rescan idle entries. Vanilla distance bounds, level/death checks, validity guards,
+packet sends, callback order and per-frame cleanup cadence are retained. Client
+update remains a no-op and single-player traversal stays exhaustive.
+
+The index tracks current bucket positions, including swap removal, and queries
+live ordered successors. Callbacks activating a later entry are observed in the
+same pass; activation of an already-passed entry waits until the next frame.
+Classes overriding `getUsingPlayer` or `isValidEngineEntity` remain candidates
+every frame to preserve getter behavior and assignments outside the base setter.
+Owner links are removed when the entity leaves a bucket; no static entity map
+retains old engine lifetimes. The index uses O(N) membership storage, one O(N)
+bootstrap, O(log A) active membership changes and O(A log A) per-frame traversal,
+where A includes conservative override candidates.
+
+`entities.usingPlayer.bucketEntriesAtStart` sums full bucket sizes before passes;
+`candidatesVisited` counts actual indexed visits (including exception attempts);
+`fallbackCandidatesVisited` is the subset with overridden accessors;
+`cleared` counts completed cleanup calls;
+`indexBootstrapped` counts members visited during one-time index creation; and
+`indexMembershipChanges` counts selection admissions/removals, not position moves.
+All names have the `entities.usingPlayer.` prefix. Compare these with
+`simulation.entities.frameSystem.UsingPlayerUpdateSystem`; bucket entries minus
+visits estimates avoided checks only when membership stays stable during a pass.
+
+`python tools/test_using_player_algorithms.py` compares the exact vanilla system
+with production bucket/index/system code and extracted production GameEntity
+mutation methods. It covers randomized membership/assignment transitions,
+cleanup ordering, boundary/NaN values, packet ownership, client/SP behavior,
+reset/reuse, callback activation/removal/failure, override fallback and coexistence
+with the meta index. The 30,000-member / 35-active fixture verifies 10,500 visits
+across 300 frames, instead of 9,000,000 full-scan visits; this is not a live timing
+benchmark. Live checks should exercise crafting-lock release on death, movement,
+level changes, chunk unload/reload and reconnect.

@@ -581,10 +581,12 @@ public final class IngameState extends GameState {
             asleep = IsoPlayer.allPlayersAsleep();
         }
 
-        GameTime.getInstance().update(asleep && UIManager.getFadeAlpha() == 1.0);
+        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.misc.gameTime")) {
+            GameTime.getInstance().update(asleep && UIManager.getFadeAlpha() == 1.0);
+        }
         GameProfiler profiler = GameProfiler.getInstance();
         if (!this.paused) {
-            try (GameProfiler.ProfileArea ex = profiler.profile("ScriptManager.update")) {
+            try (GameProfiler.ProfileArea ex = profiler.profile("ScriptManager.update"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.misc.scripts")) {
                 ScriptManager.instance.update();
             }
         }
@@ -602,13 +604,13 @@ public final class IngameState extends GameState {
                 ExceptionLogger.logException(var53);
             }
 
-            try (GameProfiler.ProfileArea var58 = profiler.profile("RainManager.Update")) {
+            try (GameProfiler.ProfileArea var58 = profiler.profile("RainManager.Update"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.misc.rain")) {
                 RainManager.Update();
             } catch (Exception var51) {
                 ExceptionLogger.logException(var51);
             }
 
-            try (GameProfiler.ProfileArea var59 = profiler.profile("Meta.update")) {
+            try (GameProfiler.ProfileArea var59 = profiler.profile("Meta.update"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.misc.meta")) {
                 Meta.instance.update();
             }
 

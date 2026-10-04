@@ -40,6 +40,15 @@ public final class ApocBRServerTelemetryLite {
     private static final List<GarbageCollectorMXBean> gcBeans = ManagementFactory.getGarbageCollectorMXBeans();
     private static long previousGcCount = gcCount();
     private static long previousGcMillis = gcMillis();
+    private static final long[] previousCollectorCounts = new long[gcBeans.size()];
+    private static final long[] previousCollectorMillis = new long[gcBeans.size()];
+    static {
+        for (int i = 0; i < gcBeans.size(); i++) {
+            previousCollectorCounts[i] = Math.max(0L, gcBeans.get(i).getCollectionCount());
+            previousCollectorMillis[i] = Math.max(0L, gcBeans.get(i).getCollectionTime());
+        }
+    }
+
     private static final LongAdder overBudgetTicks = new LongAdder();
     private static final LongAdder loopCount = new LongAdder();
     private static final LongAdder loopNanos = new LongAdder();
@@ -204,7 +213,20 @@ public final class ApocBRServerTelemetryLite {
         json.append(",\"heapCommittedBytes\":").append(runtime.totalMemory());
         json.append(",\"heapMaxBytes\":").append(runtime.maxMemory());
         json.append(",\"gcCount\":").append(Math.max(0L, gcCount - previousGcCount));
-        json.append(",\"gcMs\":").append(Math.max(0L, gcMillis - previousGcMillis)).append('}');
+        json.append(",\"gcMs\":").append(Math.max(0L, gcMillis - previousGcMillis));
+        json.append(",\"collectors\":[");
+        for (int i = 0; i < gcBeans.size(); i++) {
+            GarbageCollectorMXBean bean = gcBeans.get(i);
+            long count = Math.max(0L, bean.getCollectionCount());
+            long millis = Math.max(0L, bean.getCollectionTime());
+            if (i > 0) json.append(',');
+            json.append("{\"name\":\"").append(escape(bean.getName())).append("\"");
+            json.append(",\"count\":").append(Math.max(0L, count - previousCollectorCounts[i]));
+            json.append(",\"totalMs\":").append(Math.max(0L, millis - previousCollectorMillis[i])).append('}');
+            previousCollectorCounts[i] = count;
+            previousCollectorMillis[i] = millis;
+        }
+        json.append("]}");
         previousGcCount = gcCount;
         previousGcMillis = gcMillis;
         json.append(",\"playersOnline\":").append(players);

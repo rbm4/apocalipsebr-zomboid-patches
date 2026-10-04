@@ -1081,12 +1081,16 @@ public class ServerMap {
                             chunk.removeFromWorld();
                             chunk.loadVehiclesObject = null;
 
-                            for (int i = 0; i < chunk.vehicles.size(); i++) {
-                                BaseVehicle vehicle = chunk.vehicles.get(i);
-                                VehiclesDB2.instance.updateVehicle(vehicle);
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.chunk.unloadVehiclePersistence")) {
+                                for (int i = 0; i < chunk.vehicles.size(); i++) {
+                                    BaseVehicle vehicle = chunk.vehicles.get(i);
+                                    VehiclesDB2.instance.updateVehicle(vehicle);
+                                }
                             }
 
-                            chunkLoader.addSaveUnloadedJob(chunk);
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.chunk.unloadSaveEnqueue")) {
+                                chunkLoader.addSaveUnloadedJob(chunk);
+                            }
                             this.chunks[x][y] = null;
                         }
                     }

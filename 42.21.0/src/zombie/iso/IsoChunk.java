@@ -3214,11 +3214,15 @@ public final class IsoChunk {
         int to = 64;
         long unloadSquaresStart = GameServer.server ? System.nanoTime() : 0L;
         long unloadedMovingObjects = 0L;
+        long unloadedSquares = 0L, unloadedIsoObjects = 0L, unloadedStaticObjects = 0L;
+        long cleanupNanos = 0L, movingNanos = 0L, isoNanos = 0L, staticNanos = 0L, detachNanos = 0L;
+        long stageStarted = 0L;
 
         for (int n = this.minLevel; n <= this.maxLevel; n++) {
             for (int m = 0; m < 64; m++) {
                 IsoGridSquare sq = this.squares[this.squaresIndexOfLevel(n)][m];
                 if (sq != null) {
+                    if (GameServer.server) { unloadedSquares++; stageStarted = System.nanoTime(); }
                     RainManager.RemoveAllOn(sq);
                     sq.clearWater();
                     sq.clearPuddles();
@@ -3230,6 +3234,7 @@ public final class IsoChunk {
                         sq.zone.removeSquare(sq);
                     }
 
+                    if (GameServer.server) { cleanupNanos += System.nanoTime() - stageStarted; stageStarted = System.nanoTime(); }
                     ArrayList<IsoMovingObject> mov = sq.getMovingObjects();
                     if (GameServer.server) {
                         unloadedMovingObjects += mov.size();
@@ -3263,19 +3268,25 @@ public final class IsoChunk {
 
                     mov.clear();
 
+                    if (GameServer.server) { movingNanos += System.nanoTime() - stageStarted; stageStarted = System.nanoTime(); }
                     for (int i = 0; i < sq.getObjects().size(); i++) {
+                        if (GameServer.server) unloadedIsoObjects++;
                         IsoObject objx = sq.getObjects().get(i);
                         objx.removeFromWorldToMeta();
                     }
 
+                    if (GameServer.server) { isoNanos += System.nanoTime() - stageStarted; stageStarted = System.nanoTime(); }
                     for (int i = 0; i < sq.getStaticMovingObjects().size(); i++) {
+                        if (GameServer.server) unloadedStaticObjects++;
                         IsoMovingObject objx = sq.getStaticMovingObjects().get(i);
                         objx.removeFromWorld();
                     }
 
+                    if (GameServer.server) { staticNanos += System.nanoTime() - stageStarted; stageStarted = System.nanoTime(); }
                     this.disconnectFromAdjacentChunks(sq);
                     sq.softClear();
                     sq.chunk = null;
+                    if (GameServer.server) detachNanos += System.nanoTime() - stageStarted;
                 }
             }
         }
@@ -3283,6 +3294,14 @@ public final class IsoChunk {
         if (GameServer.server) {
             ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares", System.nanoTime() - unloadSquaresStart);
             ApocBRServerTelemetryLite.count("chunks.unloadedMovingObjects", unloadedMovingObjects);
+            ApocBRServerTelemetryLite.count("chunks.unloadedSquares", unloadedSquares);
+            ApocBRServerTelemetryLite.count("chunks.unloadedIsoObjectAttempts", unloadedIsoObjects);
+            ApocBRServerTelemetryLite.count("chunks.unloadedStaticObjectAttempts", unloadedStaticObjects);
+            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.cleanup", cleanupNanos);
+            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.moving", movingNanos);
+            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.isoObjects", isoNanos);
+            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.staticObjects", staticNanos);
+            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.detach", detachNanos);
         }
 
         for (int i = 0; i < this.vehicles.size(); i++) {

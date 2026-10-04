@@ -18,6 +18,7 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
     private E[] elements;
     private int numElements;
     private final boolean isoObjectList;
+    private static final boolean lookupTelemetry = Boolean.getBoolean("apocbr.telemetry.squareLookups.enabled");
     private boolean elementsExposed;
     private boolean identityIndexDirty = true;
     private IdentityHashMap<Object, Integer> identityPositions;
@@ -50,6 +51,12 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
 
     @Override
     public int indexOf(Object o) {
+        if (lookupTelemetry && this.isoObjectList && zombie.network.GameServer.server) {
+            String reason = this.elementsExposed ? "rawArrayExposed" : this.numElements < 8 ? "smallList"
+                : o != null && !identityEquals.get(o.getClass()) ? "customEquality" : "cacheEligible";
+            zombie.ApocBRServerTelemetryLite.count("isoObjects.squareLookup." + reason, 1);
+            zombie.ApocBRServerTelemetryLite.count("isoObjects.squareLookup.listEntries", this.numElements);
+        }
         if (this.isoObjectList && zombie.network.GameServer.server && !this.elementsExposed
             && this.numElements >= 8 && (o == null || identityEquals.get(o.getClass()))) {
             if (this.identityPositions == null) this.identityPositions = new IdentityHashMap<>();

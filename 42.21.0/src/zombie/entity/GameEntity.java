@@ -59,6 +59,8 @@ public abstract class GameEntity {
     boolean scheduledForBucketUpdate;
     @DebugNonRecursive
     private IsoPlayer usingPlayer;
+    @DebugNonRecursive
+    ServerUsingPlayerIndex.Member usingPlayerMemberships;
     private static final boolean IOverbose = false;
 
     public static String getDefaultEntityDisplayName() {
@@ -443,6 +445,7 @@ public abstract class GameEntity {
         }
 
         this.usingPlayer = null;
+        ServerUsingPlayerIndex.changed(this);
         this.addedToEngine = false;
         this.removingFromEngine = false;
         this.scheduledDelayedAddToEngine = false;
@@ -585,6 +588,7 @@ public abstract class GameEntity {
     public void setUsingPlayer(IsoPlayer player) {
         if (this.usingPlayer != player) {
             this.usingPlayer = player;
+            ServerUsingPlayerIndex.changed(this);
             if ((GameClient.client || GameServer.server) && this.getGameEntityType() == GameEntityType.IsoObject) {
                 this.sendUpdateUsingPlayer();
             }
@@ -640,14 +644,17 @@ public abstract class GameEntity {
             short onlineID = input.getShort();
             if (GameClient.client) {
                 this.usingPlayer = GameClient.instance.getPlayerByOnlineID(onlineID);
+                ServerUsingPlayerIndex.changed(this);
             } else if (GameServer.server) {
                 IsoPlayer player = GameServer.getPlayerByUserName(username);
                 if (this.usingPlayer == null) {
                     this.usingPlayer = player;
+                    ServerUsingPlayerIndex.changed(this);
                 }
             }
         } else {
             this.usingPlayer = null;
+            ServerUsingPlayerIndex.changed(this);
         }
 
         if (GameServer.server) {
@@ -705,8 +712,10 @@ public abstract class GameEntity {
                 if (input.getBoolean()) {
                     short onlineID = input.getShort();
                     this.usingPlayer = GameClient.instance.getPlayerByOnlineID(onlineID);
+                    ServerUsingPlayerIndex.changed(this);
                 } else {
                     this.usingPlayer = null;
+                    ServerUsingPlayerIndex.changed(this);
                 }
 
                 ArrayList<ComponentType> syncedTypes = new ArrayList<>();

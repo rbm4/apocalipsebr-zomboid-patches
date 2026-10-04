@@ -15,6 +15,10 @@ public final class Engine {
         @Override protected String computeValue(Class<?> type) { return "simulation.entities.system." + type.getSimpleName(); }
     };
 
+    private static final ClassValue<String> framePhase = new ClassValue<>() {
+        @Override protected String computeValue(Class<?> type) { return "simulation.entities.frameSystem." + type.getSimpleName(); }
+    };
+
     public Engine() {
         boolean enableDynamicSystems = false;
         this.systemManager = new SystemManager(this, false);
@@ -90,16 +94,22 @@ public final class Engine {
             this.processing = true;
 
             try {
-                while (this.systemManager.hasPendingOperations()) {
-                    this.systemManager.processPendingOperations();
+                try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.frameSystemOperations")) {
+                    while (this.systemManager.hasPendingOperations()) {
+                        this.systemManager.processPendingOperations();
+                    }
                 }
 
                 ImmutableArray<EngineSystem> systems = this.systemManager.getUpdaterSystems();
 
                 for (int i = 0; i < systems.size(); i++) {
                     EngineSystem system = systems.get(i);
-                    system.update();
-                    this.entityManager.updateOperations();
+                    try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase(framePhase.get(system.getClass()))) {
+                        system.update();
+                    }
+                    try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.frameOperations")) {
+                        this.entityManager.updateOperations();
+                    }
                 }
             } finally {
                 this.processing = false;
@@ -114,8 +124,10 @@ public final class Engine {
             this.processing = true;
 
             try {
-                while (this.systemManager.hasPendingOperations()) {
-                    this.systemManager.processPendingOperations();
+                try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.simulationSystemOperations")) {
+                    while (this.systemManager.hasPendingOperations()) {
+                        this.systemManager.processPendingOperations();
+                    }
                 }
 
                 ImmutableArray<EngineSystem> systems = this.systemManager.getSimulationUpdaterSystems();
@@ -125,7 +137,9 @@ public final class Engine {
                     try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase(simulationPhase.get(system.getClass()))) {
                         system.updateSimulation();
                     }
-                    this.entityManager.updateOperations();
+                    try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.simulationOperations")) {
+                        this.entityManager.updateOperations();
+                    }
                 }
             } finally {
                 this.processing = false;

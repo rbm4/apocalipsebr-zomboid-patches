@@ -23,6 +23,7 @@ public abstract class EntityBucket {
     private final int index;
     private boolean verbose;
     private ServerEntitySimulationIndex simulationIndex;
+    private ServerUsingPlayerIndex usingPlayerIndex;
 
     private EntityBucket(int index) {
         this.entities = new Array<>(false, 16);
@@ -45,6 +46,15 @@ public abstract class EntityBucket {
             for (int i = 0; i < this.entities.size; i++) this.simulationIndex.add(this.entities.get(i), i);
         }
         return this.simulationIndex.select();
+    }
+
+    final ServerUsingPlayerIndex getUsingPlayerIndex() {
+        if (this.usingPlayerIndex == null) {
+            this.usingPlayerIndex = new ServerUsingPlayerIndex();
+            for (int i = 0; i < this.entities.size; i++) this.usingPlayerIndex.add(this.entities.get(i), i);
+            zombie.ApocBRServerTelemetryLite.count("entities.usingPlayer.indexBootstrapped", this.entities.size);
+        }
+        return this.usingPlayerIndex;
     }
 
     public final void setVerbose(boolean b) {
@@ -84,6 +94,7 @@ public abstract class EntityBucket {
 
             this.entities.add(entity);
             if (this.simulationIndex != null) this.simulationIndex.add(entity, this.entities.size - 1);
+            if (this.usingPlayerIndex != null) this.usingPlayerIndex.add(entity, this.entities.size - 1);
             bits.set(this.index);
             if (Core.debug && this.verbose) {
                 DebugType.Entity.println("bits = " + bits.get(this.index));
@@ -104,6 +115,10 @@ public abstract class EntityBucket {
             }
 
             int position = this.simulationIndex == null ? -1 : this.simulationIndex.remove(entity, this.entities.peek());
+            if (this.usingPlayerIndex != null) {
+                int usingPosition = this.usingPlayerIndex.remove(entity, this.entities.peek());
+                if (position < 0) position = usingPosition;
+            }
             if (position >= 0) this.entities.removeIndex(position);
             else this.entities.removeValue(entity, true);
             bits.clear(this.index);
