@@ -660,3 +660,29 @@ The unload fixture's vehicle source contract now permits only the independently
 tested square-query substitution inside update. The moving-object fixture checks
 parts-only cadence and activity promotion. Validate mod callbacks, radio/light
 activation, cooling, streaming/floor edits, towing and reconnect in multiplayer.
+
+## Mutation-driven IsoObject registry refresh, 2026-10-05
+
+See [registry design and validation](ISO-ENTITY-REGISTRY-RECONCILIATION.md).
+Scheduling and its phase hash are unchanged. Registered server IsoObjects now
+refresh changed square/index IDs before GetEntity returns and before registration
+or unregistration; direct changed-ID getters also use the batch repair path.
+
+| Measurement | Meaning |
+| --- | --- |
+| `entities.registry.reconcile` | Nonempty registry validation/repair boundary, including raw-array validation; can be inside incoming packets, simulation, loading or unloading, so naming does not establish containment |
+| `entities.registry.checked` | Registered members checked in dirty or exposed square lists; not all world objects |
+| `entities.registry.rawArrayChecked` | Subset checked because a backing array remains exposed; repeats at each lookup boundary even without notification |
+| `entities.registry.refreshed` | Changed/pending entries subjected to getter refresh and batch map repair; includes detachment/rebinding and same-ID invalidations |
+| `entities.registry.collisions` | Batch insertion refused because an unrelated entity owns the destination key; logged rather than overwritten |
+
+Clean unexposed buckets incur zero entry checks at lookup boundaries. Raw-array
+fallback is intentionally conservative and may be expensive: inspect its counts
+and elapsed time before scheduling decoupling. The timer measures elapsed work,
+not CPU, and may include stalls. Collection notifications only mark dirty lists;
+they do not reconcile or write registry keys during incomplete list edits.
+Client/single-player collection and ID-getter semantics remain unchanged.
+
+Verification: `python tools/test_iso_entity_registry.py`, shared simulation/list
+fixtures and using-player tests, plus full game-JAR dry-run compilation. Actual
+resource/crafting packet callbacks and meta persistence require multiplayer checks.

@@ -262,6 +262,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
     private static final Map<String, IsoObject.IsoObjectFactory> nameToObjectMap = new HashMap<>();
     private boolean removeFromWorldToMeta;
     private long isoEntityNetId = -1L;
+    private boolean apocbrEntityIdDirty;
     private int lastObjectIndex = -1;
     private final HashMap<Class<? extends ECSComponent>, ECSComponent> ecsComponentMap = new HashMap<>();
     private static IsoObject.IsoObjectFactory factoryIsoObject;
@@ -1071,6 +1072,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
      */
     public void setSquare(IsoGridSquare square) {
         this.square = square;
+        if (GameServer.server) zombie.entity.ServerIsoEntityRegistry.squareChanged(this);
     }
 
     public IsoChunk getChunk() {
@@ -6094,6 +6096,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
 
     @Override
     public long getEntityNetID() {
+        if (GameServer.server) return this.apocbrGetServerEntityNetID();
         if (this.getObjectIndex() == -1) {
             this.isoEntityNetId = -1L;
             return -1L;
@@ -6111,6 +6114,28 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
 
             return this.isoEntityNetId;
         }
+    }
+
+    public final void apocbrInvalidateEntityNetID() {
+        this.apocbrEntityIdDirty = true;
+    }
+
+    private long apocbrGetServerEntityNetID() {
+        int index = this.getObjectIndex();
+        if (index == -1) {
+            this.isoEntityNetId = -1L;
+            this.apocbrEntityIdDirty = false;
+            return -1L;
+        }
+        if (this.apocbrEntityIdDirty || this.isoEntityNetId == -1L || this.lastObjectIndex == -1 || this.lastObjectIndex != index) {
+            this.lastObjectIndex = this.isFloor() ? 0 : index;
+            long newID = ((long)this.lastObjectIndex << 40) + ((long)this.square.getZ() << 32)
+                + ((long)this.square.getY() << 16) + this.square.getX();
+            zombie.entity.GameEntityManager.checkEntityIDChange(this, this.isoEntityNetId, newID);
+            this.isoEntityNetId = newID;
+            this.apocbrEntityIdDirty = false;
+        }
+        return this.isoEntityNetId;
     }
 
     @Override

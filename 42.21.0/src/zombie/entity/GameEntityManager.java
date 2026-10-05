@@ -46,6 +46,7 @@ public class GameEntityManager {
     }
 
     public static void Init(int worldVersion) {
+        ServerIsoEntityRegistry.reset();
         if (engine != null) {
             DebugType.General.warn("Previous engine not disposed!");
             engine = null;
@@ -127,6 +128,7 @@ public class GameEntityManager {
     }
 
     public static void Reset() {
+        ServerIsoEntityRegistry.reset();
         initialized = false;
         engine = null;
         debugger = null;
@@ -142,11 +144,32 @@ public class GameEntityManager {
 
     public static GameEntity GetEntity(long gameEntityNetID) {
         synchronized (idToEntityMap) {
+            if (zombie.network.GameServer.server) ServerIsoEntityRegistry.flush();
             return idToEntityMap.get(gameEntityNetID);
         }
     }
 
+    private static void reconcileIsoEntityIDs() {
+        if (zombie.network.GameServer.server) {
+            synchronized (idToEntityMap) { ServerIsoEntityRegistry.flush(); }
+        }
+    }
+
+    static void removeIsoRegistryKey(long id, IsoObject object) {
+        if (idToEntityMap.get(id) == object) idToEntityMap.remove(id);
+    }
+
+    static void putIsoRegistryKey(long id, IsoObject object) {
+        GameEntity stored = idToEntityMap.get(id);
+        if (stored == null || stored == object) idToEntityMap.put(id, object);
+        else {
+            zombie.ApocBRServerTelemetryLite.count("entities.registry.collisions", 1L);
+            DebugType.Entity.error("idToEntityMap(%d)=%s, expected null for %s", id, stored, object);
+        }
+    }
+
     static void RegisterEntity(GameEntity gameEntity) {
+        reconcileIsoEntityIDs();
         if (gameEntity != null && gameEntity.hasComponents()) {
             if (gameEntity.componentSize() != 1 || !gameEntity.hasComponent(ComponentType.Script)) {
                 if (GameClient.client) {
@@ -218,6 +241,7 @@ public class GameEntityManager {
                     }
 
                     gameEntity.addedToEntityManager = true;
+                    if (gameEntity instanceof IsoObject object) ServerIsoEntityRegistry.register(object, entityNetID);
                     if (gameEntity instanceof IsoObject isoObject && gameEntity.hasComponent(ComponentType.FluidContainer)) {
                         isoObject.sync();
                     }
@@ -235,6 +259,7 @@ public class GameEntityManager {
     }
 
     static void UnregisterEntity(GameEntity gameEntity, boolean offloadToMeta) {
+        reconcileIsoEntityIDs();
         if (gameEntity != null && gameEntity.addedToEntityManager) {
             if (!GameClient.client && !wasClient) {
                 DebugType.Entity
@@ -255,12 +280,15 @@ public class GameEntityManager {
                     stored = idToEntityMap.remove(entityNetID);
                 }
 
+                if (stored == null && gameEntity instanceof IsoObject object && ServerIsoEntityRegistry.isDetached(object)) {
+                    stored = gameEntity;
+                }
                 if (stored != null) {
                     if (stored != gameEntity) {
                         throw new RuntimeException("Stored entity mismatch");
                     } else {
                         engine.removeEntity(gameEntity);
-                        if (offloadToMeta && gameEntity instanceof IsoObject && ComponentType.bitsRunInMeta.intersects(gameEntity.getComponentBits())) {
+                        if (offloadToMeta && entityNetID != -1L && gameEntity instanceof IsoObject && ComponentType.bitsRunInMeta.intersects(gameEntity.getComponentBits())) {
                             DebugType.Entity.println("IsoObject Entity despawn - " + gameEntity.getEntityNetID() + " saving to MetaEntity...");
                             boolean shouldStoreMeta = false;
 
@@ -316,6 +344,7 @@ public class GameEntityManager {
                 gameEntity.addedToEngine = false;
             }
         }
+        if (gameEntity instanceof IsoObject object) ServerIsoEntityRegistry.unregister(object);
     }
 
     static void onEntityAddedToEngine(GameEntity entity) {
@@ -325,6 +354,15 @@ public class GameEntityManager {
     }
 
     public static void checkEntityIDChange(GameEntity entity, long oldID, long newID) {
+        if (ServerIsoEntityRegistry.isRefreshing()) return;
+        // Only RegisterEntity may publish an unregistered server IsoObject. A cached
+        // ID surviving remove/re-add must not create a phantom registration here.
+        if (zombie.network.GameServer.server && entity instanceof IsoObject && !entity.addedToEntityManager) return;
+        if (zombie.network.GameServer.server && oldID != newID && entity instanceof IsoObject object
+            && ServerIsoEntityRegistry.queueChange(object)) {
+            reconcileIsoEntityIDs();
+            return;
+        }
         if (entity != null) {
             if (oldID != -1L) {
                 if (oldID != newID) {
@@ -350,6 +388,7 @@ public class GameEntityManager {
                 }
             }
         }
+        if (entity instanceof IsoObject object) ServerIsoEntityRegistry.idChanged(object, newID);
     }
 
     public static ByteBuffer ensureCapacity(ByteBuffer bb, int requiredSize) {

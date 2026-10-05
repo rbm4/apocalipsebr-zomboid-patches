@@ -9610,6 +9610,7 @@ public final class IsoGridSquare {
     public void setX(int x) {
         this.x = x;
         this.cachedScreenValue = -1;
+        if (GameServer.server) zombie.entity.ServerIsoEntityRegistry.listChanged(this.objects);
     }
 
     /**
@@ -9619,6 +9620,7 @@ public final class IsoGridSquare {
     public void setY(int y) {
         this.y = y;
         this.cachedScreenValue = -1;
+        if (GameServer.server) zombie.entity.ServerIsoEntityRegistry.listChanged(this.objects);
     }
 
     /**
@@ -9630,6 +9632,7 @@ public final class IsoGridSquare {
         z = Math.min(31, z);
         this.z = z;
         this.cachedScreenValue = -1;
+        if (GameServer.server) zombie.entity.ServerIsoEntityRegistry.listChanged(this.objects);
     }
 
     /**

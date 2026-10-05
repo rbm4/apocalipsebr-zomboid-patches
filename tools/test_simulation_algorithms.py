@@ -9,6 +9,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 STUBS = {
+    "zombie/entity/ServerIsoEntityRegistry.java": "package zombie.entity;public class ServerIsoEntityRegistry{public static void listChanged(Object list){}public static void listExposed(Object list){}}",
     "zombie/UsedFromLua.java": "package zombie; public @interface UsedFromLua {}",
     "zombie/ApocBRServerTelemetryLite.java": """package zombie; public class ApocBRServerTelemetryLite {
  public static final java.util.Map<String,Long> counts=new java.util.HashMap<>();

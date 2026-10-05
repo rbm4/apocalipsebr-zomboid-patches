@@ -1,0 +1,84 @@
+{
+  "version": "42.21.0",
+  "seq": 160,
+  "ticks": 294,
+  "checked": 1510461,
+  "attempts": 75364,
+  "skipped": 98333,
+  "always": 25174,
+  "parentMs": 1220.214,
+  "classes": [
+    {
+      "kind": "IsoBarbecue",
+      "attempts": 3078,
+      "totalMs": 0.801,
+      "meanNs": 260.233918128655
+    },
+    {
+      "kind": "IsoCarBatteryCharger",
+      "attempts": 233,
+      "totalMs": 2.652,
+      "meanNs": 11381.97424892704
+    },
+    {
+      "kind": "IsoClothingDryer",
+      "attempts": 2019,
+      "totalMs": 9.431,
+      "meanNs": 4671.124318969787
+    },
+    {
+      "kind": "IsoClothingWasher",
+      "attempts": 3260,
+      "totalMs": 18.002,
+      "meanNs": 5522.085889570552
+    },
+    {
+      "kind": "IsoCombinationWasherDryer",
+      "attempts": 2849,
+      "totalMs": 21.741,
+      "meanNs": 7631.098631098631
+    },
+    {
+      "kind": "IsoCompost",
+      "attempts": 2559,
+      "totalMs": 22.666,
+      "meanNs": 8857.366158655725
+    },
+    {
+      "kind": "IsoFeedingTrough",
+      "attempts": 10726,
+      "totalMs": 22.684,
+      "meanNs": 2114.8610852135
+    },
+    {
+      "kind": "IsoFireplace",
+      "attempts": 2447,
+      "totalMs": 0.84,
+      "meanNs": 343.27748263179404
+    },
+    {
+      "kind": "IsoGenerator",
+      "attempts": 24880,
+      "totalMs": 56.005,
+      "meanNs": 2251.0048231511255
+    },
+    {
+      "kind": "IsoStove",
+      "attempts": 22873,
+      "totalMs": 15.02,
+      "meanNs": 656.669435579067
+    },
+    {
+      "kind": "IsoTrap",
+      "attempts": 294,
+      "totalMs": 48.927,
+      "meanNs": 166418.3673469388
+    },
+    {
+      "kind": "other",
+      "attempts": 146,
+      "totalMs": 0.185,
+      "meanNs": 1267.123287671233
+    }
+  ]
+}

@@ -77,6 +77,13 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
         this.identityIndexDirty = true;
         // Release removed lifetimes immediately, even if no subsequent lookup occurs.
         if (this.identityPositions != null) this.identityPositions.clear();
+        if (this.isoObjectList && zombie.network.GameServer.server) {
+            zombie.entity.ServerIsoEntityRegistry.listChanged(this);
+        }
+    }
+
+    public boolean apocbrElementsExposed() {
+        return this.elementsExposed;
     }
 
     public <E1> int indexOf(E1 o, Invokers.Params2.Boolean.ICallback<E1, E> comparator) {
@@ -277,6 +284,9 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
         // A retained raw array can be modified without any List method. Never cache it.
         this.elementsExposed = true;
         this.identityPositions = null;
+        if (this.isoObjectList && zombie.network.GameServer.server) {
+            zombie.entity.ServerIsoEntityRegistry.listExposed(this);
+        }
         return this.elements;
     }
 
