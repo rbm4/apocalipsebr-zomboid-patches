@@ -1540,6 +1540,14 @@ public class IsoThumpable extends IsoObject implements BarricadeAble, Thumpable,
         return ly;
     }
 
+    /** Exact server no-op/deadline predicate; subclasses retain their own update contract. */
+    public boolean apocbrNeedsServerUpdate() {
+        if (!(this.getLifeLeft() > -1.0F)) return false;
+        if (!this.isLightSourceOn()) return this.updateAccumulator != 0.0F || this.lastUpdateHours != -1.0F;
+        int worldAgeMinutes = (int)(GameTime.getInstance().getWorldAgeHours() * 60.0);
+        return Math.abs(worldAgeMinutes - this.lastUpdateHours) > 10.0F;
+    }
+
     @Override
     public void update() {
         if (this.getObjectIndex() != -1) {

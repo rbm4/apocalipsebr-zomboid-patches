@@ -3198,6 +3198,9 @@ public final class BaseVehicle
 
     @Override
     public void update() {
+        long vehicleStageStarted = GameServer.server ? System.nanoTime() : 0L;
+        int vehicleStage = 0;
+        try {
         if (!this.removedFromWorld) {
             if (!this.getCell().vehicles.contains(this)) {
                 this.getCell().getRemoveList().add(this);
@@ -3213,7 +3216,17 @@ public final class BaseVehicle
                     }
                 }
 
+                if (GameServer.server) {
+                    long now = System.nanoTime();
+                    ServerVehicleUpdateTelemetry.record(vehicleStage, now - vehicleStageStarted);
+                    vehicleStage = 1; vehicleStageStarted = now;
+                }
                 super.update();
+                if (GameServer.server) {
+                    long now = System.nanoTime();
+                    ServerVehicleUpdateTelemetry.record(vehicleStage, now - vehicleStageStarted);
+                    vehicleStage = 2; vehicleStageStarted = now;
+                }
                 if (this.timeSinceLastAuth > 0.0F) {
                     this.timeSinceLastAuth--;
                 }
@@ -3249,6 +3262,11 @@ public final class BaseVehicle
                     }
                 }
 
+                if (GameServer.server) {
+                    long now = System.nanoTime();
+                    ServerVehicleUpdateTelemetry.record(vehicleStage, now - vehicleStageStarted);
+                    vehicleStage = 3; vehicleStageStarted = now;
+                }
                 if (GameClient.client || GameServer.server) {
                     this.isReliable = this.physicReliableLimit.Check();
                 }
@@ -3328,6 +3346,11 @@ public final class BaseVehicle
                     bTowing = this.getVehicleTowing() != null && this.getVehicleTowing().getDriver() != null;
                 }
 
+                if (GameServer.server) {
+                    long now = System.nanoTime();
+                    ServerVehicleUpdateTelemetry.record(vehicleStage, now - vehicleStageStarted);
+                    vehicleStage = 4; vehicleStageStarted = now;
+                }
                 if (this.physics != null) {
                     boolean bUpdatePhysics = this.getDriver() != null || bTowed || bTowing || !this.isAtRest();
                     long currentTimeMS = System.currentTimeMillis();
@@ -3458,6 +3481,11 @@ public final class BaseVehicle
                     releaseVector3f(currentVelocity);
                 }
 
+                if (GameServer.server) {
+                    long now = System.nanoTime();
+                    ServerVehicleUpdateTelemetry.record(vehicleStage, now - vehicleStageStarted);
+                    vehicleStage = 5; vehicleStageStarted = now;
+                }
                 for (int ixxx = 0; ixxx < this.impulsesFromSquishedBodies.length; ixxx++) {
                     BaseVehicle.VehicleImpulse impulsex = this.impulsesFromSquishedBodies[ixxx];
                     if (impulsex != null) {
@@ -3512,12 +3540,22 @@ public final class BaseVehicle
                     this.setLightbarSirenMode(0);
                 }
 
+                if (GameServer.server) {
+                    long now = System.nanoTime();
+                    ServerVehicleUpdateTelemetry.record(vehicleStage, now - vehicleStageStarted);
+                    vehicleStage = 6; vehicleStageStarted = now;
+                }
                 if (!this.needPartsUpdate() && !this.isMechanicUIOpen() && !this.vehicleAlarm.isActive()) {
                     this.drainBatteryUpdateHack();
                 } else {
                     this.updateParts();
                 }
 
+                if (GameServer.server) {
+                    long now = System.nanoTime();
+                    ServerVehicleUpdateTelemetry.record(vehicleStage, now - vehicleStageStarted);
+                    vehicleStage = 7; vehicleStageStarted = now;
+                }
                 if (this.getEngineState() == BaseVehicle.engineStateTypes.Running || bTowed) {
                     this.updateBulletStats();
                 }
@@ -3575,6 +3613,9 @@ public final class BaseVehicle
                 this.checkTrailerVerticalAlignment();
                 this.checkTrailerAttachTime();
             }
+        }
+        } finally {
+            if (GameServer.server) ServerVehicleUpdateTelemetry.record(vehicleStage, System.nanoTime() - vehicleStageStarted);
         }
     }
 

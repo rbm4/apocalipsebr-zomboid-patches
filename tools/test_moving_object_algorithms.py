@@ -344,6 +344,7 @@ def main():
             "ServerMovingObjectIndex.java",
             "ServerMovingObjectSet.java",
             "ServerAnimalPerceptionGrid.java",
+            "vehicles/ServerVehicleUpdateTelemetry.java",
         ])
         sources.append(ROOT / "42.21.0/decompiled/zombie/UpdateSchedulerSimulationLevel.java")
         output = work / "classes"

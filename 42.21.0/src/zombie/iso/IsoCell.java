@@ -2241,7 +2241,9 @@ public final class IsoCell {
         int mod = APOC_BR_PROCESS_ISO_OBJECT_FRAME_MOD;
         int frame = IsoWorld.instance.getFrameNo() % mod;
         float modMultiplier = (float)mod;
-        int checked = 0, updated = 0, alwaysUpdated = 0;
+        int checked = 0, updated = 0, alwaysUpdated = 0, skippedNoWork = 0;
+        long[] objectNanos = GameServer.server ? new long[ServerIsoObjectUpdateTelemetry.size()] : null;
+        long[] objectAttempts = GameServer.server ? new long[ServerIsoObjectUpdateTelemetry.size()] : null;
         GameTime.getInstance().perObjectMultiplier = modMultiplier;
 
         try {
@@ -2251,15 +2253,26 @@ public final class IsoCell {
                     checked++;
                     boolean always = i instanceof IsoTrap || i instanceof IsoGenerator;
                     if (always || getIsoObjectUpdatePhase(i, mod) == frame) {
+                        boolean needsUpdate = !GameServer.server || i.getClass() != zombie.iso.objects.IsoThumpable.class
+                            || ((zombie.iso.objects.IsoThumpable)i).apocbrNeedsServerUpdate();
+                        if (!needsUpdate) {
+                            skippedNoWork++;
+                        } else {
                         updated++;
                         if (always) alwaysUpdated++;
                         if (always) {
                             GameTime.getInstance().perObjectMultiplier = 1.0F;
                         }
 
-                        i.update();
+                        int kind = objectNanos == null ? 0 : ServerIsoObjectUpdateTelemetry.kind(i);
+                        long updateStarted = objectNanos == null ? 0L : System.nanoTime();
+                        try { i.update(); }
+                        finally {
+                            if (objectNanos != null) { objectNanos[kind] += System.nanoTime() - updateStarted; objectAttempts[kind]++; }
+                        }
                         if (always) {
                             GameTime.getInstance().perObjectMultiplier = modMultiplier;
+                        }
                         }
                     }
 
@@ -2275,6 +2288,8 @@ public final class IsoCell {
                 ApocBRServerTelemetryLite.count("isoObjects.checked", checked);
                 ApocBRServerTelemetryLite.count("isoObjects.updateAttempts", updated);
                 ApocBRServerTelemetryLite.count("isoObjects.alwaysUpdateAttempts", alwaysUpdated);
+                ApocBRServerTelemetryLite.count("isoObjects.skippedNoWork.IsoThumpable", skippedNoWork);
+                ServerIsoObjectUpdateTelemetry.flush(objectNanos, objectAttempts);
             }
         }
     }

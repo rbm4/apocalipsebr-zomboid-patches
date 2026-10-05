@@ -123,6 +123,7 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
 
         long[] nanos = GameServer.server ? new long[telemetryKinds.length] : null;
         long[] attempts = GameServer.server ? new long[telemetryKinds.length] : null;
+        if (GameServer.server) zombie.vehicles.ServerVehicleUpdateTelemetry.beginBatch();
         try {
             for (int i = 0; i < fullSimulation.size(); i++) {
                 IsoMovingObject isoMovingObject = fullSimulation.get(i);
@@ -165,6 +166,7 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         } finally {
             GameTime.getInstance().perObjectMultiplier = 1.0F;
             recordTelemetry(0, nanos, attempts);
+            if (GameServer.server) zombie.vehicles.ServerVehicleUpdateTelemetry.endBatch();
         }
     }
 

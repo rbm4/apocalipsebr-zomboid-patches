@@ -2,6 +2,9 @@
 package zombie.entity;
 
 import java.util.Objects;
+import java.util.IdentityHashMap;
+import zombie.ApocBRServerTelemetryLite;
+import zombie.network.GameServer;
 import zombie.core.Core;
 import zombie.entity.util.Array;
 import zombie.entity.util.ImmutableArray;
@@ -11,6 +14,7 @@ import zombie.entity.util.SingleThreadPool;
 public final class EngineEntityManager {
     private final EntityBucketManager bucketManager;
     private final Array<GameEntity> entities = new Array<>(false, 16);
+    private final IdentityHashMap<GameEntity, Integer> entityPositions = new IdentityHashMap<>();
     private final ObjectSet<GameEntity> entitySet = new ObjectSet<>();
     private final ImmutableArray<GameEntity> immutableEntities = new ImmutableArray<>(this.entities);
     private final Array<EngineEntityManager.EntityOperation> pendingOperations = new Array<>(false, 16);
@@ -139,6 +143,7 @@ public final class EngineEntityManager {
             throw new IllegalArgumentException("Entity is already registered " + entity);
         } else {
             entity.scheduledDelayedAddToEngine = false;
+            this.entityPositions.put(entity, this.entities.size);
             this.entities.add(entity);
             this.entitySet.add(entity);
             entity.setComponentOperationHandler(this.componentOperationHandler);
@@ -149,16 +154,37 @@ public final class EngineEntityManager {
     }
 
     void removeEntityInternal(GameEntity entity) {
+        long started = GameServer.server ? System.nanoTime() : 0L;
+        try {
         boolean removed = this.entitySet.remove(entity);
         if (removed) {
             entity.scheduledForEngineRemoval = false;
             entity.removingFromEngine = true;
-            this.entities.removeValue(entity, true);
+            this.removeEntityFromArray(entity);
             this.bucketManager.updateBucketMembership(entity);
             entity.setComponentOperationHandler(null);
             entity.removingFromEngine = false;
             entity.addedToEngine = false;
             this.engine.onEntityRemoved(entity);
+        }
+        } finally {
+            if (GameServer.server) ApocBRServerTelemetryLite.recordPhase("entities.removal", System.nanoTime() - started);
+        }
+    }
+
+    private void removeEntityFromArray(GameEntity entity) {
+        long started = GameServer.server ? System.nanoTime() : 0L;
+        int size = this.entities.size;
+        Integer position = this.entityPositions.remove(entity);
+        // This private array has no external writers. Retain the vanilla swap order.
+        if (position == null) throw new IllegalStateException("Missing engine entity position");
+        GameEntity tail = this.entities.peek();
+        this.entities.removeIndex(position);
+        if (tail != entity) this.entityPositions.put(tail, position);
+        if (GameServer.server) {
+            ApocBRServerTelemetryLite.count("entities.removal.indexed", 1L);
+            ApocBRServerTelemetryLite.count("entities.removal.arrayEntriesAtStart", size);
+            ApocBRServerTelemetryLite.recordPhase("entities.removal.array", System.nanoTime() - started);
         }
     }
 

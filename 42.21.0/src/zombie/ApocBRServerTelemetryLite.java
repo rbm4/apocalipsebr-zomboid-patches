@@ -152,7 +152,7 @@ public final class ApocBRServerTelemetryLite {
         long elapsedMillis = Math.max(1L, now - intervalStartedMillis);
         int players = Math.max(GameServer.IDToPlayerMap.size(), GameServer.Players.size());
         StringBuilder json = new StringBuilder(512);
-        json.append("{\"schemaVersion\":2");
+        json.append("{\"schemaVersion\":3");
         json.append(",\"gameVersion\":\"").append(escape(Core.getInstance().getVersionNumber())).append("\"");
         json.append(",\"intervalMs\":").append(elapsedMillis);
         json.append(",\"seq\":").append(sequence.incrementAndGet());
@@ -164,20 +164,19 @@ public final class ApocBRServerTelemetryLite {
         json.append(",\"overBudgetTicks\":").append(overBudgetTicks.sumThenReset());
         json.append(",\"loop\":{\"count\":").append(loopCount.sumThenReset());
         json.append(",\"totalMs\":").append(decimal(loopNanos.sumThenReset() / 1000000.0)).append('}');
-        json.append(",\"phases\":[");
-        boolean firstPhase = true;
+        // Build the hierarchy only once per reporting window, never per measurement.
+        PhaseNode phaseRoot = new PhaseNode();
         for (Map.Entry<String, LuaTiming> entry : phases.entrySet()) {
             LuaSnapshot snapshot = entry.getValue().snapshotAndReset();
             if (snapshot.calls == 0L) continue;
-            if (!firstPhase) json.append(',');
-            firstPhase = false;
-            json.append("{\"name\":\"").append(escape(entry.getKey())).append("\"");
-            json.append(",\"calls\":").append(snapshot.calls);
-            json.append(",\"totalMs\":").append(decimal(snapshot.nanos / 1000000.0));
-            json.append(",\"avgMs\":").append(decimal(snapshot.nanos / 1000000.0 / snapshot.calls));
-            json.append(",\"maxMs\":").append(decimal(snapshot.maxNanos / 1000000.0)).append('}');
+            PhaseNode node = phaseRoot;
+            for (String segment : entry.getKey().split("\\.", -1)) {
+                node = node.children.computeIfAbsent(segment, ignored -> new PhaseNode());
+            }
+            node.snapshot = snapshot;
         }
-        json.append(']');
+        json.append(",\"phases\":");
+        phaseRoot.appendJson(json);
         json.append(",\"counters\":{");
         boolean firstCounter = true;
         for (Map.Entry<String, LongAdder> entry : counters.entrySet()) {
@@ -294,6 +293,30 @@ public final class ApocBRServerTelemetryLite {
 
     private static String escape(String value) {
         return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\r", "\\r").replace("\n", "\\n");
+    }
+
+    private static final class PhaseNode {
+        final TreeMap<String, PhaseNode> children = new TreeMap<>();
+        LuaSnapshot snapshot;
+
+        void appendJson(StringBuilder json) {
+            json.append('{');
+            boolean first = true;
+            if (this.snapshot != null) {
+                json.append("\"calls\":").append(this.snapshot.calls);
+                json.append(",\"totalMs\":").append(decimal(this.snapshot.nanos / 1000000.0));
+                json.append(",\"avgMs\":").append(decimal(this.snapshot.nanos / 1000000.0 / this.snapshot.calls));
+                json.append(",\"maxMs\":").append(decimal(this.snapshot.maxNanos / 1000000.0));
+                first = false;
+            }
+            for (Map.Entry<String, PhaseNode> entry : this.children.entrySet()) {
+                if (!first) json.append(',');
+                first = false;
+                json.append('"').append(escape(entry.getKey())).append("\":");
+                entry.getValue().appendJson(json);
+            }
+            json.append('}');
+        }
     }
 
     private static final class LuaTiming {

@@ -190,6 +190,20 @@ public class PlayerPacketAlgorithmsTest {
   sounds.subList(0,50).clear();check(query.query(sounds,0,0)==vanillaStress(sounds,0,0),"sound removal invalidates");
   var negative=new WorldSoundManager.WorldSound();negative.radius=-1;negative.stresshumans=true;negative.stressMod=2;sounds.add(negative);
   check(query.query(sounds,10000,0)==vanillaStress(sounds,10000,0),"negative radius semantics");
+  long builds=ApocBRServerTelemetryLite.count("players.soundStress.indexRebuilt");
+  for(int i=0;i<1000;i++){
+   long revision=sounds.mutationVersion();
+   var sound=new WorldSoundManager.WorldSound();sound.x=i-500;sound.y=i%7;
+   sound.radius=i%3==0?20:5;sound.stresshumans=i%3==0;sound.stressMod=0.25f;
+   sounds.add(sound);query.appended(sounds,sound,revision);
+   check(Float.floatToIntBits(query.query(sounds,0,0))==Float.floatToIntBits(vanillaStress(sounds,0,0)),"incremental append sum/order");
+  }
+  check(ApocBRServerTelemetryLite.count("players.soundStress.indexRebuilt")==builds,"normal appends avoid full rediscovery");
+  sounds.subList(0,10).clear();query.query(sounds,0,0);
+  check(ApocBRServerTelemetryLite.count("players.soundStress.indexRebuilt")==builds+1,"external removal uses full fallback");
+  sounds.get(0).stresshumans=!sounds.get(0).stresshumans;IsoWorld.instance.frame++;
+  check(query.query(sounds,0,0)==vanillaStress(sounds,0,0),"new frame reconciles public eligibility edits");
+  query.invalidate();check(query.query(sounds,0,0)==vanillaStress(sounds,0,0),"explicit invalidation reconciles fields");
  }
  static void packet(){
   ServerZombiePacketPreparation cache=new ServerZombiePacketPreparation();IsoZombie z=zombie(0,0);z.onlineId=10;z.health=5;

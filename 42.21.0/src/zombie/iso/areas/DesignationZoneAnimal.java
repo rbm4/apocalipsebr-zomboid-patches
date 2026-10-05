@@ -2,6 +2,9 @@
 package zombie.iso.areas;
 
 import java.util.ArrayList;
+import java.util.HashSet;
+import zombie.ApocBRServerTelemetryLite;
+import zombie.network.GameServer;
 import zombie.UsedFromLua;
 import zombie.characters.Position3D;
 import zombie.characters.animals.IsoAnimal;
@@ -26,6 +29,7 @@ import zombie.util.StringUtils;
 @UsedFromLua
 public final class DesignationZoneAnimal extends DesignationZone {
     public static final ArrayList<DesignationZoneAnimal> designationAnimalZoneList = new ArrayList<>();
+    private static final ServerAnimalZoneTopology serverTopology = new ServerAnimalZoneTopology();
     public static final String ZONE_TYPE = "AnimalZone";
     public static final float ZONE_COLOR_R = 0.2F;
     public static final float ZONE_COLOR_G = 0.2F;
@@ -59,55 +63,39 @@ public final class DesignationZoneAnimal extends DesignationZone {
     public static ArrayList<DesignationZoneAnimal> getAllDZones(
         ArrayList<DesignationZoneAnimal> currentList, DesignationZoneAnimal zone, DesignationZoneAnimal previousZone
     ) {
-        ArrayList<DesignationZoneAnimal> result = currentList;
-        if (currentList == null) {
-            result = new ArrayList<>();
+        if (zone == null) return currentList == null ? new ArrayList<>() : currentList;
+        if (GameServer.server && previousZone == null && (currentList == null || currentList.isEmpty())) {
+            return serverTopology.get(currentList, zone);
         }
+        ArrayList<DesignationZoneAnimal> result = currentList == null ? new ArrayList<>() : currentList;
+        collectConnected(result, zone, previousZone, new HashSet<>(result));
+        return result;
+    }
 
+    static void collectConnected(ArrayList<DesignationZoneAnimal> result, DesignationZoneAnimal zone,
+        DesignationZoneAnimal previousZone, HashSet<DesignationZoneAnimal> seen) {
+        if (zone == null) return;
+        if (seen.add(zone)) result.add(zone);
         ArrayList<DesignationZoneAnimal> newConnected = new ArrayList<>();
-        if (zone == null) {
-            return result;
-        } else {
-            if (!result.contains(zone)) {
-                result.add(zone);
-            }
+        for (int x = zone.x; x < zone.x + zone.w; x++) {
+            admitConnected(result, newConnected, seen, getZone(x, zone.y - 1, zone.z), previousZone);
+            admitConnected(result, newConnected, seen, getZone(x, zone.y + zone.h, zone.z), previousZone);
+        }
+        for (int y = zone.y; y < zone.y + zone.h; y++) {
+            admitConnected(result, newConnected, seen, getZone(zone.x - 1, y, zone.z), previousZone);
+            admitConnected(result, newConnected, seen, getZone(zone.x + zone.w, y, zone.z), previousZone);
+        }
+        for (DesignationZoneAnimal next : newConnected) {
+            if (next != zone) collectConnected(result, next, zone, seen);
+        }
+    }
 
-            for (int x = zone.x; x < zone.x + zone.w; x++) {
-                DesignationZoneAnimal cZone = getZone(x, zone.y - 1, zone.z);
-                if (cZone != null && !result.contains(cZone) && cZone != previousZone) {
-                    result.add(cZone);
-                    newConnected.add(cZone);
-                }
-
-                cZone = getZone(x, zone.y + zone.h, zone.z);
-                if (cZone != null && !result.contains(cZone) && cZone != previousZone) {
-                    result.add(cZone);
-                    newConnected.add(cZone);
-                }
-            }
-
-            for (int y = zone.y; y < zone.y + zone.h; y++) {
-                DesignationZoneAnimal cZonex = getZone(zone.x - 1, y, zone.z);
-                if (cZonex != null && !result.contains(cZonex) && cZonex != previousZone) {
-                    result.add(cZonex);
-                    newConnected.add(cZonex);
-                }
-
-                cZonex = getZone(zone.x + zone.w, y, zone.z);
-                if (cZonex != null && !result.contains(cZonex) && cZonex != previousZone) {
-                    result.add(cZonex);
-                    newConnected.add(cZonex);
-                }
-            }
-
-            for (int i = 0; i < newConnected.size(); i++) {
-                if (newConnected.get(i) != zone) {
-                    result = getAllDZones(result, newConnected.get(i), zone);
-                }
-            }
-
-            newConnected.clear();
-            return result;
+    private static void admitConnected(ArrayList<DesignationZoneAnimal> result,
+        ArrayList<DesignationZoneAnimal> pending, HashSet<DesignationZoneAnimal> seen,
+        DesignationZoneAnimal candidate, DesignationZoneAnimal previous) {
+        if (candidate != null && candidate != previous && seen.add(candidate)) {
+            result.add(candidate);
+            pending.add(candidate);
         }
     }
 
@@ -160,6 +148,9 @@ public final class DesignationZoneAnimal extends DesignationZone {
 
     @Override
     public void check() {
+        long checkStarted = GameServer.server ? System.nanoTime() : 0L;
+        long squareChecks = 0L, objectChecks = 0L;
+        try {
         if (this.isFullyStreamed()) {
             if (IsoWorld.instance.currentCell == null) {
                 lastUpdate = 0L;
@@ -183,8 +174,12 @@ public final class DesignationZoneAnimal extends DesignationZone {
                 ArrayList<IsoAnimal> animalsOnSquare = new ArrayList<>();
                 IsoCell cell = IsoWorld.instance.currentCell;
 
+                HashSet<IsoGridSquare> waterSeen = new HashSet<>();
+                HashSet<IsoFeedingTrough> troughSeen = new HashSet<>(this.troughs);
+                HashSet<IsoHutch> hutchSeen = new HashSet<>();
                 for (int checkX = this.x; checkX < this.x + this.w; checkX++) {
                     for (int checkY = this.y; checkY < this.y + this.h; checkY++) {
+                        squareChecks++;
                         IsoGridSquare sq = cell.getGridSquare(checkX, checkY, this.z);
                         if (sq != null) {
                             if (sq.haveRoof) {
@@ -201,6 +196,7 @@ public final class DesignationZoneAnimal extends DesignationZone {
                             }
 
                             for (int i = 0; i < sq.getObjects().size(); i++) {
+                                objectChecks++;
                                 IsoObject obj = sq.getObjects().get(i);
                                 if (obj instanceof IsoWorldInventoryObject worldObj) {
                                     if (isItemFood(worldObj)) {
@@ -216,11 +212,11 @@ public final class DesignationZoneAnimal extends DesignationZone {
                                     }
                                 }
 
-                                if (obj instanceof IsoFeedingTrough trough && trough.getLinkedY() == 0 && !this.troughs.contains(trough)) {
+                                if (obj instanceof IsoFeedingTrough trough && trough.getLinkedY() == 0 && troughSeen.add(trough)) {
                                     this.troughs.add(trough);
                                 }
 
-                                if (obj instanceof IsoHutch hutch && !hutch.isSlave() && !this.hutchs.contains(hutch)) {
+                                if (obj instanceof IsoHutch hutch && !hutch.isSlave() && hutchSeen.add(hutch)) {
                                     this.hutchs.add(hutch);
                                     hutch.reforceUpdate();
                                 }
@@ -231,8 +227,9 @@ public final class DesignationZoneAnimal extends DesignationZone {
                                             IsoGridSquare sq2 = cell.getGridSquare(x2, y2, sq.z);
                                             if (sq2 != null
                                                 && sq2.isFree(false)
-                                                && !this.nearWaterSquares.contains(sq2)
-                                                && getZone(sq2.getX(), sq2.getY(), sq2.getZ()) == this) {
+                                                && !waterSeen.contains(sq2)
+                                                && (GameServer.server ? serverTopology.find(sq2.getX(), sq2.getY(), sq2.getZ()) : getZone(sq2.getX(), sq2.getY(), sq2.getZ())) == this) {
+                                                waterSeen.add(sq2);
                                                 this.nearWaterSquares.add(sq2);
                                             }
                                         }
@@ -251,7 +248,16 @@ public final class DesignationZoneAnimal extends DesignationZone {
                 }
 
                 animalsOnSquare.clear();
+                long attachStarted = GameServer.server ? System.nanoTime() : 0L;
                 this.reAttachAnimal();
+                if (GameServer.server) ApocBRServerTelemetryLite.recordPhase("simulation.designationZones.reattach", System.nanoTime() - attachStarted);
+            }
+        }
+        } finally {
+            if (GameServer.server) {
+                ApocBRServerTelemetryLite.count("zones.check.squares", squareChecks);
+                ApocBRServerTelemetryLite.count("zones.check.objects", objectChecks);
+                ApocBRServerTelemetryLite.recordPhase("simulation.designationZones.animalCheck", System.nanoTime() - checkStarted);
             }
         }
     }
@@ -359,6 +365,7 @@ public final class DesignationZoneAnimal extends DesignationZone {
             allZones.remove(connectedZones.get(i));
         }
 
+        serverTopology.clear();
         if (doSync) {
             zone.sync();
         }
@@ -409,6 +416,7 @@ public final class DesignationZoneAnimal extends DesignationZone {
 
     public ArrayList<IsoDeadBody> getCorpsesConnected() {
         ArrayList<IsoDeadBody> result = new ArrayList<>();
+        HashSet<IsoDeadBody> seen = new HashSet<>();
         ArrayList<DesignationZoneAnimal> connectedZones = getAllDZones(null, this, null);
 
         for (int i = 0; i < connectedZones.size(); i++) {
@@ -416,7 +424,7 @@ public final class DesignationZoneAnimal extends DesignationZone {
 
             for (int j = 0; j < connectedZone.corpses.size(); j++) {
                 IsoDeadBody corpse = connectedZone.corpses.get(j);
-                if (!result.contains(corpse)) {
+                if (seen.add(corpse)) {
                     result.add(corpse);
                 }
             }
@@ -435,6 +443,7 @@ public final class DesignationZoneAnimal extends DesignationZone {
 
     public ArrayList<IsoAnimal> getAnimalsConnected() {
         ArrayList<IsoAnimal> result = new ArrayList<>();
+        HashSet<IsoAnimal> seen = new HashSet<>();
         ArrayList<DesignationZoneAnimal> connectedZones = getAllDZones(null, this, null);
 
         for (int i = 0; i < connectedZones.size(); i++) {
@@ -442,7 +451,7 @@ public final class DesignationZoneAnimal extends DesignationZone {
 
             for (int j = 0; j < connectedZone.animals.size(); j++) {
                 IsoAnimal animal = connectedZone.animals.get(j);
-                if (!animal.isOnHook() && !result.contains(animal)) {
+                if (!animal.isOnHook() && seen.add(animal)) {
                     result.add(animal);
                 }
             }
@@ -535,6 +544,7 @@ public final class DesignationZoneAnimal extends DesignationZone {
 
     public static void Reset() {
         designationAnimalZoneList.clear();
+        serverTopology.clear();
     }
 
     public int getNbOfDung() {

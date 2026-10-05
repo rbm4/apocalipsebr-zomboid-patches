@@ -190,7 +190,9 @@ public final class WorldSoundManager {
                     }
                 }
 
+                long soundRevision = ((zombie.util.list.MutationTrackedArrayList<WorldSound>)this.soundList).mutationVersion();
                 this.soundList.add(s);
+                if (GameServer.server) this.serverStressIndex.appended(this.soundList, s, soundRevision);
                 ZombiePopulationManager.instance.addWorldSound(s, doSend);
             }
 
@@ -449,6 +451,23 @@ public final class WorldSoundManager {
                     }
                 }
             }
+        }
+
+        if (GameServer.server) {
+            // ArrayList.removeIf compacts once and retains the original survivor order.
+            synchronized (this.soundList) {
+                long started = System.nanoTime();
+                int entries = this.soundList.size();
+                this.soundList.removeIf(sound -> {
+                    if (sound != null && sound.life > 0) { sound.life--; return false; }
+                    this.release(sound);
+                    return true;
+                });
+                ApocBRServerTelemetryLite.count("sounds.expiry.checked", entries);
+                ApocBRServerTelemetryLite.count("sounds.expiry.removed", entries - this.soundList.size());
+                ApocBRServerTelemetryLite.recordPhase("simulation.worldSounds.expiry", System.nanoTime() - started);
+            }
+            return;
         }
 
         int s = this.soundList.size();

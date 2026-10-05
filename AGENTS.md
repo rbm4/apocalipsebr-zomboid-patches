@@ -268,6 +268,67 @@ Minimum verification for a patch:
 
 There is no substitute for runtime testing of timing, threading, streaming, networking, and persistence changes.
 
+## Tools and algorithm regression tests
+
+`tools/` contains development and diagnostic utilities, not deployed game code. Inspect the relevant script before running it; scripts in this folder have different side effects and prerequisites.
+
+### Python test architecture and prerequisites
+
+The current `tools/test_*.py` scripts target **42.21.0** explicitly. They are standalone Python entry points, not a pytest suite, and do not accept a version selector. Do not assume they validate another build when porting a patch.
+
+Each script uses Python's standard library to create a temporary Java fixture, compile production Java sources or methods extracted from production sources, and execute Java assertions. Some fixtures also compile or extract the exact target-version vanilla implementation for differential comparison. Small engine stubs supply dependencies without initializing the game or loading native libraries. Temporary source and class files are cleaned up automatically.
+
+Prerequisites are Python 3 and the repository JDK 25 at `jdk/bin/javac.exe` and `jdk/bin/java.exe`. The scripts currently use those Windows executable paths and compile with `--release 25`; installing a JDK on `PATH` alone does not satisfy them. They require the relevant `42.21.0/src` and `42.21.0/decompiled` files. If the repository JDK is missing, inspect the target patch script's tooling setup rather than changing Java versions to make a fixture pass.
+
+Run scripts directly from the repository root, for example:
+
+```powershell
+python .\tools\test_unload_simulation_algorithms.py
+python .\tools\test_player_packet_algorithms.py
+python .\tools\test_moving_object_algorithms.py
+```
+
+The scripts resolve repository paths from their own location. Compiler errors, Java assertion failures, and Python contract assertions must produce a failing process exit code. Read the failure output; do not rely only on a printed assertion count. These tests do not deploy patches, modify the game JAR, or need a running server.
+
+### Choosing relevant tests
+
+Use this map as a starting point, then inspect the script's production source list and harness for the exact coverage:
+
+| Script under `tools/` | Main coverage |
+| --- | --- |
+| `test_moving_object_algorithms.py` | Moving-object scheduler, buckets and membership indexes; lifecycle changes and animal perception grid. |
+| `test_simulation_algorithms.py` | Entity simulation and active-user indexes, Lua event dispatch, mutation-tracked lists, animal synchronization coverage, and corpse nearby-player queries. |
+| `test_using_player_algorithms.py` | Active-user traversal compared with vanilla, including production entity mutation methods, callback mutations, ordering, lifecycle cleanup and sparse active membership. Imports fixture utilities from `test_simulation_algorithms.py`. |
+| `test_player_packet_algorithms.py` | Inventory update indexing, player spatial queries, sound stress indexing, zombie packet flags/contracts, and extracted expiry/path-threshold logic. |
+| `test_zombie_auth_algorithms.py` | Zombie ownership indexes, authorization coverage and cadence, including disconnect and reassignment behavior. |
+| `test_packet_ownership_guard.py` | Packet receive direction, player ownership and online-ID sentinel validation, spoof rejection, and production player-stat deserialization. |
+| `test_unload_simulation_algorithms.py` | Entity removal versus vanilla, animal-zone topology and geometry invalidation, sound expiration, thumpable no-work predicates, vehicle telemetry batching, and source contracts preserving vehicle/thumpable update behavior. |
+
+For cross-cutting collection or lifecycle changes, run every affected fixture, including consumers of a shared helper. For example, changing `MutationTrackedArrayList` can affect simulation, sound and unload tests. A filename alone does not define the complete dependency set.
+
+### Test expectations when changing algorithms
+
+1. Before editing an existing optimization, read its relevant harness and the exact target-version vanilla behavior. Understand which invariants the fixture already checks.
+2. For meaningful algorithm changes, extend the nearest relevant fixture or add a focused script when no existing one fits. Exercise actual production code; do not duplicate the proposed algorithm in a Python model and treat that model as proof.
+3. Prefer differential checks against vanilla for behavior-preserving changes. Compare observable results such as ordered collections, callback/event order, identity membership, serialized bytes, state transitions and cleanup, rather than only counts or successful completion.
+4. Cover the boundaries the change depends on: add/remove/re-add, pool reuse, callback mutation, duplicate identities, direct public-field/list mutation, cache invalidation, exceptions, clock changes, spatial boundaries, and client/server guards as applicable. Use deterministic randomized cases where they help expose combinations.
+5. For performance claims, assert relevant work counts or candidate visits where practical. Passing functional tests or large assertion totals does not prove a runtime speedup. Avoid wall-clock thresholds in isolated fixtures.
+6. Keep stubs small and explicit. Stub dependencies, not the behavior under test. If extracting a production method is necessary to avoid compiling a huge engine class, make missing signatures fail clearly and retain the production method's semantics.
+7. Treat a failing source-contract assertion as a review signal. Do not weaken or remove it merely to accommodate a changed implementation; determine whether the requested behavior actually permits that change and update the reference intentionally.
+
+Run relevant fixtures after the final source changes, then compile with the target version's patch script and real game JAR using `-DryRun`. Fixtures validate isolated algorithm behavior; the game-JAR compile checks compatibility that stubs cannot establish. Neither replaces runtime validation of threading, native physics, Lua/mod integration, streaming, persistence or multiplayer behavior. For performance patches, compare representative telemetry captures after deployment before claiming measured savings.
+
+Report the scripts run, their outcomes, the target-JAR compilation result, and remaining runtime scenarios in the handoff. Assertion totals are supporting evidence, not a substitute for describing what was verified. Documentation-only edits do not require executing the Java fixtures.
+
+### Other utilities
+
+- `Copy-PZPatchBaseline.ps1`: copies and verifies a single vanilla source and creates a local baseline commit. Follow the workflow above; this tool changes Git state and is not a test runner.
+- `Start-PZGameProfiler.ps1`, `Stop-PZGameProfiler.ps1`, and `Get-PZGameProfilerStatus.ps1`: control or inspect vanilla profiler recordings. Read `tools/PZGameProfiler.README.md` for commands, cache paths and timing units. Start/stop write the watched trigger XML in the selected game cache directory.
+- `Analyze-PZGameProfiler.ps1`: analyzes profiler CSV recordings and writes reports. The folder also contains `Analyze-PZGameProfiler-Fixed.ps1` and `script.ps1`; inspect them before choosing an alternate implementation rather than assuming they are interchangeable.
+- `Sample-PZClientStutter.ps1`: samples a running client process, with options for thread stacks, GPU counters and profiler analysis. Inspect its parameters and output locations before collecting diagnostics; it is separate from the isolated Java fixtures and server telemetry.
+
+For server metric definitions and optimization status, use the target version's `TELEMETRY.md` and related investigation/follow-up reports alongside the source and tests. Keep those documents current when adding counters, changing timing boundaries or implementing a previously documented proposal.
+
 ## Safety and compatibility constraints
 
 - Do not modify the game JAR. The repository's deployment model uses loose classpath overrides.

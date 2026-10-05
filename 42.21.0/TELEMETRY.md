@@ -1,4 +1,4 @@
-# Server telemetry (schema 2)
+# Server telemetry (schema 3)
 
 This extends the existing server NDJSON telemetry in the 42.21.0 patch tree.
 Compile against the intended build before deployment; compilation against a local
@@ -11,6 +11,58 @@ JVM settings: `-Dapocbr.telemetry.intervalMs=30000`,
 `-Dapocbr.telemetry.lua.enabled=true` for optional Lua event timings.
 Emission happens at the end of an outer server loop; disk writes remain on the
 bounded asynchronous writer queue. `dropped` counts lost telemetry records.
+
+## Nested phase output
+
+Schema 3 replaces the schema 2 flat `phases` array with a nested object. Each
+dot-separated phase name becomes a path: `simulation.vehicles.update.checks`
+is emitted at `phases.simulation.vehicles.update.checks`. Shared prefixes appear
+once, sibling keys are sorted, and redundant full `name` strings are omitted.
+Output remains compact NDJSON (one JSON object per line).
+
+For example (formatted here for readability):
+
+```json
+{
+  "schemaVersion": 3,
+  "phases": {
+    "simulation": {
+      "vehicles": {
+        "update": {
+          "calls": 100,
+          "totalMs": 20.000,
+          "avgMs": 0.200,
+          "maxMs": 0.500,
+          "checks": {
+            "calls": 100,
+            "totalMs": 5.000,
+            "avgMs": 0.050,
+            "maxMs": 0.100
+          }
+        }
+      }
+    }
+  }
+}
+```
+
+Measured parents retain their own `calls`, `totalMs`, `avgMs`, and `maxMs`
+alongside child objects. Unmeasured prefixes only group children; they receive
+no synthetic totals. Phases with no calls in a window are omitted, even if they
+were measured in earlier windows. Phase-name segments must not use the reserved
+timing field names (`calls`, `totalMs`, `avgMs`, `maxMs`).
+
+The tree represents naming prefixes, not proven timing containment. Existing
+phase names and measurement boundaries are unchanged; consult the relationships
+below before calculating shares or summing timings. Counters and Lua event
+output retain their existing layouts. Consumers must check `schemaVersion`:
+read the flat array for schema 2, or recursively traverse the object for schema 3
+and join its keys with dots to recover the original phase names. Historical
+schema 2 records may share an appended NDJSON file with new schema 3 records.
+
+Run `python tools/test_telemetry_output.py` to verify the production emitter with
+isolated engine stubs, including measured parents with children, unmeasured
+prefixes, deterministic ordering, escaping, and resets across reporting windows.
 
 ## Interpretation
 
@@ -475,3 +527,99 @@ not prepare live packet fields.
 
 See [implementation and validation](PLAYER-ZOMBIE-PACKET-HOTSPOTS.md) and run
 `python tools/test_player_packet_algorithms.py` for focused regression fixtures.
+
+## Unload, sound, animal-zone and vehicle follow-up
+
+Implemented 2026-10-05 following sequences 327–336. See
+[review and implementation status](UNLOAD-SIMULATION-ALGORITHM-REVIEW.md) and
+[vehicle follow-up candidates](VEHICLE-UPDATE-FOLLOWUP.md).
+
+| Phase | Boundary and interpretation |
+| --- | --- |
+| `entities.removal` | EngineEntityManager.removeEntityInternal, including membership/bucket notifications and removal listeners; can run under unload, simulation or another caller |
+| `entities.removal.array` | Indexed global-array removal inside entities.removal; excludes bucket/listener work |
+| `simulation.players.soundStress.discovery` | Full sound-index reconciliation inside soundStress; normal incremental appends do not create a discovery timing |
+| `simulation.worldSounds.expiry` | Server sound lifetime traversal and stable removal/compaction inside worldSounds |
+| `simulation.designationZones.animalCheck` | One animal-zone check, including topology lookup, square reconciliation and reattachment |
+| `simulation.designationZones.topologyValidate` | Geometry/list validation and spatial-view rebuilding when needed |
+| `simulation.designationZones.topology` | Connected-zone traversal on a cache miss; excludes topologyValidate |
+| `simulation.designationZones.reattach` | Trough/hutch animal reattachment inside animalCheck |
+| `simulation.vehicles.update.checks` | Removed/membership/chunk checks preceding inherited vehicle update |
+| `simulation.vehicles.update.inherited` | BaseVehicle's super.update call |
+| `simulation.vehicles.update.animals` | Auth countdown and carried-animal update branch |
+| `simulation.vehicles.update.routing` | Reliability/authority, trailer cargo and towing/reconnection bookkeeping preceding physics-state work |
+| `simulation.vehicles.update.physicsState` | Existing physics-state branch: activation, engine/controller, transform/square reconciliation and crash handling; not the fixed Bullet integration timer |
+| `simulation.vehicles.update.bookkeeping` | Impulse resets, sounds, breaking objects, world lights, alpha/passengers and lightbar checks |
+| `simulation.vehicles.update.parts` | Existing parts-update or idle-battery-update branch |
+| `simulation.vehicles.update.tail` | Bullet stats, overlays, remaining capacity/passenger/crop/important-area/trailer checks |
+| `simulation.isoObjects.update.<Kind>` | Actual selected IsoObject.update bodies, aggregated by fixed class family per processing pass |
+
+Topology helpers are also called by connected-zone getters outside the periodic
+designationZones pass. Their labels identify the subsystem, not guaranteed
+containment within that periodic parent. Do not calculate a periodic-parent share
+without matching call context. Vehicle stages aggregate once per scheduler bucket
+batch; phase max/calls describe batches, not an individual vehicle. Direct vehicle
+updates outside a scheduler batch record individual stage calls. Timed callbacks
+can contain other nested telemetry. Vehicle frameStep/preupdate and scheduler
+bookkeeping remain outside these BaseVehicle.update children. No variable object
+IDs or arbitrary subclass names are used as labels.
+
+IsoObject fixed kinds: IsoThumpable, IsoCompost, IsoFeedingTrough, IsoStove,
+IsoGenerator, IsoTrap, IsoBarbecue, IsoFireplace, IsoCarBatteryCharger,
+IsoClothingWasher, IsoClothingDryer, IsoCombinationWasherDryer,
+IsoStackedWasherDryer and other. Subclasses inherit the nearest known family.
+Divide class totals by `isoObjects.updateAttempts.<Kind>` for mean attempted-body
+cost, or by tick.count for tick impact; phase calls count nonempty class batches.
+
+New counters:
+
+- `entities.removal.indexed`: actual global-array removals. `arrayEntriesAtStart`
+  sums the global-array sizes before those removals. This is potential population,
+  not observed comparisons or a measured count of comparisons saved.
+- `players.soundStress.incrementalAppends`: known appends incorporated without
+  full rediscovery; includes non-stress sounds that leave candidate views intact.
+  `indexRebuilt` counts full builds and `eligibleAtBuild` sums stress-entry counts
+  at those builds. Existing discoveryEntries retains actual full-scan entries.
+- `sounds.expiry.checked`, `removed`: visited list entries and removed entries;
+  duplicates are separate entries. Life decrement and survivor/release order stay
+  unchanged. Stable compaction replaces repeated array shifts.
+- `zones.topology.geometryChecked`: zone-list entries checked for membership,
+  ordering and public rectangle changes; `invalidated`: changed snapshots;
+  `rebuilt`: connected-result builds; `cacheHits`: reused connected results;
+  `spatialEntriesBuilt`: zone/bucket references constructed for changed geometry.
+- `zones.check.squares`, `objects`: coordinate checks and live square-object visits
+  during animal-zone reconciliation, not unique world objects.
+- `isoObjects.skippedNoWork.IsoThumpable`: due exact-class server objects whose
+  existing update body would have no observable work. These are excluded from
+  actual updateAttempts and class-body timings. The existing phase schedule and
+  always-update exceptions remain unchanged.
+
+The sound view retains full reconciliation at the first query of a new world
+frame, or after unknown list mutations/invalidation. Native addSound appends
+extend the current view instead of invalidating it. Integrations editing existing
+sound coordinates/radius/stress eligibility during a shared-view frame must call
+`WorldSoundManager.instance.invalidateStressIndex()`; an unrelated native append
+is no longer an incidental full rebuild. stressMod is read live at query time.
+
+Zone connectivity and spatial views validate public geometry/order before reuse,
+retain first-match overlap semantics and original connected-list order, and cap
+cached connected references and spatial references independently at 65,536 each.
+Oversized spatial coverage falls back to the original zone scan. Dynamic roof,
+water/free-space, food, animal and corpse state is still reconciled at the original
+2500 ms boundary. Caching that state without its missing invalidation hooks would
+change observable results. Public list getters still return mutable ArrayLists.
+
+The thumpable gate applies only to exact IsoThumpable instances on the server.
+Settled unlit/no-fuel states skip no-op calls; lit fuel work becomes due at the
+original strict `abs(gameMinutes-lastUpdateHours) > 10` boundary. Initial/reset
+state and time rollback retain the original body; subclasses retain normal calls.
+This does not throttle Food.update, item temperature/cooking, traps or generators.
+
+Verification: `python tools/test_unload_simulation_algorithms.py` compares removal
+order/lifecycle with the complete vanilla manager, connected results/spatial lookup
+with vanilla traversal, expiry with the original loop, and the no-work predicate
+with the original dedicated-server thumpable body. It also checks that vehicle
+gameplay statements and the thumpable update body were left unchanged. Existing
+player/packet and moving-object fixtures cover incremental sound sums/invalidation
+and scheduler integration. Full 42.21 game-JAR dry-run compilation is required.
+These are correctness fixtures, not production timing or allocation benchmarks.
