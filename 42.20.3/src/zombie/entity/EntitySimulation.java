@@ -9,6 +9,11 @@ public class EntitySimulation {
     private static long currentTimeMillis;
     private static int simulationTicksThisFrame;
     private static int effectiveSimulationTicksThisFrame;
+    // ApocBR: monotonic count of simulation ticks consumed since world load. Derived from the
+    // same elapsed/100 arithmetic as simulationTicksThisFrame, so it is exact rather than
+    // reconstructed from currentTimeMillis (which carries a sub-tick remainder).
+    // MetaSimulationThrottle uses it to work out how many ticks a phased entity owes.
+    private static long totalSimulationTicks;
     private static long lastTimeStamp;
 
     public static long getMillisPerTick() {
@@ -27,8 +32,22 @@ public class EntitySimulation {
         return simulationTicksThisFrame;
     }
 
+    public static long getTotalSimulationTicks() {
+        return totalSimulationTicks;
+    }
+
+    /**
+     * Number of simulation ticks the entity currently being processed is responsible for.
+     * Defaults to {@link #getSimulationTicksThisFrame()} and is narrowed per entity by
+     * {@link MetaSimulationThrottle#shouldSkip(GameEntity)} for phased meta entities, which
+     * run less often but must then account for every tick they skipped.
+     */
     public static int getEffectiveSimulationTicksThisFrame() {
         return effectiveSimulationTicksThisFrame;
+    }
+
+    static void setEffectiveSimulationTicksThisFrame(int ticks) {
+        effectiveSimulationTicksThisFrame = ticks;
     }
 
     public static double getGameSecondsPerTick() {
@@ -45,18 +64,20 @@ public class EntitySimulation {
         long elapsed = currentTimeMillis - lastTimeStamp;
         if (elapsed >= 100L) {
             simulationTicksThisFrame = (int)(elapsed / 100L);
-            effectiveSimulationTicksThisFrame = simulationTicksThisFrame;
+            totalSimulationTicks += simulationTicksThisFrame;
             lastTimeStamp = currentTimeMillis - (elapsed - simulationTicksThisFrame * 100L);
         } else {
             simulationTicksThisFrame = 0;
-            effectiveSimulationTicksThisFrame = 0;
         }
+
+        effectiveSimulationTicksThisFrame = simulationTicksThisFrame;
     }
 
     protected static void reset() {
         currentTimeMillis = 0L;
         simulationTicksThisFrame = 0;
         effectiveSimulationTicksThisFrame = 0;
+        totalSimulationTicks = 0L;
         lastTimeStamp = 0L;
     }
 }

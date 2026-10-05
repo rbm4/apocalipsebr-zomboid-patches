@@ -24,6 +24,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.joml.Vector2i;
@@ -134,7 +135,7 @@ public final class IsoCell {
     public final IsoChunkMap[] chunkMap = new IsoChunkMap[4];
     public final ArrayList<IsoBuilding> buildingList = new ArrayList<>();
     private final ArrayList<IsoWindow> windowList = new ArrayList<>();
-    private final Set<IsoMovingObject> objectList = new HashSet<>();
+    private final Set<IsoMovingObject> objectList = ConcurrentHashMap.newKeySet();
     private final ArrayList<IsoPushableObject> pushableObjectList = new ArrayList<>();
     private final HashMap<Integer, BuildingScore> buildingScores = new HashMap<>();
     private final ArrayList<IsoRoom> roomList = new ArrayList<>();
@@ -142,8 +143,8 @@ public final class IsoCell {
     private final Set<IsoObject> staticUpdaterObjectSet = new HashSet<>();
     private final ArrayList<IsoZombie> zombieList = new ArrayList<>();
     private final ArrayList<IsoGameCharacter> remoteSurvivorList = new ArrayList<>();
-    private final Set<IsoMovingObject> removeList = new HashSet<>();
-    private final Set<IsoMovingObject> addList = new HashSet<>();
+    private final Set<IsoMovingObject> removeList = ConcurrentHashMap.newKeySet();
+    private final Set<IsoMovingObject> addList = ConcurrentHashMap.newKeySet();
     private final ArrayList<IsoObject> processIsoObject = new ArrayList<>();
     private final Set<IsoObject> processIsoObjectSet = new HashSet<>();
     private final Set<IsoObject> processIsoObjectRemove = new HashSet<>();
@@ -2193,6 +2194,11 @@ public final class IsoCell {
 
         for (int n = 0; n < size; n++) {
             InventoryItem i = this.processItems.get(n);
+            if (i == null) {
+                this.processItemsRemove.add(null);
+                continue;
+            }
+
             i.update();
             if (i.finishupdate()) {
                 this.processItemsRemove.add(i);
@@ -2203,6 +2209,11 @@ public final class IsoCell {
 
         for (int nx = 0; nx < size; nx++) {
             IsoWorldInventoryObject i = this.processWorldItems.get(nx);
+            if (i == null) {
+                this.processWorldItemsRemove.add(null);
+                continue;
+            }
+
             i.update();
             if (i.finishupdate()) {
                 this.processWorldItemsRemove.add(i);
@@ -2275,10 +2286,12 @@ public final class IsoCell {
         ApocBRServerTelemetry.recordTickSectionSince("stateIsoCellSchedulerUpdate", apocBrSectionStart);
 
         apocBrSectionStart = ApocBRServerTelemetry.beginDetail();
-        for (IsoMovingObject obj : this.objectList) {
+        for (IsoMovingObject obj : this.getObjectListSnapshot()) {
             if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
-                animal.updateVocalProperties();
-                animal.updateLoopingSounds();
+                if (animal.getData() != null && animal.getData().getBreed() != null) {
+                    animal.updateVocalProperties();
+                    animal.updateLoopingSounds();
+                }
             }
         }
         ApocBRServerTelemetry.recordTickSectionSince("stateIsoCellAnimalVocals", apocBrSectionStart);
@@ -2366,8 +2379,9 @@ public final class IsoCell {
 
     public void addToProcessItems(ArrayList<InventoryItem> items) {
         if (items != null && !GameClient.client) {
-            for (int i = 0; i < items.size(); i++) {
-                InventoryItem item = items.get(i);
+            ArrayList<InventoryItem> snapshot = new ArrayList<>(items);
+            for (int i = 0; i < snapshot.size(); i++) {
+                InventoryItem item = snapshot.get(i);
                 if (item != null) {
                     this.processItemsRemove.remove(item);
                     if (!this.processItems.contains(item)) {
@@ -2388,8 +2402,9 @@ public final class IsoCell {
 
     public void addToProcessItemsRemove(ArrayList<InventoryItem> items) {
         if (items != null) {
-            for (int i = 0; i < items.size(); i++) {
-                InventoryItem item = items.get(i);
+            ArrayList<InventoryItem> snapshot = new ArrayList<>(items);
+            for (int i = 0; i < snapshot.size(); i++) {
+                InventoryItem item = snapshot.get(i);
                 if (item != null && !this.processItemsRemove.contains(item)) {
                     this.processItemsRemove.add(item);
                 }
@@ -2734,9 +2749,13 @@ public final class IsoCell {
         return this.objectList;
     }
 
+    public List<IsoMovingObject> getObjectListSnapshot() {
+        return new ArrayList<>(this.objectList);
+    }
+
     @UsedFromLua
     public List<IsoMovingObject> getObjectListForLua() {
-        return this.objectList.stream().toList();
+        return this.getObjectListSnapshot();
     }
 
     public IsoRoom getRoom(int id) {
@@ -4262,6 +4281,16 @@ public final class IsoCell {
         }
 
         this.safeToAdd = true;
+
+        // ApocBR: load2 anchor, and the only one inside gameState. Safe specifically here: the
+        // scheduler buckets and ProcessIsoObject have both finished, so GameTime.perObjectMultiplier
+        // is back to 1.0 and no world collection is mid-iteration, and safeToAdd was just restored so
+        // a drained Lua task that spawns an object is handled normally. Do not hoist this earlier -
+        // during ProcessObjects/ProcessIsoObject the multiplier is 8x or 16x and objectList is being
+        // walked by index.
+        if (GameServer.server) {
+            ServerMap.drainLoad2MainThreadTasks();
+        }
 
         apocBrSectionStart = ApocBRServerTelemetry.beginDetail();
         try (GameProfiler.ProfileArea var29 = profiler.profile("Static Updaters")) {

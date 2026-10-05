@@ -97,6 +97,36 @@ public class ServerMap {
         ServerMap.ServerCell.load2MainThread.submitAndWait(label, task);
     }
 
+    public static boolean isVanillaLoad2Enabled() {
+        return ServerMap.ServerCell.LOAD2_VANILLA;
+    }
+
+    public static void submitLoad2MainThreadTask(String label, Runnable task) {
+        if (task == null) {
+            return;
+        }
+
+        if (!GameServer.server || GameServer.mainThread == null) {
+            task.run();
+            return;
+        }
+
+        ServerMap.ServerCell.load2MainThreadDeferred.submit(label, task);
+    }
+
+    public static void submitLoad2OrderedMainThreadTask(String label, Runnable task) {
+        if (task == null) {
+            return;
+        }
+
+        if (!GameServer.server || GameServer.mainThread == null) {
+            task.run();
+            return;
+        }
+
+        ServerMap.ServerCell.load2MainThread.submit(label, task);
+    }
+
     public static void runLoad2ChunkRegistrations(IsoChunk chunk) {
         if (chunk == null) {
             return;
@@ -122,6 +152,23 @@ public class ServerMap {
         );
     }
 
+    public static void submitLoad2ChunkRegistrations(List<IsoChunk> chunks) {
+        if (chunks == null || chunks.isEmpty()) {
+            return;
+        }
+
+        if (!GameServer.server || GameServer.mainThread == null) {
+            ServerMap.ServerCell.runLoad2ChunkRegistrationsOnMainThread(chunks);
+            return;
+        }
+
+        ArrayList<IsoChunk> batch = new ArrayList<>(chunks);
+        ServerMap.ServerCell.load2MainThread.submit(
+            "IsoChunk.nativeChunkRegistrationBatch",
+            () -> ServerMap.ServerCell.runLoad2ChunkRegistrationsOnMainThread(batch)
+        );
+    }
+
     private static final int SAVE_CELL_WORK_THREADS = 1;
     private static final ServerMap.WorkerThread[] workerThreads = new ServerMap.WorkerThread[SAVE_CELL_WORK_THREADS];
     public boolean queuedSaveAll;
@@ -130,6 +177,9 @@ public class ServerMap {
     public ServerMap.ServerCell[] cellMap;
     public ArrayList<ServerMap.ServerCell> loadedCells = new ArrayList<>();
     public ArrayList<ServerMap.ServerCell> releventNow = new ArrayList<>();
+    private final ArrayList<ServerMap.ServerCell> deferredUnloadCells = new ArrayList<>();
+    private int deferredUnloadQueuedThisTick;
+    private long deferredUnloadTick;
     int width;
     int height;
     IsoMetaGrid grid;
@@ -144,6 +194,7 @@ public class ServerMap {
 
     public void SaveAll() {
         long start = System.nanoTime();
+        this.drainDeferredUnloadsForSave();
         if (!GameServer.softReset && this.loadedCells.size() >= 10) {
             for (int i = 0; i < SAVE_CELL_WORK_THREADS; i++) {
                 workerThreads[i] = new ServerMap.WorkerThread();
@@ -195,6 +246,138 @@ public class ServerMap {
 
         this.grid.save();
         DebugLog.log("SaveAll took " + (System.nanoTime() - start) / 1000000.0 + " ms");
+    }
+
+    private void settleLoadingForSaveQuit() {
+        long start = System.nanoTime();
+        long deadline = start + Math.max(1000L, Long.getLong("apocbr.shutdownLoadSettleTimeoutMs", 120000L)) * 1000000L;
+        boolean timedOut = false;
+
+        while (true) {
+            for (int i = 0; i < this.toLoad.size(); i++) {
+                ServerMap.ServerCell cell = this.toLoad.get(i);
+                if (cell.loadingWasCancelled) {
+                    int cx = cell.wx - this.getMinX();
+                    int cy = cell.wy - this.getMinY();
+                    if (!this.isInvalidCell(cx, cy) && this.cellMap[cx + cy * this.width] == cell) {
+                        this.cellMap[cx + cy * this.width] = null;
+                    }
+
+                    this.loadedCells.remove(cell);
+                    this.releventNow.remove(cell);
+                    ServerMap.ServerCell.loaded2.remove(cell);
+                    this.toLoad.remove(i--);
+                }
+            }
+
+            int pendingLoadBefore = ServerMap.ServerCell.chunkLoader.getLoadQueueSize();
+            int pendingLoadedBefore = ServerMap.ServerCell.chunkLoader.getLoadedQueueSize();
+            int pendingRecalcBefore = ServerMap.ServerCell.chunkLoader.getRecalcQueueSize();
+            int pendingRecalcDoneBefore = ServerMap.ServerCell.chunkLoader.getRecalcDoneQueueSize();
+
+            for (int i = 0; i < this.toLoad.size(); i++) {
+                ServerMap.ServerCell cell = this.toLoad.get(i);
+                if (!cell.cancelLoading && !cell.startedLoading) {
+                    ServerMap.ServerCell.chunkLoader.addJob(cell);
+                    cell.startedLoading = true;
+                }
+            }
+
+            ServerMap.ServerCell.chunkLoader.getLoaded(ServerMap.ServerCell.loaded);
+            for (int i = 0; i < ServerMap.ServerCell.loaded.size(); i++) {
+                ServerMap.ServerCell cell = ServerMap.ServerCell.loaded.get(i);
+                if (!cell.doingRecalc) {
+                    ServerMap.ServerCell.chunkLoader.addRecalcJob(cell);
+                    cell.doingRecalc = true;
+                }
+            }
+            ServerMap.ServerCell.loaded.clear();
+
+            ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
+            if (ServerMap.ServerCell.LOAD2_VANILLA) {
+                this.processLoaded2Vanilla();
+            } else {
+                if (ServerMap.ServerCell.load2Job == null && !ServerMap.ServerCell.loaded2.isEmpty()) {
+                    ServerMap.ServerCell.load2Job = new ServerMap.ServerCell.Load2Job(ServerMap.ServerCell.loaded2);
+                    ServerMap.ServerCell.loaded2.clear();
+                }
+
+                if (ServerMap.ServerCell.load2Job != null) {
+                    boolean load2Done = ServerMap.ServerCell.load2Job.advance(50000000L);
+                    if (load2Done) {
+                        this.retireLoad2Job(ServerMap.ServerCell.load2Job);
+                        ServerMap.ServerCell.load2Job = null;
+                    }
+                } else {
+                    ServerMap.drainLoad2MainThreadTasks();
+                }
+            }
+
+            this.drainDeferredUnloadsForSave();
+            ServerMap.ServerCell.chunkLoader.updateSaved();
+
+            boolean hasUnstartedLoads = false;
+            for (int i = 0; i < this.toLoad.size(); i++) {
+                ServerMap.ServerCell cell = this.toLoad.get(i);
+                if (!cell.cancelLoading && !cell.startedLoading) {
+                    hasUnstartedLoads = true;
+                    break;
+                }
+            }
+
+            boolean loadingSettled = !hasUnstartedLoads
+                && this.toLoad.isEmpty()
+                && ServerMap.ServerCell.load2Job == null
+                && ServerMap.ServerCell.loaded2.isEmpty()
+                && ServerMap.ServerCell.chunkLoader.getLoadQueueSize() == 0
+                && ServerMap.ServerCell.chunkLoader.getLoadedQueueSize() == 0
+                && ServerMap.ServerCell.chunkLoader.getRecalcQueueSize() == 0
+                && ServerMap.ServerCell.chunkLoader.getRecalcDoneQueueSize() == 0;
+
+            if (loadingSettled) {
+                break;
+            }
+
+            if (System.nanoTime() >= deadline) {
+                timedOut = true;
+                DebugLog.log(
+                    "[ApocBR] shutdown load-settle timed out, toLoad="
+                        + this.toLoad.size()
+                        + ", loadQueue="
+                        + ServerMap.ServerCell.chunkLoader.getLoadQueueSize()
+                        + ", loadedQueue="
+                        + ServerMap.ServerCell.chunkLoader.getLoadedQueueSize()
+                        + ", recalcQueue="
+                        + ServerMap.ServerCell.chunkLoader.getRecalcQueueSize()
+                        + ", recalcDoneQueue="
+                        + ServerMap.ServerCell.chunkLoader.getRecalcDoneQueueSize()
+                        + ", load2Job="
+                        + (ServerMap.ServerCell.load2Job != null)
+                );
+                break;
+            }
+
+            if (pendingLoadBefore == 0
+                && pendingLoadedBefore == 0
+                && pendingRecalcBefore == 0
+                && pendingRecalcDoneBefore == 0
+                && ServerMap.ServerCell.load2Job == null) {
+                try {
+                    Thread.sleep(10L);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+
+        DebugLog.log(
+            "[ApocBR] shutdown load-settle "
+                + (timedOut ? "stopped" : "finished")
+                + " in "
+                + (System.nanoTime() - start) / 1000000.0
+                + " ms"
+        );
     }
 
     public void QueueSaveAll() {
@@ -269,6 +452,20 @@ public class ServerMap {
         return this.isInvalidCell(x, y) ? null : this.cellMap[y * this.width + x];
     }
 
+    private ServerMap.ServerCell getDeferredUnloadCell(int x, int y) {
+        int wx = x + this.getMinX();
+        int wy = y + this.getMinY();
+
+        for (int i = 0; i < this.deferredUnloadCells.size(); i++) {
+            ServerMap.ServerCell cell = this.deferredUnloadCells.get(i);
+            if (cell.wx == wx && cell.wy == wy) {
+                return cell;
+            }
+        }
+
+        return null;
+    }
+
     public boolean isInvalidCell(int x, int y) {
         return x < 0 || y < 0 || x >= this.width || y >= this.height;
     }
@@ -277,6 +474,10 @@ public class ServerMap {
         if (!this.isInvalidCell(x, y)) {
             ServerMap.ServerCell cell = this.getCell(x, y);
             if (cell == null) {
+                if (this.getDeferredUnloadCell(x, y) != null) {
+                    return;
+                }
+
                 cell = new ServerMap.ServerCell();
                 cell.wx = x + this.getMinX();
                 cell.wy = y + this.getMinY();
@@ -382,6 +583,7 @@ public class ServerMap {
 
     public void QueuedQuit() {
         ZipBackup.waitFinish();
+        this.settleLoadingForSaveQuit();
         this.QueuedSaveAll(true);
         ByteBufferWriter b = GameServer.udpEngine.startPacket();
         PacketTypes.PacketType.ServerQuit.doPacket(b);
@@ -566,30 +768,39 @@ public class ServerMap {
             apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("drainRecalc", ServerMap.ServerCell.loaded2.size(), apocBrPhaseStart);
-            if (!ServerMap.ServerCell.loaded2.isEmpty()) {
-                try {
-                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    ServerLOS.instance.suspend();
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LosSuspend", 1, apocBrPhaseStart);
-
-                    // Load2 work for every ready cell is fanned out across a 4-color checkerboard
-                    // (see ServerCell.recalcAllParallel). Worker threads own the load flow and
-                    // synchronously hand Lua/main-thread-only mutations to the pump below.
-                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    apocBrUnits = ServerMap.ServerCell.loaded2.size();
-                    ServerMap.ServerCell.recalcAllParallel(ServerMap.ServerCell.loaded2);
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", apocBrUnits, apocBrPhaseStart);
-
-                    long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
-                    for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
-                        this.toLoad.remove(ServerMap.ServerCell.loaded2.get(x));
-                    }
+            if (ServerMap.ServerCell.LOAD2_VANILLA) {
+                apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                int apocBrVanillaUnits = ServerMap.ServerCell.loaded2.size();
+                this.processLoaded2Vanilla();
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vanilla", apocBrVanillaUnits, apocBrPhaseStart);
+            } else {
+                // ApocBR: load2 advances a slice per tick instead of running to completion in one call.
+                // Cells that become ready while a job is in flight accumulate in loaded2 and are admitted
+                // to the next job - they cannot join the running one without breaking its colour
+                // partition, and waiting one job cycle is cheaper than a stall. LOS is no longer suspended
+                // around this: ServerLOS skips cells flagged loadInProgress instead, so it keeps running
+                // for the rest of the world while these cells build.
+                if (ServerMap.ServerCell.load2Job == null && !ServerMap.ServerCell.loaded2.isEmpty()) {
+                    ServerMap.ServerCell.load2Job = new ServerMap.ServerCell.Load2Job(ServerMap.ServerCell.loaded2);
                     ServerMap.ServerCell.loaded2.clear();
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", apocBrUnits, apocBrRemoveStart);
-                } finally {
-                    long apocBrResumeStart = ApocBRServerTelemetry.beginDetail();
-                    ServerLOS.instance.resume();
-                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2LosResume", 1, apocBrResumeStart);
+                }
+
+                if (ServerMap.ServerCell.load2Job != null) {
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                    apocBrUnits = ServerMap.ServerCell.load2Job.getCells().size();
+                    boolean load2Done = ServerMap.ServerCell.load2Job.advance(ServerMap.ServerCell.LOAD2_MAX_NANOS_PER_TICK);
+
+                    // load2 is now one slice per tick, so "calls" counts slices and only the slice that
+                    // retires the job may report the cell count - charging it on every slice would
+                    // multiply the cell total by however many ticks the job happened to span.
+                    ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2", load2Done ? apocBrUnits : 0, apocBrPhaseStart);
+
+                    if (load2Done) {
+                        long apocBrRemoveStart = ApocBRServerTelemetry.beginDetail();
+                        this.retireLoad2Job(ServerMap.ServerCell.load2Job);
+                        ServerMap.ServerCell.load2Job = null;
+                        ApocBRServerTelemetry.recordServerMapPrePhaseSince("removeLoaded2FromToLoad", apocBrUnits, apocBrRemoveStart);
+                    }
                 }
             }
             ApocBRServerTelemetry.recordServerMapPreQueues(
@@ -638,6 +849,250 @@ public class ServerMap {
         ApocBRServerTelemetry.recordTickSectionSince("serverMapPre", apocBrSectionStart);
     }
 
+    /**
+     * ApocBR: end-of-job bookkeeping that used to sit inline in preupdate(), lifted out so both the
+     * in-tick and idle-window drivers can retire a finished job.
+     */
+    private void retireLoad2Job(ServerMap.ServerCell.Load2Job job) {
+        // units = slices the job consumed, so units/calls is "slices to load a cell group" and avgMs
+        // is wall time per job. Those two together say whether slicing is keeping up with demand.
+        ApocBRServerTelemetry.recordServerMapPrePhase("load2JobComplete", job.getSlices(), job.getElapsedNanos());
+
+        for (ServerMap.ServerCell cell : job.getCells()) {
+            this.toLoad.remove(cell);
+            if (cell.loadingWasCancelled && !cell.isLoaded) {
+                int cx = cell.wx - this.getMinX();
+                int cy = cell.wy - this.getMinY();
+                if (!this.isInvalidCell(cx, cy) && this.cellMap[cx + cy * this.width] == cell) {
+                    this.cellMap[cx + cy * this.width] = null;
+                }
+
+                this.loadedCells.remove(cell);
+                this.releventNow.remove(cell);
+            }
+        }
+    }
+
+    private void processLoaded2Vanilla() {
+        if (ServerMap.ServerCell.loaded2.isEmpty()) {
+            return;
+        }
+
+        try {
+            ServerLOS.instance.suspend();
+            for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
+                ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
+                if (cell.Load2Vanilla()) {
+                    x--;
+                    this.toLoad.remove(cell);
+                }
+            }
+        } finally {
+            ServerLOS.instance.resume();
+        }
+    }
+
+    /**
+     * ApocBR: load2 counterpart to {@link #processDeferredUnloadsInIdleWindow(long)}.
+     *
+     * The main loop sleeps out the remainder of every cycle it finishes early (throttleSleep averaged
+     * 5.9-21.2ms per tick in telemetry). Draining load2 handoffs there costs nothing that was being
+     * used for anything else and lets a cell finish sooner without taking a single millisecond away
+     * from the tick itself.
+     *
+     * @return nanoseconds consumed, so the caller can charge it against the same idle budget.
+     */
+    public long advanceLoad2InIdleWindow(long budgetNanos) {
+        ServerMap.ServerCell.Load2Job job = ServerMap.ServerCell.load2Job;
+        if (ServerMap.ServerCell.LOAD2_VANILLA || !ServerMap.ServerCell.LOAD2_IDLE_ENABLED || job == null || budgetNanos <= 0L) {
+            return 0L;
+        }
+
+        long start = System.nanoTime();
+        long deadline = start + Math.min(budgetNanos, ServerMap.ServerCell.LOAD2_IDLE_MAX_NANOS);
+        boolean done = job.advanceUntilDeadline(deadline);
+        long elapsed = System.nanoTime() - start;
+        ApocBRServerTelemetry.recordServerMapPrePhase("load2IdleAdvance", done ? job.getCells().size() : 0, elapsed);
+
+        if (done) {
+            this.retireLoad2Job(job);
+            ServerMap.ServerCell.load2Job = null;
+        }
+
+        return elapsed;
+    }
+
+    /**
+     * ApocBR: tick-phase anchor. Applies whatever load2 workers have handed over since the last
+     * anchor, then returns immediately.
+     *
+     * Without these the only drain points are preupdate() and the idle window, so a worker that hands
+     * off a mutation just after preupdate waits a whole tick (~100ms) for it to land, and its chain
+     * stalls behind it. Anchors keep the workers fed while the main thread carries on with the tick.
+     *
+     * Placement is a whitelist, not a sprinkle. These are only safe at top-level tick boundaries where
+     * nothing is mid-iteration over a world collection and no global side-band state is set - drained
+     * tasks run Lua and can add or remove world objects. Specifically they must NOT go inside
+     * MovingObjectUpdateSchedulerUpdateBucket.update() or IsoCell.ProcessIsoObject(), both of which
+     * iterate live collections and hold GameTime.perObjectMultiplier at a non-1 value for the whole
+     * loop; a task drained in that window would see an 8x or 16x timestep and silently miscompute.
+     */
+    public static void drainLoad2MainThreadTasks() {
+        long start = ApocBRServerTelemetry.beginDetail();
+        int applied = ServerMap.ServerCell.load2MainThread.drainAll();
+        applied += ServerMap.ServerCell.load2MainThreadDeferred.drainAll();
+        if (applied > 0) {
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Anchor", applied, start);
+        }
+    }
+
+    private void queueDeferredUnload(ServerMap.ServerCell cell) {
+        if (cell == null || !cell.beginDeferredUnload(this.deferredUnloadTick)) {
+            return;
+        }
+
+        this.deferredUnloadCells.add(cell);
+        this.deferredUnloadQueuedThisTick++;
+    }
+
+    private boolean hasDeferredUnloads() {
+        return !this.deferredUnloadCells.isEmpty();
+    }
+
+    private void processDeferredUnloads() {
+        this.deferredUnloadTick++;
+        this.processDeferredUnloads(
+            ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_NANOS_PER_TICK,
+            ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_CELLS_PER_TICK,
+            ServerMap.ServerCell.DEFERRED_UNLOAD_SLICES_PER_TICK,
+            ServerMap.ServerCell.DEFERRED_UNLOAD_SQUARES_PER_SLICE,
+            true
+        );
+    }
+
+    public long processDeferredUnloadsInIdleWindow(long budgetNanos) {
+        if (!ServerMap.ServerCell.isDeferredUnloadEnabled()
+            || !ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_ENABLED
+            || this.deferredUnloadCells.isEmpty()
+            || budgetNanos <= 0L) {
+            return 0L;
+        }
+
+        long start = System.nanoTime();
+        boolean losSuspended = false;
+
+        try {
+            ServerLOS.instance.suspend();
+            losSuspended = true;
+            this.processDeferredUnloads(
+                Math.min(budgetNanos, ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_MAX_NANOS),
+                ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_MAX_CELLS,
+                ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_SLICES,
+                ServerMap.ServerCell.DEFERRED_UNLOAD_IDLE_SQUARES_PER_SLICE,
+                false
+            );
+        } finally {
+            if (losSuspended) {
+                ServerLOS.instance.resume();
+            }
+        }
+
+        return System.nanoTime() - start;
+    }
+
+    private void processDeferredUnloads(long maxNanos, int maxCellsPerTick, int maxSlicesPerTick, int squaresPerSlice, boolean enforceDeadline) {
+        int pendingAtStart = this.deferredUnloadCells.size();
+        int queued = this.deferredUnloadQueuedThisTick;
+        this.deferredUnloadQueuedThisTick = 0;
+        if (pendingAtStart == 0) {
+            ApocBRServerTelemetry.recordServerMapDeferredUnload(0, queued, 0, 0, 0L, 0L);
+            ApocBRServerTelemetry.recordServerMapDeferredUnloadBudget(ServerMap.ServerCell.DEFERRED_UNLOAD_MODE, 0, 0, 0, 0, 0);
+            return;
+        }
+
+        long start = ApocBRServerTelemetry.beginDetail();
+        long deadline = System.nanoTime() + Math.max(1L, maxNanos);
+        int maxCells = PZMath.max(1, maxCellsPerTick);
+        int maxSlices = PZMath.max(1, maxSlicesPerTick);
+        int overdueCells = 0;
+        if (enforceDeadline && ServerMap.ServerCell.DEFERRED_UNLOAD_FORCE_OVERDUE) {
+            for (int i = 0; i < this.deferredUnloadCells.size(); i++) {
+                if (this.deferredUnloadCells.get(i).getDeferredUnloadAgeTicks(this.deferredUnloadTick) >= ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_TICKS) {
+                    overdueCells++;
+                }
+            }
+        }
+
+        int cellsToTouch = PZMath.min(maxCells, pendingAtStart);
+        int attempts = 0;
+        int partialCells = 0;
+        int unloaded = 0;
+
+        for (int touched = 0; touched < cellsToTouch && attempts < maxSlices && !this.deferredUnloadCells.isEmpty(); touched++) {
+            ServerMap.ServerCell cell = this.deferredUnloadCells.remove(0);
+            attempts++;
+            boolean forced = enforceDeadline
+                && ServerMap.ServerCell.DEFERRED_UNLOAD_FORCE_OVERDUE
+                && cell.getDeferredUnloadAgeTicks(this.deferredUnloadTick) >= ServerMap.ServerCell.DEFERRED_UNLOAD_MAX_TICKS;
+            boolean finished = cell.processDeferredUnloadSlice(forced ? ServerMap.ServerCell.DEFERRED_UNLOAD_FORCED_SQUARES_PER_SLICE : squaresPerSlice);
+            if (finished) {
+                unloaded++;
+            } else {
+                partialCells++;
+                this.deferredUnloadCells.add(cell);
+            }
+
+            if (System.nanoTime() >= deadline) {
+                break;
+            }
+        }
+
+        long oldestAgeMs = 0L;
+        long now = System.currentTimeMillis();
+        for (int i = 0; i < this.deferredUnloadCells.size(); i++) {
+            oldestAgeMs = Math.max(oldestAgeMs, now - this.deferredUnloadCells.get(i).getDeferredUnloadQueuedAtMs());
+        }
+
+        ApocBRServerTelemetry.recordServerMapDeferredUnload(
+            this.deferredUnloadCells.size(),
+            queued,
+            0,
+            unloaded,
+            System.nanoTime() - start,
+            oldestAgeMs
+        );
+        ApocBRServerTelemetry.recordServerMapDeferredUnloadBudget(
+            ServerMap.ServerCell.DEFERRED_UNLOAD_MODE,
+            pendingAtStart,
+            maxCells,
+            maxSlices,
+            attempts,
+            partialCells
+        );
+    }
+
+    private void drainDeferredUnloadsForSave() {
+        if (!ServerMap.ServerCell.isDeferredUnloadEnabled() || this.deferredUnloadCells.isEmpty()) {
+            return;
+        }
+
+        boolean losSuspended = false;
+
+        try {
+            ServerLOS.instance.suspend();
+            losSuspended = true;
+            while (!this.deferredUnloadCells.isEmpty()) {
+                ServerMap.ServerCell cell = this.deferredUnloadCells.remove(0);
+                while (!cell.processDeferredUnloadSlice(Integer.MAX_VALUE)) {
+                }
+            }
+        } finally {
+            if (losSuspended) {
+                ServerLOS.instance.resume();
+            }
+        }
+    }
+
     public void postupdate() {
         long apocBrPostStart = ApocBRServerTelemetry.beginDetail();
         boolean pathfindPaused = false;
@@ -645,9 +1100,10 @@ public class ServerMap {
         try {
             int apocBrLoadedCellsAtStart = this.loadedCells.size();
             long apocBrLoopStart = ApocBRServerTelemetry.beginDetail();
+            long apocBrPhaseStart;
             for (int n = 0; n < this.loadedCells.size(); n++) {
                 ServerMap.ServerCell cell = this.loadedCells.get(n);
-                long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                 boolean relevant = this.releventNow.contains(cell);
                 ApocBRServerTelemetry.recordServerMapPostPhaseSince("relevantContains", 1, apocBrPhaseStart);
                 boolean outsidePlayerInfluence = false;
@@ -675,6 +1131,16 @@ public class ServerMap {
                         ApocBRServerTelemetry.recordServerMapPostPhaseSince("cancelLoading", 1, apocBrPhaseStart);
                     }
                 } else if (!shouldBeLoaded) {
+                    // ApocBR: a load2 worker may still be building this cell - jobs now span ticks, so
+                    // a cell can go irrelevant mid-load. beginDeferredUnload() refuses those, but the
+                    // cellMap clear and loadedCells removal below run unconditionally, which would
+                    // orphan the cell: still isLoaded, still being written by its worker, but no
+                    // longer reachable from cellMap and therefore never unloaded or saved. Skip it
+                    // and revisit next tick; loadInProgress clears in the worker's finally.
+                    if (cell.loadInProgress) {
+                        continue;
+                    }
+
                     int x = cell.wx - this.getMinX();
                     int y = cell.wy - this.getMinY();
                     if (!pathfindPaused) {
@@ -687,7 +1153,11 @@ public class ServerMap {
                     int cellMapIndex = y * this.width + x;
                     ServerMap.ServerCell mapCell = this.cellMap[cellMapIndex];
                     apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                    mapCell.Unload();
+                    if (ServerMap.ServerCell.isDeferredUnloadEnabled()) {
+                        this.queueDeferredUnload(mapCell);
+                    } else {
+                        mapCell.Unload();
+                    }
                     ApocBRServerTelemetry.recordServerMapPostPhaseSince("cellUnload", 1, apocBrPhaseStart);
                     apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
                     this.cellMap[cellMapIndex] = null;
@@ -701,6 +1171,17 @@ public class ServerMap {
                     cell.update();
                     ApocBRServerTelemetry.recordServerMapPostPhaseSince("cellUpdate", 1, apocBrPhaseStart);
                 }
+            }
+
+            if (ServerMap.ServerCell.isDeferredUnloadEnabled()) {
+                if (this.hasDeferredUnloads() && !pathfindPaused) {
+                    apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                    ServerLOS.instance.suspend();
+                    ApocBRServerTelemetry.recordServerMapPostPhaseSince("losSuspend", 1, apocBrPhaseStart);
+                    pathfindPaused = true;
+                }
+
+                this.processDeferredUnloads();
             }
             ApocBRServerTelemetry.recordServerMapPostPhaseSince("loop", apocBrLoadedCellsAtStart, apocBrLoopStart);
         } catch (Exception var10) {
@@ -937,16 +1418,92 @@ public class ServerMap {
         private boolean startedLoading;
         public boolean cancelLoading;
         public boolean loadingWasCancelled;
+        /**
+         * ApocBR: true from the moment a cell is handed to a load2 worker until its RecalcAll2()
+         * has finished, including across tick boundaries.
+         *
+         * Deliberately NOT consulted by getGridSquare()/getChunk(). RecalcAll2()'s border pass goes
+         * EnsureSurroundNotNull() -> IsoCell.createNewGridSquare() -> ServerMap.getChunk(), so gating
+         * reads on this flag would make the cell's own border scan create no squares at all and
+         * silently corrupt cell seams. Half-built reads are already a legal, handled state: the
+         * isLoaded gate returns null and every caller copes.
+         *
+         * What it does guard is lifecycle transitions that must not run against a cell a worker is
+         * still building - deferred unload, and cellMap removal - plus ServerLOS, which uses it to
+         * skip mid-load cells instead of the whole LOS subsystem being suspended for the duration of
+         * the job.
+         */
+        public volatile boolean loadInProgress;
         private static final ArrayList<ServerMap.ServerCell> loaded2 = new ArrayList<>();
         private boolean doingRecalc;
         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
-        private static final int RECALC_WORKERS = 6;
-        private static final ExecutorService recalcPool = Executors.newFixedThreadPool(RECALC_WORKERS);
+        // ApocBR: default back to vanilla-style same-tick unload. The deferred path changes the
+        // persistence semantics by unlinking cells before all chunk/animal unload work is durable,
+        // which creates a crash window for apop animal-cell state.
+        private static final boolean DEFERRED_UNLOAD_ENABLED = "true".equalsIgnoreCase(System.getProperty("apocbr.deferredCellUnload", "false"));
+        private static final boolean DEFERRED_UNLOAD_ALLOW_COOP = "true".equalsIgnoreCase(System.getProperty("apocbr.deferredCellUnloadInCoop", "false"));
+        private static final int DEFERRED_UNLOAD_MODE = DEFERRED_UNLOAD_ENABLED ? 1 : 0;
+        private static final int DEFERRED_UNLOAD_MAX_TICKS = Math.max(1, Integer.getInteger("apocbr.unload.maxTicks", 12));
+        private static final int DEFERRED_UNLOAD_MAX_MS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.unload.maxMsPerTick", 32));
+        private static final long DEFERRED_UNLOAD_MAX_NANOS_PER_TICK = DEFERRED_UNLOAD_MAX_MS_PER_TICK * 1000000L;
+        private static final int DEFERRED_UNLOAD_MAX_CELLS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.unload.maxCellsPerTick", 16));
+        private static final int DEFERRED_UNLOAD_SLICES_PER_TICK = Math.max(1, Integer.getInteger("apocbr.unload.slicesPerTick", 32));
+        private static final int DEFERRED_UNLOAD_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.squaresPerSlice", 4096));
+        private static final boolean DEFERRED_UNLOAD_FORCE_OVERDUE = "true".equalsIgnoreCase(System.getProperty("apocbr.unload.forceOverdue", "false"));
+        private static final int DEFERRED_UNLOAD_FORCED_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.forcedSquaresPerSlice", 8192));
+        private static final boolean DEFERRED_UNLOAD_IDLE_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.unload.idleEnabled", "true"));
+        private static final int DEFERRED_UNLOAD_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.unload.idleMaxMs", 16));
+        private static final long DEFERRED_UNLOAD_IDLE_MAX_NANOS = DEFERRED_UNLOAD_IDLE_MAX_MS * 1000000L;
+        private static final int DEFERRED_UNLOAD_IDLE_MAX_CELLS = Math.max(1, Integer.getInteger("apocbr.unload.idleMaxCells", 32));
+        private static final int DEFERRED_UNLOAD_IDLE_SLICES = Math.max(1, Integer.getInteger("apocbr.unload.idleSlices", 64));
+        private static final int DEFERRED_UNLOAD_IDLE_SQUARES_PER_SLICE = Math.max(64, Integer.getInteger("apocbr.unload.idleSquaresPerSlice", 4096));
+        private boolean deferredUnloadQueued;
+        private long deferredUnloadQueuedAtMs;
+        private long deferredUnloadQueuedAtTick;
+        private int deferredUnloadChunkX;
+        private int deferredUnloadChunkY;
+
+        public static boolean isDeferredUnloadEnabled() {
+            return DEFERRED_UNLOAD_ENABLED && (DEFERRED_UNLOAD_ALLOW_COOP || CoopSlave.instance == null);
+        }
+        /**
+         * ApocBR: cells still use virtual threads for cheap off-thread fan-out, but load2 no longer
+         * parks them through a chain of submitAndWait() calls. Each worker now queues ordered
+         * main-thread commit tasks and returns; the colour latch is released by the final queued
+         * cell commit task, so the checkerboard barrier still represents committed world mutation.
+         */
+        private static final ExecutorService recalcPool = Executors.newVirtualThreadPerTaskExecutor();
+        // ApocBR: both queues are now drained cooperatively with pumpFor() across ticks and from the
+        // throttle-sleep idle window, never by parking in pumpUntil(), so they need the longer
+        // task timeout - see ApocBRMainThreadOrchestrator.COOPERATIVE_TASK_TIMEOUT_NANOS.
         private static final ApocBRMainThreadOrchestrator load2MainThread = new ApocBRMainThreadOrchestrator(
             "load2MainPump",
             "load2MainTask",
-            "load2PumpIdleWait"
+            "load2PumpIdleWait",
+            true
         );
+        private static final ApocBRMainThreadOrchestrator load2MainThreadDeferred = new ApocBRMainThreadOrchestrator(
+            "load2MainDeferredPump",
+            "load2MainDeferredTask",
+            "load2DeferredPumpIdleWait",
+            true
+        );
+        static final int LOAD2_MAX_MS_PER_TICK = Math.max(1, Integer.getInteger("apocbr.load2.maxMsPerTick", 8));
+        static final long LOAD2_MAX_NANOS_PER_TICK = LOAD2_MAX_MS_PER_TICK * 1000000L;
+        static final boolean LOAD2_VANILLA = "true".equalsIgnoreCase(System.getProperty("apocbr.load2.vanilla", "false"));
+        static final boolean LOAD2_IDLE_ENABLED = !"false".equalsIgnoreCase(System.getProperty("apocbr.load2.idleEnabled", "true"));
+        static final int LOAD2_IDLE_MAX_MS = Math.max(1, Integer.getInteger("apocbr.load2.idleMaxMs", 4));
+        static final long LOAD2_IDLE_MAX_NANOS = LOAD2_IDLE_MAX_MS * 1000000L;
+        /**
+         * Liveness guard for a colour group that stops counting down entirely.
+         *
+         * The old pumpUntil() timeout served this purpose, but it conflated "a worker is wedged" with
+         * "this is taking a while", so any slow group was destroyed. Now that the main thread never
+         * parks on the latch, a slow group costs nothing and only a group that makes no progress at
+         * all for this long is treated as broken.
+         */
+        static final long LOAD2_JOB_STALL_TIMEOUT_MS = Math.max(1000L, Long.getLong("apocbr.load2.jobStallTimeoutMs", 15000L));
+        static ServerMap.ServerCell.Load2Job load2Job;
         /**
          * Load2 mutates shared, cross-cell world state: EnsureSurroundNotNull()/createNewGridSquare()
          * write directly into a neighbouring ServerCell's grid-square storage for cells across a border.
@@ -957,52 +1514,221 @@ public class ServerMap {
          * with a full barrier (CountDownLatch) between them. The main thread pumps Lua/main-affinity
          * handoffs while waiting for each color group to finish.
          */
-        private static void recalcAllParallel(ArrayList<ServerMap.ServerCell> cells) {
-            if (cells.isEmpty()) {
-                return;
-            }
+        static final class Load2Job {
+            private final ArrayList<ServerMap.ServerCell> cells;
+            private final ArrayList<ArrayList<ServerMap.ServerCell>> colorGroups = new ArrayList<>(4);
+            private int colorIndex = -1;
+            private ArrayList<ServerMap.ServerCell> inFlight;
+            private CountDownLatch latch;
+            private long lastProgressMs = System.currentTimeMillis();
+            private long lastLatchCount = Long.MAX_VALUE;
+            private long lastCompletedTaskCount;
+            private final long startedAtNanos = System.nanoTime();
+            /** Counts advance() calls, which includes idle-window slices, not just ticks. */
+            private int slices;
 
-            ArrayList<ArrayList<ServerMap.ServerCell>> colorGroups = new ArrayList<>(4);
-            for (int i = 0; i < 4; i++) {
-                colorGroups.add(new ArrayList<>());
-            }
-
-            for (ServerMap.ServerCell cell : cells) {
-                int color = (cell.wx & 1) | ((cell.wy & 1) << 1);
-                colorGroups.get(color).add(cell);
-            }
-
-            for (ArrayList<ServerMap.ServerCell> group : colorGroups) {
-                if (group.isEmpty()) {
-                    continue;
+            Load2Job(ArrayList<ServerMap.ServerCell> src) {
+                this.cells = new ArrayList<>(src);
+                for (int i = 0; i < 4; i++) {
+                    this.colorGroups.add(new ArrayList<>());
                 }
 
-                CountDownLatch latch = new CountDownLatch(group.size());
-                for (ServerMap.ServerCell cell : group) {
-                    recalcPool.execute(() -> {
-                        try {
+                for (ServerMap.ServerCell cell : this.cells) {
+                    this.colorGroups.get((cell.wx & 1) | ((cell.wy & 1) << 1)).add(cell);
+                }
+            }
+
+            ArrayList<ServerMap.ServerCell> getCells() {
+                return this.cells;
+            }
+
+            int getSlices() {
+                return this.slices;
+            }
+
+            long getElapsedNanos() {
+                return System.nanoTime() - this.startedAtNanos;
+            }
+
+            /**
+             * Drains up to budgetNanos of worker handoffs and returns whether the whole job is done.
+             *
+             * The colour barrier is preserved across ticks: a colour is only dispatched once the
+             * previous one has fully drained (latch clear AND queue empty), so two adjacent cells can
+             * still never run concurrently, which is what makes EnsureSurroundNotNull()'s cross-border
+             * writes safe. Several colours may complete in one call if the budget allows.
+             */
+            boolean advance(long budgetNanos) {
+                long deadline = System.nanoTime() + budgetNanos;
+                this.slices++;
+
+                while (true) {
+                    if (this.latch == null && !this.dispatchNextColor()) {
+                        return true;
+                    }
+
+                    long remaining = Math.max(0L, deadline - System.nanoTime());
+                    boolean colorDone = load2MainThread.pumpFor(this.latch, remaining);
+                    load2MainThreadDeferred.drainAll();
+
+                    if (!colorDone) {
+                        this.checkStalled();
+                        return false;
+                    }
+
+                    this.latch = null;
+                    this.inFlight = null;
+                    this.lastLatchCount = Long.MAX_VALUE;
+                    this.lastCompletedTaskCount = load2MainThread.getCompletedTaskCount();
+                    this.lastProgressMs = System.currentTimeMillis();
+
+                    if (System.nanoTime() >= deadline) {
+                        return false;
+                    }
+                }
+            }
+
+            boolean advanceUntilDeadline(long deadlineNanos) {
+                this.slices++;
+
+                while (System.nanoTime() < deadlineNanos) {
+                    if (this.latch == null && !this.dispatchNextColor()) {
+                        return true;
+                    }
+
+                    boolean colorDone = load2MainThread.pumpUntilDeadline(this.latch, deadlineNanos);
+                    load2MainThreadDeferred.drainAll();
+
+                    if (!colorDone) {
+                        this.checkStalled();
+                        return false;
+                    }
+
+                    this.latch = null;
+                    this.inFlight = null;
+                    this.lastLatchCount = Long.MAX_VALUE;
+                    this.lastCompletedTaskCount = load2MainThread.getCompletedTaskCount();
+                    this.lastProgressMs = System.currentTimeMillis();
+                }
+
+                return false;
+            }
+
+            private boolean dispatchNextColor() {
+                while (++this.colorIndex < 4) {
+                    ArrayList<ServerMap.ServerCell> group = this.colorGroups.get(this.colorIndex);
+                    if (group.isEmpty()) {
+                        continue;
+                    }
+
+                    CountDownLatch groupLatch = new CountDownLatch(group.size());
+                    for (ServerMap.ServerCell cell : group) {
+                        cell.loadInProgress = true;
+                    }
+
+                    // Publish the group as in-flight BEFORE submitting. If execute() throws partway
+                    // through (pool shutdown, rejection), the cells already submitted still count down
+                    // and the rest never will - but with latch/inFlight set, checkStalled() sees a
+                    // latch that stops moving and recovers them. Assigning after the loop instead
+                    // would leave those cells pinned loadInProgress forever: never unloadable, and
+                    // permanently skipped by ServerLOS.
+                    this.latch = groupLatch;
+                    this.inFlight = group;
+                    this.lastLatchCount = group.size();
+                    this.lastCompletedTaskCount = load2MainThread.getCompletedTaskCount();
+                    this.lastProgressMs = System.currentTimeMillis();
+
+                    for (ServerMap.ServerCell cell : group) {
+                        recalcPool.execute(() -> {
                             long start = System.nanoTime();
-                            cell.RecalcAll2();
-                            long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
-                            ServerMap.runLoad2MainThreadTask("ServerCell.loadVehicles", cell::loadVehicles);
-                            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
-                            if (ServerMap.mapLoading) {
-                                float time = (float)(System.nanoTime() - start) / 1000000.0F;
-                                DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
+                            try {
+                                cell.RecalcAll2();
+                                ServerMap.submitLoad2OrderedMainThreadTask("ServerCell.load2CommitComplete", () -> {
+                                    try {
+                                        long apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+                                        cell.loadVehicles();
+                                        ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2Vehicles", 1, apocBrPhaseStart);
+                                        if (ServerMap.mapLoading) {
+                                            float time = (float)(System.nanoTime() - start) / 1000000.0F;
+                                            DebugType.MapLoading.debugln("finish loading cell " + cell.wx + "," + cell.wy + " ms=" + time);
+                                        }
+                                        ApocBRServerTelemetry.recordServerMapPrePhase("load2CellCommitWall", 1, System.nanoTime() - start);
+                                    } finally {
+                                        cell.loadInProgress = false;
+                                        groupLatch.countDown();
+                                        load2MainThread.signalWorkAvailable();
+                                    }
+                                });
+                            } catch (Throwable t) {
+                                cell.cancelLoading = true;
+                                cell.loadingWasCancelled = true;
+                                cell.isLoaded = false;
+                                cell.loadInProgress = false;
+                                ExceptionLogger.logException(t);
+                                groupLatch.countDown();
+                                load2MainThread.signalWorkAvailable();
                             }
-                        } catch (Exception e) {
-                            ExceptionLogger.logException(e);
-                        } finally {
-                            latch.countDown();
-                            load2MainThread.signalWorkAvailable();
-                        }
-                    });
+                        });
+                    }
+
+                    return true;
                 }
 
-                load2MainThread.pumpUntil(latch);
+                return false;
             }
 
-            load2MainThread.drainAll();
+            /**
+             * A budget expiry is normal and never cancels anything. Only a colour group that has no
+             * latch progress and drains no main-thread commit tasks for LOAD2_JOB_STALL_TIMEOUT_MS
+             * is treated as broken - the case where workers or the main-thread commit queue wedge
+             * and the latch would otherwise never clear.
+             */
+            private void checkStalled() {
+                long count = this.latch == null ? 0L : this.latch.getCount();
+                long completedTaskCount = load2MainThread.getCompletedTaskCount();
+                long now = System.currentTimeMillis();
+                if (count != this.lastLatchCount || completedTaskCount != this.lastCompletedTaskCount) {
+                    this.lastLatchCount = count;
+                    this.lastCompletedTaskCount = completedTaskCount;
+                    this.lastProgressMs = now;
+                    return;
+                }
+
+                if (now - this.lastProgressMs < LOAD2_JOB_STALL_TIMEOUT_MS) {
+                    return;
+                }
+
+                DebugLog.log(
+                    "[ApocBR] load2 colour group "
+                        + this.colorIndex
+                        + " made no progress for "
+                        + (now - this.lastProgressMs)
+                        + " ms, latchRemaining="
+                        + count
+                        + "; cancelling "
+                        + (this.inFlight == null ? 0 : this.inFlight.size())
+                        + " cell(s)"
+                );
+
+                int apocBrCancelled = 0;
+                if (this.inFlight != null) {
+                    for (ServerMap.ServerCell cell : this.inFlight) {
+                        cell.cancelLoading = true;
+                        cell.loadingWasCancelled = true;
+                        cell.isLoaded = false;
+                        cell.loadInProgress = false;
+                        apocBrCancelled++;
+                    }
+                }
+
+                ApocBRServerTelemetry.recordServerMapPrePhase("load2StallCancel", apocBrCancelled, (now - this.lastProgressMs) * 1000000L);
+
+                this.latch = null;
+                this.inFlight = null;
+                this.lastLatchCount = Long.MAX_VALUE;
+                this.lastCompletedTaskCount = load2MainThread.getCompletedTaskCount();
+                this.lastProgressMs = now;
+            }
         }
 
         private void loadVehicles() {
@@ -1014,6 +1740,30 @@ public class ServerMap {
                     }
                 }
             }
+        }
+
+        public boolean Load2Vanilla() {
+            for (int i = 0; i < ServerMap.ServerCell.loaded2.size(); i++) {
+                if (ServerMap.ServerCell.loaded2.get(i) == this) {
+                    long start = System.nanoTime();
+                    this.RecalcAll2();
+                    ServerMap.ServerCell.loaded2.remove(i);
+                    if (ServerMap.mapLoading) {
+                        DebugType.MapLoading.debugln("loaded2=" + ServerMap.ServerCell.loaded2);
+                    }
+
+                    float time = (float)(System.nanoTime() - start) / 1000000.0F;
+                    if (ServerMap.mapLoading) {
+                        DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
+                    }
+
+                    this.loadVehicles();
+                    this.loadInProgress = false;
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static void runLoad2ChunkRegistrationsOnMainThread(List<IsoChunk> chunks) {
@@ -1200,7 +1950,9 @@ public class ServerMap {
             }
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2MarkSquares", apocBrUnits, apocBrPhaseStart);
 
+            long apocBrLoadGridSquareWallStart = ApocBRServerTelemetry.beginDetail();
             apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
+            long apocBrWaitBefore = ApocBRServerTelemetry.getLoad2MainWaitNanosForCurrentThread();
             apocBrUnits = 0;
             ArrayList<IsoChunk> apocBrNativeRegistrationChunks = new ArrayList<>(64);
             ArrayList<IsoChunk> apocBrPostRegistrationChunks = new ArrayList<>(64);
@@ -1208,22 +1960,56 @@ public class ServerMap {
                 for (int y = 0; y < 8; y++) {
                     IsoChunk chunk = this.chunks[x][y];
                     if (chunk != null) {
-                        if (chunk.doLoadGridsquare(apocBrNativeRegistrationChunks)) {
+                        boolean apocBrLoadedGridSquare = ServerMap.ServerCell.LOAD2_VANILLA
+                            ? chunk.doLoadGridsquare(apocBrNativeRegistrationChunks)
+                            : chunk.doLoadGridsquareLoad2(apocBrNativeRegistrationChunks);
+                        if (apocBrLoadedGridSquare) {
                             apocBrPostRegistrationChunks.add(chunk);
                         }
                         apocBrUnits++;
                     }
                 }
             }
+            long apocBrDoLoadGridSquareElapsed = System.nanoTime() - apocBrPhaseStart;
+            long apocBrDoLoadGridSquareWait = ApocBRServerTelemetry.getLoad2MainWaitNanosForCurrentThread() - apocBrWaitBefore;
+            ApocBRServerTelemetry.recordServerMapPrePhase(
+                "load2DoLoadGridSquare",
+                apocBrUnits,
+                Math.max(0L, apocBrDoLoadGridSquareElapsed - apocBrDoLoadGridSquareWait)
+            );
 
             if (!apocBrNativeRegistrationChunks.isEmpty()) {
-                ServerMap.runLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
+                if (ServerMap.ServerCell.LOAD2_VANILLA) {
+                    ServerMap.runLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
+                } else {
+                    ServerMap.submitLoad2ChunkRegistrations(apocBrNativeRegistrationChunks);
+                }
             }
 
-            for (IsoChunk chunk : apocBrPostRegistrationChunks) {
-                chunk.finishLoadGridsquareAfterChunkRegistration();
+            // ApocBR: queue the post-native chunk commits after the native registration batch.
+            // The worker no longer waits between these hops; the colour latch counts down from the
+            // final cell commit task, so the next colour still cannot start until this cell's queued
+            // main-thread mutations have actually drained.
+            if (!apocBrPostRegistrationChunks.isEmpty()) {
+                long apocBrChunkFinishStart = ApocBRServerTelemetry.beginDetail();
+                for (IsoChunk chunk : apocBrPostRegistrationChunks) {
+                    if (ServerMap.ServerCell.LOAD2_VANILLA) {
+                        chunk.finishLoadGridsquareAfterChunkRegistration();
+                    } else {
+                        chunk.finishLoadGridsquareAfterChunkRegistrationLoad2();
+                    }
+                }
+                ApocBRServerTelemetry.recordServerMapPrePhaseSince(
+                    "load2ChunkFinishEnqueue",
+                    apocBrPostRegistrationChunks.size(),
+                    apocBrChunkFinishStart
+                );
             }
-            ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2DoLoadGridSquare", apocBrUnits, apocBrPhaseStart);
+            ApocBRServerTelemetry.recordServerMapPrePhaseSince(
+                "load2DoLoadGridSquareWall",
+                apocBrUnits,
+                apocBrLoadGridSquareWallStart
+            );
 
             apocBrPhaseStart = ApocBRServerTelemetry.beginDetail();
             apocBrUnits = 0;
@@ -1237,6 +2023,107 @@ public class ServerMap {
             ApocBRServerTelemetry.recordServerMapPrePhaseSince("load2RoomsInc", apocBrUnits, apocBrPhaseStart);
 
             this.isLoaded = true;
+        }
+
+        public boolean beginDeferredUnload(long currentUnloadTick) {
+            // ApocBR: load2 now spans ticks, so a cell can be relevant-then-irrelevant while a worker
+            // is still inside RecalcAll2(). Unloading underneath it would tear down squares the
+            // worker is still writing. Leave it queued; it will be picked up once the load settles.
+            if (!this.isLoaded || this.deferredUnloadQueued || this.loadInProgress) {
+                return false;
+            }
+
+            if (ServerMap.mapLoading) {
+                DebugType.MapLoading
+                    .debugln(
+                        "Queueing deferred unload cell: "
+                            + this.wx
+                            + ", "
+                            + this.wy
+                            + " ("
+                            + ServerMap.instance.toWorldCellX(this.wx)
+                            + ", "
+                            + ServerMap.instance.toWorldCellY(this.wy)
+                            + ")"
+                    );
+            }
+
+            this.isLoaded = false;
+            this.deferredUnloadQueued = true;
+            this.deferredUnloadQueuedAtMs = System.currentTimeMillis();
+            this.deferredUnloadQueuedAtTick = currentUnloadTick;
+            this.deferredUnloadChunkX = 0;
+            this.deferredUnloadChunkY = 0;
+            return true;
+        }
+
+        public long getDeferredUnloadQueuedAtMs() {
+            return this.deferredUnloadQueuedAtMs;
+        }
+
+        public long getDeferredUnloadAgeTicks(long currentUnloadTick) {
+            return Math.max(0L, currentUnloadTick - this.deferredUnloadQueuedAtTick);
+        }
+
+        public boolean processDeferredUnloadSlice(int maxSquares) {
+            if (!this.deferredUnloadQueued) {
+                return true;
+            }
+
+            int squaresLeft = Math.max(64, maxSquares);
+
+            while (this.deferredUnloadChunkX < 8) {
+                IsoChunk chunk = this.chunks[this.deferredUnloadChunkX][this.deferredUnloadChunkY];
+                if (chunk != null) {
+                    if (!chunk.isRemoveFromWorldStarted()) {
+                        long phaseStart = ApocBRServerTelemetry.beginDetail();
+                        chunk.beginRemoveFromWorld();
+                        ApocBRServerTelemetry.recordServerMapUnloadPhase("chunkGlobal", 1, System.nanoTime() - phaseStart);
+                    }
+
+                    long phaseStart = ApocBRServerTelemetry.beginDetail();
+                    boolean finishedChunkSquares = chunk.processRemoveFromWorldSquares(squaresLeft);
+                    ApocBRServerTelemetry.recordServerMapUnloadPhase("squareTeardown", 1, System.nanoTime() - phaseStart);
+                    if (!finishedChunkSquares) {
+                        return false;
+                    }
+
+                    squaresLeft -= Math.max(64, (chunk.maxLevel - chunk.minLevel + 1) * 64);
+
+                    phaseStart = ApocBRServerTelemetry.beginDetail();
+                    int vehicleCount = this.saveChunkVehiclesBeforeUnload(chunk);
+                    chunk.finishRemoveFromWorld();
+                    chunk.loadVehiclesObject = null;
+                    ApocBRServerTelemetry.recordServerMapUnloadPhase("vehicleSave", vehicleCount, System.nanoTime() - phaseStart);
+
+                    phaseStart = ApocBRServerTelemetry.beginDetail();
+                    chunkLoader.addSaveUnloadedJob(chunk);
+                    this.chunks[this.deferredUnloadChunkX][this.deferredUnloadChunkY] = null;
+                    ApocBRServerTelemetry.recordServerMapUnloadPhase("saveEnqueue", 1, System.nanoTime() - phaseStart);
+                }
+
+                this.deferredUnloadChunkY++;
+                if (this.deferredUnloadChunkY >= 8) {
+                    this.deferredUnloadChunkY = 0;
+                    this.deferredUnloadChunkX++;
+                }
+
+                if (squaresLeft <= 0 && this.deferredUnloadChunkX < 8) {
+                    return false;
+                }
+            }
+
+            for (RoomDef def : this.unexploredRooms) {
+                def.indoorZombies--;
+            }
+
+            this.unexploredRooms.clear();
+            this.deferredUnloadQueued = false;
+            this.deferredUnloadQueuedAtMs = 0L;
+            this.deferredUnloadQueuedAtTick = 0L;
+            this.deferredUnloadChunkX = 0;
+            this.deferredUnloadChunkY = 0;
+            return true;
         }
 
         public void Unload() {
@@ -1260,13 +2147,14 @@ public class ServerMap {
                     for (int y = 0; y < 8; y++) {
                         IsoChunk chunk = this.chunks[x][y];
                         if (chunk != null) {
-                            chunk.removeFromWorld();
-                            chunk.loadVehiclesObject = null;
+                            chunk.beginRemoveFromWorld();
 
-                            for (int i = 0; i < chunk.vehicles.size(); i++) {
-                                BaseVehicle vehicle = chunk.vehicles.get(i);
-                                VehiclesDB2.instance.updateVehicle(vehicle);
+                            while (!chunk.processRemoveFromWorldSquares(Integer.MAX_VALUE)) {
                             }
+
+                            this.saveChunkVehiclesBeforeUnload(chunk);
+                            chunk.finishRemoveFromWorld();
+                            chunk.loadVehiclesObject = null;
 
                             chunkLoader.addSaveUnloadedJob(chunk);
                             this.chunks[x][y] = null;
@@ -1278,6 +2166,25 @@ public class ServerMap {
                     def.indoorZombies--;
                 }
             }
+        }
+
+        private int saveChunkVehiclesBeforeUnload(IsoChunk chunk) {
+            if (chunk == null || chunk.vehicles.isEmpty()) {
+                return 0;
+            }
+
+            int saved = 0;
+            for (int i = 0; i < chunk.vehicles.size(); i++) {
+                BaseVehicle vehicle = chunk.vehicles.get(i);
+                if (vehicle == null || vehicle.chunk == null) {
+                    continue;
+                }
+
+                VehiclesDB2.instance.updateVehicle(vehicle);
+                saved++;
+            }
+
+            return saved;
         }
 
         public void Save(boolean worker) {

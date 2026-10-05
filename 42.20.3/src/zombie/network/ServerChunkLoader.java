@@ -36,8 +36,11 @@ public class ServerChunkLoader {
     private final ServerChunkLoader.SaveChunkThread threadSave;
     private final CRC32 crcSave = new CRC32();
     private final ServerChunkLoader.RecalcAllThread threadRecalc;
-    private static final int LOAD_WORKERS = Integer.getInteger("apocbr.loadChunkWorkers", 6);
-    private static final int LOAD_GRID_SQUARE_THREAD_CACHE_SIZE = Math.max(0, Integer.getInteger("apocbr.loadGridSquareThreadCacheSize", 10000));
+    // ApocBR: keep chunk loading from competing too aggressively with ZGC and the UdpEngine on
+    // 8-core hosts. These remain tunable, but the default is biased toward latency survival.
+    private static final int LOAD_WORKERS = Integer.getInteger("apocbr.loadChunkWorkers", 3);
+    private static final int LOAD_GRID_SQUARE_THREAD_CACHE_SIZE = Math.max(0, Integer.getInteger("apocbr.loadGridSquareThreadCacheSize", 2048));
+    private static final int RECALC_THREAD_PRIORITY = clampThreadPriority(Integer.getInteger("apocbr.recalcThreadPriority", Thread.NORM_PRIORITY));
 
     public ServerChunkLoader() {
         this.threadLoad = new ServerChunkLoader.LoaderThread();
@@ -47,12 +50,16 @@ public class ServerChunkLoader {
         this.threadRecalc = new ServerChunkLoader.RecalcAllThread();
         this.threadRecalc.setName("RecalcAll");
         this.threadRecalc.setDaemon(true);
-        this.threadRecalc.setPriority(10);
+        this.threadRecalc.setPriority(RECALC_THREAD_PRIORITY);
         this.threadRecalc.start();
         this.threadSave = new ServerChunkLoader.SaveChunkThread();
         this.threadSave.setName("SaveChunk");
         this.threadSave.setDaemon(true);
         this.threadSave.start();
+    }
+
+    private static int clampThreadPriority(int priority) {
+        return Math.max(Thread.MIN_PRIORITY, Math.min(Thread.MAX_PRIORITY, priority));
     }
 
     public void addJob(ServerMap.ServerCell cell) {

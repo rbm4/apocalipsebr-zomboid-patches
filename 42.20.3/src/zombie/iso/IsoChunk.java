@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.Stack;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.zip.CRC32;
 import zombie.ChunkMapFilenames;
@@ -180,9 +181,15 @@ public final class IsoChunk {
     public static boolean doAttachments = true;
     public long loadedFrame;
     public long renderFrame;
-    private static int frameDelay;
+    // ApocBR: was a plain static int, incremented with a non-atomic `frameDelay = (frameDelay + 1) % 5`.
+    // Load2 commits can interleave many chunks through the main-thread queue, so keep the update
+    // atomic and preserve the same round-robin 0..4 sequence.
+    private static final AtomicInteger frameDelay = new AtomicInteger();
     private static final int maxFrameDelay = 5;
     private static final int APOCBR_LOAD_GRID_SQUARE_BATCH_SIZE = Math.max(1, Integer.getInteger("apocbr.load2GridSquareBatchSize", 64));
+    private static final int APOCBR_REMOVE_VEHICLE_WARN_INTERVAL_MS = Math.max(1000, Integer.getInteger("apocbr.unload.vehicleWarnIntervalMs", 5000));
+    private static long apocbrRemoveVehicleWarnAtMs;
+    private static int apocbrRemoveVehicleWarnSuppressed;
     public boolean requiresHotSave;
     public boolean preventHotSave;
     private boolean removeFromWorldStarted;
@@ -3375,7 +3382,7 @@ public final class IsoChunk {
         for (int i = 0; i < this.vehicles.size(); i++) {
             BaseVehicle vehicle = this.vehicles.get(i);
             if (IsoWorld.instance.currentCell.getVehicles().contains(vehicle) || IsoWorld.instance.currentCell.addVehicles.contains(vehicle)) {
-                DebugLog.log("IsoChunk.removeFromWorld: vehicle wasn't removed from world id=" + vehicle.vehicleId);
+                apocbrLogVehicleNotRemoved(vehicle.vehicleId);
                 vehicle.removeFromWorld();
             }
         }
@@ -3401,6 +3408,21 @@ public final class IsoChunk {
         ApocBRServerTelemetry.recordServerMapUnloadDetail("finishChunkMeta", 1, System.nanoTime() - detailStart);
         this.removeFromWorldLevel = this.minLevel;
         this.removeFromWorldSquareIndex = 0;
+    }
+
+    private static void apocbrLogVehicleNotRemoved(short vehicleId) {
+        long now = System.currentTimeMillis();
+        if (now - apocbrRemoveVehicleWarnAtMs >= APOCBR_REMOVE_VEHICLE_WARN_INTERVAL_MS) {
+            if (apocbrRemoveVehicleWarnSuppressed > 0) {
+                DebugLog.log("IsoChunk.removeFromWorld: suppressed " + apocbrRemoveVehicleWarnSuppressed + " repeated vehicle cleanup warnings");
+                apocbrRemoveVehicleWarnSuppressed = 0;
+            }
+
+            DebugLog.log("IsoChunk.removeFromWorld: vehicle wasn't removed from world id=" + vehicleId);
+            apocbrRemoveVehicleWarnAtMs = now;
+        } else {
+            apocbrRemoveVehicleWarnSuppressed++;
+        }
     }
 
     private void disconnectFromAdjacentChunks(IsoGridSquare sq) {
@@ -3829,6 +3851,42 @@ public final class IsoChunk {
     }
 
     public boolean doLoadGridsquare(ArrayList<IsoChunk> nativeRegistrationChunks) {
+        return this.doLoadGridsquare(nativeRegistrationChunks, false);
+    }
+
+    public boolean doLoadGridsquareLoad2(ArrayList<IsoChunk> nativeRegistrationChunks) {
+        return this.doLoadGridsquare(nativeRegistrationChunks, true);
+    }
+
+    private void runLoad2MainThreadTask(String label, Runnable task, boolean asyncCommit) {
+        if (asyncCommit) {
+            ServerMap.submitLoad2OrderedMainThreadTask(label, task);
+        } else {
+            ServerMap.runLoad2MainThreadTask(label, task);
+        }
+    }
+
+    private void submitLoad2MainThreadTask(String label, Runnable task, boolean orderedCommit) {
+        if (orderedCommit) {
+            ServerMap.submitLoad2OrderedMainThreadTask(label, task);
+        } else if (ServerMap.isVanillaLoad2Enabled()) {
+            ServerMap.runLoad2MainThreadTask(label, task);
+        } else {
+            ServerMap.submitLoad2MainThreadTask(label, task);
+        }
+    }
+
+    private void runLoad2ChunkRegistrations(boolean asyncCommit) {
+        if (asyncCommit) {
+            ArrayList<IsoChunk> chunks = new ArrayList<>(1);
+            chunks.add(this);
+            ServerMap.submitLoad2ChunkRegistrations(chunks);
+        } else {
+            ServerMap.runLoad2ChunkRegistrations(this);
+        }
+    }
+
+    private boolean doLoadGridsquare(ArrayList<IsoChunk> nativeRegistrationChunks, boolean asyncCommit) {
         this.preventHotSave = true;
         if (this.jobType == IsoChunk.JobType.SoftReset) {
             this.spawnedRooms.clear();
@@ -3876,7 +3934,7 @@ public final class IsoChunk {
 
         this.proceduralZombieSquares.clear();
         this.updateBeforeVehicleStory();
-        ServerMap.runLoad2MainThreadTask("IsoChunk.updateVehicleStory", this::updateVehicleStory);
+        this.runLoad2MainThreadTask("IsoChunk.updateVehicleStory", this::updateVehicleStory, asyncCommit);
         this.addRagdollControllers();
         CorpseCount.instance.chunkLoaded(this);
         if (!GameServer.server) {
@@ -3897,40 +3955,47 @@ public final class IsoChunk {
         }
 
         LoadGridsquarePerformanceWorkaround.init(this.wx, this.wy);
-        int chunksPerWidth = 8;
         if (!GameClient.client) {
-            for (int i = 0; i < this.vehicles.size(); i++) {
-                BaseVehicle v = this.vehicles.get(i);
+            ArrayList<BaseVehicle> apocBRVehicles = new ArrayList<>(this.vehicles);
+            for (int i = 0; i < apocBRVehicles.size(); i++) {
+                BaseVehicle v = apocBRVehicles.get(i);
                 if (!v.addedToWorld && VehiclesDB2.instance.isVehicleLoaded(v)) {
                     BaseVehicle apocBRVehicle = v;
-                    ServerMap.runLoad2MainThreadTask("BaseVehicle.removeFromSquare", apocBRVehicle::removeFromSquare);
-                    this.vehicles.remove(i);
-                    i--;
+                    this.runLoad2MainThreadTask("BaseVehicle.removeFromSquare", () -> {
+                        if (this.vehicles.contains(apocBRVehicle)) {
+                            apocBRVehicle.removeFromSquare();
+                            this.vehicles.remove(apocBRVehicle);
+                        }
+                    }, asyncCommit);
                 } else {
-                    if (!v.addedToWorld) {
-                        BaseVehicle apocBRVehicle = v;
-                        ServerMap.runLoad2MainThreadTask("BaseVehicle.addToWorld", apocBRVehicle::addToWorld);
-                    }
+                    BaseVehicle apocBRVehicle = v;
+                    boolean apocBRNeedsVehicleDbAdd = v.sqlId == -1;
+                    this.runLoad2MainThreadTask("BaseVehicle.load2AddToWorldAndDB", () -> {
+                        if (!this.vehicles.contains(apocBRVehicle)) {
+                            return;
+                        }
 
-                    if (v.sqlId == -1) {
-                        BaseVehicle apocBRVehicle = v;
-                        ServerMap.runLoad2MainThreadTask("VehiclesDB2.addVehicle", () -> {
-                            assert false;
+                        this.apocBRPrepareVehicleForLoad2MainThread(apocBRVehicle);
+                        if (!apocBRVehicle.addedToWorld) {
+                            apocBRVehicle.addToWorld();
+                        }
 
-                            if (apocBRVehicle.square == null) {
-                                float d = 5.0E-4F;
-                                int minX = this.wx * 8;
-                                int minY = this.wy * 8;
-                                int maxX = minX + 8;
-                                int maxY = minY + 8;
-                                float x = PZMath.clamp(apocBRVehicle.getX(), minX + 5.0E-4F, maxX - 5.0E-4F);
-                                float y = PZMath.clamp(apocBRVehicle.getY(), minY + 5.0E-4F, maxY - 5.0E-4F);
-                                apocBRVehicle.square = this.getGridSquare(PZMath.fastfloor(x) - this.wx * 8, PZMath.fastfloor(y) - this.wy * 8, 0);
+                        if (apocBRNeedsVehicleDbAdd) {
+                            if (apocBRVehicle.chunk == null) {
+                                DebugLog.log(
+                                    "IsoChunk.doLoadGridsquare: skipped VehiclesDB2.addVehicle for vehicle with null chunk at "
+                                        + apocBRVehicle.getX()
+                                        + ","
+                                        + apocBRVehicle.getY()
+                                        + ","
+                                        + apocBRVehicle.getZ()
+                                );
+                                return;
                             }
 
                             VehiclesDB2.instance.addVehicle(apocBRVehicle);
-                        });
-                    }
+                        }
+                    }, asyncCommit);
                 }
             }
         }
@@ -3966,7 +4031,7 @@ public final class IsoChunk {
 
                             apocBRLoadGridSquareBatch.add(square);
                             if (apocBRLoadGridSquareBatch.size() >= APOCBR_LOAD_GRID_SQUARE_BATCH_SIZE) {
-                                this.flushLoadGridSquareBatch(apocBRLoadGridSquareBatch);
+                                this.flushLoadGridSquareBatch(apocBRLoadGridSquareBatch, asyncCommit);
                             }
                         } else {
                             this.addStaticMovingObjectsToWorld(square);
@@ -3975,16 +4040,16 @@ public final class IsoChunk {
                 }
             }
         }
-        this.flushLoadGridSquareBatch(apocBRLoadGridSquareBatch);
+        this.flushLoadGridSquareBatch(apocBRLoadGridSquareBatch, asyncCommit);
 
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.erosionChunkLoaded", () -> ErosionMain.ChunkLoaded(this));
+            this.runLoad2MainThreadTask("IsoChunk.erosionChunkLoaded", () -> ErosionMain.ChunkLoaded(this), asyncCommit);
         }
 
         if (this.jobType != IsoChunk.JobType.SoftReset) {
             int apocBRWx = this.wx;
             int apocBRWy = this.wy;
-            ServerMap.runLoad2MainThreadTask("SGlobalObjects.chunkLoaded", () -> SGlobalObjects.chunkLoaded(apocBRWx, apocBRWy));
+            this.runLoad2MainThreadTask("SGlobalObjects.chunkLoaded", () -> SGlobalObjects.chunkLoaded(apocBRWx, apocBRWy), asyncCommit);
         }
 
         ReanimatedPlayers.instance.addReanimatedPlayersToChunk(this);
@@ -3994,11 +4059,11 @@ public final class IsoChunk {
                 return true;
             }
 
-            ServerMap.runLoad2ChunkRegistrations(this);
+            this.runLoad2ChunkRegistrations(asyncCommit);
         }
 
         if (nativeRegistrationChunks != null) {
-            this.finishLoadGridsquareAfterChunkRegistration();
+            this.finishLoadGridsquareAfterChunkRegistration(asyncCommit);
             return false;
         }
 
@@ -4006,6 +4071,14 @@ public final class IsoChunk {
     }
 
     public void finishLoadGridsquareAfterChunkRegistration() {
+        this.finishLoadGridsquareAfterChunkRegistration(false);
+    }
+
+    public void finishLoadGridsquareAfterChunkRegistrationLoad2() {
+        this.finishLoadGridsquareAfterChunkRegistration(true);
+    }
+
+    private void finishLoadGridsquareAfterChunkRegistration(boolean asyncCommit) {
         if (!GameServer.server) {
             ArrayList<IsoRoomLight> roomLightsWorld = IsoWorld.instance.currentCell.roomLights;
 
@@ -4019,61 +4092,82 @@ public final class IsoChunk {
 
         this.roomLights.clear();
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.randomizeBuildingsEtcLoadGridSquareIfNeeded", () -> {
+            this.submitLoad2MainThreadTask("IsoChunk.randomizeBuildingsEtcLoadGridSquareIfNeeded", () -> {
                 this.randomizeBuildingsEtcMainThread();
                 this.loadGridSquaresIfNeededMainThread();
-            });
+            }, asyncCommit);
         } else {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.loadGridSquareIfNeededBatch", this::loadGridSquaresIfNeededMainThread);
+            this.submitLoad2MainThreadTask("IsoChunk.loadGridSquareIfNeededBatch", this::loadGridSquaresIfNeededMainThread, asyncCommit);
         }
 
-        this.checkAdjacentChunks();
+        // ApocBR: checkAdjacentChunks() writes into a *neighbouring* IsoChunk's
+        // adjacentChunkLoadedCounter (a plain int++, not atomic). The chunk-object-state flush below
+        // scans/mutates a shared per-UdpConnection list (chunkObjectStateRequests) that any other
+        // chunk of the same connection's pending requests could also be touching. Neither of these
+        // was a hazard once RecalcAll2() started queuing many chunks' commit work across ticks, so
+        // both stay serialized through the same ordered main-thread orchestrator as every other
+        // Lua/native-affine hop in this method.
+        this.runLoad2MainThreadTask("IsoChunk.checkAdjacentChunks", this::checkAdjacentChunks, asyncCommit);
 
-        try {
-            if (GameServer.server && this.jobType != IsoChunk.JobType.SoftReset) {
-                for (int ixx = 0; ixx < GameServer.udpEngine.connections.size(); ixx++) {
-                    UdpConnection connection = GameServer.udpEngine.connections.get(ixx);
-                    if (!connection.chunkObjectStateRequests.isEmpty()) {
-                        for (int j = 0; j < connection.chunkObjectStateRequests.size(); j += 2) {
-                            short wx1 = connection.chunkObjectStateRequests.get(j);
-                            short wy1 = connection.chunkObjectStateRequests.get(j + 1);
-                            if (wx1 == this.wx && wy1 == this.wy) {
-                                connection.chunkObjectStateRequests.remove(j, 2);
-                                j -= 2;
-                                ByteBufferWriter b = connection.startPacket();
-                                PacketTypes.PacketType.ChunkObjectStateResponse.doPacket(b);
-                                b.putShort(this.wx);
-                                b.putShort(this.wy);
+        this.runLoad2MainThreadTask("IsoChunk.chunkObjectStateFlush", () -> {
+            try {
+                if (GameServer.server && this.jobType != IsoChunk.JobType.SoftReset) {
+                    for (int ixx = 0; ixx < GameServer.udpEngine.connections.size(); ixx++) {
+                        UdpConnection connection = GameServer.udpEngine.connections.get(ixx);
+                        if (!connection.chunkObjectStateRequests.isEmpty()) {
+                            int requestSize = connection.chunkObjectStateRequests.size();
+                            if ((requestSize & 1) != 0) {
+                                connection.chunkObjectStateRequests.remove(requestSize - 1, 1);
+                                requestSize--;
+                            }
 
-                                try {
-                                    if (this.saveObjectState(b.bb)) {
-                                        PacketTypes.PacketType.ChunkObjectStateResponse.send(connection);
-                                    } else {
+                            for (int j = 0; j + 1 < requestSize; j += 2) {
+                                short wx1 = connection.chunkObjectStateRequests.get(j);
+                                short wy1 = connection.chunkObjectStateRequests.get(j + 1);
+                                if (wx1 == this.wx && wy1 == this.wy) {
+                                    connection.chunkObjectStateRequests.remove(j, 2);
+                                    j -= 2;
+                                    requestSize -= 2;
+                                    ByteBufferWriter b = connection.startPacket();
+                                    PacketTypes.PacketType.ChunkObjectStateResponse.doPacket(b);
+                                    b.putShort(this.wx);
+                                    b.putShort(this.wy);
+
+                                    try {
+                                        if (this.saveObjectState(b.bb)) {
+                                            PacketTypes.PacketType.ChunkObjectStateResponse.send(connection);
+                                        } else {
+                                            connection.cancelPacket();
+                                        }
+                                    } catch (Throwable var14) {
+                                        DebugType.General.printException(var14, LogSeverity.Error);
                                         connection.cancelPacket();
                                     }
-                                } catch (Throwable var14) {
-                                    DebugType.General.printException(var14, LogSeverity.Error);
-                                    connection.cancelPacket();
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            if (GameClient.client) {
-                GameClient.connection.addChunkObjectState((short)this.wx);
-                GameClient.connection.addChunkObjectState((short)this.wy);
+                if (GameClient.client) {
+                    GameClient.connection.addChunkObjectState((short)this.wx);
+                    GameClient.connection.addChunkObjectState((short)this.wy);
+                }
+            } catch (Throwable var17) {
+                ExceptionLogger.logException(var17);
             }
-        } catch (Throwable var17) {
-            ExceptionLogger.logException(var17);
-        }
+        }, asyncCommit);
 
-        this.loadedFrame = IsoWorld.instance.getFrameNo();
-        this.renderFrame = this.loadedFrame + frameDelay;
-        frameDelay = (frameDelay + 1) % 5;
-        this.preventHotSave = false;
-        ServerMap.runLoad2MainThreadTask("LuaEvent.LoadChunk", () -> LuaEventManager.triggerEvent("LoadChunk", this));
+        Runnable finishLoadChunk = () -> {
+            this.loadedFrame = IsoWorld.instance.getFrameNo();
+            // frameDelay is a shared static counter (see field comment) - getAndUpdate() is the atomic
+            // equivalent of the old "read then increment" so concurrent chunks still each get a distinct
+            // round-robin value with no lost updates.
+            this.renderFrame = this.loadedFrame + frameDelay.getAndUpdate(v -> (v + 1) % maxFrameDelay);
+            this.preventHotSave = false;
+            LuaEventManager.triggerEvent("LoadChunk", this);
+        };
+        this.runLoad2MainThreadTask("LuaEvent.LoadChunk", finishLoadChunk, asyncCommit);
     }
 
     private void loadGridSquaresIfNeededMainThread() {
@@ -4096,7 +4190,31 @@ public final class IsoChunk {
         }
     }
 
+    private void apocBRPrepareVehicleForLoad2MainThread(BaseVehicle vehicle) {
+        if (vehicle == null) {
+            return;
+        }
+
+        if (vehicle.square == null) {
+            int minX = this.wx * 8;
+            int minY = this.wy * 8;
+            int maxX = minX + 8;
+            int maxY = minY + 8;
+            float x = PZMath.clamp(vehicle.getX(), minX + 5.0E-4F, maxX - 5.0E-4F);
+            float y = PZMath.clamp(vehicle.getY(), minY + 5.0E-4F, maxY - 5.0E-4F);
+            vehicle.square = this.getGridSquare(PZMath.fastfloor(x) - minX, PZMath.fastfloor(y) - minY, PZMath.fastfloor(vehicle.getZ()));
+        }
+
+        if (vehicle.chunk == null) {
+            vehicle.chunk = vehicle.square != null && vehicle.square.chunk != null ? vehicle.square.chunk : this;
+        }
+    }
+
     private void flushLoadGridSquareBatch(ArrayList<IsoGridSquare> squares) {
+        this.flushLoadGridSquareBatch(squares, false);
+    }
+
+    private void flushLoadGridSquareBatch(ArrayList<IsoGridSquare> squares, boolean asyncCommit) {
         if (squares.isEmpty()) {
             return;
         }
@@ -4104,8 +4222,9 @@ public final class IsoChunk {
         IsoGridSquare[] batch = squares.toArray(new IsoGridSquare[squares.size()]);
         squares.clear();
         boolean apocBRAddZombies = this.addZombies;
+        boolean apocBRIsNewChunk = this.isNewChunk();
         if (this.jobType != IsoChunk.JobType.SoftReset) {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.erosionMapObjectsLoadGridSquareBatch", () -> {
+            this.submitLoad2MainThreadTask("IsoChunk.erosionMapObjectsLoadGridSquareBatch", () -> {
                 for (IsoGridSquare square : batch) {
                     ErosionMain.LoadGridsquare(square);
                 }
@@ -4117,9 +4236,12 @@ public final class IsoChunk {
 
                     MapObjects.loadGridSquare(square);
                 }
-            });
+
+                this.triggerLoadGridsquareBatch(batch);
+                this.finishLoadGridsquareBatch(batch, apocBRIsNewChunk);
+            }, asyncCommit);
         } else {
-            ServerMap.runLoad2MainThreadTask("IsoChunk.mapObjectsLoadGridSquareBatch", () -> {
+            this.submitLoad2MainThreadTask("IsoChunk.mapObjectsLoadGridSquareBatch", () -> {
                 for (IsoGridSquare square : batch) {
                     if (apocBRAddZombies) {
                         MapObjects.newGridSquare(square);
@@ -4127,27 +4249,32 @@ public final class IsoChunk {
 
                     MapObjects.loadGridSquare(square);
                 }
-            });
-        }
 
-        if (this.isNewChunk()) {
+                this.triggerLoadGridsquareBatch(batch);
+                this.finishLoadGridsquareBatch(batch, apocBRIsNewChunk);
+            }, asyncCommit);
+        }
+    }
+
+    private void finishLoadGridsquareBatch(IsoGridSquare[] batch, boolean apocBRIsNewChunk) {
+        if (apocBRIsNewChunk) {
             for (IsoGridSquare square : batch) {
                 this.addRatsAfterLoading(square);
             }
         }
 
-        ServerMap.runLoad2MainThreadTask("LuaEvent.LoadGridsquareBatch", () -> {
-            for (IsoGridSquare square : batch) {
-                try {
-                    LuaEventManager.triggerEvent("LoadGridsquare", square);
-                } catch (Throwable var15) {
-                    ExceptionLogger.logException(var15);
-                }
-            }
-        });
-
         for (IsoGridSquare square : batch) {
             this.addStaticMovingObjectsToWorld(square);
+        }
+    }
+
+    private void triggerLoadGridsquareBatch(IsoGridSquare[] batch) {
+        for (IsoGridSquare square : batch) {
+            try {
+                LuaEventManager.triggerEvent("LoadGridsquare", square);
+            } catch (Throwable var15) {
+                ExceptionLogger.logException(var15);
+            }
         }
     }
 
@@ -4582,7 +4709,7 @@ public final class IsoChunk {
         return !Core.debug ? false : false;
     }
 
-    public ByteBuffer Save(ByteBuffer bb, CRC32 crc, boolean bHotSave) throws IOException {
+    public synchronized ByteBuffer Save(ByteBuffer bb, CRC32 crc, boolean bHotSave) throws IOException {
         bb.rewind();
         bb = ensureCapacity(bb);
         bb.clear();

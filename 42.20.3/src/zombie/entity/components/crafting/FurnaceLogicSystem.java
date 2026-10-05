@@ -48,12 +48,15 @@ public class FurnaceLogicSystem extends EngineSystem {
     @Override
     public void updateSimulation() {
         if (!GameClient.client) {
-            int effectiveTicks = Math.max(1, EntitySimulation.getEffectiveSimulationTicksThisFrame());
             ImmutableArray<GameEntity> entities = this.furnaceLogicEntities.getEntities();
             if (entities.size() != 0) {
                 for (int i = 0; i < entities.size(); i++) {
                     GameEntity entity = entities.get(i);
                     if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
+                        // ApocBR: read per entity, after the throttle check - a phased meta entity
+                        // owes more ticks than the frame consumed. Hoisting this out of the loop
+                        // would give meta entities the unthrottled count and lose their catch-up.
+                        int effectiveTicks = Math.max(1, EntitySimulation.getEffectiveSimulationTicksThisFrame());
                         FurnaceLogic furnaceLogic = entity.getComponent(ComponentType.FurnaceLogic);
                         Resources resources = entity.getComponent(ComponentType.Resources);
                         if (furnaceLogic != null && resources != null && furnaceLogic.isValid() && resources.isValid()) {

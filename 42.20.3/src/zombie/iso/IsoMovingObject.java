@@ -1167,9 +1167,11 @@ public class IsoMovingObject extends IsoObject implements Mover {
     }
 
     public boolean isPushedByForSeparate(IsoMovingObject other) {
-        return !(this instanceof IsoAnimal) || ((IsoAnimal)this).adef.collidable && !((IsoAnimal)this).getBehavior().blockMovement
-            ? !(other instanceof IsoAnimal isoAnimal && (!isoAnimal.adef.collidable || isoAnimal.getBehavior().blockMovement))
-            : false;
+        if (this instanceof IsoAnimal animal && (animal.adef == null || !animal.adef.collidable || animal.getBehavior().blockMovement)) {
+            return false;
+        }
+
+        return !(other instanceof IsoAnimal isoAnimal) || isoAnimal.adef != null && isoAnimal.adef.collidable && !isoAnimal.getBehavior().blockMovement;
     }
 
     /**
@@ -1698,6 +1700,10 @@ public class IsoMovingObject extends IsoObject implements Mover {
     }
 
     private void checkHitHoppableAnimal(IsoAnimal animal) {
+        if (animal.adef == null) {
+            return;
+        }
+
         if (animal.adef.canClimbFences) {
             if (!animal.isCurrentState(AnimalAttackState.instance()) && !animal.isCurrentState(AnimalClimbOverFenceState.instance())) {
                 if (this.collidedW && !this.collidedN && !this.collidedS && this.last.has(IsoFlagType.HoppableW)) {

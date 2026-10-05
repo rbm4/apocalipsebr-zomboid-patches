@@ -152,7 +152,7 @@ function Get-ProjectZomboidPath {
 Show-ApocalipseBanner
 
 $projectZomboidPath = Get-ProjectZomboidPath
-$clientToolsDir = Join-Path -Path $PSScriptRoot -ChildPath "42.19.0-client"
+$clientToolsDir = Join-Path -Path $PSScriptRoot -ChildPath "42.20.4-client"
 $clientPatch = Join-Path -Path $clientToolsDir -ChildPath "patchApocalipseBr.ps1"
 
 if (-not (Test-Path -LiteralPath $clientPatch)) {

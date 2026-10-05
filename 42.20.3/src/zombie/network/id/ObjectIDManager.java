@@ -1,10 +1,10 @@
 // ApocBR patch:
-// 1) addObject() no longer probes idToObjectMap.get(id) in a loop to find a free id. It
-//    uses type.freeIds (see ObjectIDType) to reuse a released id in O(1), and only falls
-//    back to a fresh increment+cast while the type has never issued every value in its id
-//    space (guaranteed collision-free, no lookup needed).
-// 2) If the id space for a type is genuinely exhausted (every value issued at least once
-//    AND freeIds is empty), the oldest live object of that type is force-removed from the
+// 1) addObject() reuses ids released into type.freeIds first, then does a bounded live-map
+//    probe through the 16-bit runtime id space. This keeps allocation from hanging while
+//    still tolerating restarts, where freeIds is naturally empty but saved objects may reload
+//    with old ObjectIDs.
+// 2) If the id space for a type is genuinely exhausted after probing every possible runtime
+//    id and freeIds is empty, the oldest live object of that type is force-removed from the
 //    world (via its own removeFromWorld() override, which also releases its id back into
 //    freeIds) instead of hanging the caller forever.
 // No network/save wire format was changed: ids are still serialized exactly as before.
@@ -39,6 +39,7 @@ public class ObjectIDManager {
         for (ObjectIDType type : ObjectIDType.values()) {
             type.lastId = 0L;
             type.countNewId = 0L;
+            type.freeIds.clear();
         }
     }
 
@@ -48,9 +49,11 @@ public class ObjectIDManager {
         for (byte i = 0; i < size; i++) {
             byte index = input.readByte();
             long lastID = input.readLong();
-            ObjectIDType.valueOf(index).lastId = lastID + 100L;
-            ObjectIDType.valueOf(index).countNewId = 0L;
-            DebugType.General.println(ObjectIDType.valueOf(index));
+            ObjectIDType type = ObjectIDType.valueOf(index);
+            type.lastId = (short)(lastID + 100L);
+            type.countNewId = 0L;
+            type.freeIds.clear();
+            DebugType.General.println(type);
         }
     }
 
@@ -143,32 +146,44 @@ public class ObjectIDManager {
     }
 
     /**
-     * O(1) id allocation. While {@code type} has not yet issued every value in its id space
-     * at least once ({@code lastId < getIdSpaceSize()}), a fresh increment+cast is always
-     * collision-free by construction and needs no lookup. Once the space has wrapped at
-     * least once, every further allocation must come from {@code type.freeIds} (ids released
-     * by {@link #remove(ObjectID)}), since a blind increment could collide with a still-live
-     * object. If freeIds is empty at that point the space is genuinely exhausted, and the
-     * oldest live object of that type is force-removed to reclaim a slot instead of hanging.
+     * Reuse released ids first, then probe the 16-bit runtime id space at most once. The
+     * persisted lastId can be much larger than the runtime wire space after long-running
+     * saves, and freeIds is intentionally not persisted, so exhaustion must be based on the
+     * live map rather than the absolute saved counter.
      */
     private long nextFreeId(ObjectIDType type) {
-        if (type.lastId < type.getIdSpaceSize()) {
-            return (short)type.allocateID();
-        }
-
-        Long reused = type.freeIds.pollFirst();
+        Long reused = this.pollFreeId(type);
         if (reused != null) {
             return reused;
         }
 
+        long idSpaceSize = type.getIdSpaceSize();
+        for (long attempts = 0L; attempts < idSpaceSize; attempts++) {
+            long id = (short)type.allocateID();
+            if (type.idToObjectMap.get(id) == null) {
+                return id;
+            }
+        }
+
         if (this.forceReclaimAny(type)) {
-            reused = type.freeIds.pollFirst();
+            reused = this.pollFreeId(type);
             if (reused != null) {
                 return reused;
             }
         }
 
         return -1L;
+    }
+
+    private Long pollFreeId(ObjectIDType type) {
+        Long id;
+        while ((id = type.freeIds.pollFirst()) != null) {
+            if (type.idToObjectMap.get(id) == null) {
+                return id;
+            }
+        }
+
+        return null;
     }
 
     /**
