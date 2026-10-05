@@ -3,22 +3,70 @@
 Reviewed 2026-10-05 against exact-version BaseVehicle and VehicleParts. Vehicle
 update chains consume 23,967.211 ms / 530,968 attempts in sequences 327–336:
 8.366 ms/tick, 0.04514 ms/attempt. These are inclusive elapsed chains, not CPU.
-New BaseVehicle.update stage timers are defined in TELEMETRY.md. This batch adds
-measurement only to vehicle logic; algorithm changes below await stage evidence.
+BaseVehicle.update stage timers are defined in TELEMETRY.md. The synchronous
+parked-car implementation below follows the initial measurement batch. Runtime
+savings still require representative captures from the deployed revision.
+
+## Implemented: parts-only cars may use SIXTEENTH
+
+The server scheduler no longer treats needPartsUpdate alone as a FULL reason.
+All remaining original activity guards and occupied seats still require FULL.
+An idle, empty, stationary car continues to call updateParts (not the idle device
+branch) when needPartsUpdate is true, at SIXTEENTH frequency. The original
+VehicleParts minute boundary, lastUpdated and elapsed-minute Lua arguments remain
+unchanged. This is an intentional cadence change: callbacks and signal-device
+updates on these cars can run later, especially at low server tick rates.
+Vanilla engine cooling integrates elapsed minutes and clears needPartsUpdate when
+cold. Custom callbacks/device behavior must be checked in multiplayer.
+
+## Implemented: persistent idle device/light capability view
+
+The server idle branch visits only parts that have device data or a light, in
+original numeric part order. A car with no such parts has an O(1) empty traversal
+after its first build. Ordinary cars with inactive lights/radios still perform
+O(K) live activation checks, where K is capability-bearing entries rather than
+all P parts. This is not a cache of active state.
+
+VehicleParts.add/clear and VehiclePart device replacement/creation, spotlight
+creation and loaded-light creation invalidate the view. Callback changes rebuild
+and resume at the next vanilla numeric index, including nested traversals.
+Duplicate parts and the final lightbar battery update retain original ordering.
+Protected field writes introduced by external Java mods must invalidate the view;
+normal Lua APIs and native load paths are covered. Full part updates are unchanged.
+
+## Implemented: bounded bookkeeping improvements
+
+- Physics-state reconciliation reuses a square already queried in the same call
+  when it matches the final z. No square survives into a future tick, so streaming
+  and floor mutations remain visible. This generally removes one of three queries,
+  not the entire reconciliation block.
+- Server updateTransform lazily builds a reusable first-identity part/model map
+  at the first attached-model parent lookup in a call, replacing repeated list
+  searches in its model loop. Cars without those lookups do not build it. Original
+  matrix calculations, model order, duplicate-first semantics and wheel inputs
+  remain unchanged. It applies only when a model slot exists; no inactive transform
+  cache is claimed. The map is cleared after use.
+- updateSounds returns after gameplay world-sound work when the server has no
+  emitter. Existing sound objects are updated first; emitter-present paths remain
+  unchanged. This avoids an irrelevant local-listener lookup.
+- Work counters accumulate in the existing vehicle telemetry batch; scheduler
+  classifications and actual attempts are attributed separately by level.
+
+Regression fixtures execute production selectors/hooks/part deadlines, compare
+vanilla idle traversal across activation and callback mutations, and verify square
+results and first-model lookup. The full game-JAR dry run also compiles both added
+replacement classes. No asynchronous worker or live deployment was introduced.
 
 ## Candidate: selective idle device/light parts
 
-BaseVehicle.drainBatteryUpdateHack scans every part when the engine is stopped
-to select turned-on radio/device parts or active lights. Preserve order, maintain
-a sparse selected view and update it on light/device activation, inventory-item
-replacement, part/script rebuild, load and network receipt. Lightbar battery work
-still runs after that traversal, including any duplicate battery update the old
-path performs. Do not cache only engine-running state: active device membership
-can change while the engine remains stopped.
+Capability selection is implemented above. A further active-only view would need
+complete hooks for DeviceData and VehicleLight state changes, including direct
+native writes and network receipt. Keep lightbar battery work after the traversal,
+including any duplicate battery update the old path performs.
 
-The new parts timer includes the full-update branch too. Add total/selected part
-counts if this timer dominates before implementing the selective view. Actual
-membership maintenance must cost less than the small ordinary vehicle part list.
+The parts timer includes the full-update branch too. Use the new capability visit
+and rebuild counters before extending to active membership; maintenance must cost
+less than the small ordinary vehicle part list.
 
 ## Candidate: separate irrelevant parts from full part updates
 
@@ -37,6 +85,14 @@ the consumers and ServerGUI branch before skipping it. updateSounds also emits
 gameplay world sounds; the entire method is not cosmetic. Keep part callbacks,
 passenger positions, crop intersections and authority decisions. A broad idle-car
 skip is not a valid algorithmic replacement.
+
+## Remaining: cross-tick physics square and crop reconciliation
+
+An unchanged JNI transform does not imply unchanged floor/square availability.
+Cross-tick caches require streaming, floor and footprint-content invalidations.
+Crop checks must see plants added beneath a stationary car. The current patch
+only reuses same-call square queries and retains crop scans. Postupdate animation
+and its model lookups are also still separate from the updateTransform improvement.
 
 ## Already indexed or already guarded
 

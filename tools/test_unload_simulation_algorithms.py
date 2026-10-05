@@ -198,7 +198,7 @@ def main():
     STUBS["zombie/iso/areas/TopologyTest.java"] = TOPOLOGY_TEST
     STUBS["zombie/iso/objects/NoWorkTest.java"] = NO_WORK_TEST
     STUBS["zombie/entity/VanillaEngineEntityManager.java"] = (V / "decompiled/zombie/entity/EngineEntityManager.java").read_text().replace("EngineEntityManager", "VanillaEngineEntityManager")
-    # Instrumentation must leave the vehicle update's actual statements unchanged.
+    # Preserve the vehicle update statements outside the explicitly tested square-query reuse.
     import re
     vehicle = method((V / "src/zombie/vehicles/BaseVehicle.java").read_text(), "public void update()")
     vehicle = vehicle.replace("long vehicleStageStarted = GameServer.server ? System.nanoTime() : 0L;", "")
@@ -206,6 +206,9 @@ def main():
     vehicle = re.sub(r"if \(GameServer.server\) \{\s*long now = System.nanoTime\(\);\s*ServerVehicleUpdateTelemetry.record\(vehicleStage, now - vehicleStageStarted\);\s*vehicleStage = [0-7]; vehicleStageStarted = now;\s*\}", "", vehicle)
     vehicle = re.sub(r"\} finally \{\s*if \(GameServer.server\) ServerVehicleUpdateTelemetry.record\(vehicleStage, System.nanoTime\(\) - vehicleStageStarted\);\s*\}", "", vehicle)
     original_vehicle = method((V / "decompiled/zombie/vehicles/BaseVehicle.java").read_text(), "public void update()")
+    square_start = vehicle.index("IsoGridSquare sq = GameServer.server && this.getZ() == zi ? square")
+    square_end = vehicle.index("if (sq == null &&", square_start)
+    vehicle = vehicle[:square_start] + "IsoGridSquare sq = this.getCell().getGridSquare((double)this.getX(), (double)this.getY(), (double)this.getZ());\n" + vehicle[square_end:]
     assert re.sub(r"\s+", "", vehicle) == re.sub(r"\s+", "", original_vehicle), "Vehicle telemetry altered gameplay statements"
     assert method(production_thump, "public void update()") == method(vanilla_thump, "public void update()"), "Thumpable update body changed"
     with tempfile.TemporaryDirectory(prefix="apocbr-unload-tests-") as directory:

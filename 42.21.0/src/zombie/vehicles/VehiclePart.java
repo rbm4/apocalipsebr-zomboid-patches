@@ -640,6 +640,7 @@ public final class VehiclePart extends GameEntity implements ChatElementOwner, W
         if (input.get() != 0) {
             if (this.light == null) {
                 this.light = new VehicleLight();
+                this.getOwner().getParts().invalidateIdleDeviceParts();
             }
 
             this.light.load(input, worldVersion);
@@ -692,6 +693,7 @@ public final class VehiclePart extends GameEntity implements ChatElementOwner, W
     }
 
     public void createSpotLight(float xOffset, float yOffset, float dist, float intensity, float dot, int focusing) {
+        if (this.light == null) this.getOwner().getParts().invalidateIdleDeviceParts();
         this.light = this.light == null ? new VehicleLight() : this.light;
         this.light.offset.set(xOffset, yOffset, 0.0F);
         this.light.dist = dist;
@@ -733,6 +735,7 @@ public final class VehiclePart extends GameEntity implements ChatElementOwner, W
     public DeviceData createSignalDevice() {
         if (this.deviceData == null) {
             this.deviceData = new DeviceData(this);
+            this.getOwner().getParts().invalidateIdleDeviceParts();
         }
 
         if (this.chatElement == null) {
@@ -762,6 +765,7 @@ public final class VehiclePart extends GameEntity implements ChatElementOwner, W
         }
 
         this.deviceData = data;
+        this.getOwner().getParts().invalidateIdleDeviceParts();
         this.deviceData.setParent(this);
     }
 

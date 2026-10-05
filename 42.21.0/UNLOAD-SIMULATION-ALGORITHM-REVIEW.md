@@ -382,3 +382,27 @@ compilation produces 284 class files from 81 sources against the installed game
 JAR. These checks do not establish production speedup or runtime multiplayer
 compatibility; validate streaming/meta conversion, reconnect, zone edits, active
 lights/devices and server GUI after deployment.
+
+## Synchronous vehicle implementation, 2026-10-05
+
+The subsequent authorized vehicle pass permits SIXTEENTH for cars whose only
+former FULL reason was needPartsUpdate, retaining original part deadlines and
+elapsed-minute arguments. Other activity guards still select FULL. This explicitly
+changes callback/device cadence on those cars and requires multiplayer validation
+with custom vehicle callbacks; it does not skip cooling or full part traversal.
+
+BaseVehicle's server idle branch now visits a persistent ordered device/light
+capability view in VehicleParts. VehiclePart API/load hooks and collection mutations
+invalidate it; active flags are checked live. Numeric cursor semantics, duplicate
+entries, callback changes/re-entry and the trailing lightbar battery call match
+vanilla. Model parent lookup uses a lazy per-call identity index, same-call physics
+square queries are reused, and emitter-free server sound bookkeeping exits after
+gameplay world-sound work. Cross-tick floor/crop caches and general due-part views
+remain pending; no asynchronous update path was introduced.
+
+See VEHICLE-UPDATE-FOLLOWUP.md for implemented boundaries and TELEMETRY.md for new
+level-attributed attempts, classification checks and batched work counters. The
+new vehicle fixture passes 60,018 assertions; the expanded moving fixture passes
+544; the existing unload fixture passes 1,495,716. Exact VehiclePart and VehicleParts
+vanilla baselines were copied as local commits 0a06196 and 8bba60b respectively.
+Behavioral edits are local and no deployment or push was performed.

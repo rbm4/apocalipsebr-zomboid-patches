@@ -82,6 +82,7 @@ public final class MovingObjectUpdateScheduler {
 
             started = System.nanoTime();
             int checked = 0;
+            long vehiclesFull = 0, vehiclesSixteenth = 0, vehiclesPartsOnly = 0;
             for (ServerMovingObjectIndex.Member entry : index.getScheduledMembers()) {
                 if (entry == null || !entry.active) continue;
                 IsoMovingObject object = entry.object;
@@ -92,6 +93,13 @@ public final class MovingObjectUpdateScheduler {
                     default -> object.getMinimumSimulationLevel();
                 };
                 checked++;
+                if (entry.kind == ServerMovingObjectIndex.VEHICLE) {
+                    if (level == UpdateSchedulerSimulationLevel.FULL) vehiclesFull++;
+                    else if (level == UpdateSchedulerSimulationLevel.SIXTEENTH) {
+                        vehiclesSixteenth++;
+                        if (((BaseVehicle)object).needPartsUpdate()) vehiclesPartsOnly++;
+                    }
+                }
                 ServerMembership membership = this.serverMembership.get(object);
                 if (membership != null && membership.source != entry) {
                     this.removeObject(object); // A pooled/re-added instance begins a new active lifetime.
@@ -115,6 +123,9 @@ public final class MovingObjectUpdateScheduler {
                 }
             }
             ApocBRServerTelemetryLite.count("movingObjects.activityChecked", checked);
+            ApocBRServerTelemetryLite.count("vehicles.scheduler.fullChecks", vehiclesFull);
+            ApocBRServerTelemetryLite.count("vehicles.scheduler.sixteenthChecks", vehiclesSixteenth);
+            ApocBRServerTelemetryLite.count("vehicles.scheduler.partsOnlyChecks", vehiclesPartsOnly);
             ApocBRServerTelemetryLite.recordPhase("simulation.movingObjects.activity", System.nanoTime() - started);
             return;
         }
@@ -233,7 +244,6 @@ public final class MovingObjectUpdateScheduler {
     private static UpdateSchedulerSimulationLevel getServerSimulationLevelForVehicle(BaseVehicle vehicle) {
         if (vehicle.getDriver() != null
             || vehicle.isMechanicUIOpen()
-            || vehicle.needPartsUpdate()
             || vehicle.getEngineState() != BaseVehicle.engineStateTypes.Idle
             || vehicle.isAlarmActive()
             || vehicle.isSirenActive()

@@ -47,7 +47,7 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
         }
     }
 
-    private static void recordTelemetry(int pass, long[] nanos, long[] attempts) {
+    private void recordTelemetry(int pass, long[] nanos, long[] attempts) {
         if (nanos == null) return;
         for (int kind = 0; kind < telemetryKinds.length; kind++) {
             if (attempts[kind] > 0) {
@@ -55,7 +55,9 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
                 ApocBRServerTelemetryLite.count(telemetryCounts[pass][kind], attempts[kind]);
             }
         }
+        if (attempts[1] > 0) ApocBRServerTelemetryLite.count(this.vehicleLevelCounts[pass], attempts[1]);
     }
+    private final String[] vehicleLevelCounts;
 
 
     private static final class Position {
@@ -73,6 +75,10 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
     public MovingObjectUpdateSchedulerUpdateBucket(UpdateSchedulerSimulationLevel simulationLevel) {
         this.simulationLevel = simulationLevel;
         this.frameMod = simulationLevel.getFrameMod();
+        this.vehicleLevelCounts = new String[] {
+            "movingObjects.updateAttempts.vehicle." + simulationLevel.name(),
+            "movingObjects.postupdateAttempts.vehicle." + simulationLevel.name()
+        };
         this.buckets = PZArrayUtil.newInstance(List.class, this.frameMod, ArrayList::new);
         this.dirty = new boolean[this.frameMod];
     }

@@ -267,6 +267,7 @@ public final class BaseVehicle
     private final ArrayList<BaseVehicle.VehicleImpulse> impulsesFromHitObjects = new ArrayList<>();
     private final int netPlayerTimeoutMax = 30;
     public final ArrayList<BaseVehicle.ModelInfo> models = new ArrayList<>();
+    private java.util.IdentityHashMap<VehiclePart, BaseVehicle.ModelInfo> serverModelParts;
     public IsoChunk chunk;
     public boolean polyDirty = true;
     private boolean polyGarageCheck = true;
@@ -3407,7 +3408,12 @@ public final class BaseVehicle
                         this.setZ(zi);
                     }
 
-                    IsoGridSquare sq = this.getCell().getGridSquare((double)this.getX(), (double)this.getY(), (double)this.getZ());
+                    IsoGridSquare sq = GameServer.server && this.getZ() == zi ? square
+                        : GameServer.server && this.getZ() == zi - 1 ? below
+                        : this.getCell().getGridSquare((double)this.getX(), (double)this.getY(), (double)this.getZ());
+                    if (GameServer.server && (this.getZ() == zi || this.getZ() == zi - 1)) {
+                        ServerVehicleUpdateTelemetry.countWork(4, 1L);
+                    }
                     if (sq == null && !this.chunk.refs.isEmpty()) {
                         float d = 5.0E-4F;
                         int minX = this.chunk.wx * 8;
@@ -4420,6 +4426,7 @@ public final class BaseVehicle
 
     protected void updateTransform() {
         if (this.sprite.modelSlot != null) {
+            java.util.IdentityHashMap<VehiclePart, BaseVehicle.ModelInfo> modelParts = null;
             float scale = this.getScript().getModelScale();
             float scale2 = 1.0F;
             if (this.sprite.modelSlot != null && this.sprite.modelSlot.model.scale != 1.0F) {
@@ -4491,7 +4498,15 @@ public final class BaseVehicle
                         && modelInfo.part.scriptPart != null
                         && modelInfo.part.scriptPart.parent != null
                         && scriptModel.attachmentNameParent != null) {
-                        BaseVehicle.ModelInfo parentModelInfo = this.getModelInfoForPart(modelInfo.part.getParent());
+                        if (GameServer.server && modelParts == null) {
+                            if (this.serverModelParts == null) this.serverModelParts = new java.util.IdentityHashMap<>();
+                            modelParts = this.serverModelParts;
+                            modelParts.clear();
+                            for (BaseVehicle.ModelInfo info : this.models) modelParts.putIfAbsent(info.part, info);
+                            ServerVehicleUpdateTelemetry.countWork(5, this.models.size());
+                        }
+                        BaseVehicle.ModelInfo parentModelInfo = modelParts == null
+                            ? this.getModelInfoForPart(modelInfo.part.getParent()) : modelParts.get(modelInfo.part.getParent());
                         Matrix4f attachmentXfrm = TL_matrix4f_pool.get().alloc();
                         this.initTransform(
                             parentModelInfo.modelInstance,
@@ -4567,6 +4582,7 @@ public final class BaseVehicle
             TL_matrix4f_pool.get().release(matrix4f);
             TL_quaternionf_pool.get().release(chassisRot);
             TL_quaternionf_pool.get().release(modelRotQ);
+            if (modelParts != null) modelParts.clear();
         }
     }
 
@@ -7859,6 +7875,8 @@ public final class BaseVehicle
         }
 
         this.updateWorldSounds();
+        // All remaining server work in this method requires an existing emitter.
+        if (GameServer.server && this.emitter == null) return;
         float closestListenerDistSq = FMODParameterUtils.getClosestListenerDistanceSquared(this.getX(), this.getY(), this.getZ());
         if (closestListenerDistSq == Float.MAX_VALUE) {
             if (this.emitter != null) {
@@ -7966,6 +7984,9 @@ public final class BaseVehicle
     public void drainBatteryUpdateHack() {
         boolean engineRunning = this.isEngineRunning();
         if (!engineRunning) {
+            if (GameServer.server) {
+                this.getParts().updateIdleDeviceParts();
+            } else {
             for (int i = 0; i < this.parts.size(); i++) {
                 VehiclePart part = this.parts.get(i);
                 if (part.getDeviceData() != null && part.getDeviceData().getIsTurnedOn()) {
@@ -7973,6 +7994,7 @@ public final class BaseVehicle
                 } else if (part.getLight() != null && part.getLight().getActive()) {
                     this.getParts().updatePart(part);
                 }
+            }
             }
 
             if (this.hasLightbar() && (this.lightbarLightsMode.isEnable() || this.lightbarSirenMode.isEnable()) && this.getBattery() != null) {

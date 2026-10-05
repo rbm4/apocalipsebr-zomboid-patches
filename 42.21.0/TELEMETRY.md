@@ -623,3 +623,40 @@ gameplay statements and the thumpable update body were left unchanged. Existing
 player/packet and moving-object fixtures cover incremental sound sums/invalidation
 and scheduler integration. Full 42.21 game-JAR dry-run compilation is required.
 These are correctness fixtures, not production timing or allocation benchmarks.
+
+## Synchronous parked-car follow-up, 2026-10-05
+
+The scheduler permits SIXTEENTH when needPartsUpdate is the only former FULL
+reason. All other activity guards remain. Parts keep the original game-minute
+deadline and elapsed-minute callback arguments; signal work/callback delivery on
+these cars can be delayed by up to the next scheduled call. This is a cadence
+change, not solely an algorithm substitution. See VEHICLE-UPDATE-FOLLOWUP.md.
+
+| Counter | Meaning |
+| --- | --- |
+| `vehicles.scheduler.fullChecks` | Vehicle classifications selecting FULL, summed over frames; not a population gauge or actual update count |
+| `vehicles.scheduler.sixteenthChecks` | Vehicle classifications selecting SIXTEENTH, summed over frames |
+| `vehicles.scheduler.partsOnlyChecks` | Subset of SIXTEENTH classifications with needPartsUpdate=true |
+| `movingObjects.updateAttempts.vehicle.<LEVEL>` | Actual preupdate/frameStep/update chains attempted at FULL, HALF, QUARTER, EIGHTH or SIXTEENTH; includes failed attempts and matches the existing vehicle attempt parent |
+| `movingObjects.postupdateAttempts.vehicle.<LEVEL>` | Actual postupdate attempts at that scheduler level; separate from update chains |
+| `vehicles.idleParts.viewRebuilds` | Builds of the persistent ordered device/light capability index |
+| `vehicles.idleParts.rebuildEntries` | All part entries inspected during those builds |
+| `vehicles.idleParts.candidatesChecked` | Capability-bearing entries inspected by server idle traversal; active flags are read live |
+| `vehicles.idleParts.updateAttempts` | updatePart calls selected by idle traversal, including calls with no Lua callback due; excludes the trailing lightbar battery call |
+| `vehicles.squareQueries.reused` | Third physics-state square lookup reused from the same call's square/below lookup |
+| `vehicles.modelParts.indexEntries` | Model entries indexed for first-identity parent lookup during server updateTransform; built lazily only when an attached-model parent lookup is needed |
+
+Idle-part and model/square counters accumulate in the vehicle stage batch rather
+than issuing telemetry map lookups per car. The original stages still contain the
+same surrounding work; parts includes either full updates or the optimized idle
+branch. Square reuse has no cross-frame cache. Model indexing preserves matrix
+calculations; it does not skip unchanged transforms or optimize postupdate.
+
+`python tools/test_vehicle_idle_algorithms.py` exercises production selectors and
+creation/replacement hooks, compares ordered updates with vanilla under live
+activation/list mutation/re-entry, checks elapsed-minute cooling and the actual
+square-selection statements, and checks first-model indexing and batched counters.
+The unload fixture's vehicle source contract now permits only the independently
+tested square-query substitution inside update. The moving-object fixture checks
+parts-only cadence and activity promotion. Validate mod callbacks, radio/light
+activation, cooling, streaming/floor edits, towing and reconnect in multiplayer.

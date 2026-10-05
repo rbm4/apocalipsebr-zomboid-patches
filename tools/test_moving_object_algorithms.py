@@ -109,17 +109,18 @@ package zombie.vehicles;
 import java.util.*;
 import zombie.characters.IsoGameCharacter;
 public class BaseVehicle extends zombie.iso.IsoMovingObject {
-    public boolean active;
+    public boolean active, partsNeeded, moving, alarm, siren, mechanic, animalCargo, towing, occupied;
+    public engineStateTypes engineState=engineStateTypes.Idle;
     public enum engineStateTypes { Idle, Running }
-    public static class Mode { public boolean isEnable(){return false;} }
+    public static class Mode { public boolean enabled; public boolean isEnable(){return enabled;} }
     public final Mode lightbarLightsMode=new Mode(), lightbarSirenMode=new Mode();
     public Object getDriver(){return active?this:null;}
-    public boolean isMechanicUIOpen(){return false;} public boolean needPartsUpdate(){return false;}
-    public engineStateTypes getEngineState(){return engineStateTypes.Idle;}
-    public boolean isAlarmActive(){return false;} public boolean isSirenActive(){return false;}
-    public Object getVehicleTowedBy(){return null;} public Object getVehicleTowing(){return null;}
-    public boolean isAtRest(){return true;} public List<Object> getAnimals(){return List.of();}
-    public int getMaxPassengers(){return 0;} public IsoGameCharacter getCharacter(int n){return null;}
+    public boolean isMechanicUIOpen(){return mechanic;} public boolean needPartsUpdate(){return partsNeeded;}
+    public engineStateTypes getEngineState(){return engineState;}
+    public boolean isAlarmActive(){return alarm;} public boolean isSirenActive(){return siren;}
+    public Object getVehicleTowedBy(){return null;} public Object getVehicleTowing(){return towing?this:null;}
+    public boolean isAtRest(){return !moving;} public List<Object> getAnimals(){return animalCargo?List.of(this):List.of();}
+    public int getMaxPassengers(){return 1;} public IsoGameCharacter getCharacter(int n){return occupied?new IsoGameCharacter():null;}
 }
 """,
 }
@@ -176,6 +177,20 @@ public class MovingObjectAlgorithmsTest {
         s.startFrame();var full=buckets()[0];var slow=buckets()[4];Object original=position(full,regular);
         s.startFrame();check(position(full,regular)==original,"stable frame retains bucket entry");
         check(slow.getBucket(0).contains(car)&&slow.getBucket(0).contains(animal),"idle car/animal throttles retained");
+        car.partsNeeded=true;s.startFrame();
+        check(slow.getBucket(0).contains(car),"parts-only car stays SIXTEENTH");
+        int updates=car.updates;for(int i=0;i<16;i++){s.startFrame();s.update();}
+        check(car.updates==updates+1,"parts-only car updates once per sixteen frames");
+        check(ApocBRServerTelemetryLite.counts.get("movingObjects.updateAttempts.vehicle.SIXTEENTH")>0,"vehicle level attempts counted");
+        for(int reason=0;reason<10;reason++){
+            car.moving=reason==0;car.alarm=reason==1;car.siren=reason==2;car.mechanic=reason==3;
+            car.animalCargo=reason==4;car.towing=reason==5;car.occupied=reason==6;
+            car.engineState=reason==7?BaseVehicle.engineStateTypes.Running:BaseVehicle.engineStateTypes.Idle;
+            car.lightbarLightsMode.enabled=reason==8;car.lightbarSirenMode.enabled=reason==9;
+            s.startFrame();check(full.getBucket(0).contains(car),"active reason overrides parts-only cadence "+reason);
+        }
+        car.moving=car.alarm=car.siren=car.mechanic=car.animalCargo=car.towing=car.occupied=false;
+        car.engineState=BaseVehicle.engineStateTypes.Idle;car.lightbarLightsMode.enabled=car.lightbarSirenMode.enabled=false;
         car.active=true;animal.alerted=true;s.startFrame();
         check(full.getBucket(0).contains(car)&&!slow.getBucket(0).contains(car),"car promoted without duplicate");
         check(buckets()[1].getBucket(0).contains(animal),"alert animal promoted to HALF");
