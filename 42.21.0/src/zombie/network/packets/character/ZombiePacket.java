@@ -255,15 +255,26 @@ public class ZombiePacket implements INetworkPacketField {
     }
 
     public void set(IsoZombie chr) {
+        this.prepareFrame(chr);
+        this.setPrepared(chr);
+    }
+
+    public void prepareFrame(IsoZombie chr) {
+        this.id = chr.onlineId;
+        chr.getNetworkCharacterAI().updatePacketBookkeeping(this);
+        chr.thumpSent = true;
+    }
+
+    /** Prediction bookkeeping was already performed for this frame. */
+    public void setPrepared(IsoZombie chr) {
         this.id = chr.onlineId;
         this.update = 0;
         this.outfitId = chr.getPersistentOutfitID();
         NetworkZombieAI networkAi = chr.getNetworkCharacterAI();
-        networkAi.set(this);
+        networkAi.setPacketFields(this, chr.getWalkType());
         networkAi.mindSync.set(this);
         chr.thumpSent = true;
         this.grappledBy.clear();
-        this.walkType = NetworkVariables.WalkType.fromString(chr.getWalkType());
         if (chr.getWrappedGrappleable().getGrappledBy() instanceof IsoPlayer isoPlayer) {
             this.update |= -128;
             this.grappledBy.set(isoPlayer);

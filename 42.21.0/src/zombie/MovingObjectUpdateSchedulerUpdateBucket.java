@@ -140,9 +140,18 @@ public final class MovingObjectUpdateSchedulerUpdateBucket {
                         long started = nanos == null ? 0L : System.nanoTime();
                         try {
                             isoMovingObject.setCurrentSimulationLevel(this.simulationLevel);
+                            boolean human = nanos != null && kind == 3;
+                            long stepStarted = human ? System.nanoTime() : 0L;
                             isoMovingObject.preupdate();
+                            if (human) ApocBRServerTelemetryLite.recordPhase("simulation.players.preupdate", System.nanoTime() - stepStarted);
+                            stepStarted = human ? System.nanoTime() : 0L;
                             isoMovingObject.frameStep();
+                            if (human) ApocBRServerTelemetryLite.recordPhase("simulation.players.frameStep", System.nanoTime() - stepStarted);
                             isoMovingObject.update();
+                            if (nanos != null && isoMovingObject instanceof zombie.vehicles.BaseVehicle vehicle
+                                && IsoWorld.instance.getCell().getVehicles().contains(vehicle)) {
+                                IsoWorld.instance.getCell().getPlayerSpatialQueries().vehicleMoved(vehicle);
+                            }
                         } finally {
                             if (nanos != null) {
                                 nanos[kind] += System.nanoTime() - started;

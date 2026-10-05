@@ -10,6 +10,7 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 STUBS = {
+    "zombie/ServerPlayerSpatialQueries.java": "package zombie; public class ServerPlayerSpatialQueries { public void vehicleMoved(zombie.vehicles.BaseVehicle v){} }",
     "zombie/GameTime.java": """
 package zombie;
 public class GameTime {
@@ -46,6 +47,8 @@ package zombie.iso;
 import java.util.*;
 public class IsoCell {
     public final Set<IsoMovingObject> objects=new zombie.ServerMovingObjectSet(), removed=new HashSet<>();
+    public java.util.Set<zombie.vehicles.BaseVehicle> getVehicles(){return java.util.Collections.emptySet();}
+    public zombie.ServerPlayerSpatialQueries getPlayerSpatialQueries(){return new zombie.ServerPlayerSpatialQueries();}
     public Set<IsoMovingObject> getObjectList(){return objects;}
     public Set<IsoMovingObject> getRemoveList(){return removed;}
 }

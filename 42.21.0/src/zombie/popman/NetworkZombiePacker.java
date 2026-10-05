@@ -61,6 +61,7 @@ public class NetworkZombiePacker {
     private final ExecutorService zombiePacketPool = Executors.newFixedThreadPool(ZOMBIE_PACKET_WORKERS);
     private final ConcurrentLinkedQueue<NetworkZombiePacker.ConnectionResult> completedJobs = new ConcurrentLinkedQueue<>();
     private volatile CountDownLatch pendingLatch;
+    private final ServerZombiePacketPreparation packetPreparation = new ServerZombiePacketPreparation();
 
     public static NetworkZombiePacker getInstance() {
         return instance;
@@ -108,6 +109,8 @@ public class NetworkZombiePacker {
                 }
 
                 zombie.zombiePacket.copy(this.packet);
+                this.packetPreparation.received(zombie);
+                IsoWorld.instance.currentCell.getPlayerSpatialQueries().invalidateZombies();
                 zombie.zombiePacketUpdated = true;
                 synchronized (this.zombiesReceived) {
                     this.zombiesReceived.add(zombie);
@@ -188,18 +191,20 @@ public class NetworkZombiePacker {
     private void updateAuth() {
         ArrayList<IsoZombie> zombies = IsoWorld.instance.currentCell.getZombieList();
         NetworkZombieManager.getInstance().beginAuthUpdate();
-        long ownershipNanos = 0L, packetNanos = 0L;
+        this.packetPreparation.beginFrame();
+        long ownershipNanos = 0L, bookkeepingNanos = 0L;
         for (int i = 0; i < zombies.size(); i++) {
             IsoZombie zombie = zombies.get(i);
             long started = System.nanoTime();
             NetworkZombieManager.getInstance().updateAuth(zombie);
             long prepared = System.nanoTime();
-            zombie.zombiePacket.set(zombie);
+            this.packetPreparation.bookkeep(zombie);
             ownershipNanos += prepared - started;
-            packetNanos += System.nanoTime() - prepared;
+            bookkeepingNanos += System.nanoTime() - prepared;
         }
         ApocBRServerTelemetryLite.recordPhase("network.zombies.ownership", ownershipNanos);
-        ApocBRServerTelemetryLite.recordPhase("network.zombies.packetPrepare", packetNanos);
+        ApocBRServerTelemetryLite.recordPhase("network.zombies.packetBookkeeping", bookkeepingNanos);
+        ApocBRServerTelemetryLite.count("zombies.packet.bookkeeping", zombies.size());
     }
 
     public int getZombieData(UdpConnection connection, ZombieSynchronizationPacket packet) {
@@ -251,6 +256,7 @@ public class NetworkZombiePacker {
         try {
             for (IsoZombie zombie : requestSnapshot) {
                 if (zombie != null && zombie.onlineId != -1) {
+                    this.packetPreparation.prepare(zombie);
                     packet.sendQueue.add(zombie);
                     zombiesToSend.add(zombie.getOnlineID());
                     if (++count >= 300) {

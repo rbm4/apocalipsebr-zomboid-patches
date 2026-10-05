@@ -91,7 +91,7 @@ public final class ItemContainer {
     public float cookingFactor = 1.0F;
     public int capacity = 50;
     public InventoryItem containingItem;
-    public ArrayList<InventoryItem> items = new ArrayList<>();
+    public ArrayList<InventoryItem> items = new ServerInventoryUpdateIndex.Items();
     public ArrayList<InventoryItem> includingObsoleteItems = new ArrayList<>();
     public IsoObject parent;
     public IsoGridSquare sourceGrid;
@@ -3349,7 +3349,7 @@ public final class ItemContainer {
     }
 
     public void emptyIt() {
-        this.items = new ArrayList<>();
+        this.items = new ServerInventoryUpdateIndex.Items();
     }
 
     public LinkedHashMap<String, InventoryItem> getItems4Admin() {

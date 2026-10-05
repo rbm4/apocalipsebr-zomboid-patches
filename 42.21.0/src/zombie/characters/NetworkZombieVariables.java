@@ -6,21 +6,25 @@ import zombie.util.flags.ShortFlags;
 
 public class NetworkZombieVariables {
     public static ShortFlags getBooleanVariables(IsoZombie zombie) {
-        ShortFlags flags = ShortFlags.alloc();
-        flags.set(NetworkZombieVariables.Flag.IsFakeDead, zombie.isFakeDead());
-        flags.set(NetworkZombieVariables.Flag.IsLunger, zombie.lunger);
-        flags.set(NetworkZombieVariables.Flag.IsRunning, zombie.running);
-        flags.set(NetworkZombieVariables.Flag.IsCrawling, zombie.isCrawling());
-        flags.set(NetworkZombieVariables.Flag.IsSitAgainstWall, zombie.isSitAgainstWall());
-        flags.set(NetworkZombieVariables.Flag.IsReanimatedPlayer, zombie.isReanimatedPlayer());
-        flags.set(NetworkZombieVariables.Flag.IsOnFire, zombie.isOnFire());
-        flags.set(NetworkZombieVariables.Flag.IsUseless, zombie.isUseless());
-        flags.set(NetworkZombieVariables.Flag.IsOnFloor, zombie.isOnFloor());
-        flags.set(NetworkZombieVariables.Flag.IsReanimatedForGrappleOnly, zombie.isReanimatedForGrappleOnly());
-        flags.set(NetworkZombieVariables.Flag.IsCanWalk, zombie.isCanWalk());
-        flags.set(NetworkZombieVariables.Flag.IsSkeleton, zombie.isSkeleton());
-        flags.set(NetworkZombieVariables.Flag.IsFallOnFront, zombie.isFallOnFront());
-        flags.set(NetworkZombieVariables.Flag.IsAnimationRecording, zombie.isAnimationRecorderActive());
+        return ShortFlags.toFlags(getBooleanVariablesShort(zombie));
+    }
+
+    public static short getBooleanVariablesShort(IsoZombie zombie) {
+        short flags = 0;
+        if (zombie.isFakeDead()) flags = (short)(flags | NetworkZombieVariables.Flag.IsFakeDead.flag());
+        if (zombie.lunger) flags = (short)(flags | NetworkZombieVariables.Flag.IsLunger.flag());
+        if (zombie.running) flags = (short)(flags | NetworkZombieVariables.Flag.IsRunning.flag());
+        if (zombie.isCrawling()) flags = (short)(flags | NetworkZombieVariables.Flag.IsCrawling.flag());
+        if (zombie.isSitAgainstWall()) flags = (short)(flags | NetworkZombieVariables.Flag.IsSitAgainstWall.flag());
+        if (zombie.isReanimatedPlayer()) flags = (short)(flags | NetworkZombieVariables.Flag.IsReanimatedPlayer.flag());
+        if (zombie.isOnFire()) flags = (short)(flags | NetworkZombieVariables.Flag.IsOnFire.flag());
+        if (zombie.isUseless()) flags = (short)(flags | NetworkZombieVariables.Flag.IsUseless.flag());
+        if (zombie.isOnFloor()) flags = (short)(flags | NetworkZombieVariables.Flag.IsOnFloor.flag());
+        if (zombie.isReanimatedForGrappleOnly()) flags = (short)(flags | NetworkZombieVariables.Flag.IsReanimatedForGrappleOnly.flag());
+        if (zombie.isCanWalk()) flags = (short)(flags | NetworkZombieVariables.Flag.IsCanWalk.flag());
+        if (zombie.isSkeleton()) flags = (short)(flags | NetworkZombieVariables.Flag.IsSkeleton.flag());
+        if (zombie.isFallOnFront()) flags = (short)(flags | NetworkZombieVariables.Flag.IsFallOnFront.flag());
+        if (zombie.isAnimationRecorderActive()) flags = (short)(flags | NetworkZombieVariables.Flag.IsAnimationRecording.flag());
         return flags;
     }
 

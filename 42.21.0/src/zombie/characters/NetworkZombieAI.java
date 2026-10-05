@@ -82,9 +82,8 @@ public class NetworkZombieAI extends NetworkCharacterAI {
 
     private void setUsingExtrapolation(ZombiePacket packet, int t) {
         if (this.zombie.isMoving()) {
-            Vector2 chrDir = this.zombie.getForwardDirection(new Vector2());
             this.zombie.networkCharacter.checkReset(t);
-            NetworkCharacter.Transform transform = this.zombie.networkCharacter.predict(500, t, this.zombie.getX(), this.zombie.getY(), chrDir.x, chrDir.y);
+            NetworkCharacter.Transform transform = this.zombie.networkCharacter.predict(500, t, this.zombie.getX(), this.zombie.getY(), this.zombie.getForwardDirectionX(), this.zombie.getForwardDirectionY());
             packet.x = transform.position.x;
             packet.y = transform.position.y;
             packet.z = (byte)PZMath.fastfloor(this.zombie.getZ());
@@ -134,8 +133,7 @@ public class NetworkZombieAI extends NetworkCharacterAI {
 
     private void setUsingWalkTowardState(ZombiePacket packet) {
         if (this.zombie.getPath2() == null) {
-            float length = this.getPfb2().getPathLength();
-            if (length > 5.0F) {
+            if (this.getPfb2().isPathLengthGreaterThan(5.0F)) {
                 packet.x = (this.zombie.getX() + this.getPfb2().getTargetX()) * 0.5F;
                 packet.y = (this.zombie.getY() + this.getPfb2().getTargetY()) * 0.5F;
                 packet.z = (byte)PZMath.fastfloor(this.getPfb2().getTargetZ());
@@ -164,22 +162,51 @@ public class NetworkZombieAI extends NetworkCharacterAI {
         packet.predictionType = 2;
     }
 
+    private String lastWalkType, lastStateName;
+    private NetworkVariables.WalkType cachedWalkType;
+    private NetworkVariables.ZombieState cachedState;
+    private java.util.Locale stateLocale;
+
+    private NetworkVariables.WalkType resolveWalkType(String value) {
+        if (cachedWalkType == null || !java.util.Objects.equals(lastWalkType, value)) {
+            cachedWalkType = NetworkVariables.WalkType.fromString(value);
+            lastWalkType = value;
+        }
+        return cachedWalkType;
+    }
+    private NetworkVariables.ZombieState resolveState() {
+        String value = this.zombie.getAdvancedAnimator().getCurrentStateName();
+        java.util.Locale locale = java.util.Locale.getDefault();
+        if (cachedState == null || !java.util.Objects.equals(lastStateName, value) || !locale.equals(stateLocale)) {
+            cachedState = NetworkVariables.ZombieState.fromString(value);
+            lastStateName = value;
+            stateLocale = locale;
+        }
+        return cachedState;
+    }
     public void set(ZombiePacket packet) {
-        int currentTime = (int)(GameTime.getServerTime() / 1000000L);
-        packet.booleanVariables = NetworkZombieVariables.getBooleanVariables(this.zombie).asShort();
+        this.updatePacketBookkeeping(packet);
+        this.setPacketFields(packet, this.zombie.getVariableString("zombieWalkType"));
+    }
+    public void setPacketFields(ZombiePacket packet, String walkType) {
+        packet.booleanVariables = NetworkZombieVariables.getBooleanVariablesShort(this.zombie);
         packet.health = (short)(this.zombie.health * 1000.0F);
         packet.target = this.zombie.target instanceof IAnimatable animated ? animated.getOnlineID() : -1;
         packet.speedMod = (short)(this.zombie.speedMod * 1000.0F);
         packet.timeSinceSeenFlesh = (short)this.zombie.timeSinceSeenFlesh;
         packet.smParamTargetAngle = (short)(this.zombie.get(ZombieTurnAlerted.TARGET_ANGLE) * 1000.0F);
-        packet.walkType = NetworkVariables.WalkType.fromString(this.zombie.getVariableString("zombieWalkType"));
+        packet.walkType = this.resolveWalkType(walkType);
         packet.realX = this.zombie.getX();
         packet.realY = this.zombie.getY();
         packet.realZ = (byte)PZMath.fastfloor(this.zombie.getZ());
         packet.dirAngleRads = this.zombie.getDirectionAngleRadians();
-        this.zombie.realState = NetworkVariables.ZombieState.fromString(this.zombie.getAdvancedAnimator().getCurrentStateName());
         packet.realState = this.zombie.realState;
         packet.reanimatedBodyId.set(this.reanimatedBodyId);
+    }
+    /** Called once per server auth frame, even if nobody requests a packet. */
+    public void updatePacketBookkeeping(ZombiePacket packet) {
+        int currentTime = (int)(GameTime.getServerTime() / 1000000L);
+        this.zombie.realState = this.resolveState();
         if (this.zombie.getCurrentState() == ThumpState.instance() && this.zombie.getThumpTarget() != null && !this.zombie.getThumpTarget().isDestroyed()) {
             if (this.zombie.getThumpTarget() instanceof IsoObject isoObject && isoObject.getSquare() != null) {
                 this.setUsingThump(packet);
@@ -206,8 +233,7 @@ public class NetworkZombieAI extends NetworkCharacterAI {
             this.isClimbing = true;
         }
 
-        Vector2 chrDir = this.zombie.getForwardDirection(new Vector2());
-        this.zombie.networkCharacter.updateExtrapolationPoint(currentTime, this.zombie.getX(), this.zombie.getY(), chrDir.x, chrDir.y);
+        this.zombie.networkCharacter.updateExtrapolationPoint(currentTime, this.zombie.getX(), this.zombie.getY(), this.zombie.getForwardDirectionX(), this.zombie.getForwardDirectionY());
     }
 
     private boolean checkZTeleport(IsoZombie zombie) {

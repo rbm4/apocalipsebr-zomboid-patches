@@ -9792,12 +9792,16 @@ public abstract class IsoGameCharacter
                 }
 
                 if (SystemDisabler.doCharacterStats && this.getBodyDamage() != null) {
+                    long healthStarted = GameServer.server && this instanceof IsoPlayer && !this.isAnimal() ? System.nanoTime() : 0L;
                     this.getBodyDamage().Update();
                     this.updateBandages();
+                    if (healthStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.health", System.nanoTime() - healthStarted);
                 }
 
                 if (SystemDisabler.doCharacterStats) {
+                    long statsStarted = GameServer.server && this instanceof IsoPlayer && !this.isAnimal() ? System.nanoTime() : 0L;
                     this.calculateStats();
+                    if (statsStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.stats", System.nanoTime() - statsStarted);
                 }
 
                 if (this.asleep && this instanceof IsoPlayer && !(this instanceof IsoAnimal)) {
@@ -9856,7 +9860,13 @@ public abstract class IsoGameCharacter
                     }
 
                     if (!this.isZombie()) {
-                        this.recursiveItemUpdater(this.inventory);
+                        if (GameServer.server && this instanceof IsoPlayer && !this.isAnimal()) {
+                            try (zombie.ApocBRServerTelemetryLite.Scope timing = zombie.ApocBRServerTelemetryLite.phase("simulation.players.inventory")) {
+                                zombie.inventory.ServerInventoryUpdateIndex.update(this.inventory);
+                            }
+                        } else {
+                            this.recursiveItemUpdater(this.inventory);
+                        }
                     }
 
                     this.lastZombieKills = this.zombieKills;
@@ -14346,6 +14356,11 @@ public abstract class IsoGameCharacter
     }
 
     public boolean checkIsNearVehicle() {
+        if (GameServer.server) {
+            boolean near = IsoWorld.instance.currentCell.getPlayerSpatialQueries().nearVehicle(IsoWorld.instance.currentCell, this);
+            if (near && this.sneaking) this.setNearWallCrouching(true);
+            return near;
+        }
         for (BaseVehicle vehicle : IsoWorld.instance.currentCell.getVehicles()) {
             if (vehicle.DistTo(this) < 3.5F) {
                 if (this.sneaking) {

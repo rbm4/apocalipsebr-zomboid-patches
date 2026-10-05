@@ -40,9 +40,9 @@ public final class Thermoregulator {
     private final Stats stats;
     private final Nutrition nutrition;
     private final ClimateManager climate;
-    private static final ItemVisuals itemVisuals = new ItemVisuals();
-    private static final ItemVisuals itemVisualsCache = new ItemVisuals();
-    private static final ArrayList<BloodBodyPartType> coveredParts = new ArrayList<>();
+    private final ItemVisuals itemVisuals = new ItemVisuals();
+    private final ItemVisuals itemVisualsCache = new ItemVisuals();
+    private final ArrayList<BloodBodyPartType> coveredParts = new ArrayList<>();
     private static float simulationMultiplier = 1.0F;
     private float setPoint = 37.0F;
     private float metabolicRate = Metabolics.Default.getMet();
@@ -611,7 +611,7 @@ public final class Thermoregulator {
     private float getSimulationMultiplier(Thermoregulator.Multiplier multiplierType) {
         float multiplier = GameTime.instance.getMultiplier();
 
-        return switch (multiplierType) {
+        return multiplier * switch (multiplierType) {
             case MetabolicRateInc -> 0.001F;
             case MetabolicRateDec -> 4.0E-4F;
             case BodyHeat -> 2.5E-4F;
@@ -621,6 +621,7 @@ public final class Thermoregulator {
             case SkinCelciusContract -> 0.005F;
             case PrimaryDelta -> 5.0E-4F;
             case SecondaryDelta -> 2.5E-4F;
+            case Default -> 1.0F;
         } * simulationMultiplier;
     }
 
@@ -670,7 +671,9 @@ public final class Thermoregulator {
         this.updateSetPoint();
         this.updateCoreRateOfChange();
         this.updateMetabolicRate();
+        long clothingStarted = zombie.network.GameServer.server ? System.nanoTime() : 0L;
         this.updateClothing();
+        if (clothingStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.thermalClothing", System.nanoTime() - clothingStarted);
         this.updateNodesHeatDelta();
         this.updateHeatDeltas();
         this.updateNodes();
@@ -999,6 +1002,7 @@ public final class Thermoregulator {
         }
 
         if (doUpdate) {
+            if (zombie.network.GameServer.server) zombie.ApocBRServerTelemetryLite.count("players.thermal.clothingRebuilt", 1);
             for (int ix = 0; ix < this.nodes.length; ix++) {
                 this.nodes[ix].clothing.clear();
             }

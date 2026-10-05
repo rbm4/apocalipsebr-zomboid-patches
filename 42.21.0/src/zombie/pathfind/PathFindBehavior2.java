@@ -751,6 +751,24 @@ public final class PathFindBehavior2 implements IPathfinder {
         return this.targetZ;
     }
 
+    public boolean isPathLengthGreaterThan(float threshold) {
+        if (this.path == null || this.path.nodes.isEmpty() || this.pathIndex + 1 >= this.path.nodes.size()) {
+            return this.getPathLength() > threshold;
+        }
+        float dx = this.chr.getX() - this.path.nodes.get(this.pathIndex + 1).x;
+        float dy = this.chr.getY() - this.path.nodes.get(this.pathIndex + 1).y;
+        float length = (float)Math.sqrt(dx * dx + dy * dy);
+        int visited = 1;
+        for (int i = this.pathIndex + 2; !(length > threshold) && i < this.path.nodes.size(); i++) {
+            dx = this.path.nodes.get(i - 1).x - this.path.nodes.get(i).x;
+            dy = this.path.nodes.get(i - 1).y - this.path.nodes.get(i).y;
+            length += (float)Math.sqrt(dx * dx + dy * dy);
+            visited++;
+        }
+        if (zombie.network.GameServer.server) zombie.ApocBRServerTelemetryLite.count("zombies.packet.pathNodesVisited", visited);
+        return length > threshold;
+    }
+
     public float getPathLength() {
         if (this.path != null && !this.path.nodes.isEmpty()) {
             if (this.pathIndex + 1 >= this.path.nodes.size()) {

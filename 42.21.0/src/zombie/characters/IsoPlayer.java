@@ -424,6 +424,8 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
     private final ArrayList<Double> selectedZonesForHighlight = new ArrayList<>();
     private Double selectedZoneForHighlight = 0.0;
     private final HashMap<Long, Long> mechanicsItem = new HashMap<>();
+    private long apocbrMechanicsNextExpiry = Long.MIN_VALUE;
+    private long apocbrMechanicsLastTime = Long.MIN_VALUE;
     private int sleepingPillsTaken;
     private long lastPillsTaken;
     private long heavyBreathInstance;
@@ -1323,6 +1325,7 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
 
         for (int ix = 0; ix < size; ix++) {
             this.mechanicsItem.put(input.getLong(), input.getLong());
+            this.apocbrMechanicsNextExpiry = Long.MIN_VALUE;
         }
 
         this.fitness.load(input, worldVersion);
@@ -2096,13 +2099,17 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
                 this.setVariable("bMoving", this.isPlayerMoving());
             }
         } else {
+            long playerStarted = GameServer.server ? System.nanoTime() : 0L;
             boolean updateBaseAndSend = this.updateInternal2();
+            if (playerStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.internal", System.nanoTime() - playerStarted);
             if (updateBaseAndSend) {
                 if (!this.remote) {
                     this.updateLOS();
                 }
 
+                long baseStarted = GameServer.server ? System.nanoTime() : 0L;
                 super.update();
+                if (baseStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.base", System.nanoTime() - baseStarted);
             }
 
             GameClient.instance.sendPlayer2(this);
@@ -2270,7 +2277,11 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
                     this.updateHeartSound();
                     this.updateDraggingCorpseSounds();
                     this.checkIsNearWall();
-                    this.checkIsNearVehicle();
+                    if (!GameServer.server || this.isSneaking()) {
+                        long proximityStarted = GameServer.server ? System.nanoTime() : 0L;
+                        this.checkIsNearVehicle();
+                        if (proximityStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.nearVehicle", System.nanoTime() - proximityStarted);
+                    }
                     this.updateExt();
                     this.setBeenMovingSprinting();
                     this.updateAimingDelay();
@@ -4201,21 +4212,20 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
     }
 
     private void updateMechanicsItems() {
-        if (!this.mechanicsItem.isEmpty()) {
-            Iterator<Long> it = this.mechanicsItem.keySet().iterator();
-            ArrayList<Long> toremove = new ArrayList<>();
-
-            while (it.hasNext()) {
-                Long item = it.next();
-                Long milli = this.mechanicsItem.get(item);
-                if (GameTime.getInstance().getCalender().getTimeInMillis() > milli + 86400000L) {
-                    toremove.add(item);
-                }
-            }
-
-            for (int i = 0; i < toremove.size(); i++) {
-                this.mechanicsItem.remove(toremove.get(i));
-            }
+        if (this.mechanicsItem.isEmpty()) return;
+        long now = GameTime.getInstance().getCalender().getTimeInMillis();
+        if (now >= this.apocbrMechanicsLastTime && now <= this.apocbrMechanicsNextExpiry) {
+            this.apocbrMechanicsLastTime = now;
+            return;
+        }
+        this.apocbrMechanicsLastTime = now;
+        this.apocbrMechanicsNextExpiry = Long.MAX_VALUE;
+        Iterator<java.util.Map.Entry<Long, Long>> iterator = this.mechanicsItem.entrySet().iterator();
+        while (iterator.hasNext()) {
+            java.util.Map.Entry<Long, Long> entry = iterator.next();
+            long expiry = entry.getValue() + 86400000L;
+            if (now > expiry) iterator.remove();
+            else this.apocbrMechanicsNextExpiry = Math.min(this.apocbrMechanicsNextExpiry, expiry);
         }
     }
 
@@ -6003,7 +6013,8 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         int playerZ = PZMath.fastfloor(this.getZ());
         float maxDistance = Math.max(20.0F, GameTime.getInstance().getViewDist());
         float maxDistanceSquared = maxDistance * maxDistance;
-        ArrayList<IsoZombie> zombies = new ArrayList<>(cell.getZombieList());
+        ArrayList<IsoZombie> zombies = new ArrayList<>();
+        cell.getPlayerSpatialQueries().queryZombies(cell, playerX, playerY, maxDistance, zombies);
         for (IsoZombie zombie : zombies) {
             if (zombie == null || zombie.isDead() || zombie.isFakeDead() || zombie.isUseless() || zombie.isReanimatedForGrappleOnly()) {
                 continue;
@@ -6871,8 +6882,10 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
             }
 
             if (GameServer.server) {
+                long losStarted = System.nanoTime();
                 ServerLOS.instance.doServerZombieLOS(this);
                 ServerLOS.instance.updateLOS(this);
+                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.los", System.nanoTime() - losStarted);
                 if (this.isDead()) {
                     return true;
                 }
@@ -7713,6 +7726,7 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         }
 
         this.mechanicsItem.put(Long.parseLong(itemid), milli);
+        this.apocbrMechanicsNextExpiry = Long.MIN_VALUE;
     }
 
     private void updateTemperatureCheck() {

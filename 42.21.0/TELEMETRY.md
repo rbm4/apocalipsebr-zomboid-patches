@@ -438,3 +438,40 @@ with the meta index. The 30,000-member / 35-active fixture verifies 10,500 visit
 across 300 frames, instead of 9,000,000 full-scan visits; this is not a live timing
 benchmark. Live checks should exercise crafting-lock release on death, movement,
 level changes, chunk unload/reload and reconnect.
+
+
+## Player update and zombie packet preparation optimizations
+
+The human moving-object update timer includes preupdate, ECS frameStep and the
+complete player/character update. New `simulation.players.*` phases split:
+`preupdate`, `frameStep`, `internal`, `base`, `health`, `stats`, `inventory`,
+`thermalClothing`, `nearVehicle`, `vehicleGrid`, `los`, `losRooms`, `losZombies`,
+`losGrid` and `soundStress`. Health/stats/inventory are nested inside base;
+thermalClothing is inside health; LOS/proximity are inside internal; room and
+zombie LOS application are inside los. Do not sum children with their parents.
+Phase calls are method invocations; use totalMs divided by tick.count to compare
+cost per tick. Player proximity is now queried only when needed for sneaking.
+
+`players.inventory.discoveryEntries` and `indexRebuilt` count lazy route builds;
+`routesVisited` counts containers/updaters; `updateAttempts` counts item callbacks.
+`fallbackEntries` and `mutationFallback` show external lists and mutation-during-
+callback paths. `players.thermal.clothingRebuilt` should stay low for unchanged
+clothing across multiple players. `players.vehicles.gridEntriesChecked` and
+`candidatesVisited` distinguish shared vehicle maintenance from nearby checks.
+`players.los.gridEntriesChecked` and `bucketCandidates` do the same for zombie
+LOS candidates. `players.soundStress.discoveryEntries` and `candidatesVisited`
+separate sound discovery from stress evaluation.
+
+Zombie preparation timing changed location: `network.zombies.packetBookkeeping`
+is inside the auth pass and retains per-tick prediction/state/thump work for
+all zombies. `network.zombies.packetPrepare` now times selected zombie field
+preparation in the main-thread sending path, nested under send. Compare the sum
+of bookkeeping and preparation to the old full packetPrepare total, and avoid
+adding preparation twice to send. `zombies.packet.bookkeeping`, `prepared`,
+`preparationReused` and `pathNodesVisited` report work and sharing. `prepared`
+can exceed unique zombies in a frame when an incoming packet invalidates the
+cache. The existing connection workers still select relay candidates; they do
+not prepare live packet fields.
+
+See [implementation and validation](PLAYER-ZOMBIE-PACKET-HOTSPOTS.md) and run
+`python tools/test_player_packet_algorithms.py` for focused regression fixtures.

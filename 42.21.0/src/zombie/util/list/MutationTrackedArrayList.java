@@ -14,7 +14,7 @@ import java.util.function.Consumer;
 import java.util.Spliterator;
 
 /** Retains ArrayList mutation/iteration behavior, including backed sublists. */
-public final class MutationTrackedArrayList<E> extends ArrayList<E> {
+public class MutationTrackedArrayList<E> extends ArrayList<E> {
     private long replacements;
 
     public long mutationVersion() { return ((long)this.modCount << 32) ^ this.replacements; }

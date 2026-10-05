@@ -142,7 +142,7 @@ public final class IsoCell {
     private final ArrayList<IsoRoom> roomList = new ArrayList<>();
     private final ArrayList<IsoObject> staticUpdaterObjectList = new ArrayList<>();
     private final Set<IsoObject> staticUpdaterObjectSet = new HashSet<>();
-    private final ArrayList<IsoZombie> zombieList = new ArrayList<>();
+    private final ArrayList<IsoZombie> zombieList = new zombie.util.list.MutationTrackedArrayList<>();
     private final ArrayList<IsoGameCharacter> remoteSurvivorList = new ArrayList<>();
     private final Set<IsoMovingObject> removeList = new HashSet<>();
     private final Set<IsoMovingObject> addList = new HashSet<>();
@@ -165,7 +165,9 @@ public final class IsoCell {
     public final ArrayList<IsoRoomLight> roomLights = new ArrayList<>();
     private final ArrayList<IsoHeatSource> heatSources = new ArrayList<>();
     public final Set<BaseVehicle> addVehicles = new HashSet<>();
-    public final Set<BaseVehicle> vehicles = new HashSet<>();
+    public final Set<BaseVehicle> vehicles = new zombie.ServerPlayerSpatialQueries.Vehicles();
+    private final zombie.ServerPlayerSpatialQueries playerSpatialQueries = new zombie.ServerPlayerSpatialQueries();
+    public zombie.ServerPlayerSpatialQueries getPlayerSpatialQueries() { return this.playerSpatialQueries; }
     public static final int ISOANGLEFACTOR = 3;
     public static final int ZOMBIESCANBUDGET = 10;
     public static final float NEARESTZOMBIEDISTSQRMAX = 150.0F;

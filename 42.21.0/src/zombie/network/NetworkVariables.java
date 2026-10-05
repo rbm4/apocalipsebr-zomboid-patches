@@ -19,8 +19,10 @@ public class NetworkVariables {
             return this.thumpType;
         }
 
+        private static final NetworkVariables.ThumpType[] LOOKUP_VALUES = values();
+
         public static NetworkVariables.ThumpType fromString(String thumpType) {
-            for (NetworkVariables.ThumpType type : values()) {
+            for (NetworkVariables.ThumpType type : LOOKUP_VALUES) {
                 if (type.thumpType.equalsIgnoreCase(thumpType)) {
                     return type;
                 }
@@ -56,8 +58,10 @@ public class NetworkVariables {
             return this.walkType;
         }
 
+        private static final NetworkVariables.WalkType[] LOOKUP_VALUES = values();
+
         public static NetworkVariables.WalkType fromString(String walkType) {
-            for (NetworkVariables.WalkType type : values()) {
+            for (NetworkVariables.WalkType type : LOOKUP_VALUES) {
                 if (type.walkType.equalsIgnoreCase(walkType)) {
                     return type;
                 }
@@ -121,13 +125,15 @@ public class NetworkVariables {
             return this.zombieState;
         }
 
+        private static final NetworkVariables.ZombieState[] LOOKUP_VALUES = values();
+
         public static NetworkVariables.ZombieState fromString(String zombieState) {
             if (zombieState == null) {
                 return Idle;
             } else {
                 String zombieStateLC = zombieState.toLowerCase();
 
-                for (NetworkVariables.ZombieState type : values()) {
+                for (NetworkVariables.ZombieState type : LOOKUP_VALUES) {
                     if (type.zombieState.equals(zombieStateLC)) {
                         return type;
                     }

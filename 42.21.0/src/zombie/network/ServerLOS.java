@@ -161,6 +161,7 @@ public class ServerLOS {
 
         data.status = ServerLOS.UpdateStatus.BusyInMain;
         try {
+            long roomsStarted = System.nanoTime();
             for (int i = 0; i < data.roomSeenCount; i++) {
                 IsoGridSquare square = ServerMap.instance.getGridSquare(data.roomSeenX[i], data.roomSeenY[i], data.roomSeenZ[i]);
                 if (square != null) {
@@ -169,7 +170,10 @@ public class ServerLOS {
                 }
             }
 
+            ApocBRServerTelemetryLite.recordPhase("simulation.players.losRooms", System.nanoTime() - roomsStarted);
+            long perceptionStarted = System.nanoTime();
             player.updateLOS();
+            ApocBRServerTelemetryLite.recordPhase("simulation.players.losZombies", System.nanoTime() - perceptionStarted);
         } finally {
             data.roomSeenCount = 0;
             data.status = ServerLOS.UpdateStatus.ReadyInMain;

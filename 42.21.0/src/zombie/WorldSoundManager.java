@@ -39,7 +39,10 @@ public final class WorldSoundManager {
     public static final WorldSoundManager instance = new WorldSoundManager();
     private static final float MUFFLE_SOUND_DIFFERENT_ROOMS = 1.2F;
     private static final float MUFFLE_SOUND_INSIDE_OUTSIDE = 1.4F;
-    public final List<WorldSoundManager.WorldSound> soundList = new ArrayList<>();
+    public final List<WorldSoundManager.WorldSound> soundList = new zombie.util.list.MutationTrackedArrayList<>();
+    private final ServerSoundStressIndex serverStressIndex = new ServerSoundStressIndex();
+    /** For integrations that edit an existing sound's position/radius/flags in place. */
+    public void invalidateStressIndex() { this.serverStressIndex.invalidate(); }
     private final ObjectPool<WorldSoundManager.WorldSound> freeSounds = new ObjectPool<>(WorldSoundManager.WorldSound::new, "WorldSoundManager.freeSounds");
     private static final WorldSoundManager.ResultBiggestSound resultBiggestSound = new WorldSoundManager.ResultBiggestSound();
 
@@ -404,6 +407,11 @@ public final class WorldSoundManager {
     }
 
     public float getStressFromSounds(int x, int y, int z) {
+        if (GameServer.server) {
+            try (ApocBRServerTelemetryLite.Scope timing = ApocBRServerTelemetryLite.phase("simulation.players.soundStress")) {
+                return this.serverStressIndex.query(this.soundList, x, y);
+            }
+        }
         float ret = 0.0F;
 
         for (int i = 0; i < this.soundList.size(); i++) {
