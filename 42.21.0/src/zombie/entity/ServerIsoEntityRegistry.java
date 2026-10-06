@@ -26,6 +26,7 @@ public final class ServerIsoEntityRegistry {
     private static final IdentityHashMap<Entry, Boolean> pending = new IdentityHashMap<>();
     private static final IdentityHashMap<Bucket, Boolean> dirty = new IdentityHashMap<>();
     private static final IdentityHashMap<Bucket, Boolean> exposed = new IdentityHashMap<>();
+    private static final IdentityHashMap<IsoObject, Boolean> retiring = new IdentityHashMap<>();
     private static final ThreadLocal<Boolean> refreshing = ThreadLocal.withInitial(() -> false);
     private static final ClassValue<Boolean> nativeIdentity = new ClassValue<>() {
         @Override protected Boolean computeValue(Class<?> type) {
@@ -71,6 +72,35 @@ public final class ServerIsoEntityRegistry {
         if (entry != null) { detach(entry); pending.remove(entry); }
     }
 
+    public static synchronized boolean isRetiring(IsoObject object) {
+        return retiring.containsKey(object);
+    }
+
+    /** Manager owns its map lock. Resolve only this ID, then remove its owned key. */
+    static synchronized boolean beginRetirement(IsoObject object) {
+        Entry entry = entries.get(object);
+        if (entry == null) return false;
+        long started = System.nanoTime();
+        retiring.put(object, Boolean.TRUE);
+        try {
+            object.apocbrInvalidateEntityNetID();
+            object.getEntityNetID();
+            GameEntityManager.removeIsoRegistryKey(entry.id, object);
+            unregister(object);
+            ApocBRServerTelemetryLite.count("entities.registry.retired", 1L);
+            return true;
+        } catch (RuntimeException | Error exception) {
+            retiring.remove(object);
+            throw exception;
+        } finally {
+            ApocBRServerTelemetryLite.recordPhase("entities.registry.retirement", System.nanoTime() - started);
+        }
+    }
+
+    static synchronized void endRetirement(IsoObject object) {
+        retiring.remove(object);
+    }
+
     static synchronized boolean isDetached(IsoObject object) {
         Entry entry = entries.get(object);
         return entry != null && entry.id == -1L && object.getObjectIndex() == -1;
@@ -78,7 +108,10 @@ public final class ServerIsoEntityRegistry {
 
     public static synchronized void squareChanged(IsoObject object) {
         Entry entry = entries.get(object);
-        if (entry == null) return;
+        if (entry == null) {
+            if (retiring.containsKey(object)) object.apocbrInvalidateEntityNetID();
+            return;
+        }
         detach(entry);
         bind(entry);
         pending.put(entry, Boolean.TRUE);
@@ -183,6 +216,6 @@ public final class ServerIsoEntityRegistry {
     }
 
     public static synchronized void reset() {
-        entries.clear(); buckets.clear(); pending.clear(); dirty.clear(); exposed.clear(); refreshing.remove();
+        entries.clear(); buckets.clear(); pending.clear(); dirty.clear(); exposed.clear(); retiring.clear(); refreshing.remove();
     }
 }

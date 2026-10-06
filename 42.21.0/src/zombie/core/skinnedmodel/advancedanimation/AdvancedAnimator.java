@@ -747,6 +747,11 @@ public final class AdvancedAnimator implements IAnimEventCallback {
 
     public static List<String> searchFolders(final URI base, Path pathDir) throws IOException {
         final List<String> files = new ArrayList<>();
+        // Mods are not required to provide animation or action-group folders.
+        if (Files.notExists(pathDir)) {
+            return files;
+        }
+
         Files.walkFileTree(pathDir, new FileVisitor<Path>() {
             public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
                 return FileVisitResult.CONTINUE;

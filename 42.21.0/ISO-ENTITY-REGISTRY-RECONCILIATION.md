@@ -12,7 +12,8 @@ do not otherwise guarantee refresh of surviving objects shifted by square edits.
 
 GetEntity now reconciles pending registered-server-IsoObject changes under the
 existing registry map lock before returning either a hit or a miss. Registration
-and unregistration reconcile first as well. A registered object's direct ID getter
+reconciles first; tracked native IsoObjects now use the local retirement path below
+for unregistration. A registered object's direct ID getter
 also routes changed keys through this batch boundary, avoiding incremental key
 collisions during permutations. Normal client/single-player getter behavior remains
 vanilla. Java subclasses implementing their own getEntityNetID are not enrolled.
@@ -97,3 +98,35 @@ the full exposed registered set. That remaining O(boundaries * exposed members)
 path must be measured under loading-scale populations; this correction does not
 claim that all registration amplification is solved. No registry freshness checks
 were removed from actual consumers and no live deployment was performed.
+
+## Demand-driven survivor refresh during retirement
+
+Tracked native server IsoObjects no longer perform the global pre-unregistration
+flush. Under the map lock, beginRetirement resolves only the retiring object's
+current ID, removes its recorded registry key only if still owned by that object,
+and releases its tracking immediately. Surviving entries retain their dirty state
+until an actual lookup/registration or changed-ID getter requires reconciliation.
+No end-of-tick sweep was added: GetEntity continues to guarantee the existing
+consumer boundary independently of when unloading occurs.
+
+The retiring-object guard suppresses incidental registry publication by its getter
+through the entire engine removal and component/meta-transfer operation. Consumer
+callbacks still run normal GetEntity refreshes for survivors. Reentrant removal of
+the same retiring object returns to the owning outer operation. The guard is released
+in finally, and failures evaluating the ID before retirement preserve the entry for
+retry. Custom-ID subclasses and client paths retain their prior lifecycle path.
+
+MetaEntity.alloc continues to obtain the locally current ID, not a stale registry
+key. Actual meta registration is still a registry consumer and may reconcile
+survivors; the optimization does not suppress it or callback lookups. Physical
+square removal, engine notifications and component transfer remain in their original
+order. No IDs or packets change format and no scheduling decoupling is included.
+
+The unload-scale probe removes 128 registered objects with retained arrays and no
+consumer callbacks: raw-member validations drop from 8,256 to zero. Illustrative
+single-run timing was 4.118 ms before and 2.720 ms after (not a live unload benchmark
+or timing guarantee). Tests explicitly check callback freshness, no resurrection,
+reentrant removal, retirement failure/retry, and production component offload/reload
+with a fixture MetaEntity copying the original current-ID contract. The registry
+fixture passes 70,743 assertions; the integrated replay smoke and using-player
+fixture pass. Native meta serialization/persistence still needs multiplayer testing.

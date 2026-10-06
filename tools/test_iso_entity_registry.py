@@ -30,18 +30,21 @@ def build_sources():
         "zombie/debug/DebugType.java": "package zombie.debug;public class DebugType{public static final DebugType Entity=new DebugType();public static int errors;public void noise(String s){}public void println(String s){}public void error(String s,Object...args){errors++;}}",
         "zombie/util/lambda/Invokers.java": "package zombie.util.lambda;public class Invokers{public static class Params2{public static class Boolean{public interface ICallback<A,B>{boolean accept(A a,B b);}}}}",
         "zombie/entity/ComponentType.java": """package zombie.entity;public enum ComponentType{Script,MetaTag,FluidContainer,Other;
-          public static final Bits bitsRunInMeta=new Bits();public boolean isRunInMeta(){return false;}public Component CreateComponent(){return new zombie.entity.meta.MetaTagComponent();}
-          static class Bits{boolean intersects(Object o){return false;}}} """,
-        "zombie/entity/Component.java": "package zombie.entity;public class Component{public ComponentType getComponentType(){return ComponentType.Other;}public boolean isQualifiesForMetaStorage(){return false;}}",
-        "zombie/entity/meta/MetaTagComponent.java": "package zombie.entity.meta;public class MetaTagComponent extends zombie.entity.Component{public long getStoredID(){return 0;}public void setStoredID(long id){}}",
-        "zombie/entity/MetaEntity.java": "package zombie.entity;public class MetaEntity extends GameEntity{public static MetaEntity alloc(GameEntity o){return new MetaEntity();}public static void release(MetaEntity m){}public long getEntityNetID(){return 123;}}",
-        "zombie/entity/Engine.java": "package zombie.entity;public class Engine{public final java.util.Set<GameEntity> objects=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());public void addEntity(GameEntity o){objects.add(o);o.addedToEngine=true;}public void removeEntity(GameEntity o){objects.remove(o);o.addedToEngine=false;}}",
+          public static final Bits bitsRunInMeta=new Bits();public boolean isRunInMeta(){return this==Other;}public Component CreateComponent(){return new zombie.entity.meta.MetaTagComponent();}
+          static class Bits{boolean intersects(Object o){return Boolean.TRUE.equals(o);}}} """,
+        "zombie/entity/Component.java": "package zombie.entity;public class Component{public ComponentType getComponentType(){return ComponentType.Other;}public boolean isQualifiesForMetaStorage(){return true;}}",
+        "zombie/entity/meta/MetaTagComponent.java": "package zombie.entity.meta;public class MetaTagComponent extends zombie.entity.Component{long stored;public long getStoredID(){return stored;}public void setStoredID(long id){stored=id;}public zombie.entity.ComponentType getComponentType(){return zombie.entity.ComponentType.MetaTag;}}",
+        "zombie/entity/MetaEntity.java": "package zombie.entity;public class MetaEntity extends GameEntity{public static MetaEntity lastAllocated;long id;public MetaEntity(){parts.clear();}public static MetaEntity alloc(GameEntity o){MetaEntity m=new MetaEntity();m.id=o.getEntityNetID();lastAllocated=m;return m;}public static void release(MetaEntity m){}public long getEntityNetID(){return id;}}",
+        "zombie/entity/Engine.java": "package zombie.entity;public class Engine{public java.util.function.Consumer<GameEntity> onRemove;public int removes;public final java.util.Set<GameEntity> objects=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());public void addEntity(GameEntity o){objects.add(o);o.addedToEngine=true;}public void removeEntity(GameEntity o){removes++;objects.remove(o);o.addedToEngine=false;if(onRemove!=null)onRemove.accept(o);}}",
         "zombie/entity/GameEntity.java": """package zombie.entity;public class GameEntity{
           public boolean addedToEntityManager,addedToEngine,scheduledForEngineRemoval,removingFromEngine;
-          public boolean components=true,scriptOnly;public boolean hasComponents(){return components;}public int componentSize(){return 1;}public boolean hasComponent(ComponentType type){return scriptOnly&&type==ComponentType.Script;}
+          public boolean components=true,scriptOnly,metaEligible;public final java.util.ArrayList<Component> parts=new java.util.ArrayList<>(java.util.List.of(new Component()));
+          public boolean hasComponents(){return components&&!parts.isEmpty();}public int componentSize(){return parts.size();}public boolean hasComponent(ComponentType type){return scriptOnly&&type==ComponentType.Script||parts.stream().anyMatch(c->c.getComponentType()==type);}
           public long getEntityNetID(){return 123;}public String getGameEntityType(){return "fixture";}public String getEntityFullTypeDebug(){return "fixture";}
-          public void sendRequestSyncGameEntity(){}public Object getComponentBits(){return null;}public Component getComponentForIndex(int i){return new Component();}
-          public Component removeComponent(ComponentType c){return null;}public void removeComponent(Component c){}public void releaseComponent(ComponentType c){}public void addComponent(Component c){}public void connectComponents(){}
+          public void sendRequestSyncGameEntity(){}public Object getComponentBits(){return metaEligible;}public Component getComponentForIndex(int i){return parts.get(i);}
+          public Component removeComponent(ComponentType type){for(Component c:new java.util.ArrayList<>(parts))if(c.getComponentType()==type){removeComponent(c);return c;}return null;}
+          public void removeComponent(Component c){parts.remove(c);if(parts.isEmpty()&&addedToEntityManager)GameEntityManager.UnregisterEntity(this);}
+          public void releaseComponent(ComponentType c){removeComponent(c);}public void addComponent(Component c){parts.add(c);}public void connectComponents(){}
         }""",
         "zombie/iso/IsoGridSquare.java": """package zombie.iso;import zombie.util.list.PZArrayList;
           public class IsoGridSquare{final int x,y,z;public final PZArrayList<IsoObject> objects=new PZArrayList<>(IsoObject.class,2);
@@ -111,9 +114,45 @@ public class RegistryTest{
    double ms=(System.nanoTime()-start)/1e6;long checked=ApocBRServerTelemetryLite.counters.getOrDefault("entities.registry.rawArrayChecked",0L);
    System.out.printf(java.util.Locale.ROOT,"Loading probe: 128 registered objects, 4000 skipped registrations + 2000 skipped removals; %d raw-member checks, %.3f ms%n",checked,ms);return checked;
  }
+ static long unloadingProbe(){
+   reset();var live=new ArrayList<IsoObject>();for(int n=0;n<32;n++){IsoGridSquare sq=new IsoGridSquare(3000+n,3000,0);for(int j=0;j<4;j++){IsoObject o=object(sq);register(o);live.add(o);}sq.objects.getElements();}
+   GameEntityManager.GetEntity(0);ApocBRServerTelemetryLite.counters.clear();long start=System.nanoTime();
+   for(IsoObject o:live){GameEntityManager.UnregisterEntity(o);o.square.objects.remove(o);check(!o.addedToEntityManager&&!o.addedToEngine,"bulk retired lifecycle");}
+   double ms=(System.nanoTime()-start)/1e6;long checked=ApocBRServerTelemetryLite.counters.getOrDefault("entities.registry.rawArrayChecked",0L);
+   check(GameEntityManager.idToEntityMap.isEmpty(),"bulk retirement map empty");
+   System.out.printf(java.util.Locale.ROOT,"Unloading probe: 128 registered retirements; %d raw-member checks, %.3f ms%n",checked,ms);return checked;
+ }
  public static void main(String[] args){
-   if(args.length>0){loadingProbe();return;}
+   if(args.length>0){if(args[0].equals("unloading"))unloadingProbe();else loadingProbe();return;}
    check(loadingProbe()==0,"nonregistering objects must not validate registry");
+   check(unloadingProbe()==0,"retirement must not validate global raw registry");
+   // A consumer inside engine removal may demand fresh survivors, but not resurrect
+   // the retiring object. Reentrant removal must leave the outer operation in charge.
+   reset();IsoGridSquare callbackSquare=new IsoGridSquare(4100,4100,0);IsoObject pad=object(callbackSquare),departing=object(callbackSquare),survivor=object(callbackSquare);
+   register(departing);register(survivor);callbackSquare.objects.getElements();callbackSquare.objects.remove(pad);
+   GameEntityManager.engine.onRemove=e->{if(e==departing){
+     check(ServerIsoEntityRegistry.isRetiring(departing),"retirement callback scope");
+     check(GameEntityManager.GetEntity(expected(survivor))==survivor,"callback refreshes shifted survivor on demand");
+     check(GameEntityManager.GetEntity(departing.getEntityNetID())==null,"retired getter cannot republish key");
+     GameEntityManager.UnregisterEntity(departing);
+   }};
+   GameEntityManager.UnregisterEntity(departing);check(GameEntityManager.engine.removes==1,"no duplicate engine removal");
+   check(!ServerIsoEntityRegistry.isRetiring(departing),"retirement scope released");validate(List.of(survivor));
+   // ID failure occurs before key/tracking removal, allowing a clean retry.
+   reset();IsoGridSquare failedSquare=new IsoGridSquare(4200,4200,0);IsoObject failed=object(failedSquare);register(failed);failed.failID=true;
+   try{GameEntityManager.UnregisterEntity(failed);throw new AssertionError("retirement ID failure expected");}catch(IllegalStateException expected){}
+   check(!ServerIsoEntityRegistry.isRetiring(failed)&&failed.addedToEntityManager,"failed retirement retained lifecycle");failed.failID=false;validate(List.of(failed));GameEntityManager.UnregisterEntity(failed);
+   // Offload uses the CURRENT local ID, not the stale registry key, and migrates
+   // actual fixture components via the extracted production lifecycle methods.
+   reset();IsoGridSquare metaSquare=new IsoGridSquare(4300,4300,0);IsoObject beforeMeta=object(metaSquare),metaObject=object(metaSquare);register(metaObject);
+   long oldMetaKey=metaObject.getEntityNetID();Component payload=metaObject.parts.get(0);metaObject.metaEligible=true;metaSquare.objects.remove(beforeMeta);long currentMetaKey=expected(metaObject);
+   GameEntityManager.UnregisterEntity(metaObject,true);MetaEntity saved=MetaEntity.lastAllocated;
+   check(saved!=null&&saved.getEntityNetID()==currentMetaKey,"meta receives current retiring ID");
+   check(GameEntityManager.GetEntity(currentMetaKey)==saved,"meta registry publication");check(GameEntityManager.GetEntity(oldMetaKey)==null,"stale retired key gone");
+   check(saved.parts.contains(payload)&&metaObject.hasComponent(ComponentType.MetaTag),"component offload and tag");
+   metaSquare.objects.remove(metaObject);object(metaSquare);metaSquare.objects.add(metaObject);register(metaObject);
+   check(metaObject.parts.contains(payload)&&!metaObject.hasComponent(ComponentType.MetaTag),"meta reload restores component identity");
+   validate(List.of(metaObject));check(!saved.addedToEntityManager&&!saved.addedToEngine,"old meta entity released");check(DebugType.errors==0,"meta roundtrip has no false collision");
    reset();IsoGridSquare sq=new IsoGridSquare(100,200,0);IsoObject floor=object(sq);floor.floor=true;IsoObject first=object(sq),second=object(sq);register(first);register(second);
    // Shift a surviving registered entity, then query its NEW ID before calling its getter.
    GameEntityManager.UnregisterEntity(first);sq.objects.remove(first);check(!first.addedToEngine,"unregister lifecycle");check(GameEntityManager.GetEntity(expected(second))==second,"shifted lookup before getter");validate(List.of(second));

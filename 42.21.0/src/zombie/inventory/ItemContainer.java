@@ -2241,13 +2241,21 @@ public final class ItemContainer {
 
     public float getContentsWeight() {
         float total = 0.0F;
-
-        for (int i = 0; i < this.items.size(); i++) {
-            InventoryItem item = this.items.get(i);
-            total += item.getUnequippedWeight();
+        long weightStarted = GameServer.server ? System.nanoTime() : 0L;
+        long entriesVisited = 0L;
+        try {
+            for (int i = 0; i < this.items.size(); i++) {
+                InventoryItem item = this.items.get(i);
+                if (weightStarted != 0L) entriesVisited++;
+                total += item.getUnequippedWeight();
+            }
+            return total;
+        } finally {
+            if (weightStarted != 0L) {
+                zombie.ApocBRServerTelemetryLite.recordPhase("inventory.contentsWeight", System.nanoTime() - weightStarted);
+                zombie.ApocBRServerTelemetryLite.count("inventory.contentsWeight.entriesVisited", entriesVisited);
+            }
         }
-
-        return total;
     }
 
     public float getMaxWeight() {

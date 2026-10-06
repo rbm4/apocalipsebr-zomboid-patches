@@ -10364,9 +10364,17 @@ public abstract class IsoGameCharacter
     }
 
     private float calcRunSpeedModByBag(InventoryContainer bag) {
-        float runBagMod = bag.getScriptItem().runSpeedModifier - 1.0F;
-        float deltaWeight = bag.getContentsWeight() / bag.getEffectiveCapacity(this);
-        return runBagMod * (1.0F + deltaWeight / 2.0F);
+        long bagStarted = GameServer.server ? System.nanoTime() : 0L;
+        try {
+            float runBagMod = bag.getScriptItem().runSpeedModifier - 1.0F;
+            float deltaWeight = bag.getContentsWeight() / bag.getEffectiveCapacity(this);
+            return runBagMod * (1.0F + deltaWeight / 2.0F);
+        } finally {
+            if (bagStarted != 0L) {
+                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.movement.bagModifier", System.nanoTime() - bagStarted);
+                zombie.ApocBRServerTelemetryLite.count("movement.bagModifier.queries", 1L);
+            }
+        }
     }
 
     public float calculateCombatSpeed() {

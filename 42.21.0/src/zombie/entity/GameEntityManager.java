@@ -259,8 +259,15 @@ public class GameEntityManager {
     }
 
     static void UnregisterEntity(GameEntity gameEntity, boolean offloadToMeta) {
+        IsoObject retiringObject = zombie.network.GameServer.server && gameEntity instanceof IsoObject object ? object : null;
+        if (retiringObject != null && ServerIsoEntityRegistry.isRetiring(retiringObject)) return;
+        boolean retirement = false;
+        if (retiringObject != null && gameEntity.addedToEntityManager) {
+            synchronized (idToEntityMap) { retirement = ServerIsoEntityRegistry.beginRetirement(retiringObject); }
+        }
+        try {
         if (gameEntity != null && gameEntity.addedToEntityManager) {
-            reconcileIsoEntityIDs();
+            if (!retirement) reconcileIsoEntityIDs();
             if (!GameClient.client && !wasClient) {
                 DebugType.Entity
                     .noise(
@@ -277,7 +284,7 @@ public class GameEntityManager {
                 long entityNetID = gameEntity.getEntityNetID();
                 GameEntity stored;
                 synchronized (idToEntityMap) {
-                    stored = idToEntityMap.remove(entityNetID);
+                    stored = retirement ? gameEntity : idToEntityMap.remove(entityNetID);
                 }
 
                 if (stored == null && gameEntity instanceof IsoObject object && ServerIsoEntityRegistry.isDetached(object)) {
@@ -337,7 +344,7 @@ public class GameEntityManager {
             } else {
                 long entityNetID = gameEntity.getEntityNetID();
                 synchronized (idToEntityMap) {
-                    idToEntityMap.remove(entityNetID);
+                    if (!retirement) idToEntityMap.remove(entityNetID);
                 }
 
                 gameEntity.addedToEntityManager = false;
@@ -345,6 +352,9 @@ public class GameEntityManager {
             }
         }
         if (gameEntity instanceof IsoObject object) ServerIsoEntityRegistry.unregister(object);
+        } finally {
+            if (retirement) ServerIsoEntityRegistry.endRetirement(retiringObject);
+        }
     }
 
     static void onEntityAddedToEngine(GameEntity entity) {
@@ -355,6 +365,7 @@ public class GameEntityManager {
 
     public static void checkEntityIDChange(GameEntity entity, long oldID, long newID) {
         if (ServerIsoEntityRegistry.isRefreshing()) return;
+        if (entity instanceof IsoObject object && ServerIsoEntityRegistry.isRetiring(object)) return;
         // Only RegisterEntity may publish an unregistered server IsoObject. A cached
         // ID surviving remove/re-add must not create a phantom registration here.
         if (zombie.network.GameServer.server && entity instanceof IsoObject && !entity.addedToEntityManager) return;

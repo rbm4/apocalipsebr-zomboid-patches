@@ -1,0 +1,250 @@
+{
+  "fixture": {
+    "version": "42.21.0",
+    "seq": 160,
+    "ticks": 294,
+    "checked": 1510461,
+    "attempts": 75364,
+    "skipped": 98333,
+    "always": 25174,
+    "parentMs": 1220.214,
+    "classes": [
+      {
+        "kind": "IsoBarbecue",
+        "attempts": 3078,
+        "totalMs": 0.801,
+        "meanNs": 260.233918128655
+      },
+      {
+        "kind": "IsoCarBatteryCharger",
+        "attempts": 233,
+        "totalMs": 2.652,
+        "meanNs": 11381.97424892704
+      },
+      {
+        "kind": "IsoClothingDryer",
+        "attempts": 2019,
+        "totalMs": 9.431,
+        "meanNs": 4671.124318969787
+      },
+      {
+        "kind": "IsoClothingWasher",
+        "attempts": 3260,
+        "totalMs": 18.002,
+        "meanNs": 5522.085889570552
+      },
+      {
+        "kind": "IsoCombinationWasherDryer",
+        "attempts": 2849,
+        "totalMs": 21.741,
+        "meanNs": 7631.098631098631
+      },
+      {
+        "kind": "IsoCompost",
+        "attempts": 2559,
+        "totalMs": 22.666,
+        "meanNs": 8857.366158655725
+      },
+      {
+        "kind": "IsoFeedingTrough",
+        "attempts": 10726,
+        "totalMs": 22.684,
+        "meanNs": 2114.8610852135
+      },
+      {
+        "kind": "IsoFireplace",
+        "attempts": 2447,
+        "totalMs": 0.84,
+        "meanNs": 343.27748263179404
+      },
+      {
+        "kind": "IsoGenerator",
+        "attempts": 24880,
+        "totalMs": 56.005,
+        "meanNs": 2251.0048231511255
+      },
+      {
+        "kind": "IsoStove",
+        "attempts": 22873,
+        "totalMs": 15.02,
+        "meanNs": 656.669435579067
+      },
+      {
+        "kind": "IsoTrap",
+        "attempts": 294,
+        "totalMs": 48.927,
+        "meanNs": 166418.3673469388
+      },
+      {
+        "kind": "other",
+        "attempts": 146,
+        "totalMs": 0.185,
+        "meanNs": 1267.123287671233
+      }
+    ]
+  },
+  "samples": [
+    {
+      "squareSize": 4,
+      "rawArrayExposed": false,
+      "variant": "legacy-reference",
+      "repeat": 0,
+      "elapsedMs": 186.1203,
+      "processingMs": 178.2825,
+      "mutationsMs": 7.1762,
+      "bodyMs": 2.1824,
+      "outsideBodyMs": 176.1001,
+      "requestedWaitMs": 218.758514,
+      "checked": 1510461,
+      "updates": 75364,
+      "processingIndexReads": 2970574,
+      "packetAssertions": 2060,
+      "registryChecked": 10673,
+      "registryRefreshed": 1620,
+      "registryMs": 2.2308
+    },
+    {
+      "squareSize": 4,
+      "rawArrayExposed": false,
+      "variant": "registry-reference",
+      "repeat": 0,
+      "elapsedMs": 135.7014,
+      "processingMs": 128.0827,
+      "mutationsMs": 7.0762,
+      "bodyMs": 2.0651,
+      "outsideBodyMs": 126.0176,
+      "requestedWaitMs": 218.758514,
+      "checked": 1510461,
+      "updates": 75364,
+      "processingIndexReads": 1485287,
+      "packetAssertions": 2060,
+      "registryChecked": 10673,
+      "registryRefreshed": 1620,
+      "registryMs": 1.8571
+    },
+    {
+      "squareSize": 4,
+      "rawArrayExposed": false,
+      "variant": "preassigned-phase",
+      "repeat": 0,
+      "elapsedMs": 38.6357,
+      "processingMs": 34.1027,
+      "mutationsMs": 4.1947,
+      "bodyMs": 2.3008,
+      "outsideBodyMs": 31.8019,
+      "requestedWaitMs": 218.758514,
+      "checked": 1510461,
+      "updates": 75364,
+      "processingIndexReads": 0,
+      "packetAssertions": 2060,
+      "registryChecked": 10673,
+      "registryRefreshed": 1620,
+      "registryMs": 1.5388
+    },
+    {
+      "squareSize": 4,
+      "rawArrayExposed": false,
+      "variant": "due-list",
+      "repeat": 0,
+      "elapsedMs": 20.4492,
+      "processingMs": 16.5592,
+      "mutationsMs": 3.5484,
+      "bodyMs": 2.4967,
+      "outsideBodyMs": 14.0625,
+      "requestedWaitMs": 218.758514,
+      "checked": 173697,
+      "updates": 75364,
+      "processingIndexReads": 0,
+      "packetAssertions": 2060,
+      "registryChecked": 10673,
+      "registryRefreshed": 1620,
+      "registryMs": 1.567
+    },
+    {
+      "squareSize": 4,
+      "rawArrayExposed": true,
+      "variant": "legacy-reference",
+      "repeat": 0,
+      "elapsedMs": 174.2421,
+      "processingMs": 169.2949,
+      "mutationsMs": 4.4073,
+      "bodyMs": 2.0542,
+      "outsideBodyMs": 167.2407,
+      "requestedWaitMs": 218.758514,
+      "checked": 1510461,
+      "updates": 75364,
+      "processingIndexReads": 2970574,
+      "packetAssertions": 2060,
+      "registryChecked": 11185,
+      "registryRefreshed": 1620,
+      "registryMs": 1.8853
+    },
+    {
+      "squareSize": 4,
+      "rawArrayExposed": true,
+      "variant": "registry-reference",
+      "repeat": 0,
+      "elapsedMs": 147.4118,
+      "processingMs": 142.8417,
+      "mutationsMs": 3.9999,
+      "bodyMs": 1.9975,
+      "outsideBodyMs": 140.8442,
+      "requestedWaitMs": 218.758514,
+      "checked": 1510461,
+      "updates": 75364,
+      "processingIndexReads": 1485287,
+      "packetAssertions": 2060,
+      "registryChecked": 11185,
+      "registryRefreshed": 1620,
+      "registryMs": 1.7923
+    },
+    {
+      "squareSize": 4,
+      "rawArrayExposed": true,
+      "variant": "preassigned-phase",
+      "repeat": 0,
+      "elapsedMs": 32.6488,
+      "processingMs": 29.9914,
+      "mutationsMs": 2.3204,
+      "bodyMs": 2.1605,
+      "outsideBodyMs": 27.8309,
+      "requestedWaitMs": 218.758514,
+      "checked": 1510461,
+      "updates": 75364,
+      "processingIndexReads": 0,
+      "packetAssertions": 2060,
+      "registryChecked": 11185,
+      "registryRefreshed": 1620,
+      "registryMs": 1.2455
+    },
+    {
+      "squareSize": 4,
+      "rawArrayExposed": true,
+      "variant": "due-list",
+      "repeat": 0,
+      "elapsedMs": 18.8157,
+      "processingMs": 15.6653,
+      "mutationsMs": 2.7814,
+      "bodyMs": 2.0582,
+      "outsideBodyMs": 13.6071,
+      "requestedWaitMs": 218.758514,
+      "checked": 173697,
+      "updates": 75364,
+      "processingIndexReads": 0,
+      "packetAssertions": 2060,
+      "registryChecked": 11185,
+      "registryRefreshed": 1620,
+      "registryMs": 1.5417
+    }
+  ],
+  "assumptions": {
+    "wait": "none",
+    "frameMod": 10,
+    "occupancy": [
+      4
+    ],
+    "mutations": "one processing object registered/edited/queried/restored each frame; separate persistent registered world mutations",
+    "reference": "legacy getter with dirty-ID invalidation support; same production registry in every variant",
+    "timing": "includes mutations, lifecycle, repair and packet-style assertions; initial trace/due-list construction excluded"
+  }
+}

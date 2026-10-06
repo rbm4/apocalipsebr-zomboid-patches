@@ -1,5 +1,45 @@
 # Server telemetry (schema 3)
 
+## Player internal diagnostics, 2026-10-05
+
+Additional server timings preserve update order, authority and cadence. Human-player
+`simulation.players.internal` now exposes `networkAndMovement`, `equippedSounds`,
+`nutrition`, `fitness`, `actionGroup`, `remote`, `remoteSounds`,
+`idleAndAimingDelay`, `endurance`, `aimingStance`, and `aimingTargets`.
+`aimingTargets` measures only the calcValidTargets call from updateAimingStance;
+it is contained in aimingStance and does not cover other CombatManager callers.
+Its calls count actual aiming discovery attempts. `players.aiming.targetListEntriesAtStart`
+sums the active-list size before each attempt, not actual candidates visited or
+accepted. `players.aiming.inVehicle` counts attempts while seated in a vehicle.
+An absent aimingTargets phase means this measured path did not run in the window.
+
+`simulation.players.remote` includes existing `simulation.players.los`, even
+though LOS is not a naming child. It includes `remote.vehicleSync` when seated,
+and `remote.square` for living remote humans. The square phase contains detach,
+ensureOnTile and membership child timers, plus coordinate application and diagnostic
+bookkeeping. `players.remote.square.sameSquare` counts successful reconciliations
+whose nonnull previous and final squares are the same object. `unchangedPosition`
+compares coordinates immediately before detachment with realx/realy/realz (after
+vehicle synchronization); it does not establish that the car was stationary.
+`missingSquare` counts successful reconciliations ending with no current square.
+Use square.calls as the denominator; failed attempts can be timed without completion
+counters. `players.remote.inVehicle` counts human updateRemotePlayer invocations
+while seated, and its denominator is remote.calls.
+
+`simulation.players.movementRates` contains speed (walk and idle calculations)
+and injuries (foot and tree updates). `players.movementRates.inVehicle` counts
+seated calls, with movementRates.calls as its denominator. These diagnostics exclude
+animals. `simulation.movement.bagModifier` times calcRunSpeedModByBag for all server
+characters/callers, with `movement.bagModifier.queries` counting attempts; it is not
+exclusively player movementRates work. `inventory.contentsWeight` times every server
+ItemContainer.getContentsWeight invocation and `inventory.contentsWeight.entriesVisited`
+counts actual item visits, including a visit whose weight getter throws. Nested bags
+can recursively invoke this timer: totals are inclusive and must not be summed as
+exclusive cost. The timer can also occur outside player updates. No weight cache,
+combat spatial index, square fast path, or client-trust change is implemented here.
+Parent timings include diagnostic overhead; narrow timer totals exclude some of
+their own counter/timing publication. Compare captures with instrumentation caveats.
+
 This extends the existing server NDJSON telemetry in the 42.21.0 patch tree.
 Compile against the intended build before deployment; compilation against a local
 JAR does not establish compatibility with a differently versioned live server.
@@ -686,3 +726,21 @@ Client/single-player collection and ID-getter semantics remain unchanged.
 Verification: `python tools/test_iso_entity_registry.py`, shared simulation/list
 fixtures and using-player tests, plus full game-JAR dry-run compilation. Actual
 resource/crafting packet callbacks and meta persistence require multiplayer checks.
+
+### Retirement follow-up
+
+Ordinary tracked server IsoObject unregistration no longer performs global registry
+validation. It resolves the retiring object's local ID and removes only its owned
+tracked key. Survivor refresh is demand-driven: GetEntity, eligible registration,
+meta registration and changed-ID requests can still perform reconciliation.
+
+- `entities.registry.retired`: tracked objects whose owned-key/tracking retirement
+  completed; recorded before engine/component teardown, not a success count for all
+  subsequent callbacks or persistence.
+- `entities.registry.retirement`: local ID resolution and owned-key/tracking removal
+  under the registry map lock; excludes subsequent engine/component teardown.
+
+Compare these with `entities.removal.indexed` and `entities.registry.rawArrayChecked`
+during unloading. Fewer validation passes are expected when there are no actual
+consumer lookups; no fixed ratio is guaranteed if callbacks or meta offloading
+request fresh registry data. Timers can overlap unload/simulation/network parents.
