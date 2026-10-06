@@ -1,5 +1,14 @@
 # Server telemetry (schema 3)
 
+## Vanilla ID restoration
+
+The added registry reconciliation implementation is removed. Network-ID getter fallback and entity registration, lookup and removal use
+exact-version vanilla lazy behavior. A conservative server clean-square getter
+cache now avoids index reads when tracked inputs are unchanged. `entities.registry.*` measurements below describe historical patches and
+should be absent after rebuilding and restarting with all restored classes. Existing
+IsoObject scheduling and square-index counters remain. No scheduled reconciliation
+was added.
+
 ## Player internal diagnostics, 2026-10-05
 
 Additional server timings preserve update order, authority and cadence. Human-player
@@ -570,7 +579,7 @@ See [implementation and validation](PLAYER-ZOMBIE-PACKET-HOTSPOTS.md) and run
 
 ## Unload, sound, animal-zone and vehicle follow-up
 
-Implemented 2026-10-05 following sequences 327–336. See
+Implemented 2026-10-05 following sequences 327ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“336. See
 [review and implementation status](UNLOAD-SIMULATION-ALGORITHM-REVIEW.md) and
 [vehicle follow-up candidates](VEHICLE-UPDATE-FOLLOWUP.md).
 
@@ -712,7 +721,7 @@ or unregistration; direct changed-ID getters also use the batch repair path.
 | --- | --- |
 | `entities.registry.reconcile` | Nonempty registry validation/repair boundary, including raw-array validation; can be inside incoming packets, simulation, loading or unloading, so naming does not establish containment |
 | `entities.registry.checked` | Registered members checked in dirty or exposed square lists; not all world objects |
-| `entities.registry.rawArrayChecked` | Subset checked because a backing array remains exposed; repeats at each lookup boundary even without notification |
+| `entities.registry.rawArrayChecked` | Subset checked because a backing array remains exposed; now selected by the relevant coordinate/object boundary even without notification |
 | `entities.registry.refreshed` | Changed/pending entries subjected to getter refresh and batch map repair; includes detachment/rebinding and same-ID invalidations |
 | `entities.registry.collisions` | Batch insertion refused because an unrelated entity owns the destination key; logged rather than overwritten |
 
@@ -744,3 +753,68 @@ Compare these with `entities.removal.indexed` and `entities.registry.rawArrayChe
 during unloading. Fewer validation passes are expected when there are no actual
 consumer lookups; no fixed ratio is guaranteed if callbacks or meta offloading
 request fresh registry data. Timers can overlap unload/simulation/network parents.
+
+
+### Coordinate-scoped registry follow-up
+
+Raw-array validation now selects the requested ID coordinate, or the affected object's
+old/current square on registration and changed-ID getters. Dirty and pending mutations
+still drain globally. Unrelated exposed buckets are not repeatedly scanned solely
+because new chunks register entities. `entities.registry.bucketsChecked` counts square
+buckets selected for validation per nonempty flush; `checked` and `rawArrayChecked`
+retain their member-visit meaning. Coordinate rekeying, retirement and reset also
+maintain the new location index. Timings remain inclusive elapsed work.
+
+Verification: the registry fixture adds eligible-loading amplification, local raw-hit
+permutations, location rekeying including negative floors, and the actual vanilla
+ObjectContainer lookup branch during repeated item removal/reinsertion. See the registry
+design document for production evidence and transfer-timeout limitations.
+
+
+## Clean-square entity-ID cache counters
+
+Enabled by default; set -Dapocbr.telemetry.entityIds.enabled=false before server
+startup to disable. The counters measure
+isoObjects.entityId.cacheHits, isoObjects.entityId.vanillaChecks and
+isoObjects.entityId.rawArrayFallback. rawArrayFallback is a subset of vanillaChecks.
+cacheHits / (cacheHits + vanillaChecks) measures adoption among instrumented server
+getter calls; it is not a measured time saving. Exposed arrays and custom input
+methods retain vanilla checks. No entities.registry.* repair path is active.
+
+
+### Audited square-array readers
+
+Internal server readers in square properties/queries, chunk object-state saving,
+load-grid overlays, loot respawn and generator item traversal now use a borrowed
+array accessor that does not disable the ID cache. List mutations still advance
+versions; explicitly managed raw writes must call apocbrElementsChanged before an
+ID consumer. Public getElements remains an unsafe escape. Compare cacheHits and
+rawArrayFallback after restart; counters measure adoption, not time saved. No new
+global registry scan exists.
+
+
+## First square-array exposure attribution
+
+Enabled by default (-Dapocbr.telemetry.arrayExposure.enabled=false disables it).
+PZArrayList captures the first external Java caller when a server IsoObject list's
+current backing array first escapes through public getElements. Stack collection
+is bounded to 128 exposures for the entire process; configure maxSamples with
+-Dapocbr.telemetry.arrayExposure.maxSamples=N (clamped 0..4096). Repeated escapes
+of an already exposed array never collect another stack. Array replacement clears
+its caller annotation, while preserving the process sample budget.
+
+Counters: isoObjects.arrayExposure.firstExposures, sampledLists, unsampledLists,
+firstCaller.<class>.<method>, fallbackCaller.<class>.<method> (or unsampled), and
+auditedReads. firstCaller counts sampled exposure transitions, not mutations;
+fallbackCaller attributes subsequent cache bypasses to the retained exposure caller.
+auditedReads establishes that the new internal reader API actually runs. Callers
+are Java stack frames; a Lua/reflection bridge does not identify a specific mod.
+Absent counters cannot establish a deployed revision. The bounded sample may miss
+later workloads; report unsampled coverage instead of attributing it by guesswork.
+
+Read-only bytecode inspection of the local game installation at
+Z:/SteamLibrary/steamapps/common/ProjectZomboid showed an IsoGridSquare override
+with the old public getElements calls and a PZArrayList lacking audited-reader
+methods. This establishes a local installation mismatch, not the classpath of an
+uninspected remote server. Deploy the complete matching class set and restart;
+then inspect exposure counters to identify any genuinely remaining callers.

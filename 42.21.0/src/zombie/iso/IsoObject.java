@@ -261,8 +261,23 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
     private static final Map<Integer, IsoObject.IsoObjectFactory> hashCodeToObjectMap = new HashMap<>();
     private static final Map<String, IsoObject.IsoObjectFactory> nameToObjectMap = new HashMap<>();
     private boolean removeFromWorldToMeta;
+    private static final boolean apocbrIdTelemetry = Boolean.parseBoolean(System.getProperty("apocbr.telemetry.entityIds.enabled", "true"));
+    private static final ClassValue<Boolean> apocbrNativeIdInputs = new ClassValue<>() {
+        @Override protected Boolean computeValue(Class<?> type) {
+            try {
+                return type.getMethod("getObjectIndex").getDeclaringClass() == IsoObject.class
+                    && type.getMethod("isFloor").getDeclaringClass() == IsoObject.class
+                    && type.getMethod("equals", Object.class).getDeclaringClass() == Object.class;
+            } catch (ReflectiveOperationException | SecurityException exception) { return false; }
+        }
+    };
+    private IsoGridSquare apocbrIdSquare;
+    private PZArrayList<IsoObject> apocbrIdObjects;
+    private long apocbrIdVersion;
+    private long apocbrCachedEntityID = -1L;
+    private int apocbrIdX, apocbrIdY, apocbrIdZ;
+    private boolean apocbrIdFloor;
     private long isoEntityNetId = -1L;
-    private boolean apocbrEntityIdDirty;
     private int lastObjectIndex = -1;
     private final HashMap<Class<? extends ECSComponent>, ECSComponent> ecsComponentMap = new HashMap<>();
     private static IsoObject.IsoObjectFactory factoryIsoObject;
@@ -1072,7 +1087,6 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
      */
     public void setSquare(IsoGridSquare square) {
         this.square = square;
-        if (GameServer.server) zombie.entity.ServerIsoEntityRegistry.squareChanged(this);
     }
 
     public IsoChunk getChunk() {
@@ -2374,6 +2388,9 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
         this.sheetRopeHealth = 100.0F;
         this.movedThumpable = false;
         this.isoEntityNetId = -1L;
+        this.apocbrIdSquare = null;
+        this.apocbrIdObjects = null;
+        this.apocbrCachedEntityID = -1L;
         this.spriteModelName = null;
         this.spriteModel = null;
         this.spriteModelInit = null;
@@ -6096,7 +6113,49 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
 
     @Override
     public long getEntityNetID() {
-        if (GameServer.server) return this.apocbrGetServerEntityNetID();
+        if (!GameServer.server) {
+            this.apocbrIdSquare = null;
+            this.apocbrIdObjects = null;
+            return this.apocbrVanillaEntityNetID();
+        }
+        IsoGridSquare square = this.square;
+        PZArrayList<IsoObject> objects = square == null ? null : square.getObjects();
+        boolean eligible = objects != null && !objects.apocbrElementsExposed() && apocbrNativeIdInputs.get(this.getClass());
+        long version = eligible ? objects.apocbrMutationVersion() : 0L;
+        int x = eligible ? square.getX() : 0, y = eligible ? square.getY() : 0, z = eligible ? square.getZ() : 0;
+        boolean floor = eligible && this.isFloor();
+        if (eligible && this.isoEntityNetId != -1L && this.isoEntityNetId == this.apocbrCachedEntityID
+            && square == this.apocbrIdSquare && objects == this.apocbrIdObjects && version == this.apocbrIdVersion
+            && x == this.apocbrIdX && y == this.apocbrIdY && z == this.apocbrIdZ && floor == this.apocbrIdFloor) {
+            if (apocbrIdTelemetry) zombie.ApocBRServerTelemetryLite.count("isoObjects.entityId.cacheHits", 1L);
+            return this.isoEntityNetId;
+        }
+        // Keep the original calculation and lazy map repair, including client semantics.
+        this.apocbrIdSquare = null;
+        this.apocbrIdObjects = null;
+        if (apocbrIdTelemetry) {
+            zombie.ApocBRServerTelemetryLite.count("isoObjects.entityId.vanillaChecks", 1L);
+            if (objects != null && objects.apocbrElementsExposed()) {
+                zombie.ApocBRServerTelemetryLite.count("isoObjects.entityId.rawArrayFallback", 1L);
+                objects.apocbrRecordExposureFallback();
+            }
+        }
+        long id = this.apocbrVanillaEntityNetID();
+        if (eligible && id != -1L) {
+            // Snapshot taken BEFORE calculation: callback mutations force another check.
+            this.apocbrIdObjects = objects;
+            this.apocbrIdVersion = version;
+            this.apocbrCachedEntityID = id;
+            this.apocbrIdX = x; this.apocbrIdY = y; this.apocbrIdZ = z;
+            this.apocbrIdFloor = floor;
+            this.apocbrIdSquare = square;
+        } else {
+            this.apocbrIdObjects = null;
+        }
+        return id;
+    }
+
+    private long apocbrVanillaEntityNetID() {
         if (this.getObjectIndex() == -1) {
             this.isoEntityNetId = -1L;
             return -1L;
@@ -6116,27 +6175,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
         }
     }
 
-    public final void apocbrInvalidateEntityNetID() {
-        this.apocbrEntityIdDirty = true;
-    }
 
-    private long apocbrGetServerEntityNetID() {
-        int index = this.getObjectIndex();
-        if (index == -1) {
-            this.isoEntityNetId = -1L;
-            this.apocbrEntityIdDirty = false;
-            return -1L;
-        }
-        if (this.apocbrEntityIdDirty || this.isoEntityNetId == -1L || this.lastObjectIndex == -1 || this.lastObjectIndex != index) {
-            this.lastObjectIndex = this.isFloor() ? 0 : index;
-            long newID = ((long)this.lastObjectIndex << 40) + ((long)this.square.getZ() << 32)
-                + ((long)this.square.getY() << 16) + this.square.getX();
-            zombie.entity.GameEntityManager.checkEntityIDChange(this, this.isoEntityNetId, newID);
-            this.isoEntityNetId = newID;
-            this.apocbrEntityIdDirty = false;
-        }
-        return this.isoEntityNetId;
-    }
 
     @Override
     public boolean isEntityValid() {

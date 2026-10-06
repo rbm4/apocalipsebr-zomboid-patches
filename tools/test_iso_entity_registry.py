@@ -47,33 +47,62 @@ def build_sources():
           public void releaseComponent(ComponentType c){removeComponent(c);}public void addComponent(Component c){parts.add(c);}public void connectComponents(){}
         }""",
         "zombie/iso/IsoGridSquare.java": """package zombie.iso;import zombie.util.list.PZArrayList;
-          public class IsoGridSquare{final int x,y,z;public final PZArrayList<IsoObject> objects=new PZArrayList<>(IsoObject.class,2);
+          public class IsoGridSquare{final int x,y,z;public PZArrayList<IsoObject> objects=new PZArrayList<>(IsoObject.class,2);
           public boolean requiresHotSave;public IsoGridSquare(int x,int y,int z){this.x=x;this.y=y;this.z=z;}
           public PZArrayList<IsoObject> getObjects(){return objects;}public int getX(){return x;}public int getY(){return y;}public int getZ(){return z;}}
         """,
     }
     sources["zombie/iso/IsoObject.java"] = """package zombie.iso;import zombie.entity.GameEntityManager;import zombie.network.GameServer;
       public class IsoObject extends zombie.entity.GameEntity{public IsoGridSquare square;private long isoEntityNetId=-1;private int lastObjectIndex=-1;
-      private boolean apocbrEntityIdDirty;public boolean floor,failIndex,failID;public IsoGridSquare getSquare(){return square;}
+      public int indexCalls;public boolean floor,failIndex,failID;public IsoGridSquare getSquare(){return square;}
       public IsoGridSquare getChunk(){return square;}public boolean isFloor(){return floor;}public void sync(){}
-    """ + method(obj, "public void setSquare(") + method(obj, "public int getObjectIndex()").replace("return this.square", "if(failIndex)throw new IllegalStateException(\"index\");return this.square") + method(obj, "public long getEntityNetID()").replace("public long getEntityNetID() {", "public long getEntityNetID() {if(failID)throw new IllegalStateException(\"id\");") + method(obj, "public final void apocbrInvalidateEntityNetID()") + method(obj, "private long apocbrGetServerEntityNetID()") + "}"
+    """ + method(obj, "public void setSquare(") + method(obj, "public int getObjectIndex()").replace("return this.square", "indexCalls++;if(failIndex)throw new IllegalStateException(\"index\");return this.square") + method(obj, "public long getEntityNetID()").replace("public long getEntityNetID() {", "public long getEntityNetID() {if(failID)throw new IllegalStateException(\"id\");") + method(obj, "private long apocbrVanillaEntityNetID()") + "}"
+    fields = obj[obj.index("    private static final boolean apocbrIdTelemetry"):obj.index("    private long isoEntityNetId")]
+    sources["zombie/iso/IsoObject.java"] = sources["zombie/iso/IsoObject.java"].replace("private long isoEntityNetId=-1;", fields + "private long isoEntityNetId=-1;").replace("import zombie.entity.GameEntityManager;", "import zombie.entity.GameEntityManager;import zombie.util.list.PZArrayList;")
     square = sources["zombie/iso/IsoGridSquare.java"].replace("final int x,y,z;", "int x,y,z,cachedScreenValue;")
     square_source = (V / "src/zombie/iso/IsoGridSquare.java").read_text()
     sources["zombie/iso/IsoGridSquare.java"] = square[:square.rfind("}")] + "\n".join(method(square_source, signature) for signature in ("public void setX(", "public void setY(", "public void setZ(")) + "}"
     sources["zombie/iso/IsoGridSquare.java"] = sources["zombie/iso/IsoGridSquare.java"].replace("package zombie.iso;", "package zombie.iso;import zombie.network.GameServer;")
     # Compile the actual lifecycle and registry methods, with only engine/storage dependencies stubbed.
-    signatures = ["public static GameEntity GetEntity(", "private static void reconcileIsoEntityIDs()",
-                  "static void removeIsoRegistryKey(", "static void putIsoRegistryKey(", "static void RegisterEntity(",
+    signatures = ["public static GameEntity GetEntity(", "static void RegisterEntity(",
                   "static void UnregisterEntity(GameEntity gameEntity)", "static void UnregisterEntity(GameEntity gameEntity,",
                   "public static void checkEntityIDChange("]
+    import re
+    vanilla_manager = (V / "decompiled/zombie/entity/GameEntityManager.java").read_text()
+    for signature in signatures:
+        assert re.sub(r"\s+", "", method(manager, signature)) == re.sub(r"\s+", "", method(vanilla_manager, signature)), signature
+    for signature in ("public void setSquare(",):
+        assert re.sub(r"\s+", "", method(obj, signature)) == re.sub(r"\s+", "", method(original_obj, signature)), signature
     sources["zombie/entity/GameEntityManager.java"] = """package zombie.entity;import java.util.*;import zombie.iso.IsoObject;import zombie.debug.DebugType;import zombie.network.GameClient;import zombie.entity.meta.MetaTagComponent;
       public class GameEntityManager{static final Map<Long,GameEntity> idToEntityMap=new HashMap<>();static Engine engine=new Engine();static boolean wasClient;
       static final ArrayDeque<MetaEntity> delayedReleaseMetaEntities=new ArrayDeque<>();
     """ + "\n".join(method(manager, s) for s in signatures) + "}"
+    # Exercise the exact vanilla ObjectContainer resolution branch used by item packets.
+    container = (V / "decompiled/zombie/network/fields/ContainerID.java").read_text()
+    branch = method(container, "public void findObject()").split("} else if (this.containerType == ContainerID.ContainerType.ObjectContainer) {", 1)[1].split("} else if (this.containerType == ContainerID.ContainerType.Vehicle)", 1)[0]
+    sources["zombie/entity/ContainerProbe.java"] = """package zombie.entity;import zombie.iso.*;import zombie.inventory.*;
+      public class ContainerProbe {public int index,containerIndex;public IsoObject object;public ItemContainer container;
+      public void resolve(IsoGridSquare sq){container=null;object=null;""" + branch + "}}"
+    sources["zombie/inventory/ItemContainer.java"] = "package zombie.inventory;public class ItemContainer{public final java.util.ArrayList<Object> items=new java.util.ArrayList<>();}"
+    sources["zombie/iso/IsoObject.java"] = sources["zombie/iso/IsoObject.java"].replace("public boolean floor,failIndex,failID;", "public boolean floor,failIndex,failID;public final zombie.inventory.ItemContainer container=new zombie.inventory.ItemContainer();public zombie.inventory.ItemContainer getContainerByIndex(int index){return index==0?container:null;}")
+    # Compile a real audited square reader; its array traversal must not poison caching.
+    square_reader = method(square_source, "public boolean haveFire()")
+    sources["zombie/iso/IsoGridSquare.java"] = sources["zombie/iso/IsoGridSquare.java"].replace("import zombie.network.GameServer;", "import zombie.network.GameServer;import zombie.iso.objects.IsoFire;")
+    sq_stub = sources["zombie/iso/IsoGridSquare.java"]
+    sources["zombie/iso/IsoGridSquare.java"] = sq_stub[:sq_stub.rfind("}")] + square_reader + "}"
+    sources["zombie/iso/objects/IsoFire.java"] = "package zombie.iso.objects;public class IsoFire extends zombie.iso.IsoObject{}"
+    # New overrides differ from vanilla only in the audited array acquisition.
+    for relative in ("LoadGridsquarePerformanceWorkaround.java", "LootRespawn.java", "iso/objects/IsoGenerator.java"):
+        vanilla = (V / "decompiled/zombie" / relative).read_text(encoding="utf-8")
+        production = (V / "src/zombie" / relative).read_text(encoding="utf-8")
+        for expression in ("this.objects", "this.getObjects()", "square.getObjects()", "sq.getObjects()"):
+            old = expression + ".getElements()"
+            vanilla = vanilla.replace(old, "(GameServer.server ? " + expression + ".apocbrReadOnlyElements() : " + old + ")")
+        assert re.sub(r"\s+", "", vanilla) == re.sub(r"\s+", "", production), relative
     sources["zombie/entity/RegistryTest.java"] = HARNESS
     # Stable-index getter behavior still uses the exact vanilla formula and client body.
     original = method(original_obj, "public long getEntityNetID()")
-    production = method(obj, "public long getEntityNetID()").replace("if (GameServer.server) return this.apocbrGetServerEntityNetID();", "")
+    production = method(obj, "private long apocbrVanillaEntityNetID()").replace("private long apocbrVanillaEntityNetID()", "public long getEntityNetID()")
     import re
     assert re.sub(r"\s+", "", original) == re.sub(r"\s+", "", production)
     return sources
@@ -89,139 +118,108 @@ def main():
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_text(content, encoding="utf-8")
             paths.append(p)
-        paths.extend(V / "src/zombie" / n for n in ("entity/ServerIsoEntityRegistry.java", "util/list/PZArrayList.java"))
+        paths.extend(V / "src/zombie" / n for n in ("util/list/PZArrayList.java",))
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(p).replace("\\", "/") + '"' for p in paths))
         subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-d", str(work / "classes"), "@" + str(args)], check=True)
         subprocess.run([str(ROOT / "jdk/bin/java.exe"), "-cp", str(work / "classes"), "zombie.entity.RegistryTest", *sys.argv[1:]], check=True)
 
 
-HARNESS = r"""package zombie.entity;import java.util.*;import zombie.iso.*;import zombie.network.GameServer;import zombie.ApocBRServerTelemetryLite;import zombie.debug.DebugType;
+HARNESS = r"""package zombie.entity;import java.util.*;import zombie.iso.*;import zombie.network.GameServer;import zombie.debug.DebugType;
 public class RegistryTest{
- static int assertions;static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);assertions++;}
- static void reset(){ServerIsoEntityRegistry.reset();GameEntityManager.idToEntityMap.clear();GameEntityManager.engine=new Engine();DebugType.errors=0;GameServer.server=true;}
+ static int assertions;static void check(boolean b,String m){if(!b)throw new AssertionError(m);assertions++;}
  static IsoObject object(IsoGridSquare sq){IsoObject o=new IsoObject();o.setSquare(sq);sq.objects.add(o);return o;}
- static void register(IsoObject o){GameEntityManager.RegisterEntity(o);check(o.addedToEntityManager,"registered");}
- static long expected(IsoObject o){int index=o.getObjectIndex();return index<0?-1:((long)(o.floor?0:index)<<40)+((long)o.square.getZ()<<32)+((long)o.square.getY()<<16)+o.square.getX();}
- static void validate(List<IsoObject> live){
-   for(IsoObject o:live){long id=expected(o);check(GameEntityManager.GetEntity(id)==o,"registry current identity");check(o.getEntityNetID()==id,"cached ID matches expected");}
-   for(var e:GameEntityManager.idToEntityMap.entrySet())if(e.getValue() instanceof IsoObject o)check(expected(o)==e.getKey(),"no stale key");
+ static long expected(IsoObject o){int n=o.getObjectIndex();return n<0?-1:((long)(o.floor?0:n)<<40)+((long)o.square.getZ()<<32)+((long)o.square.getY()<<16)+o.square.getX();}
+ static void trackedArrayChecks(){
+  GameServer.server=true;zombie.network.GameClient.client=false;GameEntityManager.idToEntityMap.clear();
+  IsoGridSquare sq=new IsoGridSquare(3000,3000,0);IsoObject a=object(sq),b=object(sq);
+  a.getEntityNetID();b.getEntityNetID();a.indexCalls=0;b.indexCalls=0;long version=sq.objects.apocbrMutationVersion();
+  IsoObject[] array=sq.objects.apocbrReadOnlyElements();
+  for(int n=0;n<1000;n++){check(!sq.haveFire(),"audited production reader result");a.getEntityNetID();b.getEntityNetID();}
+  check(!sq.objects.apocbrElementsExposed()&&sq.objects.apocbrMutationVersion()==version,"read-only open array stays clean");
+  check(a.indexCalls==0&&b.indexCalls==0,"read-only array access permits cached IDs");
+  array[0]=b;array[1]=a;sq.objects.apocbrElementsChanged();check(sq.objects.apocbrMutationVersion()!=version,"managed array write marks dirty");
+  check(a.getEntityNetID()==expected(a)&&b.getEntityNetID()==expected(b),"managed raw reorder refreshes both objects");
+  a.indexCalls=0;b.indexCalls=0;a.getEntityNetID();b.getEntityNetID();check(a.indexCalls==0&&b.indexCalls==0,"cache resumes after managed raw edit");
+  version=sq.objects.apocbrMutationVersion();sq.objects.get(0);check(sq.objects.apocbrMutationVersion()==version,"element reads stay clean");
+  sq.objects.set(0,a);check(sq.objects.apocbrMutationVersion()!=version,"replacement marks dirty");
+  sq.objects.getElements();check(sq.objects.apocbrElementsExposed(),"unknown public array access retains fallback");
+  check(zombie.ApocBRServerTelemetryLite.counters.getOrDefault("isoObjects.arrayExposure.auditedReads",0L)>=1000,"audited-reader revision is observable");
+  check(zombie.ApocBRServerTelemetryLite.counters.getOrDefault("isoObjects.arrayExposure.firstCaller.zombie.entity.RegistryTest.trackedArrayChecks",0L)==1,"first exposure attributed to real caller");
+  long first=zombie.ApocBRServerTelemetryLite.counters.getOrDefault("isoObjects.arrayExposure.firstExposures",0L);sq.objects.getElements();
+  check(zombie.ApocBRServerTelemetryLite.counters.getOrDefault("isoObjects.arrayExposure.firstExposures",0L)==first,"repeat exposure does not collect stack again");
+  a.getEntityNetID();check(zombie.ApocBRServerTelemetryLite.counters.getOrDefault("isoObjects.arrayExposure.fallbackCaller.zombie.entity.RegistryTest.trackedArrayChecks",0L)>0,"fallback retains first-caller attribution");
+  for(int n=0;n<200;n++){new zombie.util.list.PZArrayList<IsoObject>(IsoObject.class,1).getElements();}
+  check(zombie.ApocBRServerTelemetryLite.counters.getOrDefault("isoObjects.arrayExposure.sampledLists",0L)==128,"stack collection bounded per process");
+  check(zombie.ApocBRServerTelemetryLite.counters.getOrDefault("isoObjects.arrayExposure.unsampledLists",0L)>0,"overflow reported explicitly");
  }
- static long loadingProbe(){
-   reset();for(int n=0;n<32;n++){IsoGridSquare sq=new IsoGridSquare(2000+n,2000,0);for(int j=0;j<4;j++)register(object(sq));sq.objects.getElements();}
-   GameEntityManager.GetEntity(0);ApocBRServerTelemetryLite.counters.clear();GameEntity plain=new GameEntity();plain.components=false;GameEntity script=new GameEntity();script.scriptOnly=true;
-   long start=System.nanoTime();for(int n=0;n<2000;n++){GameEntityManager.RegisterEntity(plain);GameEntityManager.RegisterEntity(script);GameEntityManager.UnregisterEntity(plain);}
-   double ms=(System.nanoTime()-start)/1e6;long checked=ApocBRServerTelemetryLite.counters.getOrDefault("entities.registry.rawArrayChecked",0L);
-   System.out.printf(java.util.Locale.ROOT,"Loading probe: 128 registered objects, 4000 skipped registrations + 2000 skipped removals; %d raw-member checks, %.3f ms%n",checked,ms);return checked;
- }
- static long unloadingProbe(){
-   reset();var live=new ArrayList<IsoObject>();for(int n=0;n<32;n++){IsoGridSquare sq=new IsoGridSquare(3000+n,3000,0);for(int j=0;j<4;j++){IsoObject o=object(sq);register(o);live.add(o);}sq.objects.getElements();}
-   GameEntityManager.GetEntity(0);ApocBRServerTelemetryLite.counters.clear();long start=System.nanoTime();
-   for(IsoObject o:live){GameEntityManager.UnregisterEntity(o);o.square.objects.remove(o);check(!o.addedToEntityManager&&!o.addedToEngine,"bulk retired lifecycle");}
-   double ms=(System.nanoTime()-start)/1e6;long checked=ApocBRServerTelemetryLite.counters.getOrDefault("entities.registry.rawArrayChecked",0L);
-   check(GameEntityManager.idToEntityMap.isEmpty(),"bulk retirement map empty");
-   System.out.printf(java.util.Locale.ROOT,"Unloading probe: 128 registered retirements; %d raw-member checks, %.3f ms%n",checked,ms);return checked;
+ static void cacheChecks(){
+  GameServer.server=true;zombie.network.GameClient.client=false;GameEntityManager.idToEntityMap.clear();
+  IsoGridSquare sq=new IsoGridSquare(1000,1000,0);IsoObject pad=object(sq),a=object(sq),b=object(sq);
+  a.getEntityNetID();b.getEntityNetID();a.indexCalls=0;b.indexCalls=0;
+  for(int n=0;n<1000;n++){a.getEntityNetID();b.getEntityNetID();}
+  check(a.indexCalls==0&&b.indexCalls==0,"clean getters avoid all index reads");
+  sq.objects.remove(pad);long aid=a.getEntityNetID();check(a.indexCalls>0,"dirty first object rechecks");
+  check(b.getEntityNetID()==expected(b)&&b.indexCalls>0,"second dirty object independently rechecks");
+  int reads=a.indexCalls;a.getEntityNetID();check(a.indexCalls==reads,"cache warms after dirty check");
+  sq.setX(1001);a.getEntityNetID();check(a.indexCalls>reads,"coordinate changes use vanilla fallback");
+  IsoObject[] raw=sq.objects.getElements();raw[0]=b;raw[1]=a;reads=a.indexCalls;
+  a.getEntityNetID();a.getEntityNetID();check(a.indexCalls>reads,"retained arrays always use vanilla fallback");
+  IsoGridSquare replacement=new IsoGridSquare(1001,1000,0);replacement.objects.add(a);a.square=replacement;reads=a.indexCalls;
+  a.getEntityNetID();check(a.indexCalls>reads,"direct square reassignment misses cache");
+  replacement.objects=new zombie.util.list.PZArrayList<>(IsoObject.class,4);replacement.objects.add(a);reads=a.indexCalls;
+  a.getEntityNetID();check(a.indexCalls>reads,"list replacement misses cache");
+  replacement.objects.clear();check(a.getEntityNetID()==-1,"removed object has no ID");replacement.objects.add(a);check(a.getEntityNetID()!=-1,"re-add initializes cache");
+  IsoObject custom=new IsoObject(){@Override public int getObjectIndex(){return super.getObjectIndex();}};custom.setSquare(replacement);replacement.objects.add(custom);custom.getEntityNetID();reads=custom.indexCalls;custom.getEntityNetID();check(custom.indexCalls>reads,"custom index getter bypasses cache");
+  GameServer.server=false;reads=a.indexCalls;a.getEntityNetID();a.getEntityNetID();check(a.indexCalls>reads,"client always retains vanilla checks");
+  GameServer.server=true;
+  // Differential replay against the unmodified body forced by raw exposure.
+  IsoGridSquare tracked=new IsoGridSquare(2000,2000,0),reference=new IsoGridSquare(2000,2000,0);
+  IsoObject t=object(tracked),r=object(reference);Random random=new Random(42);
+  long oldT=-1,oldR=-1;
+  for(int n=0;n<2000;n++){
+   switch(random.nextInt(7)){
+    case 0 -> {tracked.objects.add(0,new IsoObject());reference.objects.add(0,new IsoObject());}
+    case 1 -> {if(tracked.objects.size()>1){int ix=tracked.objects.get(0)==t?1:0;tracked.objects.remove(ix);reference.objects.remove(ix);}}
+    case 2 -> {tracked.setX(2000+n);reference.setX(2000+n);}
+    case 3 -> {t.floor=!t.floor;r.floor=t.floor;}
+    case 4 -> {tracked.objects.remove(t);reference.objects.remove(r);}
+    case 5 -> {if(!tracked.objects.contains(t)){tracked.objects.add(t);reference.objects.add(r);}}
+    default -> {}
+   }
+   reference.objects.getElements();GameEntityManager.idToEntityMap.clear();if(oldT!=-1)GameEntityManager.idToEntityMap.put(oldT,t);
+   long tid=t.getEntityNetID();Set<Long> keys=new HashSet<>(GameEntityManager.idToEntityMap.keySet());
+   GameEntityManager.idToEntityMap.clear();if(oldR!=-1)GameEntityManager.idToEntityMap.put(oldR,r);
+   long rid=r.getEntityNetID();check(tid==rid,"tracked getter matches vanilla body result");check(keys.equals(GameEntityManager.idToEntityMap.keySet()),"lazy registry keys match vanilla body");oldT=tid;oldR=rid;
+  }
  }
  public static void main(String[] args){
-   if(args.length>0){if(args[0].equals("unloading"))unloadingProbe();else loadingProbe();return;}
-   check(loadingProbe()==0,"nonregistering objects must not validate registry");
-   check(unloadingProbe()==0,"retirement must not validate global raw registry");
-   // A consumer inside engine removal may demand fresh survivors, but not resurrect
-   // the retiring object. Reentrant removal must leave the outer operation in charge.
-   reset();IsoGridSquare callbackSquare=new IsoGridSquare(4100,4100,0);IsoObject pad=object(callbackSquare),departing=object(callbackSquare),survivor=object(callbackSquare);
-   register(departing);register(survivor);callbackSquare.objects.getElements();callbackSquare.objects.remove(pad);
-   GameEntityManager.engine.onRemove=e->{if(e==departing){
-     check(ServerIsoEntityRegistry.isRetiring(departing),"retirement callback scope");
-     check(GameEntityManager.GetEntity(expected(survivor))==survivor,"callback refreshes shifted survivor on demand");
-     check(GameEntityManager.GetEntity(departing.getEntityNetID())==null,"retired getter cannot republish key");
-     GameEntityManager.UnregisterEntity(departing);
-   }};
-   GameEntityManager.UnregisterEntity(departing);check(GameEntityManager.engine.removes==1,"no duplicate engine removal");
-   check(!ServerIsoEntityRegistry.isRetiring(departing),"retirement scope released");validate(List.of(survivor));
-   // ID failure occurs before key/tracking removal, allowing a clean retry.
-   reset();IsoGridSquare failedSquare=new IsoGridSquare(4200,4200,0);IsoObject failed=object(failedSquare);register(failed);failed.failID=true;
-   try{GameEntityManager.UnregisterEntity(failed);throw new AssertionError("retirement ID failure expected");}catch(IllegalStateException expected){}
-   check(!ServerIsoEntityRegistry.isRetiring(failed)&&failed.addedToEntityManager,"failed retirement retained lifecycle");failed.failID=false;validate(List.of(failed));GameEntityManager.UnregisterEntity(failed);
-   // Offload uses the CURRENT local ID, not the stale registry key, and migrates
-   // actual fixture components via the extracted production lifecycle methods.
-   reset();IsoGridSquare metaSquare=new IsoGridSquare(4300,4300,0);IsoObject beforeMeta=object(metaSquare),metaObject=object(metaSquare);register(metaObject);
-   long oldMetaKey=metaObject.getEntityNetID();Component payload=metaObject.parts.get(0);metaObject.metaEligible=true;metaSquare.objects.remove(beforeMeta);long currentMetaKey=expected(metaObject);
-   GameEntityManager.UnregisterEntity(metaObject,true);MetaEntity saved=MetaEntity.lastAllocated;
-   check(saved!=null&&saved.getEntityNetID()==currentMetaKey,"meta receives current retiring ID");
-   check(GameEntityManager.GetEntity(currentMetaKey)==saved,"meta registry publication");check(GameEntityManager.GetEntity(oldMetaKey)==null,"stale retired key gone");
-   check(saved.parts.contains(payload)&&metaObject.hasComponent(ComponentType.MetaTag),"component offload and tag");
-   metaSquare.objects.remove(metaObject);object(metaSquare);metaSquare.objects.add(metaObject);register(metaObject);
-   check(metaObject.parts.contains(payload)&&!metaObject.hasComponent(ComponentType.MetaTag),"meta reload restores component identity");
-   validate(List.of(metaObject));check(!saved.addedToEntityManager&&!saved.addedToEngine,"old meta entity released");check(DebugType.errors==0,"meta roundtrip has no false collision");
-   reset();IsoGridSquare sq=new IsoGridSquare(100,200,0);IsoObject floor=object(sq);floor.floor=true;IsoObject first=object(sq),second=object(sq);register(first);register(second);
-   // Shift a surviving registered entity, then query its NEW ID before calling its getter.
-   GameEntityManager.UnregisterEntity(first);sq.objects.remove(first);check(!first.addedToEngine,"unregister lifecycle");check(GameEntityManager.GetEntity(expected(second))==second,"shifted lookup before getter");validate(List.of(second));
-   // Insertion reconciles existing entities before registering the newly inserted one.
-   IsoObject inserted=new IsoObject();inserted.setSquare(sq);sq.objects.add(1,inserted);register(inserted);validate(List.of(inserted,second));
-   // Cyclic permutation through set() must not recurse through occupied old keys.
-   sq.objects.set(1,second);sq.objects.set(2,inserted);check(second.getEntityNetID()==expected(second),"direct getter repairs permutation");validate(List.of(inserted,second));check(DebugType.errors==0,"no false collision errors");
-   // Retained raw array changes have no List notifications; validate before hit AND miss.
-   IsoObject[] raw=sq.objects.getElements();raw[1]=inserted;raw[2]=second;validate(List.of(inserted,second));
-   long old=second.getEntityNetID();raw[2]=new IsoObject();check(GameEntityManager.GetEntity(old)==null,"raw detach clears stale key");
-   raw[2]=second;check(GameEntityManager.GetEntity(expected(second))==second,"raw reattach restores registered object");
-   raw[1]=second;raw[2]=inserted;check(second.getEntityNetID()==expected(second),"raw cyclic change via direct getter");validate(List.of(inserted,second));
-   // Equal list index, different square: coordinates still require reconciliation.
-   IsoGridSquare next=new IsoGridSquare(101,200,0);object(next);object(next);sq.objects.remove(second);second.setSquare(next);next.objects.add(second);validate(List.of(inserted,second));
-   next.setX(102);next.setY(201);next.setZ(2);validate(List.of(inserted,second));
-   // Native public-field square reassignment is caught when the old list is edited.
-   IsoGridSquare direct=new IsoGridSquare(103,201,2);object(direct);object(direct);next.objects.remove(second);second.square=direct;direct.objects.add(second);validate(List.of(inserted,second));
-   direct.objects.add(0,new IsoObject());validate(List.of(inserted,second));
-   // Floor identity retains the original forced zero ordinal.
-   IsoObject ground=object(next);ground.floor=true;register(ground);validate(List.of(inserted,second,ground));
-   // Dirty queues release detached registered objects through the real removal path.
-   long removedID=second.getEntityNetID();direct.objects.remove(second);check(GameEntityManager.GetEntity(removedID)==null,"detached map cleared");
-   GameEntityManager.UnregisterEntity(second,true);check(!second.addedToEntityManager&&!second.addedToEngine,"detached unregister cleanup");
-   // A new non-IsoObject entity reusing the old key must survive stale-key cleanup.
-   GameEntity replacement=new GameEntity();GameEntityManager.idToEntityMap.put(removedID,replacement);check(GameEntityManager.GetEntity(removedID)==replacement,"unrelated reused key preserved");
-   // No-work lookup does not scan unexposed registered squares every time.
-   reset();sq=new IsoGridSquare(500,500,1);IsoObject stable=object(sq);register(stable);long id=stable.getEntityNetID();GameEntityManager.GetEntity(id);
-   long visits=ApocBRServerTelemetryLite.counters.getOrDefault("entities.registry.checked",0L);for(int i=0;i<1000;i++)check(GameEntityManager.GetEntity(id)==stable,"stable lookup");
-   check(visits==ApocBRServerTelemetryLite.counters.getOrDefault("entities.registry.checked",0L),"stable views incur zero entry checks");
-   // Batch many unrelated/nonregistered edits into one registered-member validation.
-   for(int i=0;i<100;i++)object(sq);check(GameEntityManager.GetEntity(id)==stable,"bulk append");
-   check(ApocBRServerTelemetryLite.counters.get("entities.registry.checked")==visits+1,"bulk edits coalesced");
-   // Failed ID evaluation can be retried without discarding dirty work.
-   IsoObject shifted=object(sq);register(shifted);sq.objects.remove(1);shifted.failIndex=true;
-   try{GameEntityManager.GetEntity(expected(stable));throw new AssertionError("exception expected");}catch(IllegalStateException expected){}
-   shifted.failIndex=false;check(GameEntityManager.GetEntity(expected(shifted))==shifted,"retry after exception");
-   shifted.failID=true;sq.objects.add(0,new IsoObject());
-   try{GameEntityManager.GetEntity(expected(stable));throw new AssertionError("ID exception expected");}catch(IllegalStateException expected){}
-   shifted.failID=false;validate(List.of(stable,shifted));
-   // Genuine cross-family collision keeps the unrelated incumbent.
-   reset();sq=new IsoGridSquare(700,700,0);IsoObject a=object(sq);register(a);IsoObject padding=object(sq);sq.objects.set(0,padding);sq.objects.set(1,a);
-   long destination=expected(a);GameEntity incumbent=new GameEntity();GameEntityManager.idToEntityMap.put(destination,incumbent);
-   check(GameEntityManager.GetEntity(destination)==incumbent,"unrelated incumbent not overwritten");check(DebugType.errors==1,"real collision reported");
-   // Clear/unregister releases tracking; detached values must not resurrect on lookup.
-   reset();sq=new IsoGridSquare(800,800,0);a=object(sq);register(a);id=a.getEntityNetID();GameEntityManager.UnregisterEntity(a);sq.objects.clear();check(GameEntityManager.GetEntity(id)==null,"unregister no resurrection");
-   sq.objects.add(new IsoObject());sq.objects.add(a);register(a);check(a.addedToEngine,"same instance re-add attaches engine");validate(List.of(a));check(DebugType.errors==0,"re-add no phantom registry entry");
-   sq.objects.add(a);validate(List.of(a));sq.objects.remove(sq.objects.size()-1);validate(List.of(a));
-   // Java mods with their own ID contract retain that contract and are not tracked.
-   IsoObject custom=new IsoObject(){@Override public long getEntityNetID(){return 987654321L;}};custom.setSquare(sq);sq.objects.add(custom);register(custom);sq.objects.add(0,new IsoObject());
-   check(GameEntityManager.GetEntity(987654321L)==custom,"custom ID retained");GameEntityManager.UnregisterEntity(custom);
-   // Client path retains vanilla lazy behavior and never activates the server tracker.
-   reset();GameServer.server=false;zombie.network.GameClient.client=true;sq=new IsoGridSquare(900,900,0);a=object(sq);register(a);id=a.getEntityNetID();sq.objects.add(0,new IsoObject());
-   check(GameEntityManager.GetEntity(id)==a,"client map remains vanilla lazy");check(a.getEntityNetID()==expected(a),"client getter still reconciles");
-   zombie.network.GameClient.client=false;GameServer.server=true;
-   // Randomized valid lifecycle: use source registration/removal plus arbitrary list permutations.
-   reset();sq=new IsoGridSquare(1200,1200,0);var live=new ArrayList<IsoObject>();Random r=new Random(9093);
-   for(int step=0;step<3000;step++){
-     if(live.isEmpty()||live.size()<40&&r.nextInt(3)==0){IsoObject o=new IsoObject();o.setSquare(sq);sq.objects.add(r.nextInt(sq.objects.size()+1),o);register(o);live.add(o);}
-     else if(r.nextBoolean()){IsoObject o=live.remove(r.nextInt(live.size()));GameEntityManager.UnregisterEntity(o);sq.objects.remove(o);check(!o.addedToEngine&&!o.addedToEntityManager,"random removal flags");}
-     else if(sq.objects.size()>1){int x=r.nextInt(sq.objects.size()),y=r.nextInt(sq.objects.size());IsoObject xObj=sq.objects.get(x),yObj=sq.objects.get(y);
-       if(r.nextBoolean()){sq.objects.set(x,yObj);sq.objects.set(y,xObj);}else{IsoObject[] array=sq.objects.getElements();array[x]=yObj;array[y]=xObj;}}
-     validate(live);check(DebugType.errors==0,"random valid changes have no registry collisions");
+  for(boolean client:new boolean[]{false,true}){
+   GameServer.server=!client;zombie.network.GameClient.client=client;
+   GameEntityManager.idToEntityMap.clear();GameEntityManager.engine=new Engine();DebugType.errors=0;
+   IsoGridSquare sq=new IsoGridSquare(100,200,-1);IsoObject pad=object(sq),chest=object(sq);
+   GameEntityManager.RegisterEntity(chest);long old=chest.getEntityNetID();check(GameEntityManager.GetEntity(old)==chest,"registered ID");
+   ContainerProbe packet=new ContainerProbe();packet.index=chest.getObjectIndex();packet.containerIndex=0;
+   Object item=new Object();chest.container.items.add(item);
+   for(int n=0;n<1000;n++){
+    packet.resolve(sq);check(packet.object==chest&&packet.container==chest.container,"vanilla container resolution");
+    check(packet.container.items.remove(item),"take item");
+    check(chest.getEntityNetID()==old,"inventory edits preserve owner ID");packet.container.items.add(item);
    }
-   ServerIsoEntityRegistry.reset();GameEntityManager.idToEntityMap.clear();check(GameEntityManager.GetEntity(1)==null,"reset releases views");
-   System.out.println("Iso entity registry: "+assertions+" assertions");
+   sq.objects.getElements();sq.objects.remove(pad);long next=expected(chest);
+   check(GameEntityManager.GetEntity(old)==chest,"lookup preserves vanilla lazy map before getter");
+   check(GameEntityManager.GetEntity(next)==null,"lookup does not eagerly reconcile");
+   check(chest.getEntityNetID()==next,"getter repairs changed ordinal");
+   check(GameEntityManager.GetEntity(next)==chest&&GameEntityManager.GetEntity(old)==null,"old/new mapping repaired");
+   packet.index=chest.getObjectIndex();packet.resolve(sq);check(packet.container==chest.container,"shifted container resolves");
+   GameEntityManager.UnregisterEntity(chest);check(GameEntityManager.GetEntity(next)==null,"unregister removes ID");
+   check(!chest.addedToEntityManager&&!chest.addedToEngine,"vanilla removal flags");
+   check(DebugType.errors==0,"no registry errors");
+  }
+  trackedArrayChecks();cacheChecks();System.out.println("Lazy ID cache and vanilla container fixture: "+assertions+" assertions; production methods match exact-version vanilla");
  }
 }
 """
-
 
 if __name__ == "__main__":
     main()

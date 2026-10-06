@@ -394,7 +394,7 @@ public class IsoGenerator extends IsoObject {
 
     private void updateFridgeFreezerItems(IsoGridSquare square) {
         int objCount = square.getObjects().size();
-        IsoObject[] objects = square.getObjects().getElements();
+        IsoObject[] objects = (GameServer.server ? square.getObjects().apocbrReadOnlyElements() : square.getObjects().getElements());
 
         for (int i = 0; i < objCount; i++) {
             IsoObject object = objects[i];
