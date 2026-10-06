@@ -169,9 +169,9 @@ public class GameEntityManager {
     }
 
     static void RegisterEntity(GameEntity gameEntity) {
-        reconcileIsoEntityIDs();
         if (gameEntity != null && gameEntity.hasComponents()) {
             if (gameEntity.componentSize() != 1 || !gameEntity.hasComponent(ComponentType.Script)) {
+                reconcileIsoEntityIDs();
                 if (GameClient.client) {
                     long entityNetID = gameEntity.getEntityNetID();
                     if (entityNetID == -1L) {
@@ -259,8 +259,8 @@ public class GameEntityManager {
     }
 
     static void UnregisterEntity(GameEntity gameEntity, boolean offloadToMeta) {
-        reconcileIsoEntityIDs();
         if (gameEntity != null && gameEntity.addedToEntityManager) {
+            reconcileIsoEntityIDs();
             if (!GameClient.client && !wasClient) {
                 DebugType.Entity
                     .noise(

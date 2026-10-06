@@ -75,3 +75,25 @@ native world loading, actual component packet callbacks, Lua integration, or
 meta persistence: verify crafting/resource networking, unload/reload and meta
 conversion, object movement and server restart in multiplayer before declaring
 runtime compatibility. Scheduling decoupling is a separate subsequent change.
+
+## Loading regression correction
+
+The initial patch flushed before the RegisterEntity component eligibility guard
+and before UnregisterEntity's registered-state guard. GameEntity.addToWorld invokes
+RegisterEntity even for ordinary objects with no components, so grid-square loading
+could repeatedly scan every exposed registered bucket without registering anything.
+That amplification was not represented by the earlier five-registered-object
+integrated replay.
+
+The flush now runs only after those guards pass. A production-method loading probe
+with 128 exposed registered objects and 4,000 skipped registrations plus 2,000
+skipped removals went from 768,000 raw-member validations to zero. Illustrative
+single-run fixture time was 37.412 ms before and 0.653 ms after; these are not live
+chunk-load measurements or stable timing guarantees. The work-count regression is
+asserted by the default registry fixture, which now passes 70,458 assertions.
+
+Actual eligible registrations/unregistrations and registry reads still validate
+the full exposed registered set. That remaining O(boundaries * exposed members)
+path must be measured under loading-scale populations; this correction does not
+claim that all registration amplification is solved. No registry freshness checks
+were removed from actual consumers and no live deployment was performed.

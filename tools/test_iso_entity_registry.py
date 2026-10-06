@@ -1,6 +1,7 @@
 """42.21 production registry boundaries, square mutation hooks and ID reconciliation."""
 from pathlib import Path
 import subprocess
+import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -37,7 +38,7 @@ def build_sources():
         "zombie/entity/Engine.java": "package zombie.entity;public class Engine{public final java.util.Set<GameEntity> objects=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());public void addEntity(GameEntity o){objects.add(o);o.addedToEngine=true;}public void removeEntity(GameEntity o){objects.remove(o);o.addedToEngine=false;}}",
         "zombie/entity/GameEntity.java": """package zombie.entity;public class GameEntity{
           public boolean addedToEntityManager,addedToEngine,scheduledForEngineRemoval,removingFromEngine;
-          public boolean hasComponents(){return true;}public int componentSize(){return 1;}public boolean hasComponent(ComponentType type){return false;}
+          public boolean components=true,scriptOnly;public boolean hasComponents(){return components;}public int componentSize(){return 1;}public boolean hasComponent(ComponentType type){return scriptOnly&&type==ComponentType.Script;}
           public long getEntityNetID(){return 123;}public String getGameEntityType(){return "fixture";}public String getEntityFullTypeDebug(){return "fixture";}
           public void sendRequestSyncGameEntity(){}public Object getComponentBits(){return null;}public Component getComponentForIndex(int i){return new Component();}
           public Component removeComponent(ComponentType c){return null;}public void removeComponent(Component c){}public void releaseComponent(ComponentType c){}public void addComponent(Component c){}public void connectComponents(){}
@@ -89,7 +90,7 @@ def main():
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(p).replace("\\", "/") + '"' for p in paths))
         subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-d", str(work / "classes"), "@" + str(args)], check=True)
-        subprocess.run([str(ROOT / "jdk/bin/java.exe"), "-cp", str(work / "classes"), "zombie.entity.RegistryTest"], check=True)
+        subprocess.run([str(ROOT / "jdk/bin/java.exe"), "-cp", str(work / "classes"), "zombie.entity.RegistryTest", *sys.argv[1:]], check=True)
 
 
 HARNESS = r"""package zombie.entity;import java.util.*;import zombie.iso.*;import zombie.network.GameServer;import zombie.ApocBRServerTelemetryLite;import zombie.debug.DebugType;
@@ -103,7 +104,16 @@ public class RegistryTest{
    for(IsoObject o:live){long id=expected(o);check(GameEntityManager.GetEntity(id)==o,"registry current identity");check(o.getEntityNetID()==id,"cached ID matches expected");}
    for(var e:GameEntityManager.idToEntityMap.entrySet())if(e.getValue() instanceof IsoObject o)check(expected(o)==e.getKey(),"no stale key");
  }
+ static long loadingProbe(){
+   reset();for(int n=0;n<32;n++){IsoGridSquare sq=new IsoGridSquare(2000+n,2000,0);for(int j=0;j<4;j++)register(object(sq));sq.objects.getElements();}
+   GameEntityManager.GetEntity(0);ApocBRServerTelemetryLite.counters.clear();GameEntity plain=new GameEntity();plain.components=false;GameEntity script=new GameEntity();script.scriptOnly=true;
+   long start=System.nanoTime();for(int n=0;n<2000;n++){GameEntityManager.RegisterEntity(plain);GameEntityManager.RegisterEntity(script);GameEntityManager.UnregisterEntity(plain);}
+   double ms=(System.nanoTime()-start)/1e6;long checked=ApocBRServerTelemetryLite.counters.getOrDefault("entities.registry.rawArrayChecked",0L);
+   System.out.printf(java.util.Locale.ROOT,"Loading probe: 128 registered objects, 4000 skipped registrations + 2000 skipped removals; %d raw-member checks, %.3f ms%n",checked,ms);return checked;
+ }
  public static void main(String[] args){
+   if(args.length>0){loadingProbe();return;}
+   check(loadingProbe()==0,"nonregistering objects must not validate registry");
    reset();IsoGridSquare sq=new IsoGridSquare(100,200,0);IsoObject floor=object(sq);floor.floor=true;IsoObject first=object(sq),second=object(sq);register(first);register(second);
    // Shift a surviving registered entity, then query its NEW ID before calling its getter.
    GameEntityManager.UnregisterEntity(first);sq.objects.remove(first);check(!first.addedToEngine,"unregister lifecycle");check(GameEntityManager.GetEntity(expected(second))==second,"shifted lookup before getter");validate(List.of(second));
