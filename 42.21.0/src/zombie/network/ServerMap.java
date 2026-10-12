@@ -368,6 +368,7 @@ public class ServerMap {
         ObjectIDManager.getInstance().checkForSaveDataFile(true);
         ImportantAreaManager.getInstance().saveDataFile();
         VehiclesDB2.instance.Reset();
+        zombie.popman.NetworkZombiePacker.getInstance().shutdown();
         GameServer.udpEngine.Shutdown();
         ServerGUI.shutdown();
         SteamUtils.shutdown();

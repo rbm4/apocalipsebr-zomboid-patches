@@ -1,5 +1,27 @@
 # Server telemetry (schema 3)
 
+## Immutable asynchronous zombie sending, 2026-10-12
+
+See [async data flow, bounds, and validation](ASYNC-ZOMBIE-SENDING.md).
+`network.zombies.dispatch` measures the full main-thread connection-send entry,
+including relay selection, retained controls, and admission checks.
+`network.zombies.snapshot` measures live-state capture inside dispatch, with
+`snapshot.authorization` for the authorization-list/hash work. Selected
+`packetPrepare` is inside snapshot, not inside the old synchronous send timer.
+`network.zombies.completions` measures nonblocking main-thread completion handling.
+`awaitAndSend` now encloses that handling; it no longer joins sending workers.
+Historical `network.zombies.send` and `workerWait` should be absent after restart.
+
+`network.zombies.async.send` is worker elapsed time, including its `async.assemble`
+and `async.transport` children. `async.queueDelay` measures time from submission
+to worker execution, not CPU work. These phases overlap main-thread/simulation
+work and cannot be summed into tick cost. `zombieJobs.submitted` now counts admitted
+immutable batches. New `zombies.async.*` counters cover snapshotBytes,
+backpressure, failed, exceptions, and packetCapacityDeferred. Backpressure delays
+new capture without consuming requests or advancing connection timers; failures
+retry retained controls and valid requests. Scope older phase descriptions below
+to the corresponding implementation revision.
+
 ## Vanilla ID restoration
 
 The added registry reconciliation implementation is removed. Network-ID getter fallback and entity registration, lookup and removal use
