@@ -38,6 +38,7 @@ import zombie.util.PZSQLUtils;
 import zombie.util.Pool;
 import zombie.util.PooledObject;
 import zombie.util.Type;
+import zombie.savefile.ApocBRVehicleDatabase;
 
 public final class VehiclesDB2 {
     public static final int INVALID_ID = -1;
@@ -49,6 +50,9 @@ public final class VehiclesDB2 {
     private final VehiclesDB2.WorldStreamerThread worldStreamer = new VehiclesDB2.WorldStreamerThread();
 
     public void init() {
+        if (GameServer.server && ApocBRVehicleDatabase.enabled()) {
+            this.worldStreamer.store = new PostgresStore();
+        }
         this.worldStreamer.store.init(this.main.usedIds, this.main.seenChunks);
     }
 
@@ -666,6 +670,76 @@ public final class VehiclesDB2 {
         }
     }
 
+    private static final class PostgresStore extends VehiclesDB2.IVehicleStore {
+        final ApocBRVehicleDatabase database = new ApocBRVehicleDatabase();
+
+        @Override void init(TIntHashSet usedIDs, TIntHashSet seenChunks) {
+            usedIDs.clear(); seenChunks.clear();
+            if (Core.getInstance().isNoSave()) return;
+            try {
+                for (ApocBRVehicleDatabase.Location location : this.database.initialize()) {
+                    usedIDs.add(location.id()); seenChunks.add(location.wy() << 16 | location.wx());
+                }
+                DebugLog.log("[ApocBR][Postgres] vehicle database ready; backend=PostgreSQL");
+            } catch (SQLException failure) {
+                throw new IllegalStateException("PostgreSQL vehicles startup failed; complete migration/import before startup", failure);
+            }
+        }
+        @Override void Reset() { } // Per-operation leases; ServerMap closes the shared pool after Reset.
+
+        private VehicleBuffer buffer(ApocBRVehicleDatabase.Vehicle row) {
+            VehicleBuffer buffer = new VehicleBuffer();
+            buffer.id=row.id(); buffer.wx=row.wx(); buffer.wy=row.wy();
+            buffer.x=row.x(); buffer.y=row.y(); buffer.worldVersion=row.worldVersion(); buffer.inMeta=row.inMeta();
+            buffer.setBytes(row.data());
+            boolean serialise=buffer.bb.get()!=0;
+            byte classID=buffer.bb.get();
+            return serialise && classID==IsoObject.getFactoryVehicle().getClassID() ? buffer : null;
+        }
+
+        @Override void loadChunk(IsoChunk chunk, ThrowingBiConsumer<IsoChunk,VehicleBuffer,IOException> consumer) throws IOException {
+            if (chunk==null || Core.getInstance().isNoSave()) return;
+            try {
+                for (ApocBRVehicleDatabase.Vehicle row : this.database.loadChunk(chunk.wx,chunk.wy)) {
+                    VehicleBuffer buffer=this.buffer(row);
+                    if (buffer!=null) consumer.accept(chunk,buffer);
+                }
+            } catch (Exception failure) { ExceptionLogger.logException(failure); }
+        }
+        @Override void loadChunk(int wx,int wy,ThrowingConsumer<VehicleBuffer,IOException> consumer) throws IOException {
+            if (Core.getInstance().isNoSave()) return;
+            try {
+                for (ApocBRVehicleDatabase.Vehicle row : this.database.loadChunk(wx,wy)) {
+                    VehicleBuffer buffer=this.buffer(row);
+                    if (buffer!=null) consumer.accept(buffer);
+                }
+            } catch (Exception failure) { ExceptionLogger.logException(failure); }
+        }
+        @Override void loadVehiclesInMeta(ThrowingConsumer<VehicleBuffer,IOException> consumer) throws IOException {
+            if (Core.getInstance().isNoSave()) return;
+            try {
+                for (ApocBRVehicleDatabase.Vehicle row : this.database.loadMeta()) {
+                    VehicleBuffer buffer=this.buffer(row);
+                    if (buffer!=null) consumer.accept(buffer);
+                }
+            } catch (Exception failure) { ExceptionLogger.logException(failure); }
+        }
+        @Override void updateVehicle(VehicleBuffer buffer) {
+            if (Core.getInstance().isNoSave()) return;
+            try {
+                ByteBuffer bytes=buffer.bb.duplicate(); bytes.rewind();
+                byte[] data=new byte[bytes.remaining()]; bytes.get(data);
+                this.database.save(new ApocBRVehicleDatabase.Vehicle(buffer.id,buffer.wx,buffer.wy,
+                        buffer.x,buffer.y,buffer.worldVersion,buffer.inMeta,data));
+            } catch (Exception failure) { ExceptionLogger.logException(failure); }
+        }
+        @Override void removeVehicle(int id) {
+            if (Core.getInstance().isNoSave()) return;
+            try { this.database.remove(id); }
+            catch (Exception failure) { ExceptionLogger.logException(failure); }
+        }
+    }
+
     private static final class SQLStore extends VehiclesDB2.IVehicleStore {
         Connection conn;
         final VehiclesDB2.VehicleBuffer vehicleBuffer = new VehiclesDB2.VehicleBuffer();
@@ -1101,7 +1175,7 @@ public final class VehiclesDB2 {
     }
 
     private static final class WorldStreamerThread {
-        final VehiclesDB2.IVehicleStore store = new VehiclesDB2.SQLStore();
+        VehiclesDB2.IVehicleStore store = new VehiclesDB2.SQLStore();
         final ConcurrentLinkedQueue<VehiclesDB2.QueueItem> queue = new ConcurrentLinkedQueue<>();
         final VehiclesDB2.VehicleBuffer vehicleBuffer = new VehiclesDB2.VehicleBuffer();
 

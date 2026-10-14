@@ -22,6 +22,7 @@ import zombie.network.PacketTypes;
 import zombie.network.packets.INetworkPacket;
 import zombie.savefile.ClientPlayerDB;
 import zombie.savefile.ServerPlayerDB;
+import zombie.savefile.ApocBRPlayerDatabase;
 
 @PacketSetting(ordering = 0, priority = 1, reliability = 3, requiredCapability = Capability.LoginOnServer, handlingType = 3)
 public class LoadPlayerProfilePacket implements INetworkPacket {
@@ -165,6 +166,21 @@ public class LoadPlayerProfilePacket implements INetworkPacket {
             PacketTypes.PacketType.LoadPlayerProfile.doPacket(b);
             this.write(b);
             PacketTypes.PacketType.LoadPlayerProfile.send(connection);
+        } else if (ApocBRPlayerDatabase.enabled()) {
+            boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
+            if (coop) ServerPlayerDB.getInstance().serverConvertNetworkCharacter(connection.getUserName(),connection.getIDStr());
+            try {
+                ApocBRPlayerDatabase.Profile profile=new ApocBRPlayerDatabase().load(Core.gameSaveWorld,
+                        coop?connection.getIDStr():connection.getUserName(),this.playerIndex,coop);
+                this.isExist=profile!=null;
+                if (profile!=null) {
+                    this.x=profile.x(); this.y=profile.y(); this.z=profile.z(); this.buffer=profile.data();
+                    this.worldVersion=profile.worldVersion(); this.isDead=profile.dead(); this.username=profile.splitUsername();
+                }
+                ByteBufferWriter b=connection.startPacket();
+                PacketTypes.PacketType.LoadPlayerProfile.doPacket(b); this.write(b);
+                PacketTypes.PacketType.LoadPlayerProfile.send(connection);
+            } catch (SQLException failure) { ExceptionLogger.logException(failure); }
         } else if (ServerPlayerDB.getInstance().conn != null) {
             if (GameServer.coop && SteamUtils.isSteamModeEnabled()) {
                 ServerPlayerDB.getInstance().serverConvertNetworkCharacter(connection.getUserName(), connection.getIDStr());

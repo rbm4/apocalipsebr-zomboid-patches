@@ -38,6 +38,7 @@ public class PostgresConnectorTest {
         Integer existingId;
         Map<Integer,Object> lookupParams;
         String lookupSql;
+        List<String> prepared=new ArrayList<>();
         Map<Integer,Object> params = new HashMap<>();
         String sql;
         DataSource source() {
@@ -52,7 +53,7 @@ public class PostgresConnectorTest {
         }
         public Object invoke(Object proxy, Method method, Object[] args) throws Throwable {
             switch(method.getName()) {
-                case "prepareStatement": sql=(String)args[0]; params.clear();
+                case "prepareStatement": sql=(String)args[0]; params.clear(); prepared.add(sql);
                     return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{PreparedStatement.class}, this);
                 case "setString", "setInt", "setFloat", "setBoolean", "setBytes", "setTimestamp":
                     params.put((Integer)args[0], args[1]); return null;
@@ -93,6 +94,8 @@ public class PostgresConnectorTest {
         check(fake.lookupSql.contains("username=?") && fake.lookupParams.get(1).equals("alice"), "dedicated identity");
         check(fake.params.get(1).equals("world") && fake.params.get(9).equals(249), "world and format");
         check(fake.sql.stripLeading().startsWith("INSERT INTO"), "empty table inserts player with DB generated id");
+        check(fake.prepared.get(0).contains("SHARE ROW EXCLUSIVE") && fake.prepared.get(1).startsWith("SELECT id"),
+            "transaction locks writers before missing-player lookup");
         check(fake.params.size()==12 && !fake.sql.contains("server_key") && !fake.sql.contains("ON CONFLICT"), "vanilla schema without extra columns or unique index");
         PSQLException missingTable = new PSQLException(new ServerErrorMessage(
             "SERROR\0C42P01\0Mrelation \"public.networkplayers\" does not exist\0DPRIVATE_ROW_DATA\0\0"));
@@ -181,7 +184,9 @@ public class DisabledCheck {
 
 patch = (ROOT / "42.21.0/src/zombie/savefile/ServerPlayerDB.java").read_text(encoding="utf-8")
 worker = (ROOT / "42.21.0/src/zombie/network/ServerPlayersVehicles.java").read_text(encoding="utf-8")
-assert patch.index("ApocBRPostgresConnector.enqueue") < patch.index("this.serverUpdateNetworkCharacterInt(characterData)")
-assert "ApocBRPostgresConnector.process();" in patch
+assert "ApocBRPostgresConnector.enqueue" not in patch
+assert "ApocBRPostgresConnector.savePlayerSnapshot" in patch
+assert "ApocBRPostgresConnector.process();" not in patch
+assert "ApocBRPostgresConnector.process();" in worker
 assert "finally" in worker and "ApocBRPostgresConnector.shutdown();" in worker
 print("Vanilla worker integration checks passed")

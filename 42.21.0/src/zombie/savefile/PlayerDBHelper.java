@@ -184,6 +184,9 @@ public final class PlayerDBHelper {
     }
 
     public static boolean containsNetworkPlayer(String saveDir, String name, String world) throws SQLException {
+        if (ApocBRPlayerDatabase.enabled()) {
+            return !Core.getInstance().isNoSave() && new ApocBRPlayerDatabase().containsUser(world,name);
+        }
         if (Core.getInstance().isNoSave()) {
             return false;
         } else {
@@ -212,6 +215,7 @@ public final class PlayerDBHelper {
     }
 
     public static void removePlayer(String saveDir, String name, String world) throws SQLException {
+        if (ApocBRPlayerDatabase.enabled()) { new ApocBRPlayerDatabase().removeUser(world,name); return; }
         File dbFile = new File(saveDir + File.separator + "players.db");
         if (dbFile.exists()) {
             dbFile.setReadable(true, false);

@@ -51,6 +51,7 @@ public class ServerPlayersVehicles {
 
         void runInner() {
             ServerPlayerDB.getInstance().process();
+            zombie.savefile.ApocBRPostgresConnector.process();
             VehiclesDB2.instance.updateWorldStreamer();
 
             try {

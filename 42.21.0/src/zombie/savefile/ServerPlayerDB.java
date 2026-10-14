@@ -63,6 +63,16 @@ public final class ServerPlayerDB {
     }
 
     private void create() {
+        if (ApocBRPlayerDatabase.enabled()) {
+            this.charactersToSave = new ConcurrentLinkedQueue<>();
+            try {
+                new ApocBRPlayerDatabase().validate();
+                DebugLog.log("[ApocBR][Postgres] player database ready; backend=PostgreSQL");
+            } catch (SQLException failure) {
+                throw new IllegalStateException("PostgreSQL player schema unavailable; complete migration/import before startup",failure);
+            }
+            return;
+        }
         this.conn = PlayerDBHelper.create();
         this.charactersToSave = new ConcurrentLinkedQueue<>();
 
@@ -81,22 +91,15 @@ public final class ServerPlayerDB {
         }
     }
 
-    public void process() {
+    public synchronized void process() {
         if (!this.charactersToSave.isEmpty()) {
             for (ServerPlayerDB.NetworkCharacterData characterData = this.charactersToSave.poll();
                 characterData != null;
                 characterData = this.charactersToSave.poll()
             ) {
-                ApocBRPostgresConnector.enqueue(Core.gameSaveWorld, characterData.username,
-                    characterData.steamid, characterData.playerIndex, characterData.playerName,
-                    characterData.x, characterData.y, characterData.z, characterData.worldVersion,
-                    characterData.isDead, characterData.splitUsername, characterData.buffer,
-                    GameServer.coop && SteamUtils.isSteamModeEnabled(), characterData.capturedAtMillis);
                 this.serverUpdateNetworkCharacterInt(characterData);
-                ApocBRPostgresConnector.process();
             }
         }
-        ApocBRPostgresConnector.process();
     }
 
     @Deprecated
@@ -124,6 +127,7 @@ public final class ServerPlayerDB {
                 throw new RuntimeException(var2);
             }
         }
+        synchronized (this) { } // Include a polled save still committing inside process().
     }
 
     public void serverUpdateNetworkCharacter(IsoPlayer player, int playerIndex, UdpConnection connection) {
@@ -131,6 +135,15 @@ public final class ServerPlayerDB {
     }
 
     private void serverUpdateNetworkCharacterInt(ServerPlayerDB.NetworkCharacterData data) {
+        if (ApocBRPlayerDatabase.enabled()) {
+            try {
+                ApocBRPostgresConnector.savePlayerSnapshot(new ApocBRPostgresConnector.Snapshot(
+                    Core.gameSaveWorld,data.username,data.steamid,data.playerIndex,data.playerName,
+                    data.x,data.y,data.z,data.worldVersion,data.isDead,data.splitUsername,
+                    GameServer.coop && SteamUtils.isSteamModeEnabled(),data.capturedAtMillis,data.buffer));
+            } catch (SQLException | IllegalArgumentException failure) { ExceptionLogger.logException(failure); }
+            return;
+        }
         if (data.playerIndex >= 0 && data.playerIndex < 4) {
             if (this.conn != null) {
                 DebugType.Multiplayer.debugln("Save player \"%s\"", data.username);
@@ -206,6 +219,11 @@ public final class ServerPlayerDB {
     }
 
     public void serverConvertNetworkCharacter(String username, String steamIdStr) {
+        if (ApocBRPlayerDatabase.enabled()) {
+            try { new ApocBRPlayerDatabase().convert(Core.gameSaveWorld,username,steamIdStr); }
+            catch (SQLException failure) { ExceptionLogger.logException(failure); }
+            return;
+        }
         try {
             String sqlUpdate = "UPDATE networkPlayers SET steamid=? WHERE username=? AND world=? AND (steamid is null or steamid = '')";
 
@@ -228,6 +246,7 @@ public final class ServerPlayerDB {
     }
 
     public IsoPlayer serverLoadNetworkCharacter(int playerIndex, String idStr) {
+        if (ApocBRPlayerDatabase.enabled()) return this.loadPostgresPlayer(playerIndex,idStr);
         if (playerIndex < 0 || playerIndex >= 4) {
             return null;
         } else if (this.conn == null) {
@@ -312,6 +331,7 @@ public final class ServerPlayerDB {
     }
 
     public String getNetworkUserSteamID(String saveDir, String name, String world) throws SQLException {
+        if (ApocBRPlayerDatabase.enabled()) return new ApocBRPlayerDatabase().steamId(world,name);
         if (this.conn == null) {
             return null;
         } else {
@@ -345,6 +365,35 @@ public final class ServerPlayerDB {
                 }
             }
         }
+    }
+
+    public int countOtherNetworkAccounts(String steamid,String username) throws SQLException {
+        if (ApocBRPlayerDatabase.enabled()) return new ApocBRPlayerDatabase().countOtherAccounts(steamid,username);
+        try (PreparedStatement statement=this.conn.prepareStatement("SELECT COUNT(id) FROM networkPlayers WHERE steamid=? AND username<>?")) {
+            statement.setString(1,steamid); statement.setString(2,username);
+            try (ResultSet rows=statement.executeQuery()) { return rows.next()?rows.getInt(1):0; }
+        }
+    }
+
+    private IsoPlayer loadPostgresPlayer(int slot,String identity) {
+        boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
+        try {
+            ApocBRPlayerDatabase.Profile profile=new ApocBRPlayerDatabase().load(Core.gameSaveWorld,identity,slot,coop);
+            if (profile==null) return null;
+            byte[] data=profile.data();
+            if (data==null) throw new IOException("Player snapshot has no bytes");
+            IsoPlayer player=new IsoPlayer(IsoWorld.instance.currentCell);
+            player.serverPlayerIndex=slot;
+            try { player.load(ByteBuffer.wrap(data),profile.worldVersion()); }
+            catch (Exception failure) {
+                DebugType.General.printException(failure,"The server cannot load player data.",LogSeverity.Error);
+                // Preserve the native failed-deserialization deletion branch, with an explicit transaction.
+                new ApocBRPlayerDatabase().delete(Core.gameSaveWorld,identity,slot,coop);
+                return null;
+            }
+            if (profile.dead()) { player.getBodyDamage().setOverallBodyHealth(0.0F); player.setHealth(0.0F); }
+            player.remote=true; return player;
+        } catch (Exception failure) { ExceptionLogger.logException(failure); return null; }
     }
 
     private static final class NetworkCharacterData {

@@ -14,7 +14,7 @@ import org.postgresql.util.PSQLException;
 import org.postgresql.util.ServerErrorMessage;
 import zombie.debug.DebugLog;
 
-/** Testing mirror only. Called by ServerPlayersVehicles, never the simulation thread. */
+/** Shared game datasource; native APIs own scheduling, with legacy mirror helpers retained. */
 public final class ApocBRPostgresConnector {
     private static volatile ApocBRPostgresConnector instance;
     private static boolean configured;
@@ -65,7 +65,7 @@ public final class ApocBRPostgresConnector {
         this.log = log;
     }
 
-    private static ApocBRPostgresConnector current() {
+    private static synchronized ApocBRPostgresConnector current() {
         if (configured) return instance;
         configured = true;
         if (!Boolean.getBoolean("apocbr.postgres.enabled")) {
@@ -85,10 +85,10 @@ public final class ApocBRPostgresConnector {
             pg.setConnectTimeout(3);
             pg.setSocketTimeout(3);
             pg.setTcpKeepAlive(true);
-            pg.setApplicationName("ApocBR-player-mirror");
+            pg.setApplicationName("ApocBR-game-persistence");
             HikariConfig config = new HikariConfig();
             config.setDataSource(pg);
-            config.setPoolName("ApocBR-player-mirror");
+            config.setPoolName("ApocBR-game-persistence");
             config.setMaximumPoolSize(size);
             config.setMinimumIdle(Math.min(2, size));
             config.setConnectionTimeout(2_000);
@@ -98,7 +98,7 @@ public final class ApocBRPostgresConnector {
             config.setMaxLifetime(1_800_000);
             instance = new ApocBRPostgresConnector(new HikariDataSource(config),
                     code -> DebugLog.log("[ApocBR][Postgres] " + code));
-            instance.log.accept("mirror enabled; pool maximum=" + size);
+            instance.log.accept("connector enabled; pool maximum=" + size);
         } catch (RuntimeException | LinkageError failure) {
             DebugLog.log("[ApocBR][Postgres] CONFIG_OR_DEPENDENCY_FAILURE; mirror disabled");
         }
@@ -125,6 +125,50 @@ public final class ApocBRPostgresConnector {
         if (target != null) target.drain();
     }
 
+    /** Preserve synchronous ServerWorldDatabase return values using a caller-owned pool lease. */
+    public static Connection borrowServerConnection() throws SQLException {
+        return borrowConnection(true);
+    }
+
+    public static Connection borrowVehicleConnection() throws SQLException {
+        return borrowConnection(false);
+    }
+
+    public static Connection borrowPlayerConnection() throws SQLException { return borrowConnection(false); }
+
+    /** Native ServerPlayerDB queue owns scheduling in authoritative player mode. */
+    public static void savePlayerSnapshot(Snapshot snapshot) throws SQLException {
+        ApocBRPostgresConnector target = current();
+        if (target == null || target.closed) throw new SQLException("PostgreSQL players unavailable", "08001");
+        try {
+            target.write(snapshot);
+            synchronized (target) { target.committed++; target.lastError="NONE"; }
+            target.log.accept("player snapshot committed; bytes=" + snapshot.data.length);
+        } catch (SQLException failure) {
+            synchronized (target) { target.failures++; target.lastError="SQL_FAILURE"; }
+            target.log.accept("PLAYER_SQL_FAILURE; " + sqlDiagnostic(failure));
+            throw new SQLException("PostgreSQL player save failed; SQLState=" + failure.getSQLState(), failure.getSQLState());
+        }
+    }
+
+    private static Connection borrowConnection(boolean autoCommit) throws SQLException {
+        ApocBRPostgresConnector target = current();
+        if (target == null || target.closed) throw new SQLException("PostgreSQL connector unavailable", "08001");
+        try {
+            Connection connection = target.datasource.getConnection();
+            try {
+                connection.setAutoCommit(autoCommit);
+                connection.setSchema("public");
+                return connection;
+            } catch (SQLException failure) {
+                connection.close();
+                throw failure;
+            }
+        } catch (SQLException failure) {
+            throw new SQLException("PostgreSQL connection acquisition failed", failure.getSQLState());
+        }
+    }
+
     /** Safe observation only; does not initialize the pool or make SQL calls. */
     public static Status mirrorStatus() {
         return instance == null ? new Status(0, 0, 0, 0, 0, "DISABLED_OR_UNCONFIGURED", false) : instance.status();
@@ -139,7 +183,11 @@ public final class ApocBRPostgresConnector {
             instance.drain(1);
             if (instance.status().lastError().equals("SQL_FAILURE")) break;
         }
-        instance.close();
+    }
+
+    /** After native vehicle Reset has flushed its remaining work. */
+    public static void closePool() {
+        if (instance != null) instance.close();
     }
 
     public synchronized Status status() {
@@ -264,21 +312,21 @@ public final class ApocBRPostgresConnector {
                     }
                 }
                 try (PreparedStatement statement = connection.prepareStatement(id == null ? INSERT : UPDATE)) {
-                statement.setQueryTimeout(2);
-                statement.setString(1, s.world);
-                statement.setString(2, s.username);
-                statement.setString(3, s.steamid);
-                statement.setInt(4, s.playerIndex);
-                statement.setString(5, s.name);
-                statement.setFloat(6, s.x);
-                statement.setFloat(7, s.y);
-                statement.setFloat(8, s.z);
-                statement.setInt(9, s.worldVersion);
-                statement.setBoolean(10, s.dead);
-                statement.setString(11, s.splitUsername);
-                statement.setBytes(12, s.data);
-                if (id != null) statement.setInt(13, id);
-                if (statement.executeUpdate() != 1) throw new SQLException("Unexpected affected rows", "P0001");
+                    statement.setQueryTimeout(2);
+                    statement.setString(1, s.world);
+                    statement.setString(2, s.username);
+                    statement.setString(3, s.steamid);
+                    statement.setInt(4, s.playerIndex);
+                    statement.setString(5, s.name);
+                    statement.setFloat(6, s.x);
+                    statement.setFloat(7, s.y);
+                    statement.setFloat(8, s.z);
+                    statement.setInt(9, s.worldVersion);
+                    statement.setBoolean(10, s.dead);
+                    statement.setString(11, s.splitUsername);
+                    statement.setBytes(12, s.data);
+                    if (id != null) statement.setInt(13, id);
+                    if (statement.executeUpdate() != 1) throw new SQLException("Unexpected affected rows", "P0001");
                 }
                 connection.commit();
             } catch (SQLException | RuntimeException failure) {

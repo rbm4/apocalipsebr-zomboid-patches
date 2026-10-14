@@ -730,6 +730,9 @@ public class GameServer {
             try {
                 ServerWorldDatabase.instance.create();
             } catch (ClassNotFoundException | SQLException var44) {
+                if (zombie.savefile.ApocBRServerDatabase.enabled()) {
+                    throw new IllegalStateException("PostgreSQL server database startup failed; complete backend migrations before starting the server");
+                }
                 DebugType.General.printException(var44, "", LogSeverity.Error);
             }
 
