@@ -192,6 +192,9 @@ public class ChatServer {
 
                 message.setText(WordsFilter.getInstance().hideBadWords(message.getText(), result, ServerOptions.getInstance().badWordReplacement.getValue()));
                 this.sendMessage(message);
+                if (chat.getType() == ChatType.general) {
+                    zombie.network.ApocBRBackendBridgeHooks.onChat(connection, message.getAuthor(), message.getText(), "general");
+                }
                 logger.write("Message " + message + " sent to chat (id = " + chat.getID() + ") members", "info");
             }
         }

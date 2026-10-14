@@ -47,6 +47,7 @@ public class WorldMessagePacket implements INetworkPacket {
 
             this.sendToClients(PacketTypes.PacketType.WorldMessage, null);
             GameServer.discordBot.sendMessage(this.username, this.message);
+            zombie.network.ApocBRBackendBridgeHooks.onChat(connection, this.username, this.message, "world");
             LoggerManager.getLogger("chat").write(connection.getIndex() + " \"" + connection.getUserName() + "\" A \"" + this.message + "\"");
         }
     }

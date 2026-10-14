@@ -360,6 +360,7 @@ public class ServerMap {
         MapCollisionData.instance.stop();
         AnimalPopulationManager.getInstance().stop();
         ZombiePopulationManager.instance.stop();
+        ApocBRBackendBridgeHooks.shutdown();
         RCONServer.shutdown();
         ServerMap.ServerCell.chunkLoader.quit();
         ServerWorldDatabase.instance.close();

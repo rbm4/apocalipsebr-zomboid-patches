@@ -8576,6 +8576,7 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
         } else {
             this.DoDeath(killer.getUseHandWeapon(), killer, isGory);
         }
+        zombie.network.ApocBRBackendBridgeHooks.onDeath(this, killer);
     }
 
     private void onDied(IsoGameCharacter sender, IsoDeadBody body) {

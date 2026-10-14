@@ -1201,6 +1201,7 @@ public class GameServer {
                                 GameWindow.fileSystem.updateAsyncTransactions();
                                 WorldMapVisitedServer.getInstance().update();
                             }
+                            ApocBRBackendBridgeHooks.onTick();
                             ApocBRServerTelemetryLite.recordTick(System.nanoTime() - startServerCycle);
                         } catch (Exception var59) {
                             if (mainCycleExceptionLogCount-- > 0) {
@@ -1569,6 +1570,7 @@ public class GameServer {
             }
         }
 
+        ApocBRBackendBridgeHooks.initialize();
         LuaEventManager.triggerEvent("OnServerStarted");
         if (SteamUtils.isSteamModeEnabled()) {
             CoopSlave.status("UI_ServerStatus_Started");
@@ -1832,6 +1834,7 @@ public class GameServer {
     }
 
     public static void sendHelicopter(float x, float y, boolean active) {
+        ApocBRBackendBridgeHooks.onHelicopter(active);
         HelicopterPacket packet = new HelicopterPacket();
         packet.set(x, y, active);
 
@@ -2657,6 +2660,7 @@ public class GameServer {
 
     public static void disconnectPlayer(IsoPlayer player, IConnection connection) {
         if (player != null) {
+            ApocBRBackendBridgeHooks.onConnection(player, false);
             SafetySystemManager.storeSafety(player);
             ChatServer.getInstance().disconnectPlayer(player.getOnlineID());
             if (player.getVehicle() != null) {
@@ -2896,6 +2900,7 @@ public class GameServer {
                     player.username = username;
                     ChatServer.getInstance().initPlayer(player.onlineId);
                     connection.setFullyConnected();
+                    ApocBRBackendBridgeHooks.onConnection(player, true);
                     sendWeather(connection);
                     SafetySystemManager.restoreSafety(player);
                     if (!connection.getRole().hasCapability(Capability.HideFromSteamUserList)) {

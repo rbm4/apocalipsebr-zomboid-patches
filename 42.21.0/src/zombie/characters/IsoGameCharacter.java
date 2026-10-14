@@ -5505,6 +5505,7 @@ public abstract class IsoGameCharacter
         } else {
             IsoPlayer player = Type.tryCastTo(this, IsoPlayer.class);
             IsoGameCharacter.PerkInfo info = this.getPerkInfo(perk);
+            int previousLevel = info == null ? 0 : info.level;
             if (info != null) {
                 info.level++;
                 if (player != null && !"Tutorial".equals(Core.gameMode) && this.getHoursSurvived() > 0.016666666666666666) {
@@ -5534,6 +5535,7 @@ public abstract class IsoGameCharacter
 
                 LuaEventManager.triggerEvent("LevelPerk", this, perk, info.level, true);
             }
+            zombie.network.ApocBRBackendBridgeHooks.onLevelUp(this, perk, previousLevel, info.level, false);
         }
     }
 
@@ -18543,6 +18545,7 @@ public abstract class IsoGameCharacter
             }
 
             IsoGameCharacter.this.getNetworkCharacterAI().updateXpChecker();
+            zombie.network.ApocBRBackendBridgeHooks.onPerksLoaded(IsoGameCharacter.this, oldPerkLevels);
         }
 
         public void save(ByteBuffer output) throws IOException {

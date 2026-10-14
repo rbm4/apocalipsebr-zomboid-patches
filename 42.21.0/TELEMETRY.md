@@ -1,5 +1,13 @@
 # Server telemetry (schema 3)
 
+## Optional radio/backend observation capture
+
+The opt-in [backend bridge](BACKEND-BRIDGE.md) forwards the existing captured
+`playersOnline` and `world.zombies` numbers from `ApocBRServerTelemetryLite.emit`.
+The latter is published as `loadedZombieCount`: it is the loaded-cell zombie list
+size, not the whole map's virtual population. The telemetry JSON schema and metric
+definitions remain unchanged; no extra zombie scan or network work runs in emit.
+
 ## Immutable asynchronous zombie sending, 2026-10-12
 
 See [async data flow, bounds, and validation](ASYNC-ZOMBIE-SENDING.md).
