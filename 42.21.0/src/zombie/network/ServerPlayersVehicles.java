@@ -36,12 +36,16 @@ public class ServerPlayersVehicles {
 
         @Override
         public void run() {
-            while (!this.stop) {
-                try {
-                    this.runInner();
-                } catch (Throwable var2) {
-                    ExceptionLogger.logException(var2);
+            try {
+                while (!this.stop) {
+                    try {
+                        this.runInner();
+                    } catch (Throwable var2) {
+                        ExceptionLogger.logException(var2);
+                    }
                 }
+            } finally {
+                zombie.savefile.ApocBRPostgresConnector.shutdown();
             }
         }
 

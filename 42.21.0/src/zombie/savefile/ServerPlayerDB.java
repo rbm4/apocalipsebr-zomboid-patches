@@ -87,9 +87,16 @@ public final class ServerPlayerDB {
                 characterData != null;
                 characterData = this.charactersToSave.poll()
             ) {
+                ApocBRPostgresConnector.enqueue(Core.gameSaveWorld, characterData.username,
+                    characterData.steamid, characterData.playerIndex, characterData.playerName,
+                    characterData.x, characterData.y, characterData.z, characterData.worldVersion,
+                    characterData.isDead, characterData.splitUsername, characterData.buffer,
+                    GameServer.coop && SteamUtils.isSteamModeEnabled(), characterData.capturedAtMillis);
                 this.serverUpdateNetworkCharacterInt(characterData);
+                ApocBRPostgresConnector.process();
             }
         }
+        ApocBRPostgresConnector.process();
     }
 
     @Deprecated
@@ -341,6 +348,7 @@ public final class ServerPlayerDB {
     }
 
     private static final class NetworkCharacterData {
+        final long capturedAtMillis = System.currentTimeMillis();
         byte[] buffer;
         String username;
         String steamid;
