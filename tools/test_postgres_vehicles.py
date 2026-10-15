@@ -87,6 +87,11 @@ public class VehicleDatabaseTest {
   Field instance=ApocBRPostgresConnector.class.getDeclaredField("instance");instance.setAccessible(true);instance.set(null,connector);
   Field configured=ApocBRPostgresConnector.class.getDeclaredField("configured");configured.setAccessible(true);configured.setBoolean(null,true);
   System.setProperty("apocbr.postgres.enabled","true");
+  System.clearProperty("apocbr.postgres.vehicles.enabled");
+  check(!ApocBRVehicleDatabase.enabled(),"master enablement retains native SQLite vehicles by default");
+  System.setProperty("apocbr.postgres.vehicles.enabled","false");
+  check(!ApocBRVehicleDatabase.enabled(),"explicit false retains SQLite vehicles");
+  System.setProperty("apocbr.postgres.vehicles.enabled","true");
   var engine=zombie.vehicles.VehiclesDB2.instance;engine.init();
   Field ws=engine.getClass().getDeclaredField("worldStreamer");ws.setAccessible(true);Object worker=ws.get(engine);
   Field storeField=worker.getClass().getDeclaredField("store");storeField.setAccessible(true);Object store=storeField.get(worker);

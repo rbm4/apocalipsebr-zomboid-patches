@@ -93,8 +93,11 @@ trial with the backend migrations and copied data.
 servers. `savefile/ApocBRVehicleDatabase.java` routes its SQL through the shared
 connector/pool. This replaces `vehicles.db` for that mode; it is not a write mirror.
 
-`apocbr.postgres.vehicles.enabled` defaults to `apocbr.postgres.enabled`.
-Set `-Dapocbr.postgres.vehicles.enabled=false` explicitly to keep SQLite vehicles.
+`apocbr.postgres.vehicles.enabled` defaults to **false**, independently of the
+master switch. Vehicles use the native SQLite `vehicles.db` path for the current
+observation phase. PostgreSQL vehicle storage requires an explicit
+`-Dapocbr.postgres.vehicles.enabled=true`; remove any existing true override or set
+it to false to retain SQLite.
 Client/single-player selection remains the original SQLite store. Switching stores
 requires restart. There is no PostgreSQL-error fallback to SQLite and no engine
 schema creation or data import.

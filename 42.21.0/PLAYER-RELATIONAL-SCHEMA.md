@@ -57,6 +57,7 @@ Configuration (JVM options before the main class):
 ```text
 -Dapocbr.postgres.enabled=true
 -Dapocbr.postgres.players.enabled=false
+-Dapocbr.postgres.vehicles.enabled=false
 -Dapocbr.postgres.playerRelational.enabled=true
 -Dapocbr.postgres.playerRelational.captureBudgetMs=8
 ```

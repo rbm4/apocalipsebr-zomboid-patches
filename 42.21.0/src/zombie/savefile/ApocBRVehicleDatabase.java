@@ -17,8 +17,7 @@ public final class ApocBRVehicleDatabase {
     ApocBRVehicleDatabase(ConnectionFactory connections) { this.connections = connections; }
 
     public static boolean enabled() {
-        return Boolean.parseBoolean(System.getProperty("apocbr.postgres.vehicles.enabled",
-                System.getProperty("apocbr.postgres.enabled", "false")));
+        return Boolean.parseBoolean(System.getProperty("apocbr.postgres.vehicles.enabled", "false"));
     }
 
     public record Location(int id, int wx, int wy) {}
