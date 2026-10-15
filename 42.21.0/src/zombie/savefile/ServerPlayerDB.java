@@ -283,8 +283,10 @@ public final class ServerPlayerDB {
                             IsoPlayer player = new IsoPlayer(IsoWorld.instance.currentCell);
                             player.serverPlayerIndex = playerIndex;
 
-                            try {
+                            java.util.List<String> relationalLoadIssues;
+                            try (ApocBRPlayerLoadQuality quality = ApocBRPlayerRelationalSync.enabled() ? ApocBRPlayerLoadQuality.begin() : null) {
                                 player.load(bufferForLoadPlayer, worldversion);
+                                relationalLoadIssues = quality == null ? java.util.List.of() : quality.issues();
                             } catch (Exception var22) {
                                 DebugType.General.printException(var22, "The server cannot load player data.", LogSeverity.Error);
                                 rs.close();
@@ -312,6 +314,8 @@ public final class ServerPlayerDB {
                             }
 
                             player.remote = true;
+                            ApocBRPlayerRelationalSync.offerLoadedPlayer(player,sqlIdx,Core.gameSaveWorld,idStr,
+                                    playerIndex,worldversion,data,relationalLoadIssues);
                             return player;
                         } catch (Exception var23) {
                             ExceptionLogger.logException(var23);

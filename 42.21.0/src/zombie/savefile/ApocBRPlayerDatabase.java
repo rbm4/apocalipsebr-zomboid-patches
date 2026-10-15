@@ -14,8 +14,7 @@ public final class ApocBRPlayerDatabase {
     ApocBRPlayerDatabase(ConnectionFactory connections) { this.connections = connections; }
 
     public static boolean enabled() {
-        return GameServer.server && Boolean.parseBoolean(System.getProperty("apocbr.postgres.players.enabled",
-                System.getProperty("apocbr.postgres.enabled", "false")));
+        return GameServer.server && Boolean.parseBoolean(System.getProperty("apocbr.postgres.players.enabled", "false"));
     }
 
     public record Profile(int id, float x, float y, float z, byte[] data, int worldVersion,

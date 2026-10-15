@@ -1902,6 +1902,7 @@ public class InventoryItem extends GameEntity {
                 try {
                     item.load(input, worldVersion);
                 } catch (Exception var10) {
+                    zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_LOAD_FAILED");
                     ExceptionLogger.logException(var10);
                     item = null;
                 }
@@ -1909,6 +1910,7 @@ public class InventoryItem extends GameEntity {
 
             if (item != null) {
                 if (dataLen != -1 && input.position() != position + dataLen) {
+                    zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_LENGTH_MISMATCH");
                     input.position(position + dataLen);
                     DebugLog.log(
                         "InventoryItem.loadItem() data length not matching, resetting buffer position to '"
@@ -1925,6 +1927,7 @@ public class InventoryItem extends GameEntity {
 
                 return item;
             } else {
+                zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_SKIPPED");
                 if (input.position() >= position + dataLen) {
                     if (input.position() >= position + dataLen) {
                         input.position(position + dataLen);

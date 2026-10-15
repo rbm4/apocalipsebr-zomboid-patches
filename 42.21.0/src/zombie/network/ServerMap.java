@@ -369,6 +369,7 @@ public class ServerMap {
         ObjectIDManager.getInstance().checkForSaveDataFile(true);
         ImportantAreaManager.getInstance().saveDataFile();
         VehiclesDB2.instance.Reset();
+        zombie.savefile.ApocBRPlayerRelationalSync.shutdown();
         zombie.savefile.ApocBRPostgresConnector.closePool();
         zombie.popman.NetworkZombiePacker.getInstance().shutdown();
         GameServer.udpEngine.Shutdown();
@@ -446,6 +447,7 @@ public class ServerMap {
     }
 
     public void preupdate() {
+        zombie.savefile.ApocBRPlayerRelationalSync.updateMain();
         this.lastTick = System.nanoTime();
         mapLoading = DebugType.MapLoading.isEnabled();
 

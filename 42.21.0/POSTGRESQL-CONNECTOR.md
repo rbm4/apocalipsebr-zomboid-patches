@@ -154,6 +154,11 @@ when implementing this store.
 
 ## Authoritative multiplayer players
 
+The SQLite-to-relational initial sync implementation, V5 entity/column contract,
+configuration and limits are in [PLAYER-RELATIONAL-SCHEMA.md](PLAYER-RELATIONAL-SCHEMA.md).
+It writes `player_rel` after successful SQLite loading; the optional PostgreSQL
+byte-store implementation described here is a separate opt-in path.
+
 `savefile/ServerPlayerDB.java` now routes its native multiplayer persistence API
 through `ApocBRPlayerDatabase` and the shared connector. There is no character
 mirror enqueue in the native save path and no SQLite player connection opened in
@@ -161,9 +166,12 @@ PostgreSQL mode. The public `conn` field remains for binary compatibility with
 SQLite consumers, but is null in PostgreSQL mode; the core consumers below no
 longer rely on it.
 
-`apocbr.postgres.players.enabled` defaults to `apocbr.postgres.enabled` on dedicated
-servers. Set `-Dapocbr.postgres.players.enabled=false` to retain SQLite multiplayer
-players. Client/single-player `localPlayers` behavior remains unchanged. Backend
+`apocbr.postgres.players.enabled` defaults to **false**, independently of the master
+`apocbr.postgres.enabled` setting. Native SQLite multiplayer players remain the
+source for the planned initial relational backfill. Explicitly set
+`-Dapocbr.postgres.players.enabled=true` only to opt into the authoritative PostgreSQL
+byte store described below. An existing explicit true must be removed or changed
+to false to use SQLite. Client/single-player `localPlayers` behavior remains unchanged. Backend
 changes require a restart and do not fall back automatically on SQL errors.
 
 ### Configuration and schema
@@ -332,7 +340,7 @@ explicit deployment configuration.
 temporary installations: JAR copies, classpath updates, repeated apply, dry run,
 revert, spaces in paths, backups and preservation of independent launcher edits.
 
-Validation: the Windows dry build compiled 107 patched sources into 412 class
+Validation: the Windows dry build compiled 114 patched sources into 428 class
 files against the actual game JAR. A temporary Java smoke check imported
 `PGSimpleDataSource` and `Driver`, accepted a PostgreSQL JDBC URL and verified
 driver registration on the game's bundled Java 25 runtime, without opening a

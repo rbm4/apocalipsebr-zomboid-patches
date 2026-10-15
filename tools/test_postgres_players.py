@@ -104,6 +104,12 @@ public class PlayersTest {
   Field instance=ApocBRPostgresConnector.class.getDeclaredField("instance");instance.setAccessible(true);instance.set(null,connector);
   Field configured=ApocBRPostgresConnector.class.getDeclaredField("configured");configured.setAccessible(true);configured.setBoolean(null,true);
   System.setProperty("apocbr.postgres.enabled","true");
+  System.clearProperty("apocbr.postgres.players.enabled");
+  check(!ApocBRPlayerDatabase.enabled(),"master PostgreSQL enablement retains SQLite players by default");
+  System.setProperty("apocbr.postgres.players.enabled","false");
+  check(!ApocBRPlayerDatabase.enabled(),"explicit false retains SQLite players");
+  System.setProperty("apocbr.postgres.players.enabled","true");
+  check(ApocBRPlayerDatabase.enabled(),"authoritative PostgreSQL players require explicit opt-in");
   ServerPlayerDB.setAllow(true);ServerPlayerDB db=ServerPlayerDB.getInstance();
   check(db.conn==null,"PostgreSQL mode never opens players.db");
   var helper=new ApocBRPlayerDatabase();check(helper.load("servertest","alice",0,false)==null,"new account profile absent");
@@ -139,7 +145,9 @@ with tempfile.TemporaryDirectory(prefix='apocbr_players_') as folder:
     for name,body in STUBS.items():
         path=target/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body,encoding='utf-8');files.append(path)
     harness=target/'PlayersTest.java';harness.write_text(HARNESS,encoding='utf-8');files.append(harness)
-    files += [SRC/'savefile'/name for name in ['ApocBRPostgresConnector.java','ApocBRPlayerDatabase.java','ServerPlayerDB.java','PlayerDBHelper.java']]
+    files += [SRC/'savefile'/name for name in ['ApocBRPostgresConnector.java','ApocBRPlayerDatabase.java','ServerPlayerDB.java','PlayerDBHelper.java',
+        'ApocBRPlayerLoadQuality.java','ApocBRPlayerRelationalSchema.java','ApocBRPlayerRelationalAccess.java',
+        'ApocBRPlayerRelationalCapture.java','ApocBRPlayerRelationalDatabase.java','ApocBRPlayerRelationalSync.java']]
     files.append(SRC/'network/packets/connection/LoadPlayerProfilePacket.java')
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,files)],check=True)
