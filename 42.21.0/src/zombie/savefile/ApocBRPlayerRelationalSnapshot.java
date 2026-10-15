@@ -267,12 +267,33 @@ final class ApocBRPlayerRelationalSnapshot {
             return List.copyOf(result);
         }catch(ReflectiveOperationException error){throw new IllegalStateException(error);}
     }
-    static Snapshot copy(Object player) {
+    /** Worker-only identity lookup from the detached inventory, bounded independently of alias history. */
+    static List<Integer> nativeItemIds(Snapshot snapshot) {
+        Set<Node> seen=Collections.newSetFromMap(new IdentityHashMap<>());Set<Integer> ids=new LinkedHashSet<>();Deque<Node> pending=new ArrayDeque<>();
+        Node inventory=(Node)snapshot.player().get("inventory");for(Object item:list(inventory.get("items")))pending.add((Node)item);
+        while(!pending.isEmpty()) {
+            Node item=pending.removeFirst();if(!seen.add(item))continue;
+            if(seen.size()>10_000)throw new IllegalStateException("LIVE_ITEM_LIMIT");ids.add(number(item.get("id")));
+            if(item.types.contains("InventoryContainer")){Node bag=(Node)item.get("container");for(Object child:list(bag.get("items")))pending.add((Node)child);}
+            if(item.types.contains("HandWeapon"))for(Object child:list(item.get("attachmentList")))pending.add((Node)child);
+        }
+        return List.copyOf(ids);
+    }
+    static Snapshot copy(Object player) {return copy(player,false);}
+    static Snapshot copyLive(Object player) {return copy(player,true);}
+    private static Snapshot copy(Object player,boolean live) {
         var copy=new ApocBRPlayerRelationalSnapshot();Instant captured=Instant.now();Node p=copy.begin(player);
         copy.project(p,player,"character_state","inventory_container_id","source_offset_x","source_offset_y");
         copy.project(p,player,"character_effects");copy.project(p,player,"character_presentation","tag_r","tag_g","tag_b");
-        copy.fields(p,player,"tagColor.r","tagColor.g","tagColor.b","savedVehicleSeat");
-        if(number(get(player,"savedVehicleSeat"))>=0)copy.fields(p,player,"savedVehicleX","savedVehicleY","savedVehicleRunning");
+        copy.fields(p,player,"tagColor.r","tagColor.g","tagColor.b");
+        if(live) {
+            // IsoPlayer.save writes the current vehicle; savedVehicle* only describes the previous load.
+            Object vehicle=get(player,"vehicle");int seat=vehicle==null?-1:number(call(vehicle,"getSeat",player));copy.put(p,"savedVehicleSeat",seat);
+            if(seat>=0){copy.put(p,"savedVehicleX",copy.scalar(get(vehicle,"x")));copy.put(p,"savedVehicleY",copy.scalar(get(vehicle,"y")));copy.put(p,"savedVehicleRunning",copy.scalar(get(vehicle,"isEngineRunning")));}
+        } else {
+            copy.fields(p,player,"savedVehicleSeat");
+            if(number(get(player,"savedVehicleSeat"))>=0)copy.fields(p,player,"savedVehicleX","savedVehicleY","savedVehicleRunning");
+        }
         copy.put(p,"inventory",copy.container(get(player,"inventory"),0));
         Object descriptor=get(player,"descriptor");Node desc=copy.projected(descriptor,"character_descriptor");
         if(desc!=null){copy.put(desc,"extra",copy.sequence(get(descriptor,"extra"),copy::scalar));copy.put(desc,"XPBoostMap",copy.mapping(get(descriptor,"XPBoostMap"),copy::scalar));}copy.put(p,"descriptor",desc);

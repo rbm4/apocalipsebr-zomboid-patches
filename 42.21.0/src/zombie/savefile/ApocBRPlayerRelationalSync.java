@@ -26,15 +26,17 @@ public final class ApocBRPlayerRelationalSync {
         ApocBRPlayerRelationalDatabase.Candidate candidate;
         final ApocBRPlayerRelationalSnapshot.Snapshot snapshot;
         final byte[] sourceBytes;
+        final UUID session;
+        volatile boolean cancelled;
         final long snapshotNanos;
         volatile UUID character;
         final int bytes;
         long readyAt;
         final long expires=System.nanoTime()+120_000_000_000L;
         int attempts;
-        Pending(ApocBRPlayerRelationalDatabase.Candidate candidate,ApocBRPlayerRelationalSnapshot.Snapshot snapshot,byte[] sourceBytes,long snapshotNanos) {
+        Pending(ApocBRPlayerRelationalDatabase.Candidate candidate,ApocBRPlayerRelationalSnapshot.Snapshot snapshot,byte[] sourceBytes,long snapshotNanos,UUID session) {
             this.candidate=candidate;this.snapshot=snapshot;this.sourceBytes=sourceBytes;
-            this.snapshotNanos=snapshotNanos;bytes=snapshot.bytes()+sourceBytes.length;
+            this.snapshotNanos=snapshotNanos;this.session=session;bytes=snapshot.bytes()+sourceBytes.length;
         }
     }
     public static boolean enabled() {
@@ -43,16 +45,23 @@ public final class ApocBRPlayerRelationalSync {
     }
     public static void offerLoadedPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,
                                          int worldVersion,byte[] sourceBytes,List<String> loadIssues) {
+        offerPlayer(player,sqlId,world,identity,slot,worldVersion,sourceBytes,loadIssues,null);
+    }
+    public static void offerCreatedPlayer(IsoPlayer player,String world,String identity,int slot,int worldVersion) {
+        offerPlayer(player,0,world,identity,slot,worldVersion,new byte[0],List.of(),UUID.randomUUID());
+    }
+    private static void offerPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,int worldVersion,byte[] sourceBytes,List<String> loadIssues,UUID life) {
         if(!enabled()||stopping)return;
         try {
             String label=ZomboidFileSystem.instance.getCurrentSaveDir();
             String configured=System.getProperty("apocbr.postgres.playerRelational.sourceDatasetId");
             UUID dataset=configured==null?ApocBRPlayerRelationalDatabase.named("sqlite-save:"+label):UUID.fromString(configured);
             var candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,label,world,identity,
-                    GameServer.coop&&SteamUtils.isSteamModeEnabled(),slot,sqlId,worldVersion,null,loadIssues);
+                    GameServer.coop&&SteamUtils.isSteamModeEnabled(),slot,sqlId,worldVersion,null,loadIssues,life);
             UUID session=ApocBRPlayerRelationalMutations.register(player,candidate);
             synchronized(PENDING) {
                 Pending existing=PENDING.get(candidate.key());
+                if(existing!=null&&life!=null){existing.cancelled=true;QUEUE.remove(existing);forget(existing);existing=null;}
                 if(existing!=null){if(existing.character!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,existing.character);return;}
                 if(PENDING.size()>=LIMIT){deferred();return;}
                 // Reserve worst-case input capacity before reading/copying player state.
@@ -60,7 +69,7 @@ public final class ApocBRPlayerRelationalSync {
                 if(QUEUED_BYTES.get()>BYTE_LIMIT-ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-sourceBytes.length){deferred();return;}
                 long started=System.nanoTime();
                 var snapshot=ApocBRPlayerRelationalSnapshot.copy(player);
-                Pending pending=new Pending(candidate,snapshot,sourceBytes.clone(),System.nanoTime()-started);
+                Pending pending=new Pending(candidate,snapshot,sourceBytes.clone(),System.nanoTime()-started,session);
                 PENDING.put(candidate.key(),pending);QUEUED_BYTES.addAndGet(pending.bytes);
                 if(!QUEUE.offer(pending)){forget(pending);deferred();return;}
             }
@@ -81,23 +90,24 @@ public final class ApocBRPlayerRelationalSync {
                 liveTurn=true;
                 Pending pending=QUEUE.poll();
                 if(pending==null){if(ApocBRPlayerRelationalMutations.flushOne(DATABASE))continue;pending=QUEUE.poll(50,TimeUnit.MILLISECONDS);if(pending==null)continue;}
-                if(System.nanoTime()>pending.expires){forget(pending);continue;}
+                if(pending.cancelled||System.nanoTime()>pending.expires){forget(pending);continue;}
                 if(System.nanoTime()<pending.readyAt){QUEUE.offer(pending);if(!ApocBRPlayerRelationalMutations.flushOne(DATABASE))Thread.sleep(10);continue;}
                 String phase="CHECK_FAILURE";
                 try {
                     var receipt=DATABASE.inspect(pending.candidate);
-                    pending.character=receipt.character();
-                    ApocBRPlayerRelationalMutations.bindCurrent(pending.candidate,receipt.character());
+                    pending.character=pending.candidate.newLife()==null?receipt.character():pending.candidate.newLife();
+                    ApocBRPlayerRelationalMutations.bind(pending.candidate,pending.session,pending.character);
+                    if(pending.cancelled){forget(pending);continue;}
                     if(receipt.complete()){log("SYNC_SKIPPED; receipt=complete; snapshotMs="+TimeUnit.NANOSECONDS.toMillis(pending.snapshotNanos));forget(pending);continue;}
-                    if(pending.candidate.blobHash()==null) {
+                    if(pending.candidate.blobHash()==null&&pending.candidate.newLife()==null) {
                         // Provenance only; changing source bytes never invent a new character life.
                         String hash=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(pending.sourceBytes));
                         var c=pending.candidate;
-                        pending.candidate=new ApocBRPlayerRelationalDatabase.Candidate(c.dataset(),c.label(),c.world(),c.identity(),c.coop(),c.slot(),c.nativeId(),c.worldVersion(),hash,c.loadIssues());
+                        pending.candidate=new ApocBRPlayerRelationalDatabase.Candidate(c.dataset(),c.label(),c.world(),c.identity(),c.coop(),c.slot(),c.nativeId(),c.worldVersion(),hash,c.loadIssues(),c.newLife());
                     }
                     phase="CAPTURE_FAILED";
                     long started=System.nanoTime();
-                    var graph=new ApocBRPlayerRelationalCapture(receipt.character(),receipt.aliases(),Long.MAX_VALUE)
+                    var graph=new ApocBRPlayerRelationalCapture(pending.character,receipt.aliases(),Long.MAX_VALUE)
                             .capture(pending.snapshot,pending.candidate.loadIssues());
                     long elapsed=System.nanoTime()-started;
                     log("CAPTURE_COMPLETE; snapshotMs="+TimeUnit.NANOSECONDS.toMillis(pending.snapshotNanos)
@@ -105,6 +115,7 @@ public final class ApocBRPlayerRelationalSync {
                             +"; rows="+graph.rows().size()+"; bytes="+graph.bytes());
                     phase="SQL_FAILURE";
                     long writeStarted=System.nanoTime();
+                    if(pending.cancelled){forget(pending);continue;}
                     if(DATABASE.persist(pending.candidate,receipt,graph)) {
                         log((graph.issues().isEmpty()?"SYNC_COMPLETE":"SYNC_INCOMPLETE")+"; items="+graph.items()+"; rows="+graph.rows().size()+"; issues="+graph.issues().size()+"; writeMs="+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-writeStarted));
                         forget(pending);

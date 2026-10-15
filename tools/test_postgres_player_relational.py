@@ -254,7 +254,7 @@ public class RelationalTest {
   public float voicePitch=1;public List<String> extra=List.of();public Map<Object,Object> XPBoostMap=Map.of();
  }
  public static class P {
-  public Container inventory=new Container();public Object descriptor,table,leftHandItem,rightHandItem;
+  public Container inventory=new Container();public Object descriptor,table,leftHandItem,rightHandItem,vehicle;
   public boolean forbidExportReads;
   public Object getPrimaryHandItem(){if(forbidExportReads)throw new AssertionError("live player read after handoff");return leftHandItem;}public Object getSecondaryHandItem(){return rightHandItem;}
   public XP xp=new XP();public Traits characterTraits=new Traits();public Stats stats=new Stats();public Fitness fitness=new Fitness();public Nutrition nutrition=new Nutrition();public Damage bodyDamage=new Damage();public Human visual=new Human();
@@ -511,6 +511,7 @@ public class RelationalTest {
  static class LiveFake {
   UUID dataset=candidate(1).dataset(),character=UUID.randomUUID(),head=UUID.randomUUID(),nextHead;
   String reason="sqlite_load";boolean fail,missing,missingRow,locked=true,stale;int codec=ApocBRPlayerRelationalCapture.CODEC_VERSION;volatile int commits,rollbacks,opened,closed;long revision;
+  List<ApocBRPlayerRelationalCapture.Row> graphRows=List.of();List<Object[]> aliasRows=List.of();int graphReads;
   List<String> queries=new ArrayList<>();List<Map<Integer,Object>> updates=new ArrayList<>();Map<String,List<Map<Integer,Object>>> bound=new LinkedHashMap<>();
   Connection open(){opened++;return(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{Connection.class},(o,m,a)->{
    switch(m.getName()){
@@ -526,9 +527,18 @@ public class RelationalTest {
        case "executeBatch":
         if(sql.startsWith("UPDATE player_rel.character_nutrition")&&fail)throw new SQLException("simulated","08006");
         updates.addAll(batch);bound.computeIfAbsent(sql,k->new ArrayList<>()).addAll(batch);int[] results=new int[batch.size()];Arrays.fill(results,missingRow?0:1);return results;
-       case "executeQuery":boolean[] advanced={false};return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{ResultSet.class},(r,rm,ra)->{
+       case "executeQuery":
+        if(sql.startsWith("SELECT native_item_id,")||sql.startsWith("SELECT DISTINCT ON (native_item_id)")) {
+         int[] at={-1};return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{ResultSet.class},(r,rm,ra)->{if(rm.getName().equals("next"))return ++at[0]<aliasRows.size();if(rm.getName().startsWith("get"))return aliasRows.get(at[0])[(int)ra[0]-1];return zero(rm.getReturnType());});
+        }
+        if(sql.startsWith("SELECT snapshot_id,")) {
+         graphReads++;String table=sql.split(" FROM player_rel.")[1].split(" ")[0];var selected=graphRows.stream().filter(row->row.table().equals(table)).toList();int[] at={-1};
+         var names=ApocBRPlayerRelationalSchema.TABLES.get(table).stream().map(ApocBRPlayerRelationalSchema.Column::name).toList();
+         return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{ResultSet.class},(r,rm,ra)->{if(rm.getName().equals("next"))return ++at[0]<selected.size();if(rm.getName().equals("getObject"))return selected.get(at[0]).values().get(names.get((int)ra[0]-1));return zero(rm.getReturnType());});
+        }
+        boolean[] advanced={false};return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{ResultSet.class},(r,rm,ra)->{
         switch(rm.getName()){
-         case "next":boolean result=!advanced[0]&&(!missing||sql.contains("advisory"));advanced[0]=true;return result;
+         case "next":boolean result=!advanced[0]&&!sql.startsWith("SELECT c.id FROM")&&(!missing||sql.contains("advisory"));advanced[0]=true;return result;
          case "getBoolean":return locked;
          case "getObject":int col=(int)ra[0];return col==1?character:col==2?head:dataset;
          case "getString":return (int)ra[0]==4||(int)ra[0]==3?"complete":reason;
@@ -600,6 +610,114 @@ public class RelationalTest {
   check(absent.keySet().stream().noneMatch(f->f.table().equals("character_descriptor")),"absent optional descriptor produces no deletion or default writes");
   check(fake.queries.stream().noneMatch(sql->sql.startsWith("DELETE")),"scalar extension does not invent row lifecycle operations");
  }
+
+ static ApocBRPlayerRelationalCapture.Graph liveGraph(P player,UUID character) {
+  return new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(ApocBRPlayerRelationalSnapshot.copy(player),List.of());
+ }
+ static void graphMutations()throws Exception {
+  UUID character=UUID.randomUUID();P player=new P();player.descriptor=new Descriptor();
+  var bag=new InventoryContainer(1);var a=new Item(2);var b=new Item(3);var removed=new Item(4);
+  a.visual=new ItemVisual();a.table=new LinkedHashMap<>(Map.of("counter",1L,"nullable","before"));
+  var fluid=new FluidContainer();a.components.add(fluid);a.componentSize=1;
+  player.inventory.items.addAll(List.of(bag,a,b,removed));player.leftHandItem=a;player.rightHandItem=a;
+  player.visual.blood=new byte[]{1,2};player.visual.bodyVisuals=List.of(new ItemVisual());
+  var wound=new zombie.characters.BodyDamage.BodyPart(zombie.characters.BodyDamage.BodyPartType.Hand_L,null);player.bodyDamage.bodyParts=List.of(wound);
+  var before=liveGraph(player,character);var indexed=ApocBRPlayerRelationalDelta.index(before.rows());
+  check(ApocBRPlayerRelationalDelta.diff(indexed,ApocBRPlayerRelationalDelta.index(liveGraph(player,character).rows())).isEmpty(),"repeat capture retains every item/visual/component/value-node identity and emits zero changes");
+  // Move a into a bag, swap root positions, delete one item, create another and switch equipment.
+  player.inventory.items.clear();player.inventory.items.addAll(List.of(b,bag,new Item(5)));bag.container.items.add(a);player.leftHandItem=b;player.rightHandItem=null;
+  a.condition=42;((ItemVisual)a.visual).blood[0]=99;((Map<String,Object>)a.table).put("counter",2L);((Map<?,?>)a.table).remove("nullable");fluid.fluids.get(0).amount=1;
+  player.knownRecipes=List.of("NewRecipe","AnotherRecipe");player.characterTraits.knownTraits=List.of("base:brave","base:strong");player.xp.xpMap.put("base:fitness",123f);
+  player.fitness.regularityMap.put("squats",0.5f);player.readLiterature.put("Book",5);player.visual.blood[1]=88;
+  player.savedVehicleSeat=2;player.savedVehicleX=10;player.savedVehicleY=20;
+  field(wound,"bandaged",true);field(wound,"bandageLife",5f);
+  var after=liveGraph(player,character);var next=ApocBRPlayerRelationalDelta.index(after.rows());var changes=ApocBRPlayerRelationalDelta.diff(indexed,next);
+  Set<String> tables=new HashSet<>();for(var c:changes)tables.add(c.key().table());
+  check(tables.containsAll(Set.of("item","item_location","equipment","visual_body_value","value_node","character_recipe","character_trait","character_perk","fitness_value","character_literature","character_vehicle_return","body_part")),"all pending collection families participate in graph dirty checks");
+  check(changes.stream().anyMatch(c->c.key().table().equals("item")&&c.columns().equals(List.of("condition"))),"item condition changes update only condition");
+  var replay=new LinkedHashMap<>(indexed);for(var c:changes){if(c.after()==null)replay.remove(c.key());else replay.put(c.key(),c.after());}
+  check(ApocBRPlayerRelationalDelta.diff(replay,next).isEmpty(),"CRUD replay reconstructs the entire new supported graph");
+  check(changes.stream().filter(c->c.key().table().equals("item_location")&&c.before()!=null&&c.after()!=null).allMatch(ApocBRPlayerRelationalDelta.Change::replace),"ownership/position moves free old unique-index destinations");
+  check(changes.stream().noneMatch(c->c.key().table().equals("component")),"fluid and Lua field changes preserve component IDs");
+  LiveFake fake=new LiveFake();fake.character=character;fake.reason="live_fields";fake.graphRows=before.rows();var db=new ApocBRPlayerRelationalDatabase(fake::open);
+  var batch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),character,Map.of(),java.time.Instant.now());
+  check(db.applyFields(batch,after),"full graph delta commits against a locked complete head");
+  check(fake.bound.keySet().stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.item SET condition=? WHERE")),"JDBC uses partial item updates");
+  check(fake.queries.stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.source_item_alias SET retired_at"))&&fake.queries.stream().anyMatch(sql->sql.startsWith("INSERT INTO player_rel.source_item_alias")),"deleted/new items retire and allocate source alias generations");
+  int firstInsert=100000,lastDelete=-1;for(int i=0;i<fake.queries.size();i++){String sql=fake.queries.get(i);if(sql.startsWith("DELETE FROM"))lastDelete=i;if(sql.startsWith("INSERT INTO player_rel.item_location"))firstInsert=Math.min(firstInsert,i);}
+  check(lastDelete<firstInsert,"all deletes precede destination inserts for swaps");
+  int reads=fake.graphReads;int statements=fake.queries.size();check(db.applyFields(batch,liveGraph(player,character)),"unchanged graph acknowledges successfully");
+  check(fake.graphReads==reads&&fake.queries.subList(statements,fake.queries.size()).stream().noneMatch(sql->sql.startsWith("UPDATE")||sql.startsWith("INSERT")||sql.startsWith("DELETE")),"unchanged capture uses bounded worker baseline cache and performs no writes");
+  a.condition=43;var failed=liveGraph(player,character);fake.stale=true;int commits=fake.commits;
+  try{db.applyFields(batch,failed);throw new AssertionError("stale graph accepted");}catch(SQLException expected){check(fake.commits==commits,"stale graph rolls back atomically");}fake.stale=false;
+  statements=fake.queries.size();check(db.applyFields(batch,failed),"failed graph remains retryable");
+  check(fake.queries.subList(statements,fake.queries.size()).stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.item SET condition=?")),"failed transaction never advances comparison cache");
+  var bad=new ApocBRPlayerRelationalCapture.Graph(after.snapshot(),character,after.capturedAt(),after.rows(),List.of("UNSUPPORTED_COMPONENT_Test"),after.bytes(),after.objects(),after.items(),after.containers(),after.edges());
+  int opened=fake.opened;try{db.applyFields(batch,bad);throw new AssertionError("incomplete graph accepted");}catch(SQLException expected){check(fake.opened==opened,"unsupported graph is rejected before SQL");}
+  player.descriptor=null;player.savedVehicleSeat=-1;player.table=null;var absent=liveGraph(player,character);
+  var removals=ApocBRPlayerRelationalDelta.diff(next,ApocBRPlayerRelationalDelta.index(absent.rows()));
+  check(removals.stream().anyMatch(c->c.key().table().equals("character_descriptor")&&c.after()==null)&&removals.stream().anyMatch(c->c.key().table().equals("character_vehicle_return")&&c.after()==null),"optional singleton deletion is represented explicitly");
+  // Every supported table has an explicit immutable logical key (including nullable visual owners).
+  for(var entry:ApocBRPlayerRelationalDelta.KEYS.entrySet())for(String column:entry.getValue())check(ApocBRPlayerRelationalSchema.TABLES.get(entry.getKey()).stream().anyMatch(c->c.name().equals(column)),"valid V5 logical key: "+entry.getKey()+"."+column);
+  check(fake.opened==fake.closed,"graph transactions return every connection lease");
+ }
+ static void graphQueue() {
+  var q=new ApocBRPlayerRelationalMutations.DirtyQueue();var c=candidate(1);UUID session=UUID.randomUUID(),character=UUID.randomUUID();
+  q.register(c.key(),session);q.bind(c.key(),session,character);var x=new ApocBRPlayerRelationalMutations.Field("character_state","x",null);
+  q.mark(c,session,Map.of(x,1f),0,java.time.Instant.EPOCH);var first=ApocBRPlayerRelationalSnapshot.copy(new P());
+  check(q.snapshot(c,session,first,0)&&q.bytes()==first.bytes(),"detached graph queue accounts bytes and replaces older scalar marks");
+  var batch=q.poll(0);check(batch.snapshot()==first&&batch.fields().isEmpty(),"graph and scalar marks share ordering and dispatch cadence");
+  P player=new P();player.x=2;var second=ApocBRPlayerRelationalSnapshot.copy(player);
+  check(q.snapshot(c,session,second,1)&&q.bytes()==first.bytes()+second.bytes(),"final capture can replace an in-flight graph within byte bound");
+  q.mark(c,session,Map.of(x,3f),2,java.time.Instant.EPOCH);q.finish(batch,true,3);
+  check(q.bytes()==second.bytes(),"old graph acknowledgement preserves and accounts newer snapshot");
+  var retry=q.poll(1_000_000_000L);check(retry.snapshot()==second&&retry.fields().get(x).value().equals(3f),"new scalar marks overlay the detached graph without regression");
+  q.finish(retry,false,1_000_000_000L);check(q.bytes()==second.bytes(),"failed graph stays charged and retryable");
+  retry=q.poll(3_000_000_000L);q.finish(retry,true,3_000_000_000L);check(q.bytes()==0&&q.size()==0,"graph commit drains exactly acknowledged bytes");
+  UUID replacement=UUID.randomUUID();q.register(c.key(),replacement);check(!q.mark(c,session,Map.of(x,4f),4_000_000_000L,java.time.Instant.EPOCH),"superseded player object cannot overwrite replacement session");
+ }
+
+ static class Vehicle {public float x=123,y=456;public boolean isEngineRunning=true;public int getSeat(Object player){return 2;}}
+ static void liveVehicle() {
+  P player=new P();player.savedVehicleSeat=1;player.savedVehicleX=1;player.savedVehicleY=2;
+  var nativeLoad=ApocBRPlayerRelationalSnapshot.copy(player);
+  check(nativeLoad.player().get("savedVehicleSeat").equals(1),"initial load preserves saved return location");
+  var onFoot=ApocBRPlayerRelationalSnapshot.copyLive(player);
+  check(onFoot.player().get("savedVehicleSeat").equals(-1),"live snapshot clears stale saved vehicle after exit");
+  player.vehicle=new Vehicle();var driving=ApocBRPlayerRelationalSnapshot.copyLive(player);
+  check(driving.player().get("savedVehicleSeat").equals(2)&&driving.player().get("savedVehicleX").equals(123f)&&driving.player().get("savedVehicleRunning").equals(true),"live snapshot follows native save contract for current vehicle seat/position/engine");
+ }
+ static void characterLives()throws Exception {
+  Fake f=new Fake();f.complete=true;f.dataset=candidate(1).dataset();f.character=UUID.randomUUID();f.head=UUID.randomUUID();
+  var base=candidate(1);UUID life=UUID.randomUUID();var c=new ApocBRPlayerRelationalDatabase.Candidate(base.dataset(),base.label(),base.world(),base.identity(),base.coop(),base.slot(),0,base.worldVersion(),null,List.of(),life);
+  var db=new ApocBRPlayerRelationalDatabase(f::open);var receipt=db.inspect(c);
+  check(!receipt.complete()&&receipt.character().equals(life)&&receipt.previousCharacter().equals(f.character)&&receipt.head().equals(f.head)&&receipt.aliases().isEmpty(),"creation does not reuse complete predecessor receipt or its item aliases");
+  var graph=liveGraph(new P(),life);check(db.persist(c,receipt,graph),"new character publishes against guarded predecessor head");
+  var characterInsert=f.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.character (")).findFirst().orElseThrow().getValue().getFirst();
+  check(characterInsert.get(1).equals(life)&&characterInsert.get(3).equals(8),"respawn allocates a distinct UUID and next slot incarnation");
+  var slotUpdate=f.bound.entrySet().stream().filter(e->e.getKey().startsWith("UPDATE player_rel.player_slot")).findFirst().orElseThrow().getValue().getFirst();
+  check(slotUpdate.get(1).equals(life)&&slotUpdate.get(3).equals(f.character),"active character switches only from inspected predecessor");
+  check(f.bound.keySet().stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.character SET retired_at")),"predecessor retirement shares publication transaction");
+  check(f.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.player_slot")).findFirst().orElseThrow().getValue().getFirst().get(2)==null,"new character never invents a native SQLite row ID");
+  check(f.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.snapshot")).findFirst().orElseThrow().getValue().getFirst().containsValue("new_character"),"creation provenance is distinguished from SQLite loads");
+  Fake incomplete=new Fake();incomplete.complete=true;incomplete.dataset=c.dataset();incomplete.character=f.character;incomplete.head=f.head;
+  var bad=new ApocBRPlayerRelationalCapture.Graph(graph.snapshot(),life,graph.capturedAt(),graph.rows(),List.of("UNSUPPORTED_COMPONENT_Test"),graph.bytes(),graph.objects(),graph.items(),graph.containers(),graph.edges());
+  check(new ApocBRPlayerRelationalDatabase(incomplete::open).persist(c,receipt,bad)&&incomplete.headWrites==0&&incomplete.bound.keySet().stream().noneMatch(sql->sql.startsWith("UPDATE player_rel.character SET retired_at")),"incomplete creation never retires previous life or publishes new head");
+  incomplete.pendingLife=life;var recoveryDb=new ApocBRPlayerRelationalDatabase(incomplete::open);var recovered=recoveryDb.inspect(base);
+  check(!recovered.complete()&&recovered.character().equals(life)&&recovered.previousCharacter().equals(f.character),"later native login resumes newer unpublished incarnation rather than skipping to previous complete life");
+  check(recoveryDb.persist(base,recovered,graph)&&incomplete.headWrites==1,"recovered staged incarnation can publish against guarded predecessor");
+ }
+
+ static void aliasGenerations()throws Exception {
+  P player=new P();player.inventory.items.add(new Item(99));var snapshot=ApocBRPlayerRelationalSnapshot.copy(player);LiveFake fake=new LiveFake();UUID old=UUID.randomUUID();
+  fake.aliasRows=Collections.singletonList(new Object[]{99,old,4,Timestamp.from(java.time.Instant.EPOCH)});
+  var batch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),fake.character,Map.of(),java.time.Instant.now(),snapshot,1);
+  var db=new ApocBRPlayerRelationalDatabase(fake::open);var graph=db.projectLive(batch);
+  UUID id=(UUID)graph.rows().stream().filter(row->row.table().equals("item")).findFirst().orElseThrow().values().get("id");
+  check(!id.equals(old)&&id.equals(ApocBRPlayerRelationalDatabase.named("item:"+fake.character+":99:generation:5")),"retired native IDs receive a new object identity for the next generation");
+  fake.aliasRows=Collections.singletonList(new Object[]{99,old,4,null});graph=db.projectLive(batch);
+  check(graph.rows().stream().filter(row->row.table().equals("item")).findFirst().orElseThrow().values().get("id").equals(old),"active native alias retains object identity");
+ }
  static void largeImport() {
   P player=new P();for(int i=0;i<600;i++)player.inventory.items.add(new Item(i+1));
   var input=ApocBRPlayerRelationalSnapshot.copy(player);
@@ -622,8 +740,9 @@ public class RelationalTest {
  }
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static class Fake {
+  UUID pendingLife;
   int opened,closed,commits,rollbacks,inserts,headWrites,batches,codecVersion=ApocBRPlayerRelationalCapture.CODEC_VERSION;boolean complete,fail,stale;UUID dataset,character,head;String status;
-  List<String> queries=new ArrayList<>(),itemNames=new ArrayList<>();
+  List<String> queries=new ArrayList<>(),itemNames=new ArrayList<>();Map<String,List<Map<Integer,Object>>> bound=new LinkedHashMap<>();
   Connection open(){opened++;return(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{Connection.class},(o,m,a)->{
    switch(m.getName()){
     case "close":closed++;return null;
@@ -635,11 +754,11 @@ public class RelationalTest {
      switch(method){
       case "executeQuery":boolean[] advanced={false};return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{ResultSet.class},(r,rm,ra)->{
        String name=rm.getName();
-       if(name.equals("next")){boolean found=sql.contains("advisory")||sql.equals("SELECT id FROM player_rel.player_slot WHERE world=? AND identity_mode=? AND identity_key=? AND player_index=?")||((complete||stale)&&sql.contains("active_character_id"));boolean result=found&&!advanced[0];advanced[0]=true;return result;}
+       if(name.equals("next")){boolean found=sql.startsWith("SELECT c.id FROM player_rel.character")&&pendingLife!=null||sql.startsWith("SELECT COALESCE(MAX(incarnation)")||sql.contains("advisory")||sql.equals("SELECT id FROM player_rel.player_slot WHERE world=? AND identity_mode=? AND identity_key=? AND player_index=?")||((complete||stale)&&!sql.startsWith("SELECT c.id FROM")&&sql.contains("active_character_id"));boolean result=found&&!advanced[0];advanced[0]=true;return result;}
        if(name.equals("getBoolean"))return true;
-       if(name.equals("getInt"))return ((int)ra[0])==5?codecVersion:1;
+       if(name.equals("getInt"))return sql.startsWith("SELECT COALESCE(MAX(incarnation)")?8:((int)ra[0])==5?codecVersion:1;
        if(name.equals("getString"))return "complete";
-       if(name.equals("getObject")){int index=(int)ra[0];if(sql.startsWith("SELECT id FROM"))return UUID.randomUUID();return index==1?character:index==2?head:dataset;}
+       if(name.equals("getObject")){int index=(int)ra[0];if(sql.startsWith("SELECT c.id FROM"))return pendingLife;if(sql.startsWith("SELECT id FROM"))return UUID.randomUUID();return index==1?character:index==2?head:dataset;}
        return zero(rm.getReturnType());
       });
       case "addBatch":
@@ -650,7 +769,7 @@ public class RelationalTest {
        queued[0]++;return null;
       case "clearBatch":queued[0]=0;return null;
       case "executeBatch":if(fail)throw new SQLException("simulated","08006");batches++;int[] result=new int[queued[0]];Arrays.fill(result,1);return result;
-      case "executeUpdate":if(sql.startsWith("INSERT"))inserts++;if(sql.contains("INSERT INTO player_rel.character_head"))headWrites++;if(sql.startsWith("UPDATE player_rel.snapshot"))status=(String)values.get(1);return 1;
+      case "executeUpdate":bound.computeIfAbsent(sql,k->new ArrayList<>()).add(new HashMap<>(values));if(sql.startsWith("INSERT"))inserts++;if(sql.contains("INSERT INTO player_rel.character_head"))headWrites++;if(sql.startsWith("UPDATE player_rel.snapshot"))status=(String)values.get(1);return 1;
       case "execute":return true;
      }return zero(pm.getReturnType());
     });
@@ -687,6 +806,21 @@ public class RelationalTest {
 
 
  static void worker()throws Exception {
+  {
+   Field tracked=ApocBRPlayerRelationalMutations.class.getDeclaredField("TRACKED");tracked.setAccessible(true);
+   Field selected=ApocBRPlayerRelationalMutations.class.getDeclaredField("graphPlayer");selected.setAccessible(true);
+   var offline=new zombie.characters.IsoPlayer();var off=candidate(999);UUID offSession=ApocBRPlayerRelationalMutations.register(offline,off);ApocBRPlayerRelationalMutations.bind(off,offSession,UUID.randomUUID());
+   List<zombie.characters.IsoPlayer> online=new ArrayList<>();
+   for(int i=0;i<200;i++){var p=new zombie.characters.IsoPlayer();online.add(p);var c=candidate(i);UUID session=ApocBRPlayerRelationalMutations.register(p,c);ApocBRPlayerRelationalMutations.bind(c,session,UUID.randomUUID());Object cursor=((Map<?,?>)tracked.get(null)).get(p);Field sample=cursor.getClass().getDeclaredField("nextSample");sample.setAccessible(true);sample.setLong(cursor,Long.MAX_VALUE);}
+   Set<Object> served=Collections.newSetFromMap(new IdentityHashMap<>());
+   for(int i=0;i<200;i++) {
+    ApocBRPlayerRelationalMutations.beginTick();for(var p:online)ApocBRPlayerRelationalMutations.observe(p);
+    Object chosen=selected.get(null);check(chosen!=null&&chosen!=offline&&served.add(chosen),"oldest due online player receives a fair turn independently of map order/offline inspection");
+    Object cursor=((Map<?,?>)tracked.get(null)).get(chosen);Field due=cursor.getClass().getDeclaredField("nextGraph");due.setAccessible(true);due.setLong(cursor,System.nanoTime()+100_000_000_000L);
+   }
+   ApocBRPlayerRelationalMutations.beginTick();ApocBRPlayerRelationalMutations.endTick();check(selected.get(null)==null,"tick selection releases its temporary player reference");
+   ApocBRPlayerRelationalMutations.shutdown();
+  }
   captures(); // Native login also loads the stat registry before the capture pump.
   Fake fake=new Fake();fake.complete=true;fake.dataset=ApocBRPlayerRelationalDatabase.named("sqlite-save:test-save");fake.character=UUID.randomUUID();fake.head=UUID.randomUUID();
   zombie.savefile.ApocBRPostgresConnector.connections=fake::open;
@@ -727,16 +861,24 @@ public class RelationalTest {
   until=System.nanoTime()+3_000_000_000L;
   while(live.commits<2&&System.nanoTime()<until)Thread.sleep(10);
   check(live.updates.stream().anyMatch(v->v.containsValue(123f))&&live.updates.stream().noneMatch(v->v.containsValue(999f)),"shared worker persists detached scalar changes after initial receipt binding");
+  live.graphRows=liveGraph(moving,live.character).rows();var newItem=new Item(888);newItem.name="before-worker";moving.inventory.items.add(newItem);
+  ApocBRPlayerRelationalMutations.finalSample(moving);newItem.name="after-worker";moving.forbidExportReads=true;
+  Field dirtyField=ApocBRPlayerRelationalMutations.class.getDeclaredField("DIRTY");dirtyField.setAccessible(true);var dirty=(ApocBRPlayerRelationalMutations.DirtyQueue)dirtyField.get(null);
+  until=System.nanoTime()+4_000_000_000L;while(dirty.size()>0&&System.nanoTime()<until)Thread.sleep(10);
+  check(dirty.size()==0&&live.graphReads>0,"shared worker projects and commits full detached graph patches");
+  check(live.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.item (")).flatMap(e->e.getValue().stream()).anyMatch(v->v.containsValue("before-worker")),"worker persists captured inventory state");
+  check(live.bound.values().stream().flatMap(List::stream).noneMatch(v->v.containsValue("after-worker")),"graph worker never reads mutable item after enqueue");
+  check(dirty.bytes()==0,"worker graph acknowledgement releases detached snapshot bytes");
   ApocBRPlayerRelationalSync.shutdown();check(fake.opened==fake.closed,"shutdown returns worker lease");
   check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();componentCodecs();mutationQueue();mutationDatabase();extendedMutations();largeImport();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();componentCodecs();mutationQueue();mutationDatabase();extendedMutations();graphMutations();graphQueue();liveVehicle();characterLives();aliasGenerations();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
  target=Path(folder);harness=target/'RelationalTest.java';native_harness=HARNESS[:HARNESS.index(' static void worker()')]+HARNESS[HARNESS.index(' public static void main'):];native_harness=native_harness.replace('if(args.length>0){worker();System.out.println(\"Worker checks=\"+checks);return;}','');harness.write_text(native_harness,encoding='utf-8')
- sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalLimits','ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalMutations','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
+ sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalLimits','ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalMutations','ApocBRPlayerRelationalDelta','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
  subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(harness)],check=True)
  subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.RelationalTest'],check=True)
  for mode in ['size-bytes','size-rows']:

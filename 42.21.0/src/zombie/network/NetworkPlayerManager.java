@@ -47,6 +47,7 @@ public class NetworkPlayerManager {
                     player.getNetworkCharacterAI().syncHealth();
                 }
             }
+            if (relational) ApocBRPlayerRelationalMutations.endTick();
         }
     }
 }

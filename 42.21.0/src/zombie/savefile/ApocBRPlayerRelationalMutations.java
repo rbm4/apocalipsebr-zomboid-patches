@@ -7,10 +7,15 @@ import zombie.characters.IsoPlayer;
 import zombie.debug.DebugLog;
 import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
-/** Bounded character scalar sampling on the game thread, versioned dirty fields on the exporter. */
+/** Game-thread scalar sampling and staggered detached reconciliation; worker-only relational deltas. */
 public final class ApocBRPlayerRelationalMutations {
     static final long CADENCE=1_000_000_000L;
     static final int MAX_PLAYERS=512,MAX_FIELDS=256;
+    private static final boolean RECONCILE=Boolean.parseBoolean(System.getProperty("apocbr.postgres.playerRelational.mutations.reconcile","true"));
+    private static final long GRAPH_CADENCE=Math.max(1000,Math.min(60000,Long.getLong("apocbr.postgres.playerRelational.mutations.reconcileMs",1000L)))*1_000_000L;
+    private static Cursor graphTurn;
+    private static IsoPlayer graphPlayer;
+    private static final AtomicLong graphSamples=new AtomicLong(),graphNanos=new AtomicLong(),graphMaxNanos=new AtomicLong();
     private static final boolean ENABLED=Boolean.parseBoolean(System.getProperty("apocbr.postgres.playerRelational.mutations.enabled","true"));
     private static final Set<String> SKIP=Set.of("snapshot_id","character_id","inventory_container_id","source_offset_x","source_offset_y");
     private static final List<String> SINGLETONS=List.of("character_state","character_nutrition","character_effects",
@@ -33,12 +38,15 @@ public final class ApocBRPlayerRelationalMutations {
         final ApocBRPlayerRelationalDatabase.Candidate candidate;
         final UUID session=UUID.randomUUID();
         Map<Field,Object> observed=Map.of();
-        long nextSample;
+        long nextSample,nextGraph;
         long lastSeen=System.nanoTime();
         Cursor(ApocBRPlayerRelationalDatabase.Candidate candidate){this.candidate=candidate;}
     }
     record Value(long revision,Object value) {}
-    record Batch(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character,Map<Field,Value> fields,Instant capturedAt) {}
+    record Batch(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character,Map<Field,Value> fields,Instant capturedAt,
+                 ApocBRPlayerRelationalSnapshot.Snapshot snapshot,long snapshotRevision) {
+        Batch(ApocBRPlayerRelationalDatabase.Candidate c,UUID s,UUID ch,Map<Field,Value> f,Instant at){this(c,s,ch,f,at,null,0);}
+    }
     static final class DirtyQueue {
         private static final class Pending {
             final ApocBRPlayerRelationalDatabase.Candidate candidate;
@@ -47,15 +55,33 @@ public final class ApocBRPlayerRelationalMutations {
             long nextAt;
             int failures;
             Instant capturedAt;
+            ApocBRPlayerRelationalSnapshot.Snapshot snapshot;
+            long snapshotRevision;
+            boolean inFlight;
+            ApocBRPlayerRelationalSnapshot.Snapshot inFlightSnapshot;
             Pending(ApocBRPlayerRelationalDatabase.Candidate c,UUID s,long now){candidate=c;session=s;nextAt=now;}
         }
         private final Map<String,Pending> pending=new LinkedHashMap<>();
         private record Binding(UUID session,UUID character,long nextAt) {}
         private final Map<String,Binding> bindings=new LinkedHashMap<>();
-        private long revision;
+        private long revision,queuedBytes;
+        synchronized boolean canSnapshot(String key,UUID session) {
+            Pending p=pending.get(key);Binding b=bindings.get(key);
+            return b!=null&&b.character!=null&&b.session.equals(session)
+                    &&queuedBytes<=ApocBRPlayerRelationalLimits.QUEUE_BYTES-ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES;
+        }
+        synchronized boolean snapshot(ApocBRPlayerRelationalDatabase.Candidate c,UUID session,ApocBRPlayerRelationalSnapshot.Snapshot snapshot,long now) {
+            if(!canSnapshot(c.key(),session))return false;
+            Pending p=pending.get(c.key());
+            if(p==null){p=new Pending(c,session,now);p.nextAt=Math.max(now,bindings.get(c.key()).nextAt);pending.put(c.key(),p);}
+            if(p.snapshot!=null&&p.snapshot!=p.inFlightSnapshot)queuedBytes-=p.snapshot.bytes();
+            p.snapshot=snapshot;p.snapshotRevision=++revision;queuedBytes+=snapshot.bytes();
+            // This complete copy supersedes every earlier scalar mark; later scalar marks overlay it.
+            p.fields.clear();p.capturedAt=snapshot.capturedAt();return true;
+        }
         synchronized boolean register(String key,UUID session) {
             if(!bindings.containsKey(key)&&bindings.size()>=MAX_PLAYERS)return false;
-            bindings.put(key,new Binding(session,null,0));pending.remove(key);return true;
+            bindings.put(key,new Binding(session,null,0));Pending old=pending.remove(key);if(old!=null){if(old.snapshot!=null)queuedBytes-=old.snapshot.bytes();if(old.inFlightSnapshot!=null&&old.inFlightSnapshot!=old.snapshot)queuedBytes-=old.inFlightSnapshot.bytes();}return true;
         }
         synchronized void bind(String key,UUID session,UUID character) {
             Binding binding=bindings.get(key);
@@ -65,6 +91,7 @@ public final class ApocBRPlayerRelationalMutations {
             Binding binding=bindings.get(key);if(binding!=null)bind(key,binding.session,character);
         }
         synchronized boolean mark(ApocBRPlayerRelationalDatabase.Candidate c,UUID session,Map<Field,Object> changes,long now,Instant capturedAt) {
+            Binding current=bindings.get(c.key());if(current==null||!current.session.equals(session))return false;
             if(changes.size()>MAX_FIELDS)throw new IllegalStateException("LIVE_FIELD_LIMIT");
             for(Object value:changes.values())if(value!=null&&!(value instanceof Byte||value instanceof Short||value instanceof Integer||value instanceof Long||value instanceof Float||value instanceof Double||value instanceof Boolean||value instanceof String text&&text.length()<=256))throw new IllegalArgumentException("Invalid live scalar");
             Pending p=pending.get(c.key());
@@ -79,28 +106,33 @@ public final class ApocBRPlayerRelationalMutations {
             p.capturedAt=capturedAt;return true;
         }
         synchronized Batch poll(long now) {
-            for(Pending p:pending.values())if(!p.fields.isEmpty()&&now>=p.nextAt) {
+            for(Pending p:pending.values())if((!p.fields.isEmpty()||p.snapshot!=null)&&!p.inFlight&&now>=p.nextAt) {
                 Binding binding=bindings.get(p.candidate.key());
                 if(binding==null||binding.character==null||!binding.session.equals(p.session))continue;
-                p.nextAt=now+CADENCE;
+                p.nextAt=now+CADENCE;p.inFlight=true;p.inFlightSnapshot=p.snapshot;
                 bindings.put(p.candidate.key(),new Binding(binding.session,binding.character,p.nextAt));
-                return new Batch(p.candidate,p.session,binding.character,Collections.unmodifiableMap(new LinkedHashMap<>(p.fields)),p.capturedAt);
+                return new Batch(p.candidate,p.session,binding.character,Collections.unmodifiableMap(new LinkedHashMap<>(p.fields)),p.capturedAt,p.snapshot,p.snapshotRevision);
             }
             return null;
         }
         synchronized void finish(Batch batch,boolean committed,long now) {
             Pending p=pending.get(batch.candidate.key());if(p==null||!p.session.equals(batch.session))return;
+            p.inFlight=false;
+            if(p.inFlightSnapshot!=null&&p.inFlightSnapshot!=p.snapshot)queuedBytes-=p.inFlightSnapshot.bytes();
+            p.inFlightSnapshot=null;
             if(committed) {
+                if(batch.snapshot()!=null&&p.snapshotRevision==batch.snapshotRevision()){queuedBytes-=p.snapshot.bytes();p.snapshot=null;}
                 for(var e:batch.fields.entrySet())if(Objects.equals(p.fields.get(e.getKey()),e.getValue()))p.fields.remove(e.getKey());
                 p.failures=0;
-                if(p.fields.isEmpty())pending.remove(batch.candidate.key());
+                if(p.fields.isEmpty()&&p.snapshot==null)pending.remove(batch.candidate.key());
             } else {
                 p.nextAt=now+Math.min(30,1L<<Math.min(5,++p.failures))*CADENCE;
             }
         }
         synchronized int size(){return pending.size();}
+        synchronized long bytes(){return queuedBytes;}
         synchronized void prune(Set<UUID> active){bindings.entrySet().removeIf(e->!active.contains(e.getValue().session)&&!pending.containsKey(e.getKey()));}
-        synchronized void clear(){pending.clear();bindings.clear();}
+        synchronized void clear(){pending.clear();bindings.clear();queuedBytes=0;}
     }
     static UUID register(IsoPlayer player,ApocBRPlayerRelationalDatabase.Candidate candidate) {
         if(!ENABLED)return null;
@@ -114,8 +146,15 @@ public final class ApocBRPlayerRelationalMutations {
     private static void capacityLog(){long now=System.nanoTime();if(now-lastCapacityLog>=30_000_000_000L){lastCapacityLog=now;log("LIVE_TRACK_LIMIT; retryOnNextLoad=true");}}
     static void bind(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character){DIRTY.bind(candidate.key(),session,character);}
     static void bindCurrent(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID character){DIRTY.bindCurrent(candidate.key(),character);}
-    /** Budget all players together, not one millisecond per player. */
-    public static void beginTick() {long now=System.nanoTime();if(now-lastCleanup>=30_000_000_000L)cleanup(now);tickDeadline=System.nanoTime()+1_000_000L;samples=0;}
+    /** Scalar samples share one millisecond; at most one additional one-shot graph copy per tick. */
+    public static void beginTick() {long now=System.nanoTime();if(now-lastCleanup>=30_000_000_000L)cleanup(now);tickDeadline=System.nanoTime()+1_000_000L;samples=0;
+        graphTurn=null;graphPlayer=null;
+    }
+    /** Pick only players observed in this traversal; offline loads cannot starve online players. */
+    public static void endTick() {
+        try {if(graphPlayer!=null)reconcile(graphPlayer,graphTurn,System.nanoTime());}
+        finally {graphPlayer=null;graphTurn=null;}
+    }
     private static void cleanup(long now) {
         lastCleanup=now;TRACKED.entrySet().removeIf(e->now-e.getValue().lastSeen>300_000_000_000L);
         Set<UUID> active=new HashSet<>();for(Cursor c:TRACKED.values())active.add(c.session);DIRTY.prune(active);
@@ -124,13 +163,22 @@ public final class ApocBRPlayerRelationalMutations {
         if(!active)return;
         long now=System.nanoTime();Cursor cursor=TRACKED.get(player);
         if(cursor==null)return;cursor.lastSeen=now;
-        if(now<cursor.nextSample||samples>=16||now>=tickDeadline)return;
-        sample(player,cursor,now);
+        if(now>=cursor.nextSample&&samples<16&&now<tickDeadline)sample(player,cursor,now);
+        if(RECONCILE&&now>=cursor.nextGraph&&(graphTurn==null||cursor.nextGraph<graphTurn.nextGraph)&&DIRTY.canSnapshot(cursor.candidate.key(),cursor.session)) {graphTurn=cursor;graphPlayer=player;}
     }
     /** Native saves/disconnects may request a final sample regardless of cadence. */
     public static void finalSample(IsoPlayer player) {
         if(!active)return;
-        Cursor cursor=TRACKED.get(player);if(cursor!=null)sample(player,cursor,System.nanoTime());
+        Cursor cursor=TRACKED.get(player);if(cursor!=null){long now=System.nanoTime();sample(player,cursor,now);if(RECONCILE)reconcile(player,cursor,now);}
+    }
+    private static void reconcile(Object player,Cursor cursor,long now) {
+        if(!DIRTY.canSnapshot(cursor.candidate.key(),cursor.session))return;
+        long started=System.nanoTime();
+        try {
+            var snapshot=ApocBRPlayerRelationalSnapshot.copyLive(player);
+            if(DIRTY.snapshot(cursor.candidate,cursor.session,snapshot,now))cursor.nextGraph=now+GRAPH_CADENCE;
+        }catch(RuntimeException|LinkageError failure){cursor.nextGraph=now+GRAPH_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_GRAPH_CAPTURE_FAILED; exception="+failure.getClass().getSimpleName());}}
+        finally {long elapsed=System.nanoTime()-started;graphSamples.incrementAndGet();graphNanos.addAndGet(elapsed);graphMaxNanos.accumulateAndGet(elapsed,Math::max);}
     }
     private static void sample(Object player,Cursor cursor,long now) {
         try {
@@ -185,18 +233,20 @@ public final class ApocBRPlayerRelationalMutations {
     private static long writes,writeNanos;
     static boolean flushOne(ApocBRPlayerRelationalDatabase database) {
         if(!ENABLED)return false;
-        long now=System.nanoTime();Batch batch=DIRTY.poll(now);if(batch==null){metrics(now);return false;}
+        long now=System.nanoTime();Batch batch=DIRTY.poll(now);if(batch==null){metrics(now,database);return false;}
         boolean committed=false;
-        try {committed=database.applyFields(batch);if(committed)writes++;}
+        try {var graph=batch.snapshot()==null?null:database.projectLive(batch);
+            if(graph!=null&&!graph.issues().isEmpty()&&now-lastWriteFailure>=30_000_000_000L){lastWriteFailure=now;log("LIVE_GRAPH_INCOMPLETE; issues="+String.join(",",graph.issues()));}
+            committed=database.applyFields(batch,graph);if(committed)writes++;}
         catch(java.sql.SQLException|RuntimeException|LinkageError failure){if(now-lastWriteFailure>=30_000_000_000L){lastWriteFailure=now;log("LIVE_WRITE_FAILED; SQLState="+(failure instanceof java.sql.SQLException sql?sql.getSQLState():"LOCAL"));}}
         finally {writeNanos+=System.nanoTime()-now;DIRTY.finish(batch,committed,System.nanoTime());}
-        metrics(now);
+        metrics(now,database);
         return true;
     }
-    private static void metrics(long now) {
-        if(now-lastLog>=30_000_000_000L){lastLog=now;log("LIVE_METRICS; samples="+measuredSamples.get()+"; changedFields="+measuredFields.get()+"; sampleMs="+sampleNanos.get()/1_000_000+"; maxSampleUs="+maxSampleNanos.get()/1000+"; writes="+writes+"; writeMs="+writeNanos/1_000_000+"; pending="+DIRTY.size());}
+    private static void metrics(long now,ApocBRPlayerRelationalDatabase database) {
+        if(now-lastLog>=30_000_000_000L){lastLog=now;log("LIVE_METRICS; samples="+measuredSamples.get()+"; changedFields="+measuredFields.get()+"; sampleMs="+sampleNanos.get()/1_000_000+"; maxSampleUs="+maxSampleNanos.get()/1000+"; writes="+writes+"; writeMs="+writeNanos/1_000_000+"; graphSamples="+graphSamples.get()+"; graphMs="+graphNanos.get()/1_000_000+"; maxGraphUs="+graphMaxNanos.get()/1000+"; pending="+DIRTY.size()+"; queuedGraphBytes="+DIRTY.bytes()+database.mutationMetrics());}
     }
     private static void log(String text){DebugLog.log("[ApocBR][PlayerRelational] "+text);}
-    static void shutdown(){active=false;DIRTY.clear();TRACKED.clear();}
+    static void shutdown(){active=false;graphPlayer=null;graphTurn=null;DIRTY.clear();TRACKED.clear();}
     private ApocBRPlayerRelationalMutations() {}
 }

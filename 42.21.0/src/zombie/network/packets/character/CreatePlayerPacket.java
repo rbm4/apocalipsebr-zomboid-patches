@@ -296,6 +296,9 @@ public class CreatePlayerPacket implements INetworkPacket {
             LuaEventManager.triggerEvent("OnNewGame", this.player, null);
             ServerPlayerDB.getInstance().serverUpdateNetworkCharacter(this.player, this.playerIndex, connection);
             ServerPlayerDB.getInstance().process();
+            zombie.savefile.ApocBRPlayerRelationalSync.offerCreatedPlayer(this.player, zombie.core.Core.gameSaveWorld,
+                GameServer.coop && SteamUtils.isSteamModeEnabled() ? connection.getIDStr() : connection.getUserName(),
+                this.playerIndex, IsoWorld.getWorldVersion());
             ByteBufferWriter b = connection.startPacket();
             PacketTypes.PacketType.CreatePlayer.doPacket(b);
             this.write(b);

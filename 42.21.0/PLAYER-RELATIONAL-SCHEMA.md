@@ -1,8 +1,9 @@
 # Player relational persistence contract — 42.21.0
 
-Status: initial SQLite-load capture, receipt-check worker, V5 JDBC writes and
-phase-one character scalar mutation sync are implemented. Inventory/collection
-mutation tracking and a relational loader are not implemented.
+Status: initial SQLite-load capture, V5 JDBC writes, scalar dirty tracking and
+full supported-graph mutation reconciliation are implemented. Native new-character
+creation/respawn now registers a distinct relational incarnation. A relational
+loader is not implemented; native bytes remain authoritative.
 The backend V5 migration supplies the 63-table contract. First phase is an asynchronous relational
 backfill from the native SQLite `players.db` store, which remains authoritative.
 `ApocBRPlayerDatabase.enabled()` defaults to false: the master PostgreSQL switch
@@ -23,9 +24,12 @@ Those families require codecs before a character can be certified complete.
 `ApocBRPlayerRelationalSync.offerLoadedPlayer` only in the successful SQLite branch,
 after deserialization and dead/remote state restoration. Native return values and
 byte saving remain unchanged. No hook is installed in the PostgreSQL byte-load
-branch, profile response packet, constructors, or new-character creation path.
-Newly created players become eligible when subsequently loaded from SQLite;
-automatic respawn/incarnation transition detection is not implemented in this phase.
+branch, profile response packet or constructors. `CreatePlayerPacket` additionally
+offers a detached new-character capture after native creation/save. Publication
+allocates the next slot incarnation and retires the previous life atomically;
+incomplete captures leave the previous active character untouched. A later native
+login resumes a newer staged incarnation rather than skipping to the predecessor. An explicit
+creation event, rather than changed save bytes, identifies a new life.
 
 The load hook copies the export fields into a detached, bounded snapshot and
 nonblockingly enqueues it with immutable provenance inputs. It returns without
@@ -62,9 +66,10 @@ fields fail capture instead of becoming zero/defaults. Item types/traits/profess
 perks/body locations use stable names, while numeric source IDs remain metadata.
 Fluids, Durability, AttributeContainer and EntityScriptInfo have typed component
 codecs; other component families still require explicit additions before they can
-be complete. Export codec version 2 adds the latter two components; older complete
+be complete. Export codec version 3 retains the four codecs and assigns stable
+visual/component/value-node identities for mutation comparison. Older complete
 receipts are re-evaluated on a subsequent native load. Schema version remains 1;
-these codecs use the existing `component` / `value_node` tables without a migration.
+no migration is required.
 
 `entity.AttributeContainer` stores an `attributes` array containing each stable
 attribute name, native ID, exact native `value_type`, and typed value. All eleven
@@ -196,109 +201,110 @@ Actual native deserialization, modded data round trips, PostgreSQL constraint
 execution, capture latency and queue saturation still require an isolated server
 trial. These tests do not validate a future relational loader.
 
-## Phase-one live character fields
+## Live mutations: scalars and supported graph reconciliation
 
-`NetworkPlayerManager.update` samples already registered, fully connected players
-using the existing player traversal. Only players offered by the successful SQLite
-load hook are registered; offline inspection objects are not periodically sampled.
-Native new-character creation/respawn registration is not added in this phase.
-Each cursor has a one-second sample interval. Across the whole tick, sampling stops
-after 16 players or a 1 ms soft allowance; later due players are sampled on later
-ticks. A single sample can exceed this allowance. One second is a target, not a
-guaranteed delay under overload. Native save/disconnect calls request a final scalar
-sample, without changing native serialization, queueing, SQL writes or save cadence.
+`NetworkPlayerManager.update` observes registered, fully connected players through
+its existing traversal. Scalars retain their one-second cadence, shared 1 ms soft
+allowance and maximum 16 samples per tick. At the end of the traversal, the oldest
+due online player additionally receives one consistent detached graph copy. At
+most one periodic graph is copied per tick; offline inspection objects and unbound
+sessions cannot starve online players. Native save/disconnect requests also offer
+a final copy, even when a previous write is in flight. Native save scheduling,
+serialization and SQL persistence remain unchanged.
 
-The tracked column bindings are precomputed from the pinned schema and existing
-capture bindings. The supported groups are:
+Graph reconciliation defaults to a one-second **minimum interval**, not a latency
+or CPU guarantee for 200 players. Each copy traverses the supported player graph
+in one game-thread pass so it cannot mix several ticks of ownership/array state.
+Copying is not covered by the scalar 1 ms allowance and one large player may
+exceed that allowance. It does not serialize native bytes. Projection, row comparison
+and every JDBC operation run on the existing exporter worker. This is broad
+snapshot reconciliation, not setter interception or annotations: direct collection,
+array, public-field and Lua writes are detected at the next eligible copy. Replacing
+these full-copy checks with audited mutation hooks or consistent incremental capture
+is still required before claiming lower CPU cost at high concurrency.
 
-| Table | Live fields |
-| --- | --- |
-| `character_state` | All native scalar columns, including position, survival, XP counters, sleep and flags; excludes IDs, inventory-container reference and source offsets |
-| `character_nutrition` | Calories, proteins, lipids, carbohydrates, weight |
-| `character_stat` | Each registered native stat value, addressed by stable stat key |
-| `character_effects` | Depression, beta-blocker, pain, sleeping-tablet and infection-reduction fields |
-| `character_presentation` | Display name, tag prefix/RGB colour/visibility, chat-muted and faction-PvP flags |
-| `character_descriptor` | Native descriptor ID, forename/surname/torso, gender, profession, voice prefix/pitch/type; sampled when descriptor is present |
-| `body_damage` | Cold probability/state/strength/stage, sneeze/cough timer, fake-infection reduction, food-health timer, pain/cold reduction, infection time/mortality duration |
+All graph tables emitted by the current capture codec have pinned logical keys and
+participate in comparison, including:
 
-These are value comparisons over the selected groups, not automatic interception
-of annotated Java fields. They also catch direct assignments to those scalar
-fields. They do not scan inventory, visuals, body-part arrays, perks/recipes or Lua
-tables. Those groups retain their baseline values until their mutation lifecycle
-is implemented. No claim of complete live character synchronization is made.
-In particular, `body_damage` here covers general illness/infection scalars, not
-per-body-part wounds, bleeding, bandages or temperatures. Descriptor absence does
-not request row deletion or replace it with default values. If a descriptor appears
-without a corresponding baseline row, the patch rolls back under the existing
-missing-row guard; optional-row creation/deletion remains outside this phase.
-First observation of a session refreshes all tracked fields; subsequent observations
-enqueue only changes. The worker performs no live player reads.
+- Character scalars, optional descriptor/vehicle rows, stats, traits, XP/perks,
+  recipes/books/media, mechanics/crafting history, fitness and cheat collections.
+- Individual body-part wounds/bandages, thermoregulator state and thermal nodes.
+- Human/item visuals and every supported body-part byte array.
+- Nested inventories, containers, equipment and weapon attachments; item/subtype
+  state, clothing patches, literature pages, food/spices/genes, maps and radios.
+- Typed Lua modData and the existing fluid, durability, attribute and script codecs.
 
-The dirty cache coalesces latest values per slot/session/field, with at most one
-dispatch per player per second. Repeated marks do not slide the deadline forward.
-An acknowledgement clears only the exact field revisions written, so a change
-during an in-flight write remains queued. Errors retain dirty values with bounded
-2–30-second backoff. A new load session supersedes its pending predecessor; old
-acknowledgements cannot erase its work. Batches bind to the character UUID obtained
-by initial receipt inspection; changing character life or source dataset rejects
-the write. There are at most 512 tracked cursors/session bindings and 512 pending
-players, at most 256 fields per player, with text scalars/keys capped at 256
-characters. Cursors use weak player references through a weak-key map, with cleanup
-of inactive cursors and unused bindings. Capacity pressure retries sampling without
-advancing the observed values; it does not acknowledge dropped work.
+A complete copy supersedes earlier scalar marks. Scalar changes captured later
+are applied after that graph in the same transaction, preventing old graph values
+from replacing newer coordinates/nutrition/etc. In-flight acknowledgements clear
+only the exact revisions they wrote. Queue replacement, failures and retries retain
+newer work. Superseded live player objects cannot mark the replacement session.
+The queue is limited to 512 sessions/pending players and the configured input byte
+allowance; copying is deferred before allocation when it cannot fit. Both an
+in-flight snapshot and its queued replacement are charged until acknowledged.
+Backfill and mutation input queues each have a separate byte allowance.
 
-The existing single exporter worker interleaves eligible live patches with initial
-captures; idle polling is 50 ms. Initial retry backoff does not prevent live work.
-It never waits on
-JDBC from the game thread. Each patch acquires the same nonwaiting per-slot advisory
-lock and locks the head row. A missing/incomplete/old-codec baseline is not patched.
-The first patch forks all graph rows from the immutable baseline into a new
-generation once, in one deferred-FK transaction, then applies the scalar fields.
-This one-time fork uses the initial-import write allowance and corresponding copy
-statement timeouts. Ordinary live patches retain their 15-second checked budget
-and two-second statement timeouts. A large initial import/fork can delay other
-relational updates on the shared worker; it does not wait on the game thread.
-Its `capture_reason` is `live_fields`. Subsequent patches mutate this live generation
-in place, using UPDATEs containing only the changed columns. Rows sharing an SQL
-shape (notably stats) use JDBC batches of at most 128. Each expected row must exist;
-a missing row rolls back and requires baseline repair/upgrade rather than silently
-creating an incomplete graph. This phase does not add/delete stat definitions or
-inventory objects. Native database writes remain authoritative.
+The worker reads the locked current graph once on a cache miss, with explicit
+columns and configured graph/row/time limits. Its LRU comparison cache defaults to
+64 MiB; eviction causes another baseline read rather than unbounded retention.
+Head UUID plus revision validates cached state. Each unchanged graph performs no
+graph or metadata writes. Changes produce INSERT, DELETE or UPDATE of only changed
+columns, batched by SQL shape up to 128 rows. All old unique-index destinations
+are deleted before new destinations are inserted, so inventory position swaps do
+not depend on deferring PostgreSQL's immediate unique indexes. Foreign keys remain
+deferred in the transaction. Optional singleton and collection row deletion is
+explicit, including empty collections/Lua tables and leaving a vehicle.
 
-Snapshot metadata and head revision advance atomically with the patch. Previous
-immutable baseline generations are retained. Readers needing a coherent multi-query
-view of a live head must use repeatable-read transactions: the live generation is
-mutable. `status=complete` continues to describe codec coverage, not that untracked
-groups reflect current gameplay. `captured_at` on the live generation is the latest
-scalar sample time and `capture_revision` follows the head revision.
+Live vehicle return state comes from the **current vehicle** (position, seat,
+engine), matching `IsoPlayer.save`; the initial load copy retains `savedVehicle*`.
+Stable item aliases preserve identities; removed items retire their active alias,
+and a later reuse of a retired native ID receives a new alias generation/object ID.
+These operations use the existing V5 tables. Cross-player transfers reconcile each
+player independently; there is no multi-player atomic trade transaction. UUIDs are
+internal and may differ when an item first enters another character's graph.
 
-`LIVE_METRICS` reports cumulative sample count, changed fields, sample milliseconds,
-maximum sample microseconds, committed patch count, worker write milliseconds and
-pending players, at most once per 30 seconds. `writeMs` includes JDBC and the initial
-fork cost. `LIVE_SAMPLE_FAILED` / `LIVE_WRITE_FAILED` are rate-limited. Initial-load
-`snapshotMs` measures copying and `projectionMs` projection; neither measures SQL.
-The native 180-second player-save schedule is unchanged; live sampling is separate.
-`mutations.enabled=false` disables this phase at startup while retaining initial
-backfill. Registrations above the 512-cursor/session cap log `LIVE_TRACK_LIMIT` and
-become eligible again on a later load after capacity is available.
-Shutdown still relies on native persistence for recovery: the dirty cache is not a
-durable spool and final scalar samples are not guaranteed committed before exit.
+The first changed patch forks the immutable import once. Later patches mutate that
+live generation (`capture_reason=live_fields`). Graph changes use the configured
+import transaction allowance, while scalar-only patches retain their existing
+shorter allowance. Source dataset, active character, codec/schema versions, advisory
+slot lock and head revision guard publication. Expected object/item/container/edge
+counts and head metadata update atomically. Cache state advances only after commit.
+A coherent future reader must use repeatable read across all graph queries.
 
-The fixture exercises revision acknowledgements, coalescing, cadence, backoff,
-session replacement, binding/capacity reclamation, 512 independent queued players,
-single-column detection, live-generation fork/reuse, partial-column SQL, rollback,
-source/life/codec guards and lease cleanup.
-Extended-group checks compare every sampled field with initial-codec rows and
-exercise nickname/tag/RGB/chat/PvP, descriptor identity/profession/voice, illness
-timers and nullable text changes. They verify partial SQL updates, commit-gated
-acknowledgement, missing-descriptor behavior and absence of inventory/body-part
-array traversal. The extension requires no migration or codec-version bump because
-the initial exporter already populates these scalar rows.
-These checks validate behavior and work boundaries; they do not prove one-second
-service for 200 concurrent players. Representative
-server/PostgreSQL metrics are required before claiming that throughput or reduced
-CPU relative to native saving. Inventory transfer, creation/deletion, equipment,
-array mutation and respawn lifecycles remain the next stage.
+Configuration (JVM options; defaults shown):
+
+```text
+-Dapocbr.postgres.playerRelational.mutations.enabled=true
+-Dapocbr.postgres.playerRelational.mutations.reconcile=true
+-Dapocbr.postgres.playerRelational.mutations.reconcileMs=1000
+-Dapocbr.postgres.playerRelational.mutations.cacheMiB=64
+```
+
+Setting `reconcile=false` retains the earlier seven scalar groups: character state,
+nutrition, stats, effects, presentation, descriptor and general body damage. Setting
+`mutations.enabled=false` disables both paths while retaining initial backfill.
+`LIVE_METRICS` includes scalar timing, graph copy count/total/max timing, committed
+patch count/write time, queue bytes, created/updated/deleted rows, unchanged graph
+count, baseline cache misses and cache bytes. `LIVE_GRAPH_INCOMPLETE` names unsupported
+codec issues. Copy and write failures are rate limited and retain retryable work.
+
+**Boundary before replacing native persistence:** this tracks the state supported
+by the existing codec, not every possible mod/native component. Embedded animals,
+opaque byteData, unreviewed component/subtype writers and shared/cyclic Lua state
+still prevent a complete graph. Cross-player atomic transfer/crash guarantees,
+a durable dirty spool/draining shutdown and a relational reconstruction loader are
+not implemented. The final queue is volatile; native saving remains the recovery
+path. Live PostgreSQL constraints, reconnect/respawn/transfer round trips and
+representative multi-player CPU/allocation/latency measurements remain required.
+Do not turn off native serialization/deserialization on the strength of these tests.
+
+The fixture checks stable identity/no-op detection, nested-bag moves and reorders,
+item creation/deletion, equipment, recipes/traits/perks/fitness, native body-part
+bandages, visuals, Lua/fluid values, optional-row deletion, current vehicle state,
+source alias generations, creation/respawn publication, scalar-over-graph ordering,
+in-flight replacement/byte accounting, failed/stale write retry, cache behavior and
+worker snapshot isolation. All V5 graph tables must have a valid pinned mutation key.
+These are local real-game-JAR and fake-JDBC fixtures, not a live throughput benchmark.
 
 ## Verified boundary
 

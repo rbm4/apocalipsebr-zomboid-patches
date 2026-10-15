@@ -9,7 +9,7 @@ import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Relational graph projection. Production calls this on the worker with a detached snapshot. */
 final class ApocBRPlayerRelationalCapture {
-    static final int CODEC_VERSION=2, SCHEMA_VERSION=1, MAX_BYTES=ApocBRPlayerRelationalLimits.GRAPH_BYTES;
+    static final int CODEC_VERSION=3, SCHEMA_VERSION=1, MAX_BYTES=ApocBRPlayerRelationalLimits.GRAPH_BYTES;
     record Row(String table,Map<String,Object> values) {
         Row { values=Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
     }
@@ -158,7 +158,7 @@ final class ApocBRPlayerRelationalCapture {
     }
     private void visual(Object visual,UUID ownerCharacter,UUID ownerItem,int position) {
         if(visual==null) return;
-        UUID id=UUID.randomUUID(); object(id,"visual"); Object tint=get(visual,"tint");
+        UUID id=ApocBRPlayerRelationalDatabase.named("visual:"+(ownerCharacter!=null?ownerCharacter:ownerItem)+":"+position); object(id,"visual"); Object tint=get(visual,"tint");
         Object hue=get(visual,"hue"); if(hue instanceof Number n && !Double.isFinite(n.doubleValue())) hue=null;
         project("visual",visual,"id",id,"owner_character_id",ownerCharacter,"owner_item_id",ownerItem,"position",position,
                 "tint_r",tint==null?null:colorByte(get(tint,"r")),"tint_g",tint==null?null:colorByte(get(tint,"g")),"tint_b",tint==null?null:colorByte(get(tint,"b")),"hue",hue);
@@ -200,7 +200,7 @@ final class ApocBRPlayerRelationalCapture {
         check(); if(item==null || depth>64 || itemIds.size()>=10_000) throw new IllegalStateException("Invalid/oversized item graph");
         if(itemIds.containsKey(item)) throw new IllegalStateException("Cyclic or duplicate owned item");
         int nativeId=number(get(item,"id")); if(!nativeIds.add(nativeId)) throw new IllegalStateException("Duplicate native item id");
-        UUID id=aliases.getOrDefault(nativeId,UUID.randomUUID()); itemIds.put(item,id); object(id,"item");
+        UUID id=aliases.getOrDefault(nativeId,ApocBRPlayerRelationalDatabase.named("item:"+character+":"+nativeId)); itemIds.put(item,id); object(id,"item");
         row("item_location","item_id",id,"container_id",container,"parent_item_id",parent,"relation",parent==null?"container":"weapon_attachment","position",position,"attachment_slot",parent==null?null:key(get(item,"partType"))); edges++;
         String media=resolvedMedia(item,"recordedMediaIndex");
         project("item",item,"id",id,"runtime_class",item instanceof ApocBRPlayerRelationalSnapshot.Node n?n.runtimeClass:item.getClass().getName(),"recorded_media_id",media,"save_type",-1);
@@ -324,7 +324,7 @@ final class ApocBRPlayerRelationalCapture {
         componentValue(owner,"lua.modData",table,"complete");
     }
     private void componentValue(UUID owner,String kind,Object value,String coverage) {
-        UUID id=UUID.randomUUID(); object(id,"component");
+        UUID id=ApocBRPlayerRelationalDatabase.named("component:"+owner+":"+kind); object(id,"component");
         row("component","id",id,"owner_object_id",owner,"kind",kind,"codec_version",CODEC_VERSION,"position",0,"coverage",coverage);
         tableStack.clear();
         node(id,null,0,null,value,0);
@@ -332,7 +332,7 @@ final class ApocBRPlayerRelationalCapture {
     private void node(UUID component,UUID parent,int position,Object key,Object value,int depth) {
         check(); if(depth>64) throw new IllegalStateException("Oversized structured state");
         if(++nodes>ApocBRPlayerRelationalLimits.NODES)throw new ApocBRPlayerRelationalLimits.SizeExceeded("CAPTURE_SIZE_BUDGET",bytes,MAX_BYTES,rows.size(),itemIds.size(),nodes);
-        UUID id=UUID.randomUUID(); Map<String,Object> values=new LinkedHashMap<>();
+        UUID id=ApocBRPlayerRelationalDatabase.named("node:"+component+":"+parent+":"+(key==null?"position:"+position:key.getClass().getName()+":"+key)); Map<String,Object> values=new LinkedHashMap<>();
         values.put("component_id",component); values.put("id",id); values.put("parent_id",parent); values.put("position",position);
         if(key!=null) {
             String type=key instanceof String?"string":key instanceof Number?"number":key instanceof Boolean?"boolean":null;
