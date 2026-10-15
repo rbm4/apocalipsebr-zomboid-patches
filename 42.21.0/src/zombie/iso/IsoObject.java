@@ -1109,7 +1109,9 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
     }
 
     public final void load(ByteBuffer input, int worldVersion) throws IOException {
+        try(var dictionary=zombie.world.ApocBRWorldDictionaryDecode.enter(input)) {
         this.load(input, worldVersion, false);
+            }
     }
 
     public void load(ByteBuffer input, int worldVersion, boolean isDebugSave) throws IOException {

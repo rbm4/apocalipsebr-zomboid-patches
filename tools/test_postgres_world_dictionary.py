@@ -71,7 +71,7 @@ public class DictionaryDatabaseTest {
  static class Fake {
   int opened,closed,commits,rollbacks,notifications;boolean failNotify,failBatch;long revision;String name;
   List<String> order=new ArrayList<>();Map<String,List<Object>> registries=new LinkedHashMap<>(),entries=new LinkedHashMap<>();
-  List<Object[]> foreign=List.of();List<Object> viewValues;String event;
+  List<Object[]> foreign=List.of();List<Object> viewValues;String event;String failPrefix;SQLException injected;
   ResultSet rows(List<Object[]> values){int[] index={-1};return (ResultSet)proxy(ResultSet.class,(p,m,a)->switch(m.getName()){
    case "next"->++index[0]<values.size();case "getString","getObject"->values.get(index[0])[(int)a[0]-1];case "getInt"->((Number)values.get(index[0])[(int)a[0]-1]).intValue();case "getLong"->((Number)values.get(index[0])[(int)a[0]-1]).longValue();default->zero(m.getReturnType());});}
   List<Object[]> select(String sql,Map<Integer,Object> a)throws Exception {
@@ -84,7 +84,7 @@ public class DictionaryDatabaseTest {
    throw new AssertionError(sql);
   }
   int write(String sql,List<Object> a)throws Exception {
-   order.add(sql);
+   order.add(sql);if(injected!=null&&sql.startsWith(failPrefix))throw injected;
    if(sql.startsWith("INSERT INTO player_rel.world_dictionary_runtime_view(")){check(sql.contains("server_id")&&!sql.contains("server_key"),"publication supplies integer ID and lets V7 bind canonical key");viewValues=a;}
    if(sql.startsWith("INSERT INTO player_rel.world_dictionary_journal"))event=(String)a.get(3);
    if(sql.startsWith("INSERT INTO player_rel.world_dictionary_namespace")){name=(String)a.get(1);return 1;}
@@ -103,7 +103,7 @@ public class DictionaryDatabaseTest {
      return proxy(PreparedStatement.class,(q,n,b)->{
       switch(n.getName()){
        case "setObject":values.put((Integer)b[0],b[1]);return null;
-       case "setQueryTimeout":return null;
+       case "setQueryTimeout":check(b[0].equals(sql.startsWith("SELECT family")||sql.startsWith("SELECT DISTINCT")?5:30),"publication statements use thirty seconds while history/discovery reads retain five");return null;
        case "addBatch":batch.add(new ArrayList<>(values.values()));return null;
        case "clearBatch":batch.clear();return null;
        case "executeBatch":{int[] result=new int[batch.size()];for(int i=0;i<batch.size();i++)result[i]=failBatch?Statement.EXECUTE_FAILED:write(sql,batch.get(i));return result;}
@@ -131,6 +131,31 @@ public class DictionaryDatabaseTest {
   try{new ApocBRWorldDictionaryDatabase(failing::open).publish(origin,snapshot);throw new AssertionError("notify failure accepted");}catch(SQLException expected){check(expected.getCause()==null&&!expected.toString().contains("secret"),"driver failure sanitized");}
   check(failing.commits==0&&failing.rollbacks==1&&failing.opened==failing.closed,"failure rolls back and returns lease");
   Fake badBatch=new Fake();badBatch.failBatch=true;try{new ApocBRWorldDictionaryDatabase(badBatch::open).publish(origin,snapshot);throw new AssertionError("failed batch accepted");}catch(SQLException expected){check(badBatch.rollbacks==1&&badBatch.commits==0,"failed batch rolls back");}
+  Fake missingColumn=new Fake();missingColumn.failPrefix="INSERT INTO player_rel.world_dictionary_runtime_view(";
+  missingColumn.injected=new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage("SERROR\0C42703\0Mcolumn server_id does not exist\0splayer_rel\0tworld_dictionary_runtime_view\0cserver_id\0DPRIVATE_ROW_DATA\0WPRIVATE_FUNCTION_CONTEXT\0\0"));
+  try{new ApocBRWorldDictionaryDatabase(missingColumn::open).publish(origin,snapshot);throw new AssertionError("missing V7 accepted");}catch(SQLException error){
+   check(error.getMessage().contains("stage=CREATE_RUNTIME_VIEW")&&error.getMessage().contains("SQLState=42703")&&error.getMessage().contains("server_id does not exist")&&error.getMessage().contains("serverId=1"),"publication reports failing stage, SQLState, safe PG message and server ID");
+   check(error.getMessage().contains("table=world_dictionary_runtime_view")&&error.getMessage().contains("column=server_id")&&error.getMessage().contains("V6/V7")&&!error.getMessage().contains("networkplayers"),"dictionary-specific diagnostics identify table/column/migration instead of player hints");
+   check(error.getCause()==null&&!error.toString().contains("PRIVATE_"),"diagnostics exclude PostgreSQL DETAIL/WHERE and raw cause");
+  }
+  check(missingColumn.commits==0&&missingColumn.rollbacks==1&&missingColumn.opened==missingColumn.closed,"publication error still rolls back and returns lease");
+  Fake failedBatch=new Fake();failedBatch.failPrefix="INSERT INTO player_rel.world_dictionary_entry(";
+  var batch=new BatchUpdateException("Batch entry 0 INSERT values ('PRIVATE_BOUND_VALUE')", "23514",new int[0]);
+  batch.setNextException(new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage("SERROR\0C23514\0Mnew row violates check constraint\0splayer_rel\0tworld_dictionary_entry\0nworld_dictionary_entry_check\0DPRIVATE_BOUND_ROW\0\0")));failedBatch.injected=batch;
+  try{new ApocBRWorldDictionaryDatabase(failedBatch::open).publish(origin,snapshot);throw new AssertionError("batch accepted");}catch(SQLException error){
+   check(error.getMessage().contains("stage=WRITE_IDENTITIES")&&error.getMessage().contains("constraint=world_dictionary_entry_check")&&error.getMessage().contains("next={"),"batch diagnostic finds original PostgreSQL constraint error");
+   check(!error.toString().contains("PRIVATE_")&&!error.toString().contains("INSERT values")&&failedBatch.rollbacks==1,"batch SQL and literal row values never enter logs");
+  }
+  Fake timeout=new Fake();timeout.failPrefix="UPDATE player_rel.world_dictionary_runtime_view SET status='ready'";
+  timeout.injected=new org.postgresql.util.PSQLException("private driver statement",org.postgresql.util.PSQLState.CONNECTION_FAILURE,new java.net.SocketTimeoutException("PRIVATE_SOCKET_VALUES"));
+  try{new ApocBRWorldDictionaryDatabase(timeout::open).publish(origin,snapshot);throw new AssertionError("timeout accepted");}catch(SQLException error){
+   check(error.getMessage().contains("stage=PUBLISH_READY_VIEW")&&error.getMessage().contains("transport=SOCKET_READ_TIMEOUT")&&error.getMessage().contains("stageMs=")&&error.getMessage().contains("publicationTimeoutSeconds=30"),"ready-view transport timeout exposes cause and duration/budget");
+   check(timeout.rollbacks==1&&timeout.commits==0&&timeout.notifications==0&&!error.toString().contains("PRIVATE_"),"ready-view timeout rolls back and never reaches notification");
+  }
+  Fake history=new Fake();history.entries.put("info::0",Arrays.asList(ns,"info","",0,"item","Base.Wrong","Base","Wrong",0L));
+  try{new ApocBRWorldDictionaryDatabase(history::open).publish(origin,snapshot);throw new AssertionError("history mismatch accepted");}catch(SQLException error){check(error.getMessage().contains("stage=VALIDATE_HISTORY")&&error.getMessage().contains("validation=Vanilla dictionary ID remapped"),"controlled history validation reason retained");}
+  try{new ApocBRWorldDictionaryDatabase(()->{throw new SQLException("jdbc:postgresql://host/db?password=PRIVATE_PASSWORD","08006");}).publish(origin,snapshot);throw new AssertionError("connection failure accepted");}catch(SQLException error){check(error.getMessage().contains("stage=ACQUIRE_CONNECTION")&&error.getMessage().contains("SQLState=08006")&&!error.toString().contains("PRIVATE_"),"connection acquisition error is classified without credentials");}
+  try{new ApocBRWorldDictionaryDatabase(()->{throw new SQLException();}).publish(origin,snapshot);throw new AssertionError("empty failure accepted");}catch(SQLException error){check(error.getMessage().contains("stage=ACQUIRE_CONNECTION")&&error.getSQLState().length()==5,"null message and SQLState remain diagnosable");}
   var registry=new ApocBRWorldDictionarySnapshot.Registry("info","",3,null);
   try{ApocBRWorldDictionaryDatabase.validateHistory(snapshot,Map.of(registry.key(),registry),Map.of());throw new AssertionError("counter rewind accepted");}catch(SQLException expected){checks++;}
   try{ApocBRWorldDictionaryDatabase.validateHistory(snapshot,Map.of(),Map.of("info::0",Arrays.asList("item","Base.Wrong","Base","Wrong")));throw new AssertionError("ID remap accepted");}catch(SQLException expected){checks++;}
@@ -188,12 +213,13 @@ public class DictionaryListenerTest {
  });}
  public static void main(String[] args)throws Exception{
   ApocBRPostgresConnector.queries=DictionaryListenerTest::query;ApocBRPostgresConnector.listeners=DictionaryListenerTest::listener;
+  ApocBRWorldDictionaryDecode.install(new ApocBRPayloadProvenance(2,ns,head),new ApocBRWorldDictionarySnapshot(List.of(),List.of()));
   var start=ApocBRWorldDictionaryMirror.class.getDeclaredMethod("start",int.class);start.setAccessible(true);start.invoke(null,1);
   await(()->!ApocBRWorldDictionaryMirror.foreignViews().isEmpty());UUID initial=head;
   check(ApocBRWorldDictionaryMirror.foreignViews().getFirst().view().equals(initial),"initial committed head discovered");
   int before=queries.get();int previousPoll=polls.get();await(()->polls.get()>previousPoll+2);check(queries.get()==before,"idle notification waits do not query dictionary tables");
-  head=UUID.randomUUID();UUID updated=head;events.offer("notify");await(()->ApocBRWorldDictionaryMirror.foreignViews().getFirst().view().equals(updated));checks++;
-  head=UUID.randomUUID();UUID missed=head;events.offer("disconnect");await(()->sessions.get()>=2&&ApocBRWorldDictionaryMirror.foreignViews().getFirst().view().equals(missed));check(closed.get()>=1,"reconnect closes previous session and recovers missed update");
+  head=UUID.randomUUID();ApocBRWorldDictionaryDecode.install(new ApocBRPayloadProvenance(2,ns,head),new ApocBRWorldDictionarySnapshot(List.of(),List.of()));UUID updated=head;events.offer("notify");await(()->ApocBRWorldDictionaryMirror.foreignViews().getFirst().view().equals(updated));checks++;
+  head=UUID.randomUUID();ApocBRWorldDictionaryDecode.install(new ApocBRPayloadProvenance(2,ns,head),new ApocBRWorldDictionarySnapshot(List.of(),List.of()));UUID missed=head;events.offer("disconnect");await(()->sessions.get()>=2&&ApocBRWorldDictionaryMirror.foreignViews().getFirst().view().equals(missed));check(closed.get()>=1,"reconnect closes previous session and recovers missed update");
   try{ApocBRWorldDictionaryMirror.foreignViews().clear();throw new AssertionError("mutable discovery");}catch(UnsupportedOperationException expected){checks++;}
   ApocBRPostgresConnector.shutdown.run();await(()->closed.get()==sessions.get());check(ApocBRWorldDictionaryMirror.localView()==null,"listener does not install a foreign dictionary as local");
   System.out.println("Dictionary listener checks="+checks);
@@ -206,7 +232,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_dictionary_') as folder:
     fixtures=[]
     for name,body in [('DictionarySnapshotFixture.java',SNAPSHOT),('DictionaryDatabaseTest.java',DATABASE)]:
         path=target/name;path.write_text(body,encoding='utf-8');fixtures.append(path)
-    sources=[SRC/'savefile/ApocBRPayloadProvenance.java',SRC/'world/ApocBRWorldDictionarySnapshot.java',SRC/'savefile/ApocBRWorldDictionaryDatabase.java',SRC/'savefile/ApocBRPostgresConnector.java']
+    sources=[SRC/'world/ApocBRWorldDictionaryDecode.java',SRC/'savefile/ApocBRPayloadProvenance.java',SRC/'world/ApocBRWorldDictionarySnapshot.java',SRC/'savefile/ApocBRWorldDictionaryDatabase.java',SRC/'savefile/ApocBRPostgresConnector.java']
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,sources+fixtures)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.savefile.DictionaryDatabaseTest'],check=True)

@@ -179,6 +179,7 @@ public class ScriptsDictionary {
         }
 
         public T loadScript(ByteBuffer input, int worldVersion) {
+            try(var dictionary=ApocBRWorldDictionaryDecode.enter(input)) {
             if (input.get() != 0) {
                 short id = input.getShort();
                 DictionaryScriptInfo<T> info = this.getInfoForID(id);
@@ -192,6 +193,7 @@ public class ScriptsDictionary {
             }
 
             return null;
+                    }
         }
 
         public T get(String name) {
@@ -200,7 +202,7 @@ public class ScriptsDictionary {
         }
 
         public T get(short id) {
-            DictionaryScriptInfo<T> info = this.idMap.get(id);
+            DictionaryScriptInfo<T> info = this.getInfoForID(id);
             return info != null ? info.script : null;
         }
 
@@ -246,7 +248,7 @@ public class ScriptsDictionary {
         }
 
         public DictionaryScriptInfo<T> getInfoForID(short id) {
-            return this.idMap.get(id);
+            return ApocBRWorldDictionaryDecode.current()==null?this.idMap.get(id):ApocBRWorldDictionaryDecode.script(this,this.name,id);
         }
 
         protected void register(T script) throws WorldDictionaryException {

@@ -167,6 +167,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_players_') as folder:
     files += [SRC/'savefile'/name for name in ['ApocBRPayloadProvenance.java','ApocBRPostgresConnector.java','ApocBRPlayerDatabase.java','ServerPlayerDB.java','PlayerDBHelper.java',
         'ApocBRPlayerLoadQuality.java','ApocBRPlayerRelationalReader.java','ApocBRPlayerRelationalLimits.java','ApocBRPlayerRelationalSchema.java','ApocBRPlayerRelationalAccess.java',
         'ApocBRPlayerRelationalSnapshot.java','ApocBRPlayerRelationalCodecs.java','ApocBRPlayerRelationalCapture.java','ApocBRPlayerRelationalMutations.java','ApocBRPlayerRelationalDelta.java','ApocBRPlayerRelationalMetrics.java','ApocBRPlayerRelationalDatabase.java','ApocBRPlayerRelationalSync.java']]
+    files += [SRC/path for path in ['world/ApocBRWorldDictionaryDecode.java','world/ApocBRWorldDictionarySnapshot.java','savefile/ApocBRWorldDictionaryDatabase.java']]
     files.append(SRC/'network/packets/connection/LoadPlayerProfilePacket.java')
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,files)],check=True)

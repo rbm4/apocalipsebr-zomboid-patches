@@ -1,6 +1,6 @@
 # V6/V7 dictionary publication and change listener — 42.21.0
 
-Implemented scope: mirror the completed vanilla dictionary into the actual backend V6/V7 `player_rel.world_dictionary_*` tables, then observe other servers' ready-view metadata using PostgreSQL LISTEN/NOTIFY. Vanilla WorldDictionary.bin, local allocation, getters, client packets and decoding remain authoritative/unchanged. Foreign dictionaries are not installed and no alternate dictionary is selected for decoding in this phase.
+Implemented scope: mirror the completed vanilla dictionary into the actual backend V6/V7 `player_rel.world_dictionary_*` tables, then observe other servers' ready-view metadata using PostgreSQL LISTEN/NOTIFY. Vanilla WorldDictionary.bin, local allocation and client packets remain unchanged. Untagged decoding retains native lookup behavior. Exact source views are now cached for player-attached payload decoding; see [decode integration](WORLD-DICTIONARY-DECODE.md).
 
 ## Startup publication
 
@@ -46,11 +46,11 @@ After successful publication, `ApocBR-dictionary-listener` starts as a daemon. I
 
 The listener commits its subscription first, then discovers current foreign ready heads. It repeats discovery after notifications, after every reconnect, and once per 60 seconds as a missed-notification/external-writer recovery check. Notification waiting uses pgJDBC `getNotifications(1000)`; it does not query dictionary tables each second. Event payloads are wake-up hints; canonical metadata is read from the V6/V7 tables. Multiple pending notifications returned together cause one reconciliation.
 
-Foreign discovery returns at most 256 newest ready heads, one per namespace/server/save tuple, excluding the local numeric server ID and unmapped historical views. It atomically replaces an immutable metadata list only after a successful query. Failed refreshes retain the last known metadata. At the budget limit, discovery fails visibly instead of silently truncating; larger fleets need an explicit bound/filter update. A reconnect uses a one-second backoff, and repeated failure logs are limited to one per 30 seconds. The complete dictionaries, historical view selection, payload readiness queues and decoding context remain future work.
+Foreign discovery returns at most 256 newest ready heads, one per namespace/server/save tuple, excluding the local numeric server ID and unmapped historical views. It atomically replaces an immutable metadata list only after a successful query. Failed refreshes retain the last known metadata. At the budget limit, discovery fails visibly instead of silently truncating; larger fleets need an explicit bound/filter update. A reconnect uses a one-second backoff, and repeated failure logs are limited to one per 30 seconds. The listener now prepares exact foreign views in its worker before exposing new heads. Historical payload views are also prepared during relational login; readiness and cache bounds are detailed in [decode integration](WORLD-DICTIONARY-DECODE.md).
 
 `localView()` exposes the local committed view; `foreignViews()` exposes discovered metadata. These are process-memory observations, not permission to decode a payload using an arbitrary latest view. Pool shutdown invokes listener shutdown, interrupts the daemon, closes its dedicated session, and prevents an old listener generation from publishing metadata after replacement. Existing query/socket timeouts bound any in-flight work.
 
-External dictionary writers must emit the same notification after ready publication if they need immediate discovery; V6 itself does not install a notification trigger. The minute reconciliation still recovers such writes. Correctness must eventually use each payload's explicit source namespace/view, rather than notification delivery order or a decode-failure-triggered refresh.
+External dictionary writers must emit the same notification after ready publication if they need immediate discovery; V6 itself does not install a notification trigger. The minute reconciliation still recovers such writes. Decoding uses each attributed payload's explicit source namespace/view, rather than notification delivery order or a decode-failure-triggered refresh.
 
 The implementation follows the [PostgreSQL LISTEN startup ordering](https://www.postgresql.org/docs/current/sql-listen.html), [transactional NOTIFY semantics](https://www.postgresql.org/docs/current/sql-notify.html) and [pgJDBC dedicated notification-session behavior](https://jdbc.postgresql.org/documentation/server-prepare/#listen--notify).
 
@@ -62,7 +62,7 @@ The new mannequin replacement uses the exact 42.21.0 decompiled baseline, copied
 
 Existing unknown byteData stays unknown; the configured local ID is never inferred for bytes merely read/copied from SQL, SQLite, packets or world files. With publication disabled or before the first successful publication, no local origin is available. Versions known at actual encoding may still be recorded without an origin. Mod code replacing/copying opaque buffers must explicitly preserve metadata using `copy`, or provide verified metadata using `remember`; arbitrary native binary round trips do not transport this in-memory sidecar. An outer player/vehicle re-encoding also does not transcode retained foreign embedded buffers.
 
-This phase persists and exposes provenance. It does not install foreign dictionaries, route native decoders by origin, extend profile packets, or solve native vehicle-ID collisions. Multi-dictionary decoding must handle these boundaries before cross-server portability is enabled.
+Player-attached native decoders now select the exact cached source view when provenance is present, and the native dictionary when it is absent. Profile packets and native vehicle-ID collisions remain separate work. See [decode integration](WORLD-DICTIONARY-DECODE.md) for covered entry points, nested contexts and latency.
 
 ## Verification
 
@@ -74,3 +74,21 @@ This phase persists and exposes provenance. It does not install foreign dictiona
 The six PostgreSQL fixtures above passed. The final target-JAR dry run compiled 130 Java sources into 478 class files; no deployment occurred. `git diff --check` passed.
 
 No live PostgreSQL migration or publication was executed. The backend records its isolated PostgreSQL migration verification in the provenance handoff. These Java writers still require a migrated-database integration run followed by a two-server test covering startup, simultaneous publication, notification/disconnect recovery, namespace conflicts, soft reset and shutdown. No deployment was performed.
+
+## Diagnosing failed publication
+
+A failed publication rolls back the whole transaction; zero visible dictionary rows after a startup error is expected. The exception now includes its operation stage, SQLState, numeric server ID, namespace/view UUIDs and snapshot counts. Structured PostgreSQL diagnostics include the server message, schema/table/column/constraint and error position. Failed JDBC batches include their nested server errors. Raw driver/batch messages, bound INSERT values, PostgreSQL DETAIL/WHERE and raw exception cause messages are omitted; credential-like text in structured messages is redacted. Application-owned history-validation reasons are retained explicitly.
+
+Examples: `stage=VERIFY_NAMESPACE_OWNER; SQLState=42703` points at a missing V7 server_id column; `stage=CREATE_RUNTIME_VIEW; SQLState=23503` with `Unknown dictionary server ID` points at the configured catalog ID; `stage=VALIDATE_HISTORY` retains the specific namespace/history conflict. Constraint failures name their constraint when the driver supplies it. Connection acquisition failures are also classified. Keep the full new exception message for diagnosis rather than only its Java stack frames. The old generic exception contains insufficient information to identify which database operation failed.
+
+A read-only audit of the reported local servertest WorldDictionary.bin decoded seven registers and 6,856 entries and found no violations in the checked typed-value ID/counter ranges, mod/type fields, script-version presence or override uniqueness. This checks the file representation only; it does not establish the deployed database schema, privileges, catalog IDs or trigger outcome. No live database was queried during that audit.
+
+## Dictionary publication timeout correction
+
+`stage=PUBLISH_READY_VIEW; SQLState=08006` means the connection was lost while awaiting the UPDATE that marks the runtime view ready. All preceding insert stages had returned; the publication trigger validates the completed dictionary at this UPDATE, and NOTIFY has not yet run. The old shared socket read timeout was 3 seconds, shorter than the dictionary's 5-second query timeout. A client-side socket timeout is consistent with a delay here, no structured PostgreSQL server error, and server-side connection-reset/open-transaction EOF logs; SQLState alone does not prove that specific cause.
+
+Dictionary write/publication statements now use `apocbr.postgres.dictionary.publicationTimeoutSeconds`, default 30 seconds, accepted range 5..300. This is a per-statement/batch budget, not a whole-publication deadline. Dictionary history/read/discovery queries retain 5 seconds and the namespace lock timeout remains 2 seconds. A dictionary pool lease sets its socket/network timeout to the configured publication timeout plus a 15-second response/cancellation margin (45 seconds by default). Hikari restores the original timeout when the lease is returned; other player/vehicle leases retain the 3-second baseline. The dedicated listener still uses its original physical-session configuration.
+
+Failure diagnostics now include total/stage elapsed milliseconds, the publication query budget, bounded nested exception class names and controlled transport categories such as `SOCKET_READ_TIMEOUT`, `UNEXPECTED_EOF` or `SOCKET_FAILURE`. No raw driver/I/O cause text is logged. A SocketTimeoutException cause confirms a socket-read timeout; other 08006 failures remain distinguishable. This aligns the client timeout budgets without disabling publication validation or bypassing database constraints. A publication that still exceeds its query budget needs database-side trigger/query-plan measurement.
+
+Verification covers the real Hikari lease reset, configurable/bounded publication timeouts, transport-cause redaction and a ready-view timeout that rolls back before notification. No live PostgreSQL publication or deployment was performed.

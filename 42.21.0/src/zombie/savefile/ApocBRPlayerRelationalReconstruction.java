@@ -265,7 +265,7 @@ final class ApocBRPlayerRelationalReconstruction {
                 byte[] bytes=HexFormat.of().parseHex((String)row.get("opaque_value"));
                 var origin=ApocBRPayloadProvenance.of(row.get("source_server_id"),row.get("source_dictionary_namespace_id"),row.get("source_dictionary_view_id"));
                 Integer version=row.get("payload_world_version")==null?null:((Number)row.get("payload_world_version")).intValue();
-                if(origin!=null||version!=null)ApocBRPayloadProvenance.remember(bytes,new ApocBRPayloadProvenance.Metadata(origin,version));
+                ApocBRPayloadProvenance.remember(bytes,new ApocBRPayloadProvenance.Metadata(origin,version));
                 return bytes;
             }
             case "object", "array", "table": {

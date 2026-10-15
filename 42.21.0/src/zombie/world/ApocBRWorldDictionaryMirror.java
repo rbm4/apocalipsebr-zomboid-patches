@@ -30,6 +30,7 @@ public final class ApocBRWorldDictionaryMirror {
         var origin=new ApocBRWorldDictionaryDatabase.Origin(namespace,"vanilla:"+namespace,server,save);
         var snapshot=ApocBRWorldDictionarySnapshot.capture(data);
         local=DATABASE.publish(origin,snapshot);
+        ApocBRWorldDictionaryDecode.install(new ApocBRPayloadProvenance(server,namespace,local.view()),snapshot);
         ApocBRPayloadProvenance.published(new ApocBRPayloadProvenance(server,namespace,local.view()));
         log("PUBLISHED; serverId="+server+"; namespace="+namespace+"; view="+local.view()+"; revision="+local.revision()+"; entries="+snapshot.entries().size());
         start(server);
@@ -72,11 +73,12 @@ public final class ApocBRWorldDictionaryMirror {
         }
         private void reconcile()throws SQLException {
             var discovered=DATABASE.foreignHeads(server);
+            for(var view:discovered)ApocBRWorldDictionaryDecode.prepare(new ApocBRPayloadProvenance(view.serverId(),view.namespace(),view.view()));
             synchronized(ApocBRWorldDictionaryMirror.class) {
                 if(stopping.get()||listener!=this)return;
                 if(!discovered.equals(foreign)) {
                     foreign=discovered;
-                    log("FOREIGN_VIEWS_CHANGED; views="+discovered.size()+"; decodeInstallation=false");
+                    log("FOREIGN_VIEWS_CHANGED; views="+discovered.size()+"; decodeInstallation=true");
                 }
             }
         }

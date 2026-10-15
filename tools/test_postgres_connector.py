@@ -32,7 +32,7 @@ public class PostgresConnectorTest {
         return null;
     }
     static class Fake implements InvocationHandler {
-        int commits, rollbacks, writes, acquired, closed;
+        int commits, rollbacks, writes, acquired, closed; int networkTimeout=3000;
         boolean failWrite, failCommit;
         boolean duplicate;
         Integer existingId;
@@ -71,6 +71,8 @@ public class PostgresConnectorTest {
                 case "close": closed++; return null;
                 case "isValid": return true;
                 case "getAutoCommit": return false;
+                case "getNetworkTimeout": return networkTimeout;
+                case "setNetworkTimeout": networkTimeout=(Integer)args[1]; return null;
             }
             return defaultValue(method.getReturnType());
         }
@@ -146,11 +148,29 @@ public class PostgresConnectorTest {
         try { snapshot(1,false,new byte[0]); throw new AssertionError("empty payload accepted"); }
         catch(IllegalArgumentException expected) {}
 
+        SQLException ioFailure=new PSQLException("private JDBC statement",PSQLState.CONNECTION_FAILURE,new java.net.SocketTimeoutException("password=PRIVATE_SOCKET_MESSAGE"));
+        String ioDiagnostic=ApocBRPostgresConnector.sqlDiagnostic(ioFailure,false);
+        check(ioDiagnostic.contains("cause=SocketTimeoutException")&&ioDiagnostic.contains("transport=SOCKET_READ_TIMEOUT")&&!ioDiagnostic.contains("PRIVATE_"),"transport root cause classified without raw exception messages");
+        check(ApocBRPostgresConnector.sqlDiagnostic(new SQLException("private","08006",new java.io.EOFException("PRIVATE_EOF")),false).contains("transport=UNEXPECTED_EOF"),"EOF classified separately from timeout");
         // Real pool links against the game's SLF4J API; no external DB connection.
         HikariConfig config=new HikariConfig(); config.setDataSource(new Fake().source());
         config.setMaximumPoolSize(8); config.setMinimumIdle(0); config.setInitializationFailTimeout(-1);
         try(HikariDataSource pool=new HikariDataSource(config)) {
             check(pool.getMaximumPoolSize()==8, "real Hikari configuration links");
+            Field singleton=ApocBRPostgresConnector.class.getDeclaredField("instance");singleton.setAccessible(true);
+            Field configured=ApocBRPostgresConnector.class.getDeclaredField("configured");configured.setAccessible(true);
+            Object previous=singleton.get(null);boolean wasConfigured=configured.getBoolean(null);
+            singleton.set(null,new ApocBRPostgresConnector(pool,logs::add));configured.setBoolean(null,true);
+            try {
+                check(ApocBRPostgresConnector.dictionaryPublicationTimeoutSeconds()==30,"bounded publication timeout defaults to thirty seconds");
+                try(Connection lease=ApocBRPostgresConnector.borrowDictionaryConnection()){check(lease.getNetworkTimeout()==45000,"dictionary lease outlives publication query plus cancellation margin");}
+                try(Connection lease=ApocBRPostgresConnector.borrowPlayerConnection()){check(lease.getNetworkTimeout()==3000,"real Hikari resets dictionary network timeout before ordinary player lease");}
+                System.setProperty("apocbr.postgres.dictionary.publicationTimeoutSeconds","60");
+                try(Connection lease=ApocBRPostgresConnector.borrowDictionaryConnection()){check(lease.getNetworkTimeout()==75000,"configured publication budget also controls socket margin");}
+                System.setProperty("apocbr.postgres.dictionary.publicationTimeoutSeconds","0");
+                try{ApocBRPostgresConnector.borrowDictionaryConnection();throw new AssertionError("unbounded timeout accepted");}catch(IllegalArgumentException expected){}
+                check(pool.getHikariPoolMXBean().getActiveConnections()==0,"invalid timeout configuration returns borrowed lease");
+            } finally {System.clearProperty("apocbr.postgres.dictionary.publicationTimeoutSeconds");singleton.set(null,previous);configured.setBoolean(null,wasConfigured);}
         }
         System.setProperty("apocbr.postgres.enabled", "false");
         ApocBRPostgresConnector.process();

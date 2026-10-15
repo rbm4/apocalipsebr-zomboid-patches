@@ -76,6 +76,19 @@ final class ApocBRPlayerRelationalReader {
         return sql.toString();
     }
     Profile load(String world,String identity,int slot,boolean coop) throws SQLException {
+        Profile profile=loadGraph(world,identity,slot,coop);
+        // The graph lease is already returned, including when poolSize=1.
+        if(profile!=null) {
+            Set<ApocBRPayloadProvenance> origins=new LinkedHashSet<>();
+            for(var row:profile.rows("value_node")) {
+                var origin=ApocBRPayloadProvenance.of(row.get("source_server_id"),row.get("source_dictionary_namespace_id"),row.get("source_dictionary_view_id"));
+                if(origin!=null)origins.add(origin);
+            }
+            for(var origin:origins)zombie.world.ApocBRWorldDictionaryDecode.prepare(origin);
+        }
+        return profile;
+    }
+    private Profile loadGraph(String world,String identity,int slot,boolean coop) throws SQLException {
         if(slot<0||slot>=4)return null;
         try(Connection connection=connections.open()) {
             try(PreparedStatement query=connection.prepareStatement(SQL)) {

@@ -141,7 +141,21 @@ public final class ApocBRPostgresConnector {
 
     public static Connection borrowPlayerConnection() throws SQLException { return borrowConnection(false); }
 
-    public static Connection borrowDictionaryConnection() throws SQLException { return borrowConnection(false); }
+    static int dictionaryPublicationTimeoutSeconds() {
+        int seconds=Integer.parseInt(System.getProperty("apocbr.postgres.dictionary.publicationTimeoutSeconds","30"));
+        if(seconds<5||seconds>300)throw new IllegalArgumentException("Dictionary publication timeout must be 5..300 seconds");
+        return seconds;
+    }
+
+    public static Connection borrowDictionaryConnection() throws SQLException {
+        Connection connection=borrowConnection(false);
+        try {
+            // pgJDBC implements this using the socket read timeout. Hikari tracks this change
+            // and restores the pool's original timeout when this lease is returned.
+            connection.setNetworkTimeout(Runnable::run,(dictionaryPublicationTimeoutSeconds()+15)*1000);
+            return connection;
+        }catch(SQLException|RuntimeException failure){try{connection.close();}catch(SQLException ignored){}throw failure;}
+    }
 
     /** LISTEN owns an extra physical session, outside the query pool (also safe with poolSize=1). */
     public static Connection openDictionaryListenerConnection() throws SQLException {
@@ -270,8 +284,14 @@ public final class ApocBRPostgresConnector {
         }
     }
 
-    static String sqlDiagnostic(Throwable failure) {
+    static String sqlDiagnostic(Throwable failure) { return sqlDiagnostic(failure,true); }
+
+    static String sqlDiagnostic(Throwable failure,boolean playerHints) {
         StringBuilder result = new StringBuilder("exception=" + failure.getClass().getSimpleName());
+        if(failure instanceof SQLException sql) {
+            String state=sql.getSQLState();
+            result.append("; SQLState=").append(state!=null&&state.matches("[A-Z0-9]{5}")?state:"UNKNOWN").append("; errorCode=").append(sql.getErrorCode());
+        }
         if (failure instanceof PSQLException pg && pg.getServerErrorMessage() != null) {
             ServerErrorMessage error = pg.getServerErrorMessage();
             result.append("; message=").append(safeServerText(error.getMessage()));
@@ -282,7 +302,20 @@ public final class ApocBRPostgresConnector {
             result.append("; position=").append(error.getPosition());
             // PostgreSQL DETAIL / WHERE may contain full row values; deliberately exclude them.
         }
-        if (failure instanceof SQLException sql) {
+        // Transport errors have no PostgreSQL ServerErrorMessage. Report cause TYPES and
+        // controlled classifications, never raw IOException/driver messages or SQL values.
+        java.util.Set<Throwable> seen=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+        Throwable cause=failure.getCause();int depth=0;
+        while(cause!=null&&seen.add(cause)&&depth++<8) {
+            result.append("; cause=").append(cause.getClass().getSimpleName());
+            if(cause instanceof java.net.SocketTimeoutException)result.append("; transport=SOCKET_READ_TIMEOUT");
+            else if(cause instanceof java.net.ConnectException)result.append("; transport=CONNECT_FAILURE");
+            else if(cause instanceof java.net.SocketException)result.append("; transport=SOCKET_FAILURE");
+            else if(cause instanceof java.io.EOFException)result.append("; transport=UNEXPECTED_EOF");
+            else if(cause instanceof javax.net.ssl.SSLException)result.append("; transport=TLS_FAILURE");
+            cause=cause.getCause();
+        }
+        if (playerHints && failure instanceof SQLException sql) {
             if ("42P01".equals(sql.getSQLState())) {
                 result.append("; hint=undefined relation: verify backend migration and target database for public.networkplayers");
             } else if ("42P10".equals(sql.getSQLState())) {

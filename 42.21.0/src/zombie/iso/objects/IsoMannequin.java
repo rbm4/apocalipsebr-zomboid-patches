@@ -2,6 +2,7 @@
 package zombie.iso.objects;
 
 import java.io.IOException;
+import zombie.world.ApocBRWorldDictionaryDecode;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Map;
@@ -247,6 +248,7 @@ public class IsoMannequin extends IsoObject implements IHumanVisual {
 
     @Override
     public void load(ByteBuffer input, int worldVersion, boolean isDebugSave) throws IOException {
+        try(var dictionary=ApocBRWorldDictionaryDecode.enter(input)) {
         super.load(input, worldVersion, isDebugSave);
         this.setForwardIsoDirection(IsoDirections.fromIndex(input.get()));
         this.init = input.get() != 0;
@@ -283,6 +285,7 @@ public class IsoMannequin extends IsoObject implements IHumanVisual {
                 }
             }
         }
+            }
     }
 
     @Override

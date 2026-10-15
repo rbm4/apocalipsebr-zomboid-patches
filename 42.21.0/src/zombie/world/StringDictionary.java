@@ -124,6 +124,7 @@ public class StringDictionary {
         }
 
         public String loadString(ByteBuffer input, int worldVersion) {
+            try(var dictionary=ApocBRWorldDictionaryDecode.enter(input)) {
             if (input.get() != 0) {
                 short id = input.getShort();
                 DictionaryStringInfo info = this.getInfoForID(id);
@@ -139,10 +140,11 @@ public class StringDictionary {
             } else {
                 return GameWindow.ReadString(input);
             }
+                    }
         }
 
         public String get(short id) {
-            DictionaryStringInfo info = this.idToStringMap.get(id);
+            DictionaryStringInfo info = this.getInfoForID(id);
             return info != null ? info.string : null;
         }
 
@@ -171,7 +173,7 @@ public class StringDictionary {
         }
 
         public DictionaryStringInfo getInfoForID(short id) {
-            return this.idToStringMap.get(id);
+            return ApocBRWorldDictionaryDecode.current()==null?this.idToStringMap.get(id):ApocBRWorldDictionaryDecode.string(this.name,id);
         }
 
         public void register(String string) {

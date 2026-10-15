@@ -76,6 +76,15 @@ public class ReconstructionTest {
   check(f.closed==4,"all read paths return leases");
   f.fail=false;f.rows=List.of();var executor=java.util.concurrent.Executors.newSingleThreadExecutor(r->new Thread(r,"fixture-jdbc"));
   try{check(reader.loadAsync("world","alice",0,false,executor).get()==null,"future returns detached absent result");}finally{executor.shutdownNow();}
+  var sourceOrigin=new ApocBRPayloadProvenance(2,UUID.randomUUID(),UUID.randomUUID());
+  String metadataJson=new org.json.JSONObject().put("status","complete").put("schema_version",1).put("codec_version",4).put("expected_object_count",0).put("expected_item_count",0).put("expected_container_count",0).put("expected_edge_count",0).toString();
+  String opaqueJson=new org.json.JSONObject().put("source_server_id",2).put("source_dictionary_namespace_id",sourceOrigin.namespaceId().toString()).put("source_dictionary_view_id",sourceOrigin.viewId().toString()).toString();
+  f.rows=List.<Object[]>of(new Object[]{"snapshot",metadataJson},new Object[]{"value_node",opaqueJson});
+  int graphLeases=f.closed;
+  ApocBRPostgresConnector.dictionaryCheck=()->check(f.closed==graphLeases+1,"graph lease returned before cold dictionary acquisition, including poolSize=1");
+  try{reader.load("world","alice",0,false);throw new AssertionError("unprepared source admitted");}catch(SQLException expected){checks++;}
+  zombie.world.ApocBRWorldDictionaryDecode.install(sourceOrigin,new zombie.world.ApocBRWorldDictionarySnapshot(List.of(),List.of()));
+  check(reader.load("world","alice",0,false)!=null,"warm attributed graph admitted without a second dictionary fetch");
   String sql=ApocBRPlayerRelationalReader.SQL;
   for(String column:List.of("source_dictionary_namespace_id","source_dictionary_view_id"))check(sql.contains("'"+column+"',t."+column)&&!sql.contains(".id=t."+column),"external dictionary UUID is projected literally, never collapsed to an absent graph reference");
   check(!sql.contains("networkplayers")&&!sql.contains("to_jsonb(t)")&&!sql.contains("SELECT *"),"explicit relational projection, no native blob");
@@ -139,8 +148,9 @@ public class ReconstructionTest {
 with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:
     target=Path(folder)
     harness=target/'ReconstructionTest.java';harness.write_text(HARNESS,encoding='utf-8')
-    connector=target/'ApocBRPostgresConnector.java';connector.write_text('package zombie.savefile; public class ApocBRPostgresConnector {public static java.sql.Connection borrowPlayerConnection() throws java.sql.SQLException {throw new java.sql.SQLException();}}',encoding='utf-8')
+    connector=target/'ApocBRPostgresConnector.java';connector.write_text('package zombie.savefile; public class ApocBRPostgresConnector { public static int dictionaryPublicationTimeoutSeconds(){return 30;} public static String sqlDiagnostic(Throwable error,boolean playerHints){return "exception="+error.getClass().getSimpleName();}public static Runnable dictionaryCheck=()->{}; public static java.sql.Connection borrowDictionaryConnection() throws java.sql.SQLException {dictionaryCheck.run();throw new java.sql.SQLException();} public static java.sql.Connection borrowPlayerConnection() throws java.sql.SQLException {throw new java.sql.SQLException();}}',encoding='utf-8')
     names=['Limits','Schema','Access','Snapshot','Codecs','Capture','Mutations','Delta','Metrics','Database','Reader','Reconstruction']
     sources=[SRC/'ApocBRPayloadProvenance.java']+[SRC/('ApocBRPlayerRelational'+n+'.java') for n in names]
+    sources += [SRC.parent/path for path in ['world/ApocBRWorldDictionaryDecode.java','world/ApocBRWorldDictionarySnapshot.java','savefile/ApocBRWorldDictionaryDatabase.java']]
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(connector),str(harness)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.ReconstructionTest'],check=True)
