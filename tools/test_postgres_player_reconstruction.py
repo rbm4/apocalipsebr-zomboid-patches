@@ -1,0 +1,139 @@
+"""Relational login SQL/JDBC and actual native field restoration contracts (42.21.0)."""
+from pathlib import Path
+import os, re, subprocess, tempfile
+
+ROOT=Path(__file__).resolve().parents[1]
+SRC=ROOT/'42.21.0/src/zombie/savefile'
+GAME=Path(os.environ.get('APOCBR_TEST_GAME_JAR',r'Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar'))
+JDK=ROOT/'jdk/bin'
+# Reuse the reviewed native scalar table inventory; no test code is imported/executed.
+contract=(ROOT/'tools/test_postgres_player_relational.py').read_text(encoding='utf-8')
+roots=re.search(r'String\[\]\[\] roots=\{(.*?)\n  \};',contract,re.S).group(1)
+HARNESS=r'''
+package zombie.savefile;
+import java.util.*;
+import java.lang.reflect.*;
+import java.sql.*;
+public class ReconstructionTest {
+ static int checks;
+ static void check(boolean b,String text){if(!b)throw new AssertionError(text);checks++;}
+ static Class<?> resolve(Class<?> type,String path)throws Exception {
+  for(String part:path.split("\\.")) {
+   Field field=null;
+   for(Class<?> t=type;t!=null&&field==null;t=t.getSuperclass())try{field=t.getDeclaredField(part);}catch(NoSuchFieldException ignored){}
+   if(field!=null){type=field.getType();continue;}
+   String cap=Character.toUpperCase(part.charAt(0))+part.substring(1);Method found=null;
+   for(String prefix:List.of("","get","is","Get","Is"))try{found=type.getMethod(prefix.isEmpty()?part:prefix+cap);break;}catch(NoSuchMethodException ignored){}
+   if(found==null)throw new NoSuchFieldException(type.getName()+"."+part);type=found.getReturnType();
+  }return type;
+ }
+ static sun.misc.Unsafe unsafe()throws Exception{var f=sun.misc.Unsafe.class.getDeclaredField("theUnsafe");f.setAccessible(true);return (sun.misc.Unsafe)f.get(null);}
+ static Object blank(Class<?> type)throws Exception{return unsafe().allocateInstance(type);}
+ static Object sample(Class<?> type) {
+  if(type==boolean.class)return true;if(type==byte.class)return (byte)1;if(type==short.class)return (short)1;if(type==int.class)return 1;
+  if(type==long.class)return 1L;if(type==float.class)return 1f;if(type==double.class)return 1d;return null;
+ }
+ static void nativeFields()throws Exception {
+  String[][] roots={ROOTS};
+  List<String> failures=new ArrayList<>();
+  for(var root:roots) {
+   Class<?> type=Class.forName("zombie."+root[1],false,ReconstructionTest.class.getClassLoader());
+   if(Modifier.isAbstract(type.getModifiers()))type=Class.forName("zombie.worldMap.symbols.WorldMapTextSymbol");
+   Object target=blank(type);var skip=new HashSet<>(Arrays.asList(root[2].split(" ")));skip.add("snapshot_id");
+   if(root[0].equals("character_state")) {skip.add("direction");ApocBRPlayerRelationalReconstruction.set(target,"descriptor",blank(Class.forName("zombie.characters.SurvivorDesc")));}
+   if(root[0].equals("item"))skip.addAll(List.of("full_type","source_registry_id","texture_name","source_recorded_media_index"));
+   for(var col:ApocBRPlayerRelationalSchema.TABLES.get(root[0]))if(!skip.contains(col.name()))try {
+    String path=ApocBRPlayerRelationalCapture.path(root[0],col.name());
+    if(path.contains(".")){String parent=path.substring(0,path.lastIndexOf('.'));Class<?> nested=resolve(type,parent);ApocBRPlayerRelationalReconstruction.set(target,parent,blank(nested));}
+    Class<?> valueType=resolve(type,path);
+    ApocBRPlayerRelationalReconstruction.set(target,path,sample(valueType));checks++;
+   }catch(Throwable e){failures.add(root[0]+"."+col.name()+": "+e);}
+  }
+  check(failures.isEmpty(),String.join("\n",failures));
+ }
+ static class Fixture {
+  int queries,commits,rollbacks,closed;boolean complete=true;boolean fail;
+  List<Object[]> rows=List.of();
+  Object proxy(Class<?> c,InvocationHandler handler){return Proxy.newProxyInstance(c.getClassLoader(),new Class[]{c},handler);}
+  Object zero(Class<?> t){if(t==boolean.class)return false;if(t==int.class)return 0;if(t==long.class)return 0L;return null;}
+  Connection open(){return (Connection)proxy(Connection.class,(p,m,a)->switch(m.getName()) {
+   case "prepareStatement" -> {check(((String)a[0]).equals(ApocBRPlayerRelationalReader.SQL),"single pinned query");yield proxy(PreparedStatement.class,(q,n,b)->{
+    if(n.getName().equals("executeQuery")){queries++;if(fail)throw new SQLException("sensitive SQL and identity","08006");int[] index={-1};return proxy(ResultSet.class,(r,f,v)->switch(f.getName()){case "next"->++index[0]<rows.size();case "getString"->rows.get(index[0])[(int)v[0]-1];default->zero(f.getReturnType());});}return zero(n.getReturnType());});}
+   case "commit"->{commits++;yield null;}case "rollback"->{rollbacks++;yield null;}case "close"->{closed++;yield null;}default->zero(m.getReturnType());
+  });}
+ }
+ static void jdbc()throws Exception {
+  Fixture f=new Fixture();var reader=new ApocBRPlayerRelationalReader(f::open);
+  check(reader.load("world","alice",-1,false)==null&&f.queries==0,"invalid slot performs no I/O");
+  check(reader.load("world","alice",0,false)==null&&f.commits==1&&f.closed==1,"missing slot releases lease");
+  f.rows=List.<Object[]>of(new Object[]{"snapshot","{\"status\":\"complete\",\"schema_version\":1,\"codec_version\":4,\"expected_object_count\":0,\"expected_item_count\":0,\"expected_container_count\":0,\"expected_edge_count\":0}"});
+  var profile=reader.load("world","alice",0,false);check(profile!=null&&f.queries==2,"one executeQuery for full profile");
+  try{profile.one("snapshot").put("status","bad");throw new AssertionError("mutable profile");}catch(UnsupportedOperationException expected){checks++;}
+  f.rows=List.<Object[]>of(new Object[]{"snapshot","{\"status\":\"incomplete\",\"schema_version\":1,\"codec_version\":4}"});
+  try{reader.load("world","alice",0,false);throw new AssertionError("incomplete accepted");}catch(SQLException expected){checks++;}
+  check(f.rollbacks==1,"incomplete head rolls back");
+  f.fail=true;try{reader.load("world","alice",0,false);throw new AssertionError();}catch(SQLException expected){check(!expected.toString().contains("sensitive")&&expected.getCause()==null,"driver details sanitized");}
+  check(f.closed==4,"all read paths return leases");
+  f.fail=false;f.rows=List.of();var executor=java.util.concurrent.Executors.newSingleThreadExecutor(r->new Thread(r,"fixture-jdbc"));
+  try{check(reader.loadAsync("world","alice",0,false,executor).get()==null,"future returns detached absent result");}finally{executor.shutdownNow();}
+  String sql=ApocBRPlayerRelationalReader.SQL;
+  check(!sql.contains("networkplayers")&&!sql.contains("to_jsonb(t)")&&!sql.contains("SELECT *"),"explicit relational projection, no native blob");
+  for(var table:ApocBRPlayerRelationalSchema.TABLES.entrySet())if(table.getValue().stream().anyMatch(c->c.name().equals("snapshot_id"))&&!Set.of("character_head","sync_issue").contains(table.getKey())) {
+   String section=sql.substring(sql.indexOf("UNION ALL SELECT '"+table.getKey()+"'"));int end=section.indexOf(" UNION ALL",1);if(end>=0)section=section.substring(0,end);
+   int reference=0;
+   for(var col:table.getValue())if(col.type().equals("uuid")&&!col.name().equals("snapshot_id")){String alias="r"+reference++;check(section.contains("'"+col.name()+"',"+alias+".ordinal")&&section.contains("LEFT JOIN refs "+alias+" ON "+alias+".id=t."+col.name()),"UUID stays in SQL: "+table.getKey()+"."+col.name());}
+  }
+ }
+ static Object invoke(String name,Class<?>[] types,Object... args)throws Exception {
+  var method=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod(name,types);method.setAccessible(true);return method.invoke(null,args);
+ }
+ static void components()throws Exception {
+  Object attributes=ApocBRPlayerRelationalReconstruction.create("zombie.entity.components.attributes.AttributeContainer");
+  var attr=zombie.entity.components.attributes.Attribute.TestUses;
+  ApocBRPlayerRelationalAccess.call(attributes,"put",attr,37);
+  var enumAttr=zombie.entity.components.attributes.Attribute.TestCategories;
+  var enums=EnumSet.of(zombie.entity.components.attributes.TestEnum.TestValueA);
+  ApocBRPlayerRelationalAccess.call(attributes,"put",enumAttr,enums);
+  var state=ApocBRPlayerRelationalSnapshot.componentState(attributes);
+  Object restored=ApocBRPlayerRelationalReconstruction.create("zombie.entity.components.attributes.AttributeContainer");
+  invoke("restoreComponentState",new Class[]{Object.class,String.class,Object.class},restored,"AttributeContainer",state);
+  check(ApocBRPlayerRelationalAccess.call(restored,"get",attr).equals(37),"numeric attribute restored through native container");
+  check(ApocBRPlayerRelationalAccess.call(restored,"get",enumAttr).equals(enums),"enum-set attribute restored");
+  UUID character=UUID.randomUUID();var capture=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE);
+  var write=ApocBRPlayerRelationalCapture.class.getDeclaredMethod("componentValue",UUID.class,String.class,Object.class,String.class);write.setAccessible(true);
+  Map<Object,Object> payload=new LinkedHashMap<>();payload.put("text","saved");payload.put("values",Arrays.asList(12L,true,null));payload.put("bytes",new byte[]{1,2,(byte)255});payload.put(2.0,"numeric-key");
+  write.invoke(capture,character,"test",payload,"complete");
+  var field=ApocBRPlayerRelationalCapture.class.getDeclaredField("rows");field.setAccessible(true);
+  @SuppressWarnings("unchecked") var graph=(List<ApocBRPlayerRelationalCapture.Row>)field.get(capture);
+  Map<UUID,Integer> refs=new HashMap<>();for(var row:graph)for(Object value:row.values().values())if(value instanceof UUID u)refs.computeIfAbsent(u,k->refs.size()+1);
+  Map<Integer,List<Map<String,Object>>> children=new HashMap<>();Map<String,Object> root=null;
+  for(var row:graph)if(row.table().equals("value_node")) {
+   Map<String,Object> r=new LinkedHashMap<>();row.values().forEach((k,v)->r.put(k,v instanceof UUID u?refs.get(u):v instanceof byte[] b?HexFormat.of().formatHex(b):v));
+   if(r.get("parent_id")==null)root=r;else children.computeIfAbsent(((Number)r.get("parent_id")).intValue(),k->new ArrayList<>()).add(r);
+  }
+  var decoded=(Map<?,?>)invoke("value",new Class[]{Map.class,Map.class,Set.class,int.class},root,children,new HashSet<Integer>(),0);
+  check(decoded.get("text").equals("saved")&&decoded.get(2.0).equals("numeric-key"),"structured scalar keys survive capture/reconstruction");
+  check(decoded.get("values").equals(Arrays.asList(12L,true,null)),"structured arrays and null values survive");
+  check(Arrays.equals((byte[])decoded.get("bytes"),new byte[]{1,2,(byte)255}),"opaque component payload survives hex transport");
+ }
+ static void ownership() {
+  Map<String,List<Map<String,Object>>> tables=new HashMap<>();
+  tables.put("character_state",List.of(Map.of("inventory_container_id",1)));
+  tables.put("container",List.of(Map.of("id",1)));
+  tables.put("item",List.of(Map.of("id",2),Map.of("id",3)));
+  tables.put("item_location",List.of(Map.of("item_id",2,"container_id",1,"relation","container","position",0),Map.of("item_id",3,"parent_item_id",2,"relation","weapon_attachment","position",0)));
+  ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));checks++;
+  tables.put("item_location",List.of(Map.of("item_id",2,"parent_item_id",3,"relation","weapon_attachment","position",0),Map.of("item_id",3,"parent_item_id",2,"relation","weapon_attachment","position",0)));
+  try{ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));throw new AssertionError("cycle accepted");}catch(IllegalStateException expected){checks++;}
+ }
+ public static void main(String[] args)throws Exception{nativeFields();jdbc();components();ownership();System.out.println("Reconstruction checks="+checks);}
+}
+'''.replace('ROOTS',roots)
+with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:
+    target=Path(folder)
+    harness=target/'ReconstructionTest.java';harness.write_text(HARNESS,encoding='utf-8')
+    connector=target/'ApocBRPostgresConnector.java';connector.write_text('package zombie.savefile; public class ApocBRPostgresConnector {public static java.sql.Connection borrowPlayerConnection() throws java.sql.SQLException {throw new java.sql.SQLException();}}',encoding='utf-8')
+    names=['Limits','Schema','Access','Snapshot','Codecs','Capture','Mutations','Delta','Metrics','Database','Reader','Reconstruction']
+    sources=[SRC/('ApocBRPlayerRelational'+n+'.java') for n in names]
+    subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(connector),str(harness)],check=True)
+    subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.ReconstructionTest'],check=True)

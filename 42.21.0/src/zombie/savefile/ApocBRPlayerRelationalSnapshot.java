@@ -35,6 +35,7 @@ final class ApocBRPlayerRelationalSnapshot {
             "owner_character_id","owner_item_id","position","body_part_key");
     private final IdentityHashMap<Object,Object> copies=new IdentityHashMap<>();
     private int bytes,nodes;
+    private boolean live;
     private void charge(int amount) {
         if(amount<0||amount>ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-bytes)throw new ApocBRPlayerRelationalLimits.SizeExceeded("SNAPSHOT_SIZE_BUDGET",(long)bytes+amount,ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES,0,0,nodes);
         bytes+=amount;
@@ -175,6 +176,10 @@ final class ApocBRPlayerRelationalSnapshot {
                     if(p!=null){fields(p,presets,"maxPresets");put(p,"presets",sequence(get(presets,"presets"),v->projected(v,"radio_preset")));}put(radio,"presets",p);}
                 put(node,"deviceData",radio);
             }
+            case "AnimalInventoryItem" -> {
+                Object animal=get(source,"animal");long clock=live?zombie.GameTime.getInstance().getCalender().getTimeInMillis():((Number)get(animal,"timeSinceLastUpdate")).longValue();
+                put(node,"animalState",structured(ApocBRPlayerRelationalCodecs.animal(animal,clock),0));
+            }
             default -> { }
         }
         ArrayList<Object> components=new ArrayList<>();
@@ -191,7 +196,7 @@ final class ApocBRPlayerRelationalSnapshot {
                         if(f!=null){fields(f,value,"filterType");for(String path:new String[]{"fluidEnums","fluidStrings","categories"})put(f,path,sequence(get(value,path),this::scalar));}put(c,filter,f);
                     }
                 }
-                default -> { }
+                default -> {if(ApocBRPlayerRelationalCodecs.supports(component))put(c,"state",structured(ApocBRPlayerRelationalCodecs.component(component),0));}
             }
             components.add(c);
         }
@@ -282,8 +287,9 @@ final class ApocBRPlayerRelationalSnapshot {
     static Snapshot copy(Object player) {return copy(player,false);}
     static Snapshot copyLive(Object player) {return copy(player,true);}
     private static Snapshot copy(Object player,boolean live) {
-        var copy=new ApocBRPlayerRelationalSnapshot();Instant captured=Instant.now();Node p=copy.begin(player);
-        copy.project(p,player,"character_state","inventory_container_id","source_offset_x","source_offset_y");
+        var copy=new ApocBRPlayerRelationalSnapshot();copy.live=live;Instant captured=Instant.now();Node p=copy.begin(player);
+        copy.project(p,player,"character_state","inventory_container_id");
+        copy.fields(p,player,"extraInfoFlags");
         copy.project(p,player,"character_effects");copy.project(p,player,"character_presentation","tag_r","tag_g","tag_b");
         copy.fields(p,player,"tagColor.r","tagColor.g","tagColor.b");
         if(live) {

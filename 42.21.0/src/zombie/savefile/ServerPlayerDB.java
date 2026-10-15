@@ -383,21 +383,12 @@ public final class ServerPlayerDB {
     private IsoPlayer loadPostgresPlayer(int slot,String identity) {
         boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
         try {
-            ApocBRPlayerDatabase.Profile profile=new ApocBRPlayerDatabase().load(Core.gameSaveWorld,identity,slot,coop);
+            ApocBRPlayerRelationalReader.Profile profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
             if (profile==null) return null;
-            byte[] data=profile.data();
-            if (data==null) throw new IOException("Player snapshot has no bytes");
-            IsoPlayer player=new IsoPlayer(IsoWorld.instance.currentCell);
-            player.serverPlayerIndex=slot;
-            try { player.load(ByteBuffer.wrap(data),profile.worldVersion()); }
-            catch (Exception failure) {
-                DebugType.General.printException(failure,"The server cannot load player data.",LogSeverity.Error);
-                // Preserve the native failed-deserialization deletion branch, with an explicit transaction.
-                new ApocBRPlayerDatabase().delete(Core.gameSaveWorld,identity,slot,coop);
-                return null;
-            }
-            if (profile.dead()) { player.getBodyDamage().setOverallBodyHealth(0.0F); player.setHealth(0.0F); }
-            player.remote=true; return player;
+            IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
+            ApocBRPlayerRelationalSync.offerLoadedPlayer(player,0,Core.gameSaveWorld,identity,slot,
+                    ((Number)profile.one("snapshot").get("source_world_version")).intValue(),new byte[0],java.util.List.of());
+            return player;
         } catch (Exception failure) { ExceptionLogger.logException(failure); return null; }
     }
 

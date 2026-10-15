@@ -9,7 +9,7 @@ import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Relational graph projection. Production calls this on the worker with a detached snapshot. */
 final class ApocBRPlayerRelationalCapture {
-    static final int CODEC_VERSION=3, SCHEMA_VERSION=1, MAX_BYTES=ApocBRPlayerRelationalLimits.GRAPH_BYTES;
+    static final int CODEC_VERSION=4, SCHEMA_VERSION=1, MAX_BYTES=ApocBRPlayerRelationalLimits.GRAPH_BYTES;
     record Row(String table,Map<String,Object> values) {
         Row { values=Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
     }
@@ -46,7 +46,7 @@ final class ApocBRPlayerRelationalCapture {
 
     private static final Map<String,Map<String,String>> BINDINGS=new HashMap<>();
     static {
-        bind("character_state","last_hour_slept=lastHourSleeped","total_xp=xp.totalXp","xp_level=xp.level","xp_last_level=xp.lastlevel","direction=forwardIsoDirection","is_dead=isDead");
+        bind("character_state","last_hour_slept=lastHourSleeped","total_xp=xp.totalXp","xp_level=xp.level","xp_last_level=xp.lastlevel","direction=forwardIsoDirection","is_dead=isDead","source_offset_x=offsetX","source_offset_y=offsetY");
         bind("character_descriptor","native_descriptor_id=id","gender=characterGender","profession_key=characterProfession");
         bind("character_presentation","tag_r=tagColor.r","tag_g=tagColor.g","tag_b=tagColor.b");
         bind("item","native_id=id","full_type=getFullType","source_registry_id=registryId","remote_control_id=remoteControlId","recorded_media_id=recordedMediaIndex","source_recorded_media_index=recordedMediaIndex","texture_name=texture.name","initialised=isInitialised","color_r=col.r","color_g=col.g","color_b=col.b","color_a=col.a");
@@ -84,7 +84,7 @@ final class ApocBRPlayerRelationalCapture {
         issues.addAll(loadIssues); object(character,"character");
         UUID inventory=UUID.nameUUIDFromBytes((character+":inventory").getBytes(java.nio.charset.StandardCharsets.UTF_8));
         container(get(player,"inventory"),inventory,character,null,0);
-        project("character_state",player,"character_id",character,"inventory_container_id",inventory,"source_offset_x",null,"source_offset_y",null);
+        project("character_state",player,"character_id",character,"inventory_container_id",inventory);
         Object descriptor=get(player,"descriptor");
         if(descriptor!=null) {
             project("character_descriptor",descriptor,"character_id",character);
@@ -119,6 +119,8 @@ final class ApocBRPlayerRelationalCapture {
             Object enabled=get(player,Character.toLowerCase(flag.charAt(0))+flag.substring(1));
             row("character_cheat","character_id",character,"cheat_key","legacy."+flag,"enabled",enabled);
         }
+        int extraFlags=number(get(player,"extraInfoFlags"));int bit=1;
+        for(String flag:List.of("GodMod","GhostMode","Invisible","NoClip","ShowAdminTag","CanHearAll")) {row("character_cheat","character_id",character,"cheat_key","extra."+flag,"enabled",(extraFlags&bit)!=0);bit<<=1;}
         for(Object cheat:list(get(player,"cheats.cheats"))) row("character_cheat","character_id",character,"cheat_key","set."+key(cheat),"enabled",true);
         health(get(player,"bodyDamage")); human(get(player,"visual"));
         equipment(player); lua(character,get(player,"table"));
@@ -210,7 +212,7 @@ final class ApocBRPlayerRelationalCapture {
         if(byteData!=null) {
             ByteBuffer source=byteData instanceof byte[] array?ByteBuffer.wrap(array):((ByteBuffer)byteData).duplicate(); source.rewind();
             if(source.remaining()>MAX_BYTES) throw new IllegalStateException("Oversized byteData");
-            byte[] copy=new byte[source.remaining()]; source.get(copy); componentValue(id,"item.byteData",copy,"incomplete"); issue("OPAQUE_ITEM_BYTES");
+            byte[] copy=new byte[source.remaining()]; source.get(copy); componentValue(id,"item.byteData",copy,"complete");
         }
         Object track=get(item,"animalTracks"); if(track!=null) project("animal_track",track,"item_id",id);
         if(item instanceof ApocBRPlayerRelationalSnapshot.Node n) {
@@ -246,7 +248,7 @@ final class ApocBRPlayerRelationalCapture {
             case "Moveable" -> project("moveable_state",item,"item_id",id);
             case "MapItem" -> mapItem(item,id);
             case "Radio" -> radio(get(item,"deviceData"),id);
-            case "AnimalInventoryItem" -> { componentValue(id,"item.embeddedAnimal",null,"unsupported"); issue("EMBEDDED_ANIMAL_UNSUPPORTED"); }
+            case "AnimalInventoryItem" -> componentValue(id,"item.embeddedAnimal",item instanceof ApocBRPlayerRelationalSnapshot.Node node?node.get("animalState"):ApocBRPlayerRelationalCodecs.animal(get(item,"animal"),((Number)get(item,"animal.timeSinceLastUpdate")).longValue()),"complete");
             default -> { }
         }
         int count=number(get(item,"componentSize"));
@@ -262,6 +264,7 @@ final class ApocBRPlayerRelationalCapture {
                 value.put("currentHitPoints",get(c,"currentHitPoints"));value.put("maxHitPoints",get(c,"maxHitPoints"));value.put("material",get(c,"material").toString());
                 componentValue(id,"entity.Durability",value,"complete");
             }
+            else if(ApocBRPlayerRelationalCodecs.supports(c))componentValue(id,"entity."+kind,c instanceof ApocBRPlayerRelationalSnapshot.Node node?node.get("state"):ApocBRPlayerRelationalCodecs.component(c),"complete");
             else { componentValue(id,"entity."+kind,null,"unsupported"); issue("UNSUPPORTED_COMPONENT_"+kind); }
         }
     }
@@ -348,7 +351,7 @@ final class ApocBRPlayerRelationalCapture {
         }
         completeRow("value_node",values); int next=0;
         if(Set.of("object","array","table").contains(type)) {
-            if(!tableStack.add(value)) throw new IllegalStateException("Cyclic/shared structured table requires reference codec");
+            if(!tableStack.add(value)) throw new IllegalStateException("Cyclic structured table requires reference codec");
             if(value instanceof ApocBRPlayerRelationalSnapshot.Table table) { for(var e:table.entries().entrySet()) node(component,id,next++,e.getKey(),e.getValue(),depth+1); }
             else if(value instanceof Map<?,?> map) { for(var e:map.entrySet()) node(component,id,next++,e.getKey(),e.getValue(),depth+1); }
             else if(value instanceof List<?> list) { for(Object child:list) node(component,id,next++,null,child,depth+1); }
@@ -356,6 +359,8 @@ final class ApocBRPlayerRelationalCapture {
                 Object iterator=call(value,"iterator");
                 while((boolean)call(iterator,"advance")) node(component,id,next++,call(iterator,"getKey"),call(iterator,"getValue"),depth+1);
             }
+            // Native Kahlua serialization writes shared acyclic tables by value at each path.
+            tableStack.remove(value);
         }
     }
     private void sequence(String table,String column,Object source) {

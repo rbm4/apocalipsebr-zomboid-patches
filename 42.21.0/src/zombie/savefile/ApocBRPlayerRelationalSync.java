@@ -11,7 +11,7 @@ import zombie.core.znet.SteamUtils;
 import zombie.debug.DebugLog;
 import zombie.network.GameServer;
 
-/** SQLite backfill and live-field worker. Native login/save results never depend on its JDBC work. */
+/** SQLite backfill and relational live-field worker. Login reads have their own caller-owned lease. */
 public final class ApocBRPlayerRelationalSync {
     private static final int LIMIT=16;
     private static final long BYTE_LIMIT=ApocBRPlayerRelationalLimits.QUEUE_BYTES;
@@ -40,7 +40,7 @@ public final class ApocBRPlayerRelationalSync {
         }
     }
     public static boolean enabled() {
-        return GameServer.server && !ApocBRPlayerDatabase.enabled() && Boolean.getBoolean("apocbr.postgres.enabled")
+        return GameServer.server && Boolean.getBoolean("apocbr.postgres.enabled")
                 && Boolean.parseBoolean(System.getProperty("apocbr.postgres.playerRelational.enabled","true"));
     }
     public static void offerLoadedPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,
@@ -68,7 +68,7 @@ public final class ApocBRPlayerRelationalSync {
                 if(sourceBytes.length>ApocBRPlayerRelationalLimits.SOURCE_BYTES){log("OFFER_FAILED; code=SOURCE_SIZE_BUDGET; sourceBytes="+sourceBytes.length+"; byteLimit="+ApocBRPlayerRelationalLimits.SOURCE_BYTES);return;}
                 if(QUEUED_BYTES.get()>BYTE_LIMIT-ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-sourceBytes.length){deferred();return;}
                 long started=System.nanoTime();
-                var snapshot=ApocBRPlayerRelationalSnapshot.copy(player);
+                var snapshot=life==null?ApocBRPlayerRelationalSnapshot.copy(player):ApocBRPlayerRelationalSnapshot.copyLive(player);
                 Pending pending=new Pending(candidate,snapshot,sourceBytes.clone(),System.nanoTime()-started,session);
                 PENDING.put(candidate.key(),pending);QUEUED_BYTES.addAndGet(pending.bytes);
                 if(!QUEUE.offer(pending)){forget(pending);deferred();return;}
@@ -79,7 +79,7 @@ public final class ApocBRPlayerRelationalSync {
     private static synchronized void start() {
         if(worker!=null||stopping)return;
         worker=new Thread(ApocBRPlayerRelationalSync::run,"ApocBR-player-relational");worker.setDaemon(true);worker.start();
-        log("worker started; source=SQLite; pendingLimit="+LIMIT+"; graphByteLimit="+ApocBRPlayerRelationalLimits.GRAPH_BYTES+"; snapshotByteLimit="+ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES+"; queueByteLimit="+BYTE_LIMIT+"; rowLimit="+ApocBRPlayerRelationalLimits.ROWS+"; nodeLimit="+ApocBRPlayerRelationalLimits.NODES);
+        log("worker started; source="+(ApocBRPlayerDatabase.enabled()?"relational":"SQLite")+"; pendingLimit="+LIMIT+"; graphByteLimit="+ApocBRPlayerRelationalLimits.GRAPH_BYTES+"; snapshotByteLimit="+ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES+"; queueByteLimit="+BYTE_LIMIT+"; rowLimit="+ApocBRPlayerRelationalLimits.ROWS+"; nodeLimit="+ApocBRPlayerRelationalLimits.NODES);
     }
     private static void run() {
         ApocBRPlayerRelationalCapture.prepare();

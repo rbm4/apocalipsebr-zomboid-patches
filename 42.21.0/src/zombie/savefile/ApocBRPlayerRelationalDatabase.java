@@ -20,12 +20,17 @@ final class ApocBRPlayerRelationalDatabase {
         Receipt { aliases=Map.copyOf(aliases); }
     }
     private final Connections connections;
-    ApocBRPlayerRelationalDatabase(Connections connections) { this.connections=connections; }
+    private final ApocBRPlayerRelationalMetrics sqlMetrics=new ApocBRPlayerRelationalMetrics();
+    ApocBRPlayerRelationalDatabase(Connections connections) { this.connections=()->{
+        long started=System.nanoTime();
+        try{Connection raw=connections.open();sqlMetrics.borrowed(System.nanoTime()-started,false);return sqlMetrics.connection(raw);}
+        catch(SQLException failure){sqlMetrics.borrowed(System.nanoTime()-started,true);throw failure;}
+    }; }
     static UUID named(String value) { return UUID.nameUUIDFromBytes(value.getBytes(StandardCharsets.UTF_8)); }
     private record Cached(UUID head,long revision,Map<ApocBRPlayerRelationalDelta.Key,Map<String,Object>> rows,long bytes) {}
     private final Map<UUID,Cached> cache=new LinkedHashMap<>(16,.75f,true);
     private long cacheBytes,cacheMisses,createdRows,updatedRows,deletedRows,unchangedGraphs;
-    String mutationMetrics(){return "; deltaCreated="+createdRows+"; deltaUpdated="+updatedRows+"; deltaDeleted="+deletedRows+"; unchangedGraphs="+unchangedGraphs+"; cacheMisses="+cacheMisses+"; cacheBytes="+cacheBytes;}
+    String mutationMetrics(){return sqlMetrics.report(System.nanoTime())+"; deltaCreated="+createdRows+"; deltaUpdated="+updatedRows+"; deltaDeleted="+deletedRows+"; unchangedGraphs="+unchangedGraphs+"; cacheMisses="+cacheMisses+"; cacheBytes="+cacheBytes;}
     private static final long CACHE_LIMIT=Math.max(1,Math.min(512,Long.getLong("apocbr.postgres.playerRelational.mutations.cacheMiB",64L)))*1024*1024;
     ApocBRPlayerRelationalCapture.Graph projectLive(ApocBRPlayerRelationalMutations.Batch batch)throws SQLException {
         Map<Integer,UUID> aliases=new HashMap<>();var ids=ApocBRPlayerRelationalSnapshot.nativeItemIds(batch.snapshot());
@@ -164,7 +169,7 @@ final class ApocBRPlayerRelationalDatabase {
                         if(head.executeUpdate()!=1) throw new SQLException("Stale character head","40001");
                     }
                 }
-                connection.commit();return true;
+                connection.commit();sqlMetrics.imported(graph.rows().size());return true;
             } catch(SQLException|RuntimeException error) {
                 try{connection.rollback();}catch(SQLException ignored){}
                 throw error;
@@ -174,7 +179,8 @@ final class ApocBRPlayerRelationalDatabase {
     /** Worker-only scalar patch. The initial generation is retained; only live_fields generations mutate. */
     boolean applyFields(ApocBRPlayerRelationalMutations.Batch batch) throws SQLException {return applyFields(batch,null);}
     boolean applyFields(ApocBRPlayerRelationalMutations.Batch batch,ApocBRPlayerRelationalCapture.Graph graph) throws SQLException {
-        if(graph!=null&&(!graph.character().equals(batch.character())||!graph.issues().isEmpty()))throw new SQLException("Incomplete live graph","22000");
+        if(graph!=null&&!graph.character().equals(batch.character()))throw new SQLException("Live graph life mismatch","40001");
+        if(graph!=null&&!graph.issues().isEmpty()){sqlMetrics.incomplete(graph.issues());throw new SQLException("Incomplete live graph","22000");}
         Candidate candidate=batch.candidate();
         try(Connection connection=connections.open()) {
             try {
@@ -211,7 +217,7 @@ final class ApocBRPlayerRelationalDatabase {
                     if(cached!=null&&cached.head.equals(head)&&cached.revision==revision)baseline=cached.rows;
                     else {cacheMisses++;baseline=ApocBRPlayerRelationalDelta.load(connection,head,deadline);}
                     updated=ApocBRPlayerRelationalDelta.index(graph.rows());changes=ApocBRPlayerRelationalDelta.diff(baseline,updated);
-                    if(changes.isEmpty()&&batch.fields().isEmpty()){connection.commit();unchangedGraphs++;remember(character,head,revision,updated,graph.bytes());return true;}
+                    if(changes.isEmpty()&&batch.fields().isEmpty()){connection.commit();sqlMetrics.changed(batch,List.of());unchangedGraphs++;remember(character,head,revision,updated,graph.bytes());return true;}
                 }
                 if(!"live_fields".equals(reason)) {
                     UUID live=UUID.randomUUID();
@@ -269,7 +275,7 @@ final class ApocBRPlayerRelationalDatabase {
                 try(PreparedStatement update=statement(connection,"UPDATE player_rel.character_head SET snapshot_id=?,revision=revision+1,published_at=CURRENT_TIMESTAMP WHERE character_id=? AND revision=?")) {
                     update.setObject(1,head);update.setObject(2,character);update.setLong(3,revision);if(update.executeUpdate()!=1)throw new SQLException("Stale live head","40001");
                 }
-                connection.commit();
+                connection.commit();sqlMetrics.changed(batch,changes,baseline,updated);
                 // Update only after commit. A rollback must leave the comparison baseline unchanged.
                 if(changes!=null)for(var change:changes){if(change.before()==null)createdRows++;else if(change.after()==null)deletedRows++;else updatedRows++;}
                 if(graph!=null||cached!=null&&cached.revision==revision&&cached.head.equals(head)) {

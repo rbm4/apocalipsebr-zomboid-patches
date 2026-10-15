@@ -2,8 +2,8 @@
 
 Status: initial SQLite-load capture, V5 JDBC writes, scalar dirty tracking and
 full supported-graph mutation reconciliation are implemented. Native new-character
-creation/respawn now registers a distinct relational incarnation. A relational
-loader is not implemented; native bytes remain authoritative.
+creation/respawn now registers a distinct relational incarnation. Reconstruction
+and its activation are tracked separately; native persistence remains the recovery path.
 The backend V5 migration supplies the 63-table contract. First phase is an asynchronous relational
 backfill from the native SQLite `players.db` store, which remains authoritative.
 `ApocBRPlayerDatabase.enabled()` defaults to false: the master PostgreSQL switch
@@ -52,11 +52,13 @@ queue. Snapshot copying preserves item identity for equipment and cycle validati
 
 `InventoryItem` and `GameEntity` report swallowed failures into a scoped quality
 collector during SQLite player load. Skipped items, length mismatches, failed item
-loads and skipped/failed components prevent completion. Unsupported components,
-embedded animals and opaque native byteData produce an incomplete snapshot and
-sync issues, with no new head. Other field/graph/capture failures abort the export
-without changing the SQLite result. No claim of lossless relational reconstruction
-is made: that loader does not exist yet.
+loads and skipped/failed components prevent completion. Unreviewed components or
+item/animal writers still prevent completion. Codec 4 adds carried animals and
+the remaining inventory-valid native component types; the native byteData field
+is preserved as the explicit compatibility exception described below.
+Other field/graph/capture failures abort the export
+without changing the SQLite result. Capture completeness alone is not proof of
+lossless reconstruction: restoring the graph requires separate round-trip validation.
 
 The fixed column catalog in `ApocBRPlayerRelationalSchema` is pinned to backend V5;
 the fixture checks it against that migration when the sibling backend checkout is
@@ -64,12 +66,14 @@ available. Scalar fields include private native state through cached, version-pi
 reflection in a separate helper, preserving the vanilla player/item APIs. Missing
 fields fail capture instead of becoming zero/defaults. Item types/traits/professions/
 perks/body locations use stable names, while numeric source IDs remain metadata.
-Fluids, Durability, AttributeContainer and EntityScriptInfo have typed component
-codecs; other component families still require explicit additions before they can
-be complete. Export codec version 3 retains the four codecs and assigns stable
-visual/component/value-node identities for mutation comparison. Older complete
+Codec 4 covers all 13 inventory-eligible native component types plus fluids,
+carried animals, offsets and the six player extra-info flags. Stable
+visual/component/value-node identities are retained for mutation comparison. Older complete
 receipts are re-evaluated on a subsequent native load. Schema version remains 1;
 no migration is required.
+
+The current field coverage, carried-animal contract, and transaction/statement
+measurement definitions are in [PLAYER-RELATIONAL-MUTATION-COVERAGE.md](PLAYER-RELATIONAL-MUTATION-COVERAGE.md).
 
 `entity.AttributeContainer` stores an `attributes` array containing each stable
 attribute name, native ID, exact native `value_type`, and typed value. All eleven
@@ -293,12 +297,13 @@ patch count/write time, queue bytes, created/updated/deleted rows, unchanged gra
 count, baseline cache misses and cache bytes. `LIVE_GRAPH_INCOMPLETE` names unsupported
 codec issues. Copy and write failures are rate limited and retain retryable work.
 
-**Boundary before replacing native persistence:** this tracks the state supported
-by the existing codec, not every possible mod/native component. Embedded animals,
-opaque byteData, unreviewed component/subtype writers and shared/cyclic Lua state
-still prevent a complete graph. Cross-player atomic transfer/crash guarantees,
-a durable dirty spool/draining shutdown and a relational reconstruction loader are
-not implemented. The final queue is volatile; native saving remains the recovery
+**Boundary before replacing native persistence:** this tracks the reviewed native
+codec contract, not every possible mod extension. Unreviewed component/subtype or
+animal writers and cyclic Lua state still prevent a complete graph. Shared acyclic
+Lua state follows native by-value semantics. Native byteData remains an explicit
+opaque field, not a relational world-object codec. Cross-player atomic transfer/crash guarantees,
+a durable dirty spool/draining shutdown require separate work. The final queue
+is volatile; native saving remains the recovery
 path. Live PostgreSQL constraints, reconnect/respawn/transfer round trips and
 representative multi-player CPU/allocation/latency measurements remain required.
 Do not turn off native serialization/deserialization on the strength of these tests.
@@ -556,7 +561,8 @@ Enforce exactly the value column appropriate to value_kind (no value columns for
 object/array/table/null). For map entries enforce the matching key column; array
 children have no map key. One root per component. Preserve typed Lua keys: numeric
 1 and string "1" are different. Encode references by object IDs, not addresses.
-Cycles/shared Lua tables require a declared reference codec, otherwise incomplete.
+Cycles require a reference codec and remain rejected. Shared acyclic Lua tables
+are written independently at each path, matching native Kahlua save/load semantics.
 SQL column `position` preserves ordering independently of keys.
 
 `opaque_value` is a **declared compatibility exception**, never permission to
@@ -575,7 +581,7 @@ Required component kinds and field scopes:
 | `item.byteData` | Item; explicit native byteData compatibility exception above. |
 | `entity.<component-type-name>` | Item; each component saved by `GameEntity.saveEntity`. Use stable component names rather than FromId(short) as SQL identity. Dispatch through an explicit codec registry; unknown components produce unsupported coverage. |
 | `entity.FluidContainer` | Item; root object keys capacity(number), inputLocked(boolean), canPlayerEmpty(boolean), containerName(string), hiddenAmount(boolean), rainCatcher(number), fluids(array), whitelist(optional object), blacklist(optional object). Each fluid: type(string), amount(number), colorOverride(optional object with r/g/b numbers). Each filter: filterType(string), fluidTypes(array of stable enum names), fluidStrings(array of strings), categories(array of stable category names). Base Component.save is empty in this build. Source: FluidContainer.save:1204, FluidInstance.save, FluidFilter.save. |
-| `item.embeddedAnimal` | AnimalInventoryItem; full embedded IsoAnimal state and its inherited character state. Requires its own reviewed graph codec and stable references; explicitly unsupported until that work exists. Do not silently lose a carried animal. |
+| `item.embeddedAnimal` | Codec 4: every field written by IsoAnimal.save(ByteBuffer,boolean,boolean), including stats, genome, data, native relationship IDs, modData and game-clock timestamp. That native writer does not call IsoGameCharacter.save; unrelated inherited AI/body state is not a saved field. See the mutation coverage document for the exact typed-node contract. |
 
 This node schema makes the migrations stable while codecs are added; it does not
 mean those complex codecs have been implemented or proven lossless. Hot/common

@@ -262,6 +262,7 @@ public class RelationalTest {
   public List<Object> perkList=List.of(),readBooks=List.of(),wornItems=new ArrayList<>(),attachedItems=List.of();
   public List<String> knownRecipes=List.of("MakeTest"),alreadyReadBook=List.of(),readPrintMedia=List.of(),knownMediaLines=List.of();
   public Map<Object,Object> readLiterature=new HashMap<>(),mechanicsItem=new HashMap<>();
+  public float offsetX,offsetY;public int extraInfoFlags;
   public float x=0f;
   public float y=0f;
   public float z=0f;
@@ -480,6 +481,133 @@ public class RelationalTest {
  static ApocBRPlayerRelationalDatabase.Candidate candidate(int i) {
   return new ApocBRPlayerRelationalDatabase.Candidate(UUID.nameUUIDFromBytes(new byte[]{1}),"test","world","live"+i,false,0,i,249,null,List.of());
  }
+
+ static byte[] nativeComponentBytes(Object component)throws Exception {
+  Class<?> type=component.getClass();Method save=null;
+  while(type!=null&&save==null){try{save=type.getDeclaredMethod("save",java.nio.ByteBuffer.class);}catch(NoSuchMethodException ignored){type=type.getSuperclass();}}
+  save.setAccessible(true);var buffer=java.nio.ByteBuffer.allocate(65536);save.invoke(component,buffer);return Arrays.copyOf(buffer.array(),buffer.position());
+ }
+ static void remainingComponentCodecs()throws Exception {
+  P player=new P();Item item=new Item(1);player.inventory.items.add(item);UUID character=UUID.randomUUID();int audited=0;
+  for(var type:zombie.entity.ComponentType.values()) {
+   Class<?> cls=type.GetComponentClass();if(cls==null||!type.isValidGameEntityType(zombie.entity.GameEntityType.InventoryItem))continue;
+   if(Set.of("AttributeContainer","EntityScriptInfo","Durability").contains(cls.getSimpleName()))continue;
+   Object component=nativeComponent(cls);check(ApocBRPlayerRelationalCodecs.supports(component),"every remaining native inventory-valid component has an explicit codec: "+type);audited++;
+   if(cls.getSimpleName().equals("UiConfig")){field(component,"xuiSkinName","default");field(component,"entityStyleName","fixture-style");field(component,"uiEnabled",true);}
+   if(cls.getSimpleName().equals("CraftBench")){
+    field(component,"recipeTagQuery","fixture-recipe");
+    ((zombie.entity.util.enums.EnumBitStore<zombie.entity.components.resources.ResourceChannel>)ApocBRPlayerRelationalAccess.get(component,"fluidInputChannels")).add(zombie.entity.components.resources.ResourceChannel.Channel_Blue);
+   }
+   byte[] before=nativeComponentBytes(component);var state=ApocBRPlayerRelationalCodecs.component(component);detached(state,Collections.newSetFromMap(new IdentityHashMap<>()));
+   check(Arrays.equals(before,nativeComponentBytes(component)),"component inspection never mutates native payload: "+type);
+   if(!Set.of("UiConfig","CraftBench").contains(cls.getSimpleName()))check(before.length==0&&state.isEmpty(),"explicit stateless components retain presence with a reviewed empty native payload");
+   item.components.add(component);
+  }
+  check(audited==10,"all ten additional inventory component families audited against ComponentType");item.componentSize=item.components.size();
+  player.extraInfoFlags=0b100101;player.offsetX=0.25f;player.offsetY=0.5f;
+  item.byteData=java.nio.ByteBuffer.wrap(new byte[]{87,86,69,82,0,0,0,(byte)249,9});
+  var before=liveGraph(player,character);check(before.issues().isEmpty(),"all native inventory-valid components and native byteData fields publish complete coverage");
+  var state=before.rows().stream().filter(r->r.table().equals("character_state")).findFirst().orElseThrow().values();
+  check(state.get("source_offset_x").equals(0.25f)&&state.get("source_offset_y").equals(0.5f),"native offsets are persisted instead of forced NULL");
+  check(before.rows().stream().filter(r->r.table().equals("item")).findFirst().orElseThrow().values().get("save_type").equals(-1),"item save-type matches native constant sentinel -1");
+  var flags=before.rows().stream().filter(r->r.table().equals("character_cheat")&&((String)r.values().get("cheat_key")).startsWith("extra.")).toList();
+  check(flags.size()==6&&flags.stream().filter(r->Boolean.TRUE.equals(r.values().get("enabled"))).count()==3,"all six native extra-info bits retain their individual values");
+  var frozen=ApocBRPlayerRelationalSnapshot.copy(player);detached(frozen.player(),Collections.newSetFromMap(new IdentityHashMap<>()));
+  for(Object component:item.components) {
+   if(component.getClass().getSimpleName().equals("UiConfig"))field(component,"uiEnabled",false);
+   if(component.getClass().getSimpleName().equals("CraftBench"))field(component,"recipeTagQuery","changed-recipe");
+  }
+  item.byteData=java.nio.ByteBuffer.wrap(new byte[]{1,2,3});player.extraInfoFlags=0;player.offsetX=8;
+  var isolated=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(frozen,List.of());
+  check(ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(before.rows()),ApocBRPlayerRelationalDelta.index(isolated.rows())).isEmpty(),"new component/permission/byteData state is detached before enqueue");
+  var changes=ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(before.rows()),ApocBRPlayerRelationalDelta.index(liveGraph(player,character).rows()));
+  check(changes.stream().anyMatch(c->c.key().table().equals("value_node")&&c.columns().contains("opaque_value")),"native item byte-array edits produce targeted opaque-value updates");
+  check(changes.stream().filter(c->c.key().table().equals("character_cheat")).count()==3,"permission mutations update exactly the changed flags");
+  check(changes.stream().noneMatch(c->c.key().table().equals("component")),"component payload mutations retain component identities");
+  resolve(zombie.characters.IsoPlayer.class,"extraInfoFlags");
+ }
+ static class AnimalBreed {public String name="fixture-breed",woolType="Wool";}
+ static class AnimalData {
+  public AnimalBreed breed=new AnimalBreed();public int age=12,pregnantTime=3,preferredHutchPosition=-1,fertilizedTime=2,lastImpregnateTime=3,clutchSize=4,eggsToday=2,attachedTreeX=123,attachedTreeY=456;
+  public float size=1,milkQuantity=2,maxMilkActual=3,woolQty=4,weight=5,maxWool=6;public long lastPregnancyTime=Long.MAX_VALUE,lastMilkTimer=Long.MIN_VALUE;
+  public boolean pregnant=true,canHaveMilk=true,fertilized=true;public Object attachedTree=new Object();
+ }
+ static class AnimalDescriptor {public boolean isFemale=true;}
+ static class AnimalDef {public int eggsPerDay=1;}
+ static class AnimalGene {public int id=123;public String name="weight";public zombie.characters.animals.AnimalAllele allele1=new zombie.characters.animals.AnimalAllele(),allele2=new zombie.characters.animals.AnimalAllele();}
+ static class Zone {public UUID id=UUID.randomUUID();}
+ static class Square {public int x=900,y=800,z=1;}
+ static class Hook {public Square square=new Square();}
+ static class EmbeddedAnimal {
+  public float x=1,y=2,z=0,stressLevel=.1f,health=99,petTimer=2;public String forwardIsoDirection="SE",type="chicken",customName="fixture",migrationGroup="group";
+  public long timeSinceLastUpdate=123456789L;public int attachBackToTreeX=Integer.MAX_VALUE,attachBackToTreeY=Integer.MAX_VALUE;
+  public int itemId=7,animalId=8,attachBackToMother=9,milkRemoved=1,attachBackToHookX=100,attachBackToHookY=200,attachBackToHookZ=1;public short onlineID=123;
+  public double hoursSurvived=1.25,virtualId=2.5;public boolean wild=false,onHook=true;
+  public AnimalData data=new AnimalData();public AnimalDef adef=new AnimalDef();public AnimalDescriptor descriptor=new AnimalDescriptor();public Stats stats=new Stats();public Zone animalZone=new Zone();public Hook hook=new Hook();
+  public Object mother;public Map<Object,Object> table=new LinkedHashMap<>(Map.of("custom","value")),playerAcceptanceList=new HashMap<>();public Map<String,AnimalGene> fullGenome=new HashMap<>();
+ }
+ static class AnimalInventoryItem extends Item {public EmbeddedAnimal animal=new EmbeddedAnimal();AnimalInventoryItem(int id){super(id);animal.itemId=id;}}
+ static void embeddedAnimalCodec()throws Exception {
+  EmbeddedAnimal animal=new EmbeddedAnimal();animal.playerAcceptanceList.put((short)1,.75f);var gene=new AnimalGene();gene.allele1.name="weight";gene.allele1.currentValue=.4f;gene.allele2.name="weight";gene.allele2.currentValue=.6f;animal.fullGenome.put("weight",gene);
+  var state=ApocBRPlayerRelationalCodecs.animal(animal,123456789L);detached(state,Collections.newSetFromMap(new IdentityHashMap<>()));
+  check(state.get("savedAtGameTimeMillis").equals(123456789L)&&((Map<?,?>)state.get("data")).get("lastMilkTimer").equals(Long.MIN_VALUE),"animal capture preserves game clock and full-width native timers");
+  check(((Map<?,?>)state.get("data")).get("woolQty").equals(4f)&&((Map<?,?>)state.get("data")).get("eggsToday").equals(2),"breed/definition-conditional animal fields captured");
+  check(((Map<?,?>)state.get("hook")).get("x").equals(100),"native saved hook coordinates take precedence when valid");
+  animal.attachBackToHookX=0;check(((Map<?,?>)ApocBRPlayerRelationalCodecs.animal(animal,0).get("hook")).get("x").equals(900),"native hook-square fallback captured");
+  animal.data.pregnant=false;animal.data.breed.woolType=null;animal.adef.eggsPerDay=0;animal.data.attachedTree=null;animal.onHook=false;
+  var absent=ApocBRPlayerRelationalCodecs.animal(animal,0);var data=(Map<?,?>)absent.get("data");
+  check(data.get("pregnantTime")==null&&data.get("woolQty")==null&&data.get("eggsToday")==null&&absent.get("hook")==null&&absent.get("attachedTree")==null,"animal optional data follows native writer conditions");
+  animal.attachBackToTreeX=321;animal.attachBackToTreeY=654;animal.onHook=true;animal.hook=null;
+  var pending=ApocBRPlayerRelationalCodecs.animal(animal,0);check(((Map<?,?>)pending.get("attachedTree")).get("x").equals(321)&&((Map<?,?>)pending.get("hook")).get("x").equals(0),"pending native tree/hook coordinates survive before external objects are mounted");
+  P player=new P();AnimalInventoryItem item=new AnimalInventoryItem(7);item.animal=animal;player.inventory.items.add(item);UUID character=UUID.randomUUID();
+  var snapshot=ApocBRPlayerRelationalSnapshot.copy(player);detached(snapshot.player(),Collections.newSetFromMap(new IdentityHashMap<>()));
+  var before=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(snapshot,List.of());
+  check(before.issues().isEmpty()&&before.rows().stream().anyMatch(r->r.table().equals("component")&&r.values().get("kind").equals("item.embeddedAnimal")&&r.values().get("coverage").equals("complete")),"carried animal state uses typed relational nodes with complete coverage");
+  check(before.rows().stream().anyMatch(r->r.table().equals("value_node")&&Objects.equals(r.values().get("key_text"),"savedAtGameTimeMillis")&&Objects.equals(r.values().get("integer_value"),123456789L)),"initial import retains the loaded animal clock instead of resetting unprocessed offline time");
+  var current=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(ApocBRPlayerRelationalSnapshot.copyLive(player),List.of());
+  long gameClock=zombie.GameTime.getInstance().getCalender().getTimeInMillis();
+  check(current.rows().stream().anyMatch(r->r.table().equals("value_node")&&Objects.equals(r.values().get("key_text"),"savedAtGameTimeMillis")&&Objects.equals(r.values().get("integer_value"),gameClock)),"live capture uses current native game clock while load capture preserves pending offline clock");
+  animal.health=42;animal.data.weight=8;animal.table.put("custom","changed");
+  var isolated=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(snapshot,List.of());
+  check(ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(before.rows()),ApocBRPlayerRelationalDelta.index(isolated.rows())).isEmpty(),"animal state never escapes into worker through mutable references");
+  var changes=ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(before.rows()),ApocBRPlayerRelationalDelta.index(liveGraph(player,character).rows()));
+  check(changes.stream().filter(c->c.key().table().equals("value_node")&&c.columns().stream().anyMatch(n->n.endsWith("_value"))).count()>=3&&changes.stream().noneMatch(c->c.key().table().equals("component")),"animal health/weight/mod-data mutations patch stable typed nodes");
+  String[] root={"x","y","z","type","customName","itemId","animalId","hoursSurvived","attachBackToMother","milkRemoved","stressLevel","health","virtualId","migrationGroup","petTimer","wild","onlineID","forwardIsoDirection","animalZone","data.breed.name","descriptor.isFemale","stats","table","fullGenome","data.age","data.size","data.pregnant","data.canHaveMilk","data.milkQuantity","data.maxMilkActual","data.preferredHutchPosition","data.fertilizedTime","data.fertilized","data.weight","data.lastPregnancyTime","data.lastMilkTimer","data.lastImpregnateTime","data.clutchSize","data.pregnantTime","data.maxWool","data.woolQty","adef.eggsPerDay","data.eggsToday","mother","data.attachedTree","data.attachedTreeX","data.attachedTreeY","hook","onHook","attachBackToHookX","attachBackToHookY","attachBackToHookZ","playerAcceptanceList","timeSinceLastUpdate","attachBackToTreeX","attachBackToTreeY"};
+  for(String path:root){resolve(zombie.characters.animals.IsoAnimal.class,path);checks++;}
+ }
+ static Map<String,String> metricValues(String line) {
+  Map<String,String> values=new HashMap<>();for(String entry:line.split("; ")){int at=entry.indexOf('=');if(at>=0)values.put(entry.substring(0,at),entry.substring(at+1));}return values;
+ }
+ static void sqlMetrics()throws Exception {
+  LiveFake fake=new LiveFake();fake.reason="live_fields";var db=new ApocBRPlayerRelationalDatabase(fake::open);
+  var field=new ApocBRPlayerRelationalMutations.Field("character_state","x",null);
+  var batch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),fake.character,Map.of(field,new ApocBRPlayerRelationalMutations.Value(1,123f)),java.time.Instant.EPOCH);
+  check(db.applyFields(batch),"measured scalar transaction commits");var report=metricValues(db.mutationMetrics());
+  check(report.get("txCommits").equals("1")&&report.get("writeTx").equals("1")&&report.get("readTx").equals("0"),"actual commits are classified separately from worker acknowledgements");
+  check(report.get("jdbcQueries").equals("2")&&report.get("jdbcCommands").equals("2")&&report.get("jdbcUpdates").equals("2")&&report.get("jdbcBatches").equals("1")&&report.get("batchEntries").equals("1"),"query, session-command, individual-update and batch executions counted independently");
+  check(report.get("jdbcAffectedRows").equals("3")&&report.get("topTables").contains("character_state.update:1")&&report.get("topColumns").contains("character_state.x:1"),"physical affected rows include metadata while committed table/column counters isolate character changes");
+  report=metricValues(db.mutationMetrics());check(report.get("topTables").equals("none")&&report.get("topColumns").equals("none"),"table and column rankings reset each reporting window");
+  P player=new P();player.inventory.items.add(new Item(99));var source=new ApocBRPlayerRelationalMutations.Batch(candidate(1),batch.session(),fake.character,Map.of(),java.time.Instant.now(),ApocBRPlayerRelationalSnapshot.copy(player),1);
+  db.projectLive(source);report=metricValues(db.mutationMetrics());check(report.get("readTx").equals("1")&&report.get("writeTx").equals("1"),"alias reads and their commit are reported as read transactions");
+  fake.fail=true;var nutrition=new ApocBRPlayerRelationalMutations.Field("character_nutrition","calories",null);
+  var failure=new ApocBRPlayerRelationalMutations.Batch(candidate(1),batch.session(),fake.character,Map.of(nutrition,new ApocBRPlayerRelationalMutations.Value(2,20f)),java.time.Instant.EPOCH);
+  try{db.applyFields(failure);throw new AssertionError("metrics swallowed SQL exception");}catch(SQLException expected){check(expected.getSQLState().equals("08006"),"metrics preserve original SQLException/SQLState");}
+  report=metricValues(db.mutationMetrics());check(report.get("txRollbacks").equals("1")&&report.get("jdbcFailures").equals("1")&&report.get("writeTx").equals("1")&&report.get("topColumns").equals("none"),"failed attempts count SQL work and rollback without counting committed dirty fields");
+  check(fake.opened==fake.closed,"measurement proxies preserve connection lease ownership");
+ }
+
+ static void sharedLuaState()throws Exception {
+  var child=new se.krka.kahlua.j2se.KahluaTableImpl(new LinkedHashMap<>());child.rawset("value",1.0);
+  var parent=new se.krka.kahlua.j2se.KahluaTableImpl(new LinkedHashMap<>());parent.rawset("left",child);parent.rawset("right",child);
+  var bytes=java.nio.ByteBuffer.allocate(4096);parent.save(bytes);bytes.flip();
+  var restored=new se.krka.kahlua.j2se.KahluaTableImpl(new LinkedHashMap<>());restored.load(bytes,249);
+  check(restored.rawget("left")!=restored.rawget("right"),"native Kahlua saves shared table values independently, without reference identity");
+  P player=new P();player.table=parent;UUID character=UUID.randomUUID();var before=liveGraph(player,character);
+  check(before.issues().isEmpty()&&before.rows().stream().filter(r->r.table().equals("value_node")&&Objects.equals(r.values().get("number_value"),1.0)).count()==2,"relational Lua codec matches native shared-table value semantics");
+  child.rawset("value",2.0);var changes=ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(before.rows()),ApocBRPlayerRelationalDelta.index(liveGraph(player,character).rows()));
+  check(changes.size()==2&&changes.stream().allMatch(c->c.key().table().equals("value_node")&&c.columns().equals(List.of("number_value"))),"mutating shared Lua child updates both persisted value paths without replacing components");
+  child.rawset("cycle",parent);try{liveGraph(player,character);throw new AssertionError("cyclic Lua accepted");}catch(IllegalStateException expected){check(expected.getMessage().contains("Cyclic"),"cycles remain explicitly rejected");}
+ }
  static void mutationQueue() {
   var q=new ApocBRPlayerRelationalMutations.DirtyQueue();var c=candidate(1);UUID session=UUID.randomUUID(),character=UUID.randomUUID();
   var x=new ApocBRPlayerRelationalMutations.Field("character_state","x",null);
@@ -642,6 +770,7 @@ public class RelationalTest {
   LiveFake fake=new LiveFake();fake.character=character;fake.reason="live_fields";fake.graphRows=before.rows();var db=new ApocBRPlayerRelationalDatabase(fake::open);
   var batch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),character,Map.of(),java.time.Instant.now());
   check(db.applyFields(batch,after),"full graph delta commits against a locked complete head");
+  String componentMetrics=metricValues(db.mutationMetrics()).get("topComponents");check(componentMetrics.contains("entity.FluidContainer:")&&componentMetrics.contains("lua.modData:"),"generic value-node changes are attributed to component kinds without logging user keys or values");
   check(fake.bound.keySet().stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.item SET condition=? WHERE")),"JDBC uses partial item updates");
   check(fake.queries.stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.source_item_alias SET retired_at"))&&fake.queries.stream().anyMatch(sql->sql.startsWith("INSERT INTO player_rel.source_item_alias")),"deleted/new items retire and allocate source alias generations");
   int firstInsert=100000,lastDelete=-1;for(int i=0;i<fake.queries.size();i++){String sql=fake.queries.get(i);if(sql.startsWith("DELETE FROM"))lastDelete=i;if(sql.startsWith("INSERT INTO player_rel.item_location"))firstInsert=Math.min(firstInsert,i);}
@@ -654,6 +783,7 @@ public class RelationalTest {
   check(fake.queries.subList(statements,fake.queries.size()).stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.item SET condition=?")),"failed transaction never advances comparison cache");
   var bad=new ApocBRPlayerRelationalCapture.Graph(after.snapshot(),character,after.capturedAt(),after.rows(),List.of("UNSUPPORTED_COMPONENT_Test"),after.bytes(),after.objects(),after.items(),after.containers(),after.edges());
   int opened=fake.opened;try{db.applyFields(batch,bad);throw new AssertionError("incomplete graph accepted");}catch(SQLException expected){check(fake.opened==opened,"unsupported graph is rejected before SQL");}
+  var incompleteMetrics=metricValues(db.mutationMetrics());check(incompleteMetrics.get("incompleteGraphs").equals("1")&&incompleteMetrics.get("incompleteReasons").contains("UNSUPPORTED_COMPONENT_Test:1"),"coverage failures remain visible even when they execute no SQL");
   player.descriptor=null;player.savedVehicleSeat=-1;player.table=null;var absent=liveGraph(player,character);
   var removals=ApocBRPlayerRelationalDelta.diff(next,ApocBRPlayerRelationalDelta.index(absent.rows()));
   check(removals.stream().anyMatch(c->c.key().table().equals("character_descriptor")&&c.after()==null)&&removals.stream().anyMatch(c->c.key().table().equals("character_vehicle_return")&&c.after()==null),"optional singleton deletion is represented explicitly");
@@ -667,6 +797,7 @@ public class RelationalTest {
   q.mark(c,session,Map.of(x,1f),0,java.time.Instant.EPOCH);var first=ApocBRPlayerRelationalSnapshot.copy(new P());
   check(q.snapshot(c,session,first,0)&&q.bytes()==first.bytes(),"detached graph queue accounts bytes and replaces older scalar marks");
   var batch=q.poll(0);check(batch.snapshot()==first&&batch.fields().isEmpty(),"graph and scalar marks share ordering and dispatch cadence");
+  check(q.oldestAgeMs(5_000_000L)==5,"queue latency includes work awaiting an in-flight acknowledgement");
   P player=new P();player.x=2;var second=ApocBRPlayerRelationalSnapshot.copy(player);
   check(q.snapshot(c,session,second,1)&&q.bytes()==first.bytes()+second.bytes(),"final capture can replace an in-flight graph within byte bound");
   q.mark(c,session,Map.of(x,3f),2,java.time.Instant.EPOCH);q.finish(batch,true,3);
@@ -873,12 +1004,12 @@ public class RelationalTest {
   check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();componentCodecs();mutationQueue();mutationDatabase();extendedMutations();graphMutations();graphQueue();liveVehicle();characterLives();aliasGenerations();largeImport();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
  target=Path(folder);harness=target/'RelationalTest.java';native_harness=HARNESS[:HARNESS.index(' static void worker()')]+HARNESS[HARNESS.index(' public static void main'):];native_harness=native_harness.replace('if(args.length>0){worker();System.out.println(\"Worker checks=\"+checks);return;}','');harness.write_text(native_harness,encoding='utf-8')
- sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalLimits','ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalMutations','ApocBRPlayerRelationalDelta','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
+ sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalLimits','ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCodecs','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalMutations','ApocBRPlayerRelationalDelta','ApocBRPlayerRelationalMetrics','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
  subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(harness)],check=True)
  subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.RelationalTest'],check=True)
  for mode in ['size-bytes','size-rows']:

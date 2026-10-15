@@ -10,6 +10,14 @@ GAME=Path(os.environ.get('APOCBR_TEST_GAME_JAR',r'Z:\SteamLibrary\steamapps\comm
 LIB=ROOT/'42.21.0/lib'
 JDK=ROOT/'jdk/bin'
 STUBS={
+'zombie/savefile/ApocBRPlayerRelationalReconstruction.java': '''package zombie.savefile;
+final class ApocBRPlayerRelationalReconstruction {
+ static zombie.characters.IsoPlayer reconstruct(ApocBRPlayerRelationalReader.Profile profile,int slot) {
+  var player=new zombie.characters.IsoPlayer(null);player.serverPlayerIndex=slot;player.remote=true;
+  player.version=((Number)profile.one("snapshot").get("source_world_version")).intValue();
+  if(Boolean.TRUE.equals(profile.one("character_state").get("is_dead")))player.setHealth(0);return player;
+ }
+}''',
 'zombie/core/Core.java': '''package zombie.core; public class Core {
  public static boolean debug; public static String gameSaveWorld="servertest";
  public static Core getInstance(){return new Core();} public boolean isNoSave(){return false;} }''',
@@ -80,6 +88,12 @@ public class PlayersTest {
     }
     if(m.getName().equals("executeQuery")){
      if(fail)throw new SQLException("private error","08006");
+     if(sql.startsWith("WITH selected")) {
+      boolean found=row!=null&&Objects.equals(row.get("world"),args.get(1))&&Objects.equals(row.get(args.get(2).equals("steam_coop")?"steamid":"username"),args.get(3))&&Objects.equals(row.get("playerindex"),args.get(4));
+      List<String[]> result=new ArrayList<>();
+      if(found){result.add(new String[]{"snapshot","{\"status\":\"complete\",\"schema_version\":1,\"codec_version\":4,\"source_world_version\":249,\"expected_object_count\":0,\"expected_item_count\":0,\"expected_container_count\":0,\"expected_edge_count\":0}"});result.add(new String[]{"character_state","{\"is_dead\":"+row.get("isdead")+"}"});}
+      int[] cursor={-1};return Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{ResultSet.class},(rp,rm,ra)->switch(rm.getName()){case "next"->++cursor[0]<result.size();case "getString"->result.get(cursor[0])[(int)ra[0]-1];default->zero(rm.getReturnType());});
+     }
      final Map<String,Object> selected=row==null?null:new HashMap<>(row);
      boolean match=selected!=null&&!sql.contains("WHERE false");
      if(match&&sql.contains("playerindex=?")){
@@ -104,6 +118,7 @@ public class PlayersTest {
   Field instance=ApocBRPostgresConnector.class.getDeclaredField("instance");instance.setAccessible(true);instance.set(null,connector);
   Field configured=ApocBRPostgresConnector.class.getDeclaredField("configured");configured.setAccessible(true);configured.setBoolean(null,true);
   System.setProperty("apocbr.postgres.enabled","true");
+  System.setProperty("apocbr.postgres.playerRelational.enabled","false"); // Isolate native save/profile routing; worker has its own fixture.
   System.clearProperty("apocbr.postgres.players.enabled");
   check(!ApocBRPlayerDatabase.enabled(),"master PostgreSQL enablement retains SQLite players by default");
   System.setProperty("apocbr.postgres.players.enabled","false");
@@ -118,7 +133,7 @@ public class PlayersTest {
   db.process();check(fake.row!=null && connector.status().pending()==0,"native process commits primary data, no mirror queue");
   check(player.captures==1,"no second serialization");
   IsoPlayer loaded=db.serverLoadNetworkCharacter(0,"alice");
-  check(loaded!=null&&loaded.loaded==17&&loaded.version==249&&loaded.remote&&loaded.serverPlayerIndex==0,"server load uses committed PostgreSQL bytes");
+  check(loaded!=null&&loaded.loaded==0&&loaded.version==249&&loaded.remote&&loaded.serverPlayerIndex==0,"server routes relational profile without native deserialization");
   check(db.serverLoadNetworkCharacter(1,"alice")==null,"different character slot absent");
   var packet=new zombie.network.packets.connection.LoadPlayerProfilePacket();packet.processServer(null,connection);
   check((boolean)field(packet,"isExist") && ((byte[])field(packet,"buffer"))[0]==17,"profile packet reads PostgreSQL");
@@ -146,8 +161,8 @@ with tempfile.TemporaryDirectory(prefix='apocbr_players_') as folder:
         path=target/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body,encoding='utf-8');files.append(path)
     harness=target/'PlayersTest.java';harness.write_text(HARNESS,encoding='utf-8');files.append(harness)
     files += [SRC/'savefile'/name for name in ['ApocBRPostgresConnector.java','ApocBRPlayerDatabase.java','ServerPlayerDB.java','PlayerDBHelper.java',
-        'ApocBRPlayerLoadQuality.java','ApocBRPlayerRelationalLimits.java','ApocBRPlayerRelationalSchema.java','ApocBRPlayerRelationalAccess.java',
-        'ApocBRPlayerRelationalSnapshot.java','ApocBRPlayerRelationalCapture.java','ApocBRPlayerRelationalMutations.java','ApocBRPlayerRelationalDelta.java','ApocBRPlayerRelationalDatabase.java','ApocBRPlayerRelationalSync.java']]
+        'ApocBRPlayerLoadQuality.java','ApocBRPlayerRelationalReader.java','ApocBRPlayerRelationalLimits.java','ApocBRPlayerRelationalSchema.java','ApocBRPlayerRelationalAccess.java',
+        'ApocBRPlayerRelationalSnapshot.java','ApocBRPlayerRelationalCodecs.java','ApocBRPlayerRelationalCapture.java','ApocBRPlayerRelationalMutations.java','ApocBRPlayerRelationalDelta.java','ApocBRPlayerRelationalMetrics.java','ApocBRPlayerRelationalDatabase.java','ApocBRPlayerRelationalSync.java']]
     files.append(SRC/'network/packets/connection/LoadPlayerProfilePacket.java')
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,files)],check=True)
