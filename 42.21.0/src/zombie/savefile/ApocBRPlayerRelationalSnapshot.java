@@ -181,6 +181,7 @@ final class ApocBRPlayerRelationalSnapshot {
         for(int i=0;i<number(get(source,"componentSize"));i++) {
             Object component=call(source,"getComponentForIndex",i);Node c=begin(component);
             switch(component.getClass().getSimpleName()) {
+                case "AttributeContainer","EntityScriptInfo" -> put(c,"state",structured(componentState(component),0));
                 case "Durability" -> {fields(c,component,"currentHitPoints","maxHitPoints");put(c,"material",scalar(get(component,"material").toString()));}
                 case "FluidContainer" -> {
                     fields(c,component,"capacity","inputLocked","canPlayerEmpty","containerName","hiddenAmount","rainCatcher");
@@ -198,6 +199,64 @@ final class ApocBRPlayerRelationalSnapshot {
     }
     private Object attachment(Object source,int depth) {
         Object result=item(source,depth);if(result instanceof Node node)fields(node,source,"partType");return result;
+    }
+    /** Native saved fields only. Called before enqueue; the worker reads the copied state. */
+    static Map<String,Object> componentState(Object component) {
+        if(component instanceof Node){throw new IllegalArgumentException("Snapshot state is already detached");}
+        var budget=new ApocBRPlayerRelationalSnapshot();
+        Map<String,Object> state=new LinkedHashMap<>();
+        if(typeName(component).equals("EntityScriptInfo")) {
+            state.put("originalIsItem",budget.scalar((Boolean)Objects.requireNonNull(get(component,"originalIsItem"))));
+            state.put("originalScript",budget.scalar((String)get(component,"originalScript")));
+            return state;
+        }
+        if(!typeName(component).equals("AttributeContainer"))throw new IllegalStateException("UNSUPPORTED_COMPONENT_STATE");
+        int size=number(get(component,"size"));
+        if(size<0||size>10_000)throw new IllegalStateException("SNAPSHOT_SIZE_BUDGET");
+        List<Object> attributes=new ArrayList<>();Set<String> names=new HashSet<>();Set<Integer> ids=new HashSet<>();
+        for(int i=0;i<size;i++) {
+            budget.charge(512);
+            Object attribute=call(component,"getAttribute",i),type=get(attribute,"type");
+            String name=(String)get(type,"name"),kind=key(get(type,"valueType"));int id=number(get(type,"id"));
+            if(name==null||!names.add(name)||!ids.add(id))throw new IllegalStateException("INVALID_ATTRIBUTE_IDENTITY");
+            Object value=get(attribute,"value");
+            Map<String,Object> entry=new LinkedHashMap<>();
+            entry.put("name",budget.scalar(name));entry.put("native_id",id);entry.put("value_type",budget.scalar(kind));
+            Object saved=switch(kind) {
+                case "Boolean" -> (Boolean)Objects.requireNonNull(value);
+                case "String" -> (String)value;
+                case "Byte" -> (Byte)Objects.requireNonNull(value);
+                case "Short" -> (Short)Objects.requireNonNull(value);
+                case "Int" -> (Integer)Objects.requireNonNull(value);
+                case "Long" -> (Long)Objects.requireNonNull(value);
+                case "Float" -> (Float)Objects.requireNonNull(value);
+                case "Double" -> (Double)Objects.requireNonNull(value);
+                case "Enum" -> enumValue(value,budget);
+                case "EnumSet" -> enumValues(value,budget);
+                case "EnumStringSet" -> {
+                    Map<String,Object> values=new LinkedHashMap<>();
+                    values.put("enums",enumValues(get(value,"enumValues"),budget));
+                    ArrayList<String> strings=new ArrayList<>();
+                    for(Object text:list(get(value,"stringValues")))strings.add((String)budget.scalar((String)Objects.requireNonNull(text)));
+                    values.put("strings",strings);yield values;
+                }
+                default -> throw new IllegalStateException("UNSUPPORTED_ATTRIBUTE_VALUE_TYPE");
+            };
+            if(kind.startsWith("Enum"))entry.put("enum_class",budget.scalar(((Class<?>)get(type,"enumClass")).getName()));
+            else budget.scalar(saved);
+            entry.put("value",saved);attributes.add(entry);
+        }
+        state.put("attributes",attributes);return state;
+    }
+    private static Map<String,Object> enumValue(Object value,ApocBRPlayerRelationalSnapshot budget) {
+        budget.charge(256);
+        Enum<?> option=(Enum<?>)Objects.requireNonNull(value);
+        return Map.of("name",budget.scalar(option.name()),"native_byte_id",number(call(option,"getByteId")));
+    }
+    private static List<Object> enumValues(Object value,ApocBRPlayerRelationalSnapshot budget) {
+        ArrayList<Object> values=new ArrayList<>();
+        for(Object option:list(Objects.requireNonNull(value)))values.add(enumValue(option,budget));
+        return values;
     }
     static List<Stat> stats(Object player) {
         if(player instanceof Node node){@SuppressWarnings("unchecked") List<Stat> stats=(List<Stat>)node.get("stats");return stats;}

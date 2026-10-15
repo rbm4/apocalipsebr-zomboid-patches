@@ -313,6 +313,7 @@ public class RelationalTest {
   public byte[] blood={1,2},dirt={3},holes={0},basicPatches={1},denimPatches={2},leatherPatches={3};
  }
  static class Durability {public float currentHitPoints=12,maxHitPoints=20;public String material="metal";}
+ static class UnreviewedComponent {}
  static class FluidType {public String fluidTypeString="Water";}
  static class FluidInstance {public FluidType fluid=new FluidType();public float amount=2;public Color color=new Color();}
  static class FluidFilter {public String filterType="Whitelist";public List<String> fluidEnums=List.of("Water"),fluidStrings=List.of("CustomFluid"),categories=List.of("Drink");}
@@ -404,9 +405,77 @@ public class RelationalTest {
  }
 
 
+ static <T> T nativeComponent(Class<T> type)throws Exception {
+  var ctor=type.getDeclaredConstructor();ctor.setAccessible(true);return ctor.newInstance();
+ }
+ static void field(Object object,String name,Object value)throws Exception {
+  Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);f.set(object,value);
+ }
+ static byte[] nativeAttributes(zombie.entity.components.attributes.AttributeContainer container) {
+  var buffer=java.nio.ByteBuffer.allocate(16384);container.save(buffer);return Arrays.copyOf(buffer.array(),buffer.position());
+ }
+ @SuppressWarnings("unchecked") static void componentCodecs()throws Exception {
+  var attributes=nativeComponent(zombie.entity.components.attributes.AttributeContainer.class);
+  var script=nativeComponent(zombie.entity.components.script.EntityScriptInfo.class);
+  field(script,"originalIsItem",true);field(script,"originalScript","Base.TestItem");
+  var registered=List.of(zombie.entity.components.attributes.Attribute.Quality,zombie.entity.components.attributes.Attribute.TestQuality,
+   zombie.entity.components.attributes.Attribute.TestBool,zombie.entity.components.attributes.Attribute.TestString,
+   zombie.entity.components.attributes.Attribute.TestItemType,zombie.entity.components.attributes.Attribute.TestCategories,
+   zombie.entity.components.attributes.Attribute.TestTags);
+  for(var type:registered)attributes.add(type);
+  ((zombie.entity.components.attributes.AttributeInstance.EnumSet)attributes.getAttribute(zombie.entity.components.attributes.Attribute.TestCategories)).getValue().clear();
+  attributes.set(zombie.entity.components.attributes.Attribute.Quality,73);
+  attributes.set(zombie.entity.components.attributes.Attribute.TestQuality,42.25f);
+  attributes.set(zombie.entity.components.attributes.Attribute.TestBool,true);
+  attributes.set(zombie.entity.components.attributes.Attribute.TestString,"a; text with Unicode: ação");
+  var tags=(zombie.entity.components.attributes.AttributeInstance.EnumStringSet)attributes.getAttribute(zombie.entity.components.attributes.Attribute.TestTags);
+  tags.getValue().add(zombie.entity.components.attributes.TestEnum.TestValueB);tags.getValue().add("free;form");tags.getValue().add("another");
+  Object[] numeric={(byte)-128,(short)-32768,Long.MIN_VALUE,-0.125d};String[] kinds={"Byte","Short","Long","Double"};
+  for(int i=0;i<kinds.length;i++) {
+   Class<?> type=Class.forName("zombie.entity.components.attributes.AttributeType$"+kinds[i]);
+   var ctor=Arrays.stream(type.getDeclaredConstructors()).filter(c->c.getParameterCount()==3).findFirst().orElseThrow();ctor.setAccessible(true);
+   attributes.add((zombie.entity.components.attributes.AttributeType)ctor.newInstance((short)(200+i),"Fixture"+kinds[i],numeric[i]));
+  }
+  byte[] serialized=nativeAttributes(attributes);
+  Map<String,Object> state=ApocBRPlayerRelationalSnapshot.componentState(attributes);
+  detached(state,Collections.newSetFromMap(new IdentityHashMap<>()));
+  List<Map<String,Object>> values=(List<Map<String,Object>>)(List<?>)state.get("attributes");
+  Map<String,Map<String,Object>> byType=new HashMap<>();for(var value:values)byType.put((String)value.get("value_type"),value);
+  check(byType.size()==11,"all eleven native attribute value types encoded");
+  check(byType.get("Long").get("value").equals(Long.MIN_VALUE),"long attributes retain integer precision");
+  check(byType.get("Double").get("value").equals(-0.125d)&&byType.get("Float").get("value").equals(42.25f),"decimal widths retained");
+  check(byType.get("Boolean").get("value").equals(true)&&byType.get("String").get("value").equals("a; text with Unicode: ação"),"boolean and string values retained");
+  check(((Map<?,?>)byType.get("Enum").get("value")).get("name").equals("TestValueA"),"enum uses stable name");
+  check(((Map<?,?>)byType.get("Enum").get("value")).get("native_byte_id").equals(1),"enum native ID retained");
+  check(byType.get("EnumSet").get("enum_class").equals("zombie.entity.components.attributes.TestEnum")&&((List<?>)byType.get("EnumSet").get("value")).isEmpty(),"empty enum sets retain enum class");
+  var mixed=(Map<String,Object>)byType.get("EnumStringSet").get("value");
+  check(((List<?>)mixed.get("enums")).size()==1&&mixed.get("strings").equals(List.of("free;form","another")),"mixed set keeps enum/string separation and string order");
+  check(Arrays.equals(serialized,nativeAttributes(attributes)),"export leaves native attribute save bytes unchanged");
+  P player=new P();Item item=new Item(1);player.inventory.items.add(item);item.components.add(attributes);item.components.add(script);item.componentSize=2;
+  UUID character=UUID.randomUUID();Map<Integer,UUID> aliases=Map.of(1,UUID.randomUUID());
+  var before=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(player,List.of());
+  check(before.issues().isEmpty(),"both new codecs have complete coverage");
+  var frozen=ApocBRPlayerRelationalSnapshot.copy(player);detached(frozen.player(),Collections.newSetFromMap(new IdentityHashMap<>()));
+  attributes.set(zombie.entity.components.attributes.Attribute.Quality,1);tags.getValue().clear();field(script,"originalScript","Base.After");field(script,"originalIsItem",false);
+  var after=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(frozen,List.of());
+  check(canonical(before).equals(canonical(after)),"new component snapshots survive native attribute and script mutations");
+  check(after.rows().stream().filter(r->r.table().equals("component")&&r.values().get("coverage").equals("complete")).count()==2,"new components persisted through typed node rows");
+  check(after.rows().stream().anyMatch(r->r.table().equals("value_node")&&Objects.equals(r.values().get("integer_value"),Long.MIN_VALUE)),"typed SQL rows preserve full-width attribute integers");
+  Fake fake=new Fake();UUID dataset=UUID.randomUUID();fake.dataset=dataset;
+  var db=new ApocBRPlayerRelationalDatabase(fake::open);var candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,"test","world","alice",false,0,1,249,"hash",List.of());
+  check(db.persist(candidate,new ApocBRPlayerRelationalDatabase.Receipt(character,null,aliases,false),after)&&fake.headWrites==1,"supported component graph publishes completion receipt");
+  item.components.add(new UnreviewedComponent());item.componentSize=3;
+  var unsupported=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(ApocBRPlayerRelationalSnapshot.copy(player),List.of());
+  check(unsupported.issues().contains("UNSUPPORTED_COMPONENT_UnreviewedComponent"),"unreviewed components still prevent complete coverage");
+  check(db.persist(candidate,new ApocBRPlayerRelationalDatabase.Receipt(character,null,aliases,false),unsupported)&&fake.headWrites==1&&fake.status.equals("incomplete"),"unknown component graph never publishes a new completion receipt");
+  var empty=nativeComponent(zombie.entity.components.attributes.AttributeContainer.class);
+  check(((List<?>)ApocBRPlayerRelationalSnapshot.componentState(empty).get("attributes")).isEmpty(),"empty attribute container supported");
+  var unset=nativeComponent(zombie.entity.components.script.EntityScriptInfo.class);
+  check(ApocBRPlayerRelationalSnapshot.componentState(unset).containsKey("originalScript")&&ApocBRPlayerRelationalSnapshot.componentState(unset).get("originalScript")==null,"absent original script preserved");
+ }
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static class Fake {
-  int opened,closed,commits,rollbacks,inserts,headWrites,batches;boolean complete,fail,stale;UUID dataset,character,head;String status;
+  int opened,closed,commits,rollbacks,inserts,headWrites,batches,codecVersion=ApocBRPlayerRelationalCapture.CODEC_VERSION;boolean complete,fail,stale;UUID dataset,character,head;String status;
   List<String> queries=new ArrayList<>(),itemNames=new ArrayList<>();
   Connection open(){opened++;return(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{Connection.class},(o,m,a)->{
    switch(m.getName()){
@@ -421,7 +490,7 @@ public class RelationalTest {
        String name=rm.getName();
        if(name.equals("next")){boolean found=sql.contains("advisory")||sql.equals("SELECT id FROM player_rel.player_slot WHERE world=? AND identity_mode=? AND identity_key=? AND player_index=?")||((complete||stale)&&sql.contains("active_character_id"));boolean result=found&&!advanced[0];advanced[0]=true;return result;}
        if(name.equals("getBoolean"))return true;
-       if(name.equals("getInt"))return 1;
+       if(name.equals("getInt"))return ((int)ra[0])==5?codecVersion:1;
        if(name.equals("getString"))return "complete";
        if(name.equals("getObject")){int index=(int)ra[0];if(sql.startsWith("SELECT id FROM"))return UUID.randomUUID();return index==1?character:index==2?head:dataset;}
        return zero(rm.getReturnType());
@@ -456,6 +525,9 @@ public class RelationalTest {
   check(db.persist(candidate,receipt,incomplete),"incomplete graph retained for diagnosis");check(fake.headWrites==heads&&"incomplete".equals(fake.status),"incomplete graph has no receipt");
   fake.complete=true;fake.character=receipt.character();fake.head=graph.snapshot();
   int writes=fake.inserts;var existing=db.inspect(candidate);check(existing.complete()&&fake.inserts==writes,"complete receipt lookup is read-only");
+  fake.codecVersion=1;var older=db.inspect(candidate);
+  check(!older.complete()&&older.character().equals(existing.character())&&older.head().equals(existing.head()),"older codec receipt requests a new snapshot while preserving character/head identity");
+  fake.codecVersion=ApocBRPlayerRelationalCapture.CODEC_VERSION;
   check(!db.persist(candidate,receipt,graph)&&fake.headWrites==heads,"stale expected head rejected");
   fake.dataset=UUID.randomUUID();try{db.inspect(candidate);throw new AssertionError("foreign dataset accepted");}catch(SQLException expected){checks++;}
   check(fake.opened==fake.closed,"all JDBC leases closed");
@@ -503,7 +575,7 @@ public class RelationalTest {
   ApocBRPlayerRelationalSync.shutdown();check(fake.opened==fake.closed,"shutdown returns worker lease");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();componentCodecs();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:

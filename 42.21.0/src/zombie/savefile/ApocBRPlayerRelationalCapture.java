@@ -9,7 +9,7 @@ import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Relational graph projection. Production calls this on the worker with a detached snapshot. */
 final class ApocBRPlayerRelationalCapture {
-    static final int CODEC_VERSION=1, SCHEMA_VERSION=1, MAX_BYTES=2*1024*1024;
+    static final int CODEC_VERSION=2, SCHEMA_VERSION=1, MAX_BYTES=2*1024*1024;
     record Row(String table,Map<String,Object> values) {
         Row { values=Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
     }
@@ -252,6 +252,10 @@ final class ApocBRPlayerRelationalCapture {
         for(int index=0;index<count;index++) {
             Object c=call(item,"getComponentForIndex",index); String kind=typeName(c);
             if(kind.equals("FluidContainer")) fluid(c,id);
+            else if(kind.equals("AttributeContainer")||kind.equals("EntityScriptInfo")) {
+                Object state=c instanceof ApocBRPlayerRelationalSnapshot.Node node?node.get("state"):ApocBRPlayerRelationalSnapshot.componentState(c);
+                componentValue(id,"entity."+kind,state,"complete");
+            }
             else if(kind.equals("Durability")) {
                 Map<String,Object> value=new LinkedHashMap<>();
                 value.put("currentHitPoints",get(c,"currentHitPoints"));value.put("maxHitPoints",get(c,"maxHitPoints"));value.put("material",get(c,"material").toString());

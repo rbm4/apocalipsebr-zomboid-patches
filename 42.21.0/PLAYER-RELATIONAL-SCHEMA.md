@@ -59,8 +59,24 @@ available. Scalar fields include private native state through cached, version-pi
 reflection in a separate helper, preserving the vanilla player/item APIs. Missing
 fields fail capture instead of becoming zero/defaults. Item types/traits/professions/
 perks/body locations use stable names, while numeric source IDs remain metadata.
-Fluids and Durability have typed component codecs; all other component families
-currently require explicit codec additions before they can be complete.
+Fluids, Durability, AttributeContainer and EntityScriptInfo have typed component
+codecs; other component families still require explicit additions before they can
+be complete. Export codec version 2 adds the latter two components; older complete
+receipts are re-evaluated on a subsequent native load. Schema version remains 1;
+these codecs use the existing `component` / `value_node` tables without a migration.
+
+`entity.AttributeContainer` stores an `attributes` array containing each stable
+attribute name, native ID, exact native `value_type`, and typed value. All eleven
+42.21.0 types are covered: Boolean, String, Byte, Short, Int, Long, Float, Double,
+Enum, EnumSet and EnumStringSet. Enum values retain their class/name and native
+byte ID; mixed sets retain separate enum and string lists, including string order.
+Integer values use bigint nodes without converting through floating point.
+`entity.EntityScriptInfo` stores `originalIsItem` and nullable `originalScript`.
+The resolved runtime script pointer is derived from those fields and is not copied.
+Empty attribute containers and absent original-script names are supported.
+Component fields are read and bounded during snapshot copying; the worker receives
+only detached typed state. Unknown components or attribute value types are not
+silently treated as complete.
 
 Configuration (JVM options before the main class):
 
@@ -136,6 +152,10 @@ reuse, batched commit/rollback, incomplete/stale publication, source-dataset
 mismatch, quality scopes, duplicate coalescing and asynchronous skip/first-sync
 without a main-thread pump. Deterministic time-limit tests remain for the standalone
 projection class, but production sync does not impose that time limit.
+Component fixtures use native AttributeContainer/AttributeInstance/EntityScriptInfo
+classes: all eleven value types, mixed enum/string sets, full-width integers,
+empty/null state, unchanged native attribute-save bytes, mutation isolation,
+typed-node persistence and complete versus unknown-component publication.
 Actual native deserialization, modded data round trips, PostgreSQL constraint
 execution, capture latency and queue saturation still require an isolated server
 trial. These tests do not validate a future relational loader.
