@@ -204,7 +204,7 @@ trial. These tests do not validate a future relational loader.
 ## Live mutations: scalars and supported graph reconciliation
 
 `NetworkPlayerManager.update` observes registered, fully connected players through
-its existing traversal. Scalars retain their one-second cadence, shared 1 ms soft
+its existing traversal. Scalars default to a 30-second cadence, shared 1 ms soft
 allowance and maximum 16 samples per tick. At the end of the traversal, the oldest
 due online player additionally receives one consistent detached graph copy. At
 most one periodic graph is copied per tick; offline inspection objects and unbound
@@ -212,7 +212,7 @@ sessions cannot starve online players. Native save/disconnect requests also offe
 a final copy, even when a previous write is in flight. Native save scheduling,
 serialization and SQL persistence remain unchanged.
 
-Graph reconciliation defaults to a one-second **minimum interval**, not a latency
+Graph reconciliation defaults to a 30-second **minimum interval**, not a latency
 or CPU guarantee for 200 players. Each copy traverses the supported player graph
 in one game-thread pass so it cannot mix several ticks of ownership/array state.
 Copying is not covered by the scalar 1 ms allowance and one large player may
@@ -276,9 +276,14 @@ Configuration (JVM options; defaults shown):
 ```text
 -Dapocbr.postgres.playerRelational.mutations.enabled=true
 -Dapocbr.postgres.playerRelational.mutations.reconcile=true
--Dapocbr.postgres.playerRelational.mutations.reconcileMs=1000
+-Dapocbr.postgres.playerRelational.mutations.sampleMs=30000
+-Dapocbr.postgres.playerRelational.mutations.reconcileMs=30000
 -Dapocbr.postgres.playerRelational.mutations.cacheMiB=64
 ```
+
+The internal one-second dirty-queue dispatch throttle does not trigger periodic
+sampling. Explicit JVM overrides still take precedence over the 30-second defaults;
+native final-save/disconnect sampling continues to bypass the periodic interval.
 
 Setting `reconcile=false` retains the earlier seven scalar groups: character state,
 nutrition, stats, effects, presentation, descriptor and general body damage. Setting

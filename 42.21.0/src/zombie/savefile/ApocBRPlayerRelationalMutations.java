@@ -9,10 +9,12 @@ import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Game-thread scalar sampling and staggered detached reconciliation; worker-only relational deltas. */
 public final class ApocBRPlayerRelationalMutations {
+    // Dispatch/backoff unit; periodic sampling and graph copying use their own intervals below.
     static final long CADENCE=1_000_000_000L;
+    private static final long SAMPLE_CADENCE=Math.max(1000,Math.min(60000,Long.getLong("apocbr.postgres.playerRelational.mutations.sampleMs",30000L)))*1_000_000L;
     static final int MAX_PLAYERS=512,MAX_FIELDS=256;
     private static final boolean RECONCILE=Boolean.parseBoolean(System.getProperty("apocbr.postgres.playerRelational.mutations.reconcile","true"));
-    private static final long GRAPH_CADENCE=Math.max(1000,Math.min(60000,Long.getLong("apocbr.postgres.playerRelational.mutations.reconcileMs",1000L)))*1_000_000L;
+    private static final long GRAPH_CADENCE=Math.max(1000,Math.min(60000,Long.getLong("apocbr.postgres.playerRelational.mutations.reconcileMs",30000L)))*1_000_000L;
     private static Cursor graphTurn;
     private static IsoPlayer graphPlayer;
     private static final AtomicLong graphSamples=new AtomicLong(),graphNanos=new AtomicLong(),graphMaxNanos=new AtomicLong();
@@ -186,10 +188,10 @@ public final class ApocBRPlayerRelationalMutations {
             Map<Field,Object> changed=new LinkedHashMap<>();
             for(var e:values.entrySet())if(!cursor.observed.containsKey(e.getKey())||!Objects.equals(cursor.observed.get(e.getKey()),e.getValue()))changed.put(e.getKey(),e.getValue());
             if(changed.isEmpty()||DIRTY.mark(cursor.candidate,cursor.session,changed,now,Instant.now())) {
-                cursor.observed=values;cursor.nextSample=now+CADENCE;
+                cursor.observed=values;cursor.nextSample=now+SAMPLE_CADENCE;
             }
             long elapsed=System.nanoTime()-started;measuredSamples.incrementAndGet();measuredFields.addAndGet(changed.size());sampleNanos.addAndGet(elapsed);maxSampleNanos.accumulateAndGet(elapsed,Math::max);
-        }catch(RuntimeException|LinkageError failure){cursor.nextSample=now+CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_SAMPLE_FAILED; exception="+failure.getClass().getSimpleName());}}
+        }catch(RuntimeException|LinkageError failure){cursor.nextSample=now+SAMPLE_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_SAMPLE_FAILED; exception="+failure.getClass().getSimpleName());}}
     }
     private record Plan(Field field,String path,String type,boolean required) {}
     private record Group(String table,String source,List<Plan> plans) {}
