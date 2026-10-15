@@ -170,8 +170,8 @@ public class LoadPlayerProfilePacket implements INetworkPacket {
             boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
             if (coop) ServerPlayerDB.getInstance().serverConvertNetworkCharacter(connection.getUserName(),connection.getIDStr());
             try {
-                ApocBRPlayerDatabase.Profile profile=new ApocBRPlayerDatabase().load(Core.gameSaveWorld,
-                        coop?connection.getIDStr():connection.getUserName(),this.playerIndex,coop);
+                ApocBRPlayerDatabase.Profile profile=ServerPlayerDB.getInstance().serverLoadPostgresClientProfile(
+                        this.playerIndex,coop?connection.getIDStr():connection.getUserName(),coop,connection.getUserName());
                 this.isExist=profile!=null;
                 if (profile!=null) {
                     this.x=profile.x(); this.y=profile.y(); this.z=profile.z(); this.buffer=profile.data();
@@ -180,7 +180,7 @@ public class LoadPlayerProfilePacket implements INetworkPacket {
                 ByteBufferWriter b=connection.startPacket();
                 PacketTypes.PacketType.LoadPlayerProfile.doPacket(b); this.write(b);
                 PacketTypes.PacketType.LoadPlayerProfile.send(connection);
-            } catch (SQLException failure) { ExceptionLogger.logException(failure); }
+            } catch (Exception failure) { ExceptionLogger.logException(failure); }
         } else if (ServerPlayerDB.getInstance().conn != null) {
             if (GameServer.coop && SteamUtils.isSteamModeEnabled()) {
                 ServerPlayerDB.getInstance().serverConvertNetworkCharacter(connection.getUserName(), connection.getIDStr());

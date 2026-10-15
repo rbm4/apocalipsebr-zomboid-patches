@@ -34,12 +34,12 @@ final class ApocBRPlayerRelationalReconstruction {
  public static int getWorldVersion(){return 249;} }''',
 'zombie/characters/IsoPlayer.java': '''package zombie.characters; public class IsoPlayer {
  public int serverPlayerIndex; public boolean remote,dead; public String username="alice";
- public int captures; public float health=100; public byte loaded; public int version;
+ public static int payloadBytes=1; public int captures; public float health=100; public byte loaded; public int version;
  public IsoPlayer(Object cell){} public Desc getDescriptor(){return new Desc();}
  public static class Desc { public String getForename(){return "Alice";} public String getSurname(){return "Survivor";} }
  public float getX(){return 1;} public float getY(){return 2;} public float getZ(){return 0;}
  public int getIndex(){return 0;} public boolean isDead(){return dead;}
- public void save(java.nio.ByteBuffer out)throws java.io.IOException{captures++;out.put((byte)17);}
+ public void save(java.nio.ByteBuffer out)throws java.io.IOException{captures++;for(int i=0;i<payloadBytes;i++)out.put((byte)17);}
  public void load(java.nio.ByteBuffer in,int v)throws java.io.IOException{loaded=in.get();version=v;if(loaded==99)throw new java.io.IOException("bad snapshot");}
  public void setHealth(float value){health=value;} public Damage getBodyDamage(){return new Damage();}
  public static class Damage {public void setOverallBodyHealth(float value){} } }''',
@@ -47,14 +47,15 @@ final class ApocBRPlayerRelationalReconstruction {
  public zombie.characters.IsoPlayer[] players=new zombie.characters.IsoPlayer[4];
  public String getUserName(){return "alice";} public String getIDStr(){return "765";}
  public zombie.core.network.ByteBufferWriter startPacket(){return new zombie.core.network.ByteBufferWriter(java.nio.ByteBuffer.allocate(4096));} }''',
-'zombie/core/network/ByteBufferWriter.java': '''package zombie.core.network; public class ByteBufferWriter {
- public java.nio.ByteBuffer bb; public ByteBufferWriter(java.nio.ByteBuffer value){bb=value;}
- public void putBoolean(boolean b){bb.put((byte)(b?1:0));} public void putByte(byte b){bb.put(b);}
- public void putFloat(float f){bb.putFloat(f);} public void putInt(int i){bb.putInt(i);}
- public void putUTF(String s){} public void put(byte[] bytes){bb.put(bytes);} }''',
 'zombie/network/PacketTypes.java': '''package zombie.network; public class PacketTypes {
  public enum PacketType { LoadPlayerProfile; public void doPacket(zombie.core.network.ByteBufferWriter out){}
  public void send(zombie.core.raknet.UdpConnection c){} } }''',
+'zombie/GameWindow.java': '''package zombie; public class GameWindow {
+ public static String ReadString(java.nio.ByteBuffer in){return new zombie.core.network.ByteBufferReader(in).getUTF();}
+ public static void WriteString(java.nio.ByteBuffer out,String value){
+  byte[] bytes=value==null?new byte[0]:value.getBytes(java.nio.charset.StandardCharsets.UTF_8);out.putShort((short)bytes.length);out.put(bytes);
+ }
+}''',
 }
 HARNESS=r'''
 package zombie.savefile;
@@ -64,7 +65,7 @@ public class PlayersTest {
  static void check(boolean b,String message){if(!b)throw new AssertionError(message);}
  static Object zero(Class<?> t){if(t==boolean.class)return false;if(t==int.class)return 0;if(t==long.class)return 0L;return null;}
  static class Fake {
-  Map<String,Object> row;int opened,closed,committed,rolledBack;boolean fail,duplicate;
+  Map<String,Object> row;int opened,closed,committed,rolledBack;boolean fail,duplicate,relationalAbsent;
   List<String> queries=new ArrayList<>();
   Connection open(){opened++;return (Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{Connection.class},(p,m,a)->{
    switch(m.getName()){
@@ -89,9 +90,10 @@ public class PlayersTest {
     if(m.getName().equals("executeQuery")){
      if(fail)throw new SQLException("private error","08006");
      if(sql.startsWith("WITH selected")) {
-      boolean found=row!=null&&Objects.equals(row.get("world"),args.get(1))&&Objects.equals(row.get(args.get(2).equals("steam_coop")?"steamid":"username"),args.get(3))&&Objects.equals(row.get("playerindex"),args.get(4));
+      boolean found=!relationalAbsent&&row!=null&&Objects.equals(row.get("world"),args.get(1))&&Objects.equals(row.get(args.get(2).equals("steam_coop")?"steamid":"username"),args.get(3))&&Objects.equals(row.get("playerindex"),args.get(4));
       List<String[]> result=new ArrayList<>();
       if(found){result.add(new String[]{"snapshot","{\"status\":\"complete\",\"schema_version\":1,\"codec_version\":4,\"source_world_version\":249,\"expected_object_count\":0,\"expected_item_count\":0,\"expected_container_count\":0,\"expected_edge_count\":0}"});result.add(new String[]{"character_state","{\"is_dead\":"+row.get("isdead")+"}"});}
+      if(found)result.getFirst()[1]=new org.json.JSONObject(result.getFirst()[1]).put("split_username",row.get("splitusername")).toString();
       int[] cursor={-1};return Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{ResultSet.class},(rp,rm,ra)->switch(rm.getName()){case "next"->++cursor[0]<result.size();case "getString"->result.get(cursor[0])[(int)ra[0]-1];default->zero(rm.getReturnType());});
      }
      final Map<String,Object> selected=row==null?null:new HashMap<>(row);
@@ -113,6 +115,27 @@ public class PlayersTest {
     }return zero(m.getReturnType());});}
  }
  static Object field(Object object,String name)throws Exception{Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(object);}
+ static void vanillaProfileResponse(Object packet)throws Exception {
+  var bytes=java.nio.ByteBuffer.allocate(4096);
+  var writer=new zombie.core.network.ByteBufferWriter(bytes);
+  ((zombie.network.packets.connection.LoadPlayerProfilePacket)packet).write(writer);bytes.flip();
+  // Load only the original profile codec from the real game JAR. All its dependencies
+  // remain shared with this fixture, including the real ByteBuffer reader/writer.
+  String name="zombie.network.packets.connection.LoadPlayerProfilePacket";
+  try(var vanilla=new java.net.URLClassLoader(new java.net.URL[]{new java.io.File(System.getProperty("apocbr.test.gameJar")).toURI().toURL()},PlayersTest.class.getClassLoader()) {
+   @Override protected Class<?> loadClass(String type,boolean resolve)throws ClassNotFoundException {
+    if(!type.equals(name))return super.loadClass(type,resolve);
+    Class<?> found=findLoadedClass(type);if(found==null)found=findClass(type);if(resolve)resolveClass(found);return found;
+   }
+  }) {
+   Object decoded=vanilla.loadClass(name).getConstructor().newInstance();
+   GameServer.server=false;GameClient.client=true;
+   try{decoded.getClass().getMethod("parse",zombie.core.network.ByteBufferReader.class,zombie.network.IConnection.class).invoke(decoded,new zombie.core.network.ByteBufferReader(bytes),null);}
+   finally{GameServer.server=true;GameClient.client=false;}
+   for(String field:List.of("isExist","playerIndex","x","y","z","worldVersion","isDead","username"))check(Objects.equals(field(packet,field),field(decoded,field)),"unpatched client profile codec receives "+field);
+   check(Arrays.equals((byte[])field(packet,"buffer"),(byte[])field(decoded,"buffer"))&&!bytes.hasRemaining(),"unpatched client receives exact player bytes with no wire layout changes");
+  }
+ }
  public static void main(String[] ignored)throws Exception {
   Fake fake=new Fake();var connector=new ApocBRPostgresConnector(fake.source(),s->{});
   Field instance=ApocBRPostgresConnector.class.getDeclaredField("instance");instance.setAccessible(true);instance.set(null,connector);
@@ -139,13 +162,39 @@ public class PlayersTest {
   IsoPlayer loaded=db.serverLoadNetworkCharacter(0,"alice");
   check(loaded!=null&&loaded.loaded==0&&loaded.version==249&&loaded.remote&&loaded.serverPlayerIndex==0,"server routes relational profile without native deserialization");
   check(db.serverLoadNetworkCharacter(1,"alice")==null,"different character slot absent");
+  // Simulate an old imported blob whose IDs/version belong to a different dictionary.
+  fake.row.put("data",new byte[]{99});fake.row.put("worldversion",123);fake.row.put("splitusername","split-alice");
+  int queriesBeforeProfile=fake.queries.size();
   var packet=new zombie.network.packets.connection.LoadPlayerProfilePacket();packet.processServer(null,connection);
-  check((boolean)field(packet,"isExist") && ((byte[])field(packet,"buffer"))[0]==17,"profile packet reads PostgreSQL");
-  check(field(packet,"username").equals("alice"),"profile preserves split username");
+  check((boolean)field(packet,"isExist") && ((byte[])field(packet,"buffer"))[0]==17,"profile packet serializes relational reconstruction, never forwards imported bytes");
+  check(field(packet,"worldVersion").equals(249),"freshly serialized profile advertises current engine version, not imported version");
+  check(fake.queries.subList(queriesBeforeProfile,fake.queries.size()).stream().noneMatch(q->q.startsWith("SELECT id,x,y,z,data")),"client profile does not read legacy native payload");
+  check(db.serverLoadPostgresClientProfile(1,"alice",false,"alice")==null,"missing relational profile stays absent");
+  var nativeProfile=db.serverLoadPostgresClientProfile(0,"alice",false,"alice");
+  check(nativeProfile.origin().equals(ApocBRPayloadProvenance.localEncoding()),"profile payload uses current encoding provenance");
+  check(field(packet,"username").equals("split-alice"),"profile preserves relational split username");
+  vanillaProfileResponse(packet);
+  for(byte slot=1;slot<4;slot++) {
+   fake.row.put("playerindex",(int)slot);
+   var secondary=new zombie.network.packets.connection.LoadPlayerProfilePacket();
+   Field slotField=secondary.getClass().getDeclaredField("playerIndex");slotField.setAccessible(true);slotField.setByte(secondary,slot);
+   secondary.processServer(null,connection);check((boolean)field(secondary,"isExist"),"secondary slot uses relational reconstruction");vanillaProfileResponse(secondary);
+  }
+  fake.row.put("playerindex",0);fake.relationalAbsent=true;
+  var missing=new zombie.network.packets.connection.LoadPlayerProfilePacket();missing.processServer(null,connection);
+  check(!(boolean)field(missing,"isExist")&&fake.row.get("data")!=null,"legacy bytes cannot substitute for a missing relational profile");vanillaProfileResponse(missing);
+  fake.relationalAbsent=false;
+  IsoPlayer.payloadBytes=40000;
+  check(db.serverLoadPostgresClientProfile(0,"alice",false,"alice").data().length==40000,"client serialization grows beyond initial buffer without truncation");
+  IsoPlayer.payloadBytes=ApocBRPlayerRelationalLimits.SOURCE_BYTES+1;
+  try{db.serverLoadPostgresClientProfile(0,"alice",false,"alice");throw new AssertionError("unbounded client payload accepted");}catch(java.io.IOException expected){}
+  IsoPlayer.payloadBytes=1;
   player.dead=true;db.serverUpdateNetworkCharacter(player,0,connection);db.process();loaded=db.serverLoadNetworkCharacter(0,"alice");
   check(loaded.health==0,"dead player state restored");
   helper.convert("servertest","alice","765");GameServer.coop=true;zombie.core.znet.SteamUtils.enabled=true;
   loaded=db.serverLoadNetworkCharacter(0,"765");check(loaded!=null,"Steam coop identity lookup");
+  var coopPacket=new zombie.network.packets.connection.LoadPlayerProfilePacket();coopPacket.processServer(null,connection);
+  check((boolean)field(coopPacket,"isExist"),"Steam coop client profile uses relational identity lookup");vanillaProfileResponse(coopPacket);
   check(db.getNetworkUserSteamID("nonexistent-local-dir","alice","servertest").equals("765"),"Steam lookup ignores absent SQLite file");
   check(db.countOtherNetworkAccounts("765","alice")==3,"account counts routed");
   check(PlayerDBHelper.containsNetworkPlayer("absent","alice","servertest"),"Lua/helper existence routed");
@@ -171,4 +220,4 @@ with tempfile.TemporaryDirectory(prefix='apocbr_players_') as folder:
     files.append(SRC/'network/packets/connection/LoadPlayerProfilePacket.java')
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,files)],check=True)
-    subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.savefile.PlayersTest'],check=True)
+    subprocess.run([str(JDK/'java.exe'),'-Dapocbr.test.gameJar='+str(GAME),'-cp',folder+os.pathsep+cp,'zombie.savefile.PlayersTest'],check=True)

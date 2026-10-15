@@ -132,6 +132,58 @@ public class ReconstructionTest {
   var restoredBuffer=java.nio.ByteBuffer.wrap((byte[])decoded.get("bytes"));ApocBRPayloadProvenance.copy(decoded.get("bytes"),restoredBuffer);
   check(ApocBRPayloadProvenance.metadata(restoredBuffer).equals(restoredMetadata),"native byteData wrapper retains reconstructed provenance for the next detached snapshot");
  }
+ static void collectionAccess()throws Exception {
+  Object cheats=ApocBRPlayerRelationalAccess.get(new zombie.characters.PlayerCheats(),"cheats");
+  var flag=zombie.characters.CheatType.values()[0];
+  for(int i=0;i<2;i++) {
+   ((Set<?>)cheats).clear();
+   invoke("add",new Class[]{Object.class,Object.class},cheats,flag);
+   check(((Set<?>)cheats).contains(flag),"native cheat EnumSet restored, including cached call");
+   check(ApocBRPlayerRelationalAccess.get(cheats,"isEmpty").equals(false),"EnumSet getter uses public contract");
+   ApocBRPlayerRelationalAccess.call(cheats,"clear");
+   check(((Set<?>)cheats).isEmpty(),"EnumSet clear uses public contract");
+  }
+  Object map=Collections.checkedMap(new HashMap<String,String>(),String.class,String.class);
+  ApocBRPlayerRelationalAccess.call(map,"put","key","value");
+  check(ApocBRPlayerRelationalAccess.call(map,"get","key").equals("value"),"nonpublic Map implementation uses public contract");
+  Object list=Arrays.asList("before");
+  ApocBRPlayerRelationalAccess.call(list,"set",0,"after");
+  check(ApocBRPlayerRelationalAccess.call(list,"get",0).equals("after"),"nonpublic List implementation uses public contract");
+  try{ApocBRPlayerRelationalAccess.call(List.of(),"add","x");throw new AssertionError("immutable mutation accepted");}
+  catch(IllegalStateException expected){check(expected.getCause() instanceof InvocationTargetException&&expected.getCause().getCause() instanceof UnsupportedOperationException,"native collection failure remains visible");}
+ }
+ static void bagLinks()throws Exception {
+  var root=new zombie.inventory.ItemContainer();var outerContents=new zombie.inventory.ItemContainer();var innerContents=new zombie.inventory.ItemContainer();
+  var outer=(zombie.inventory.types.InventoryContainer)blank(zombie.inventory.types.InventoryContainer.class);
+  var inner=(zombie.inventory.types.InventoryContainer)blank(zombie.inventory.types.InventoryContainer.class);
+  var leaf=(zombie.inventory.InventoryItem)blank(zombie.inventory.InventoryItem.class);
+  ApocBRPlayerRelationalReconstruction.restoreBag(outer,outerContents,40);
+  ApocBRPlayerRelationalReconstruction.restoreBag(inner,innerContents,20);
+  ApocBRPlayerRelationalReconstruction.restoreContainerItem(root,outer);
+  ApocBRPlayerRelationalReconstruction.restoreContainerItem(outerContents,inner);
+  ApocBRPlayerRelationalReconstruction.restoreContainerItem(innerContents,leaf);
+  check(outer.getContainer()==root&&outer.getInventory()==outerContents,"outer bag parent and contents remain distinct");
+  check(inner.getContainer()==outerContents&&inner.getInventory()==innerContents&&leaf.getContainer()==innerContents,"nested bag and leaf preserve parent links");
+  check(outerContents.containingItem==outer&&outerContents.inventoryContainer==outer&&innerContents.containingItem==inner&&innerContents.inventoryContainer==inner,"replaced bag contents retain native reverse links");
+  check(outer.getWeightReduction()==40&&outerContents.getWeightReduction()==40&&inner.getWeightReduction()==20&&innerContents.getWeightReduction()==20,"weight reduction agrees on bag and contents");
+  check(root.items.equals(List.of(outer))&&outerContents.items.equals(List.of(inner))&&innerContents.items.equals(List.of(leaf)),"nested membership remains acyclic");
+  check(root.includingObsoleteItems.equals(root.items)&&outerContents.includingObsoleteItems.equals(outerContents.items),"native inventory lists agree");
+  ApocBRPlayerRelationalReconstruction.set(outer,"actualWeight",1f);ApocBRPlayerRelationalReconstruction.set(inner,"actualWeight",2f);ApocBRPlayerRelationalReconstruction.set(leaf,"actualWeight",3f);
+  for(var item:List.of(outer,inner,leaf))item.setName("fixture");
+  check(root.getContentsWeight()==6f,"native nested contents weight completes with expected total");
+ }
+ static void itemTypes()throws Exception {
+  for(Class<?> type:List.of(zombie.inventory.InventoryItem.class,zombie.inventory.types.DrainableComboItem.class,zombie.inventory.types.HandWeapon.class,zombie.inventory.types.Food.class)) {
+   var item=(zombie.inventory.InventoryItem)blank(type);
+   var row=new HashMap<String,Object>();row.put("runtime_class",type.getName());row.put("save_type",-1);
+   ApocBRPlayerRelationalReconstruction.validateItemType(item,row);checks++;
+   row.put("save_type",0);
+   try{ApocBRPlayerRelationalReconstruction.validateItemType(item,row);throw new AssertionError("invalid native save sentinel accepted");}catch(IllegalStateException expected){checks++;}
+   row.put("save_type",-1);row.put("runtime_class","zombie.inventory.types.Clothing");
+   try{ApocBRPlayerRelationalReconstruction.validateItemType(item,row);throw new AssertionError("changed runtime class accepted");}catch(IllegalStateException expected){checks++;}
+  }
+  try{ApocBRPlayerRelationalReconstruction.validateItemType(null,Map.of("save_type",-1));throw new AssertionError("missing factory item accepted");}catch(IllegalStateException expected){checks++;}
+ }
  static void ownership() {
   Map<String,List<Map<String,Object>>> tables=new HashMap<>();
   tables.put("character_state",List.of(Map.of("inventory_container_id",1)));
@@ -141,8 +193,19 @@ public class ReconstructionTest {
   ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));checks++;
   tables.put("item_location",List.of(Map.of("item_id",2,"parent_item_id",3,"relation","weapon_attachment","position",0),Map.of("item_id",3,"parent_item_id",2,"relation","weapon_attachment","position",0)));
   try{ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));throw new AssertionError("cycle accepted");}catch(IllegalStateException expected){checks++;}
+  tables.put("item",List.of(Map.of("id",2),Map.of("id",4),Map.of("id",6)));
+  tables.put("container",List.of(Map.of("id",1),Map.of("id",3,"owner_item_id",2),Map.of("id",5,"owner_item_id",4)));
+  tables.put("bag_state",List.of(Map.of("item_id",2,"container_id",3),Map.of("item_id",4,"container_id",5)));
+  tables.put("item_location",List.of(Map.of("item_id",2,"container_id",1,"relation","container","position",0),Map.of("item_id",4,"container_id",3,"relation","container","position",0),Map.of("item_id",6,"container_id",5,"relation","container","position",0)));
+  ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));checks++;
+  tables.put("bag_state",List.of(Map.of("item_id",2,"container_id",1),Map.of("item_id",4,"container_id",5)));
+  try{ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));throw new AssertionError("bag pointing to root accepted");}catch(IllegalStateException expected){checks++;}
+  tables.put("bag_state",List.of(Map.of("item_id",2,"container_id",5),Map.of("item_id",4,"container_id",3)));
+  try{ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));throw new AssertionError("contradictory bag ownership accepted");}catch(IllegalStateException expected){checks++;}
+  tables.remove("bag_state");
+  try{ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));throw new AssertionError("unbound bag contents accepted");}catch(IllegalStateException expected){checks++;}
  }
- public static void main(String[] args)throws Exception{nativeFields();jdbc();components();ownership();System.out.println("Reconstruction checks="+checks);}
+ public static void main(String[] args)throws Exception{collectionAccess();bagLinks();itemTypes();nativeFields();jdbc();components();ownership();System.out.println("Reconstruction checks="+checks);}
 }
 '''.replace('ROOTS',roots)
 with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:

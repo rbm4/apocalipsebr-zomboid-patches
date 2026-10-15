@@ -30,7 +30,11 @@ final class ApocBRPlayerRelationalAccess {
                         }
                     }
                     if (accessor==null) throw new IllegalStateException("Missing capture field "+key.type.getName()+"."+part);
-                    accessor.setAccessible(true); CACHE.put(key,accessor);
+                    if(accessor instanceof Method method) {
+                        accessor=invocable(method,value);
+                        if(accessor==null)throw new IllegalStateException("Inaccessible capture method "+key.type.getName()+"."+part);
+                    } else accessor.setAccessible(true);
+                    CACHE.put(key,accessor);
                 }
                 value=accessor instanceof Field f?f.get(value):((Method)accessor).invoke(value);
             } catch (ReflectiveOperationException error) { throw new IllegalStateException("Cannot capture "+part,error); }
@@ -44,10 +48,33 @@ final class ApocBRPlayerRelationalAccess {
             CallKey key=new CallKey(object.getClass(),name,Arrays.stream(args).map(a->a==null?Void.class:a.getClass()).toList());
             Method cached=METHODS.get(key);if(cached!=null)return cached.invoke(object,args);
             for (Method method:object.getClass().getMethods()) if (method.getName().equals(name) && method.getParameterCount()==args.length) {
-                try { method.setAccessible(true);Object result=method.invoke(object,args);METHODS.putIfAbsent(key,method);return result; } catch (IllegalArgumentException mismatch) { }
+                Method accessible=invocable(method,object);if(accessible==null)continue;
+                try { Object result=accessible.invoke(object,args);METHODS.putIfAbsent(key,accessible);return result; } catch (IllegalArgumentException mismatch) { }
             }
             throw new IllegalStateException("Missing capture method "+object.getClass().getName()+"."+name);
         } catch (ReflectiveOperationException error) { throw new IllegalStateException("Cannot capture "+name,error); }
+    }
+    private static Method invocable(Method method,Object target) {
+        Object receiver=Modifier.isStatic(method.getModifiers())?null:target;
+        if(method.canAccess(receiver))return method;
+        // JDK collections can have public overrides on package-private implementation classes.
+        // Invoke the public API declaration so virtual dispatch reaches the same override.
+        Method api=publicDeclaration(target.getClass(),method,receiver);
+        if(api!=null)return api;
+        // Retain access to nonpublic engine classes. Closed JDK modules stay closed;
+        // an erased bridge (e.g. EnumSet.add(Object)) can supply the public contract instead.
+        return method.trySetAccessible()?method:null;
+    }
+    private static Method publicDeclaration(Class<?> type,Method method,Object receiver) {
+        if(type==null)return null;
+        if(Modifier.isPublic(type.getModifiers()))try {
+            Method api=type.getMethod(method.getName(),method.getParameterTypes());
+            if(api.canAccess(receiver))return api;
+        }catch(NoSuchMethodException ignored) { }
+        for(Class<?> contract:type.getInterfaces()) {
+            Method api=publicDeclaration(contract,method,receiver);if(api!=null)return api;
+        }
+        return publicDeclaration(type.getSuperclass(),method,receiver);
     }
     static List<Object> list(Object value) {
         ArrayList<Object> result=new ArrayList<>();

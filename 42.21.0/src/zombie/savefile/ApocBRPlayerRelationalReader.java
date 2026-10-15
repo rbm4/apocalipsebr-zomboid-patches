@@ -36,7 +36,7 @@ final class ApocBRPlayerRelationalReader {
     static String sql() {
         String prefix="""
                 WITH selected AS MATERIALIZED (
-                  SELECT h.snapshot_id,s.* FROM player_rel.player_slot p
+                  SELECT h.snapshot_id,s.*,p.split_username AS profile_split_username FROM player_rel.player_slot p
                   JOIN player_rel.character_head h ON h.character_id=p.active_character_id
                   JOIN player_rel.snapshot s ON s.id=h.snapshot_id
                   WHERE p.world=? AND p.identity_mode=? AND p.identity_key=? AND p.player_index=?
@@ -48,7 +48,7 @@ final class ApocBRPlayerRelationalReader {
                 )
                 SELECT 'snapshot' AS table_name,jsonb_build_object(
                   'status',s.status,'schema_version',s.schema_version,'codec_version',s.codec_version,
-                  'source_world_version',s.source_world_version,'expected_object_count',s.expected_object_count,
+                  'source_world_version',s.source_world_version,'split_username',s.profile_split_username,'expected_object_count',s.expected_object_count,
                   'expected_item_count',s.expected_item_count,'expected_container_count',s.expected_container_count,
                   'expected_edge_count',s.expected_edge_count) AS payload FROM selected s
                 """;

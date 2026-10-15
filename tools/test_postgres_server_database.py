@@ -58,7 +58,7 @@ public class ServerDatabaseTest {
  static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
  static Object zero(Class<?> t){if(t==boolean.class)return false;if(t==int.class)return 0;if(t==long.class)return 0L;return null;}
  static class Fake {
-  int borrowed,returned; boolean bannedSteam,bannedIP,failQuery,missingSchema;
+  int borrowed,returned,userlogWrites; boolean bannedSteam,bannedIP,failQuery,missingSchema,userlogExisting;
   List<String> queries=new ArrayList<>(); List<Map<Integer,Object>> changes=new ArrayList<>();
   DataSource source(){return (DataSource)Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{DataSource.class},(p,m,a)->{
    if(m.getName().equals("getConnection")) {borrowed++;return connection();} return zero(m.getReturnType());});}
@@ -74,11 +74,19 @@ public class ServerDatabaseTest {
    return (PreparedStatement)Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{PreparedStatement.class},(p,m,a)->{
     if(m.getName().equals("setQueryTimeout")){check(a[0].equals(2),"bounded queries");return null;}
     if(m.getName().startsWith("set") && a!=null && a.length==2){params.put((Integer)a[0],a[1]);return null;}
-    if(m.getName().equals("executeUpdate")){changes.add(new HashMap<>(params));return 1;}
+    if(m.getName().equals("executeUpdate")){
+     if(sql.startsWith("INSERT INTO userlog")||sql.startsWith("UPDATE userlog")) {
+      int amountIndex=sql.startsWith("INSERT")?5:1;
+      check(params.get(amountIndex) instanceof Integer,"userlog.amount must use an integer JDBC binding");
+      check(params.get(amountIndex).equals(userlogExisting?4:1),"userlog insert/increment retains numeric value");userlogWrites++;
+     }
+     changes.add(new HashMap<>(params));return 1;
+    }
     if(m.getName().equals("executeQuery")){
      if(failQuery || (missingSchema && sql.contains("public.whitelist")))throw new SQLException("password=PRIVATE_SECRET row data", "42P01");
      List<Map<String,Object>> rows=new ArrayList<>();
      if(!sql.contains("WHERE false")) {
+      if(sql.startsWith("SELECT * FROM userlog")&&userlogExisting)rows.add(Map.of("amount","3"));
       if(sql.contains("FROM whitelist") && ("alice".equals(params.get(1)) || "admin".equals(params.get(1)))) {
        Map<String,Object> row=new HashMap<>();row.put("id",1);row.put("role",1);row.put("password","stored_hash");row.put("authType",1);row.put("googleKey",null);rows.add(row);
       }
@@ -126,6 +134,11 @@ public class ServerDatabaseTest {
   db.saveRoleCapabilities(zombie.characters.Roles.user);
   db.saveDefaultRole(zombie.characters.Roles.user,"defaultForUser");
   db.addTicket("alice","help",-1);db.addUserlog("alice",Userlog.UserlogType.WarningPoint,"reason","admin",1);
+  fake.userlogExisting=true;
+  db.addUserlog("alice",Userlog.UserlogType.SuspiciousActivity,"reason","admin",1);
+  db.addUserlog("alice",Userlog.UserlogType.LuaChecksum,"reason","admin",1);
+  check(fake.userlogWrites==3,"userlog insert and both aggregation update paths execute");
+  fake.userlogExisting=false;
   check(fake.queries.stream().anyMatch(q->q.startsWith("INSERT INTO capabilities")),"capabilities routed");
   check(fake.queries.stream().anyMatch(q->q.startsWith("INSERT INTO defaultRoles")),"default roles routed");
   check(fake.queries.stream().anyMatch(q->q.startsWith("INSERT INTO tickets")),"tickets routed");
@@ -163,6 +176,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_server_db_') as folder:
     harness = target / 'ServerDatabaseTest.java'
     harness.write_text(HARNESS, encoding='utf-8')
     files += [harness, SRC / 'network/ServerWorldDatabase.java', SRC / 'savefile/ApocBRServerDatabase.java', SRC / 'savefile/ApocBRPostgresConnector.java', SRC / 'savefile/ApocBRPlayerDatabase.java']
+    files.append(SRC / 'savefile/ApocBRPayloadProvenance.java')
     cp = os.pathsep.join(map(str, [GAME, LIB / 'postgresql-42.7.14.jar', LIB / 'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK / 'javac.exe'), '--release', '25', '-cp', cp, '-d', folder, *map(str,files)], check=True)
     subprocess.run([str(JDK / 'java.exe'), '-cp', folder + os.pathsep + cp, 'zombie.savefile.ServerDatabaseTest'], check=True)

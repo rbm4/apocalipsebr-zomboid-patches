@@ -380,6 +380,28 @@ public final class ServerPlayerDB {
         }
     }
 
+    /** Build the vanilla client wire payload from authoritative rows, never a source-dictionary blob.
+     * Packet dispatch invokes this on the server simulation thread. No import or live registration
+     * is offered for this temporary player; the subsequent player-connect performs that setup. */
+    public ApocBRPlayerDatabase.Profile serverLoadPostgresClientProfile(int slot,String identity,boolean coop,String username) throws SQLException,IOException {
+        var profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
+        if(profile==null)return null;
+        IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
+        for(int capacity=Math.min(32768,ApocBRPlayerRelationalLimits.SOURCE_BYTES);;) {
+            ByteBuffer bytes=ByteBuffer.allocate(capacity);
+            try {
+                player.save(bytes);
+                byte[] payload=new byte[bytes.position()];bytes.flip();bytes.get(payload);
+                String split=profile.one("snapshot").get("split_username") instanceof String saved?saved:username;
+                return new ApocBRPlayerDatabase.Profile(0,player.getX(),player.getY(),player.getZ(),payload,
+                        IsoWorld.getWorldVersion(),player.isDead(),split,ApocBRPayloadProvenance.localEncoding());
+            }catch(BufferOverflowException full) {
+                if(capacity>=ApocBRPlayerRelationalLimits.SOURCE_BYTES)throw new IOException("Relational client profile exceeds payload budget");
+                capacity=Math.min(capacity*2,ApocBRPlayerRelationalLimits.SOURCE_BYTES);
+            }
+        }
+    }
+
     private IsoPlayer loadPostgresPlayer(int slot,String identity) {
         boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
         try {

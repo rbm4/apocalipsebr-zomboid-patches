@@ -1626,7 +1626,7 @@ public class ServerWorldDatabase {
                             stat.close();
                             PreparedStatement stat2 = database
                                 .prepareStatement("UPDATE userlog set amount = ?, lastUpdate = ? WHERE username = ? AND type = ? AND text = ? AND issuedBy = ?");
-                            stat2.setString(1, String.valueOf(amount));
+                            stat2.setInt(1, amount);
                             stat2.setString(2, lastUpdate);
                             stat2.setString(3, username);
                             stat2.setString(4, type.toString());
@@ -1647,7 +1647,7 @@ public class ServerWorldDatabase {
                         stat.close();
                         PreparedStatement stat2 = database
                             .prepareStatement("UPDATE userlog set amount = ?, lastUpdate = ?, text = ? WHERE username = ? AND type = ?");
-                        stat2.setString(1, String.valueOf(amount));
+                        stat2.setInt(1, amount);
                         stat2.setString(2, lastUpdate);
                         stat2.setString(3, text);
                         stat2.setString(4, username);
@@ -1664,7 +1664,7 @@ public class ServerWorldDatabase {
                     stat2.setString(2, type.toString());
                     stat2.setString(3, text);
                     stat2.setString(4, issuedBy);
-                    stat2.setString(5, String.valueOf(amount));
+                    stat2.setInt(5, amount);
                     stat2.setString(6, lastUpdate);
                     stat2.executeUpdate();
                     stat2.close();

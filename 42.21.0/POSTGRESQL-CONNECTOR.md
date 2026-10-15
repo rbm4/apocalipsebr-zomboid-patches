@@ -235,11 +235,18 @@ extra server/identity/timestamp columns or required conflict-target unique keys.
 - The lookup key is `(username,world,playerindex)` normally, or
   `(steamid,world,playerindex)` for Steam coop. There is no server partition.
   Duplicate matching records are reported as `21000`, not selected arbitrarily.
-- `serverLoadNetworkCharacter()` reads PostgreSQL and calls the existing
-  `IsoPlayer.load()` with stored bytes/version, restoring slot, remote and dead
-  state. `LoadPlayerProfilePacket` reads the same store and preserves response
-  fields and wire layout. A missing row still means no profile, not an auto-created
-  default character.
+- `serverLoadNetworkCharacter()` reconstructs the server player from the complete
+  compatible relational head, restoring slot, remote and dead state without native
+  blob deserialization. `LoadPlayerProfilePacket` also uses that relational head:
+  a temporary reconstructed player is saved into the vanilla wire layout using
+  the current server dictionary and current world version. It never forwards
+  `public.networkplayers.data`, whose IDs may belong to an imported dictionary.
+  This temporary player is not registered for mirroring/live tracking. The
+  subsequent player-connect does the normal server-player registration. Client
+  payload growth is bounded by `maxSourceMiB`; the relational slot supplies the
+  split username. A missing relational head means no profile, not an auto-created
+  default character or legacy-blob fallback. Clients keep the vanilla decoder.
+
 - Steam conversion, Steam lookup, account-limit counts and server-side
   `PlayerDBHelper.containsNetworkPlayer/removePlayer` now use PostgreSQL. This
   covers native profile lookup and Lua existence/deletion helpers without a local
@@ -348,3 +355,62 @@ files against the actual game JAR. A temporary Java smoke check imported
 `PGSimpleDataSource` and `Driver`, accepted a PostgreSQL JDBC URL and verified
 driver registration on the game's bundled Java 25 runtime, without opening a
 database connection. Linux runtime compilation remains unverified.
+
+### Server-only player propagation audit (42.21.0)
+
+The login response is generated in memory; it does not require writing the
+reconstructed payload into local SQLite. PostgreSQL player mode does not open
+`players.db`. The client receives the existing packet ID, fields, byte count
+and native player serialization, with IDs from the active server dictionary
+already distributed by `ConnectionDetails` / `WorldDictionary.saveDataForClient`.
+
+| Server path | Data sent and authority |
+| --- | --- |
+| `LoadPlayerProfilePacket.processServer` | Existing-character full snapshot: relational head -> reconstructed temporary player -> native save -> vanilla response. Covers all four slots and Steam coop; no legacy blob fallback. |
+| `ConnectPacket` / `ConnectCoopPacket` -> `GameServer.receivePlayerConnect` | Loads the actual server player through the PostgreSQL branch of `serverLoadNetworkCharacter`; no stored blob is forwarded. |
+| `GameServer.sendPlayerConnected` -> `ConnectedPacket` | Sends selected state, descriptor, visuals, safety and XP from the live server player. It does not resend a stored full-player buffer. |
+| `CreatePlayerPacket` | Sends a native save of a newly created server player, after the normal creation/save path. Initial relational creation remains a distinct operation. |
+| `EquipPacket`, attached-item, inventory-container and trading packets | Serialize live item objects through native item save methods, not `networkplayers.data`. |
+| `SyncItemModDataPacket`, item fields, player stats/fields/health packets | Serialize selected live state through native codecs; they do not load historical player blobs. |
+| `PlayerInventoryPacket` | Admin inspection reads a live player, or falls through the same PostgreSQL-aware server loader for an offline player, then sends inventory fields. |
+
+The legacy byte-array reader remains available in `ApocBRPlayerDatabase.load`
+for compatibility tooling, but the production PostgreSQL login response does
+not call it. SQLite response/load code remains gated behind the disabled
+PostgreSQL-player branch. Gameplay still uses normal engine networking after
+login; persistence authority does not replace vanilla action validation.
+
+`tools/test_postgres_players.py` checks the actual response using the original
+profile parser loaded separately from the game JAR and native ByteBuffer
+reader/writer (with a small string-helper boundary stub). Coverage includes all
+four slots, Steam coop, incompatible legacy bytes and a missing relational head
+despite an existing legacy blob. Reconstruction/native player-save engine
+boundaries are stubbed in this routing fixture; a real login remains necessary
+to validate the complete inventory/mod-data payload with installed mods.
+## Diagnosing live mutation retries
+
+`LIVE_WRITE_FAILED` reports exceptions; `SQLState=LOCAL` identifies a Java
+runtime exception or linkage error rather than a JDBC SQLState. Diagnostics
+include the processing stage, exception types, controlled issue codes and
+bounded stack locations, excluding raw exception messages and player values.
+
+Each pending queue entry receives a process-local `operation` number. Failure
+and `LIVE_WRITE_DEFERRED` messages include the consecutive `attempt` since the
+last successful commit, `pendingAgeMs`, `retryInMs`, `graphRevision`, `hasGraph`
+and scalar `fields` count. Repeated failure/defer messages are limited to one
+per entry per 30 seconds, so one player cannot suppress another's diagnostic.
+Retry delays grow from 2 seconds to a maximum of 30 seconds; persistent errors
+can keep work pending indefinitely. No diagnostic change drops pending work.
+
+`LIVE_WRITE_RECOVERED` confirms a successful commit after unsuccessful attempts.
+`queueDrained=true` means the entry was fully acknowledged; `false` means newer
+state remains queued. New captures can supersede old captures within the same
+operation, so recovery does not mean every intermediate snapshot was written.
+Operation numbers correlate logs only within the current server process and
+do not expose usernames, session IDs or persisted character identifiers.
+
+After deploying/restarting, inspect all three outcomes together:
+
+```bash
+journalctl --since "20 minutes ago" --no-pager --grep='LIVE_WRITE_(FAILED|DEFERRED|RECOVERED)'
+```

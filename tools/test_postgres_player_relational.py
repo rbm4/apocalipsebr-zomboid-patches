@@ -968,6 +968,41 @@ public class RelationalTest {
  }
 
 
+ static void writeDiagnostics() {
+  var q=new ApocBRPlayerRelationalMutations.DirtyQueue();var c=candidate(1);UUID session=UUID.randomUUID();
+  var x=new ApocBRPlayerRelationalMutations.Field("character_state","x",null);
+  q.register(c.key(),session);q.bind(c.key(),session,UUID.randomUUID());q.mark(c,session,Map.of(x,1f),0,java.time.Instant.EPOCH);
+  var first=q.poll(0);String context=q.failureContext(first,0);
+  check(context.contains("operation=1;")&&context.contains("attempt=1;")&&context.contains("retryInMs=2000"),"first failure identifies queue episode and retry delay");
+  check(!context.contains(c.identity())&&!context.contains(session.toString()),"queue diagnostics exclude player and session identity");
+  q.finish(first,false,0);var second=q.poll(2_000_000_000L);
+  check(q.failureContext(second,2_000_000_000L)==null,"repeated failures for the same entry are rate limited");q.finish(second,false,2_000_000_000L);
+  var third=q.poll(31_000_000_000L);context=q.failureContext(third,31_000_000_000L);
+  check(context.contains("operation=1;")&&context.contains("attempt=3;")&&context.contains("pendingAgeMs=31000;")&&context.contains("retryInMs=8000"),"persistent failures retain correlation, age and attempt count");
+  q.mark(c,session,Map.of(x,2f),31_000_000_001L,java.time.Instant.EPOCH);
+  String recovery=q.finish(third,true,31_000_000_002L);
+  check(recovery.contains("operation=1;")&&recovery.contains("attempt=3;")&&recovery.contains("queueDrained=false"),"recovery acknowledges committed batch without claiming concurrent changes drained");
+  var fourth=q.poll(32_000_000_000L);context=q.failureContext(fourth,32_000_000_000L);
+  check(context.contains("attempt=1;"),"commit resets consecutive failure count and diagnostic suppression");q.finish(fourth,false,32_000_000_000L);
+  var fifth=q.poll(34_000_000_000L);recovery=q.finish(fifth,true,34_000_000_000L);
+  check(recovery.contains("queueDrained=true")&&q.size()==0,"retry recovery reports a fully drained entry");
+  q.mark(c,session,Map.of(x,3f),35_000_000_000L,java.time.Instant.EPOCH);var fresh=q.poll(35_000_000_000L);
+  check(q.failureContext(fresh,35_000_000_000L).contains("operation=2;"),"new pending episode has a new correlation number");
+  var other=candidate(2);UUID otherSession=UUID.randomUUID();q.register(other.key(),otherSession);q.bind(other.key(),otherSession,UUID.randomUUID());q.mark(other,otherSession,Map.of(x,4f),35_000_000_000L,java.time.Instant.EPOCH);
+  check(q.failureContext(q.poll(35_000_000_000L),35_000_000_000L)!=null,"one failing entry cannot suppress diagnostics for another entry");
+  var cause=new NullPointerException("private-player-value password=secret");
+  cause.setStackTrace(new StackTraceElement[]{new StackTraceElement("zombie.savefile.ApocBRPlayerRelationalCapture","capture","ApocBRPlayerRelationalCapture.java",88)});
+  var failure=new IllegalStateException("private-player-value",cause);
+  String diagnostic=ApocBRPlayerRelationalMutations.writeFailure(failure);
+  check(diagnostic.contains("SQLState=LOCAL")&&diagnostic.contains("exception=java.lang.IllegalStateException")&&diagnostic.contains("cause=java.lang.NullPointerException"),"local write diagnostics identify wrapped exception types");
+  check(diagnostic.contains("ApocBRPlayerRelationalCapture.capture:88"),"local write diagnostics locate failure in production source");
+  check(!diagnostic.contains("private-player-value")&&!diagnostic.contains("secret"),"write diagnostics exclude throwable messages and player values");
+  check(ApocBRPlayerRelationalMutations.writeFailure(new SQLException("private-player-value","23505")).contains("SQLState=23505"),"write diagnostics retain SQLState");
+  check(ApocBRPlayerRelationalMutations.writeFailure(new SQLException("private-player-value","secret\n")).contains("SQLState=UNKNOWN"),"invalid SQLState is sanitized");
+  check(ApocBRPlayerRelationalMutations.writeFailure(new NoSuchMethodError("private-player-value")).contains("exception=java.lang.NoSuchMethodError"),"write diagnostics identify linkage errors");
+  cause.initCause(failure);
+  check(ApocBRPlayerRelationalMutations.writeFailure(failure).length()==diagnostic.length(),"cyclic causes terminate without duplicated diagnostics");
+ }
  static void worker()throws Exception {
   {
    Field tracked=ApocBRPlayerRelationalMutations.class.getDeclaredField("TRACKED");tracked.setAccessible(true);
@@ -1036,7 +1071,7 @@ public class RelationalTest {
   check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:

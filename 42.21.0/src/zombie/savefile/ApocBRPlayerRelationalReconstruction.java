@@ -8,6 +8,7 @@ import zombie.characters.SurvivorDesc;
 import zombie.inventory.InventoryItem;
 import zombie.inventory.InventoryItemFactory;
 import zombie.inventory.ItemContainer;
+import zombie.inventory.types.InventoryContainer;
 import zombie.iso.IsoWorld;
 import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
@@ -144,19 +145,19 @@ final class ApocBRPlayerRelationalReconstruction {
         Set<Integer> nativeIds=new HashSet<>();
         for(var r:rows("item")) {
             InventoryItem item=InventoryItemFactory.CreateItem((String)r.get("full_type"));
-            if(item==null||!item.getClass().getName().equals(r.get("runtime_class"))||!nativeIds.add(id(r.get("native_id"))))throw new IllegalStateException("Invalid saved item type or identity");
+            validateItemType(item,r);
+            if(!nativeIds.add(id(r.get("native_id"))))throw new IllegalStateException("Invalid saved item type or identity");
             register(r.get("id"),item);
             project("item",item,r,"id full_type runtime_class save_type source_registry_id texture_name recorded_media_id source_recorded_media_index");
-            if(number(get(item,"saveType"))!=id(r.get("save_type")))throw new IllegalStateException("Saved item type changed");
             if(r.get("texture_name")!=null)set(item,"texture",staticCall("zombie.core.textures.Texture","getSharedTexture",r.get("texture_name")));
             set(item,"recordedMediaIndex",mediaIndex(r.get("recorded_media_id")));
         }
-        for(var r:rows("bag_state")){Object bag=ref(r.get("item_id")),container=ref(r.get("container_id"));set(bag,"container",container);set(bag,"weightReduction",r.get("weight_reduction"));set(container,"containingItem",bag);}
+        for(var r:rows("bag_state"))restoreBag((InventoryContainer)ref(r.get("item_id")),(ItemContainer)ref(r.get("container_id")),id(r.get("weight_reduction")));
         for(var r:rows("item_location")) {
             InventoryItem item=(InventoryItem)ref(r.get("item_id"));
             if("container".equals(r.get("relation"))) {
                 ItemContainer container=(ItemContainer)ref(r.get("container_id"));
-                container.items.add(item);container.includingObsoleteItems.add(item);set(item,"container",container);
+                restoreContainerItem(container,item);
             }
             else if("weapon_attachment".equals(r.get("relation"))) {
                 set(item,"partType",r.get("attachment_slot"));call(ref(r.get("parent_item_id")),"attachWeaponPart",item,false);
@@ -174,6 +175,22 @@ final class ApocBRPlayerRelationalReconstruction {
         for(var r:rows("container"))set(ref(r.get("id")),"dirty",false);
         call(get(player,"savedInventoryItems"),"addAll",player.getInventory().items);
     }
+    static void restoreBag(InventoryContainer bag,ItemContainer contents,int weightReduction) {
+        bag.setItemContainer(contents);
+        contents.containingItem=bag;contents.inventoryContainer=bag;
+        bag.setWeightReduction(weightReduction);
+    }
+    static void restoreContainerItem(ItemContainer parent,InventoryItem item) {
+        parent.items.add(item);parent.includingObsoleteItems.add(item);
+        // InventoryContainer.container is its contents, hiding InventoryItem.container (its parent).
+        item.setContainer(parent);
+    }
+    static void validateItemType(InventoryItem item,Map<String,Object> row) {
+        if(item==null||!item.getClass().getName().equals(row.get("runtime_class")))throw new IllegalStateException("Invalid saved item type or identity");
+        // 42.21.0 InventoryItem.save writes a constant -1 byte; no item saveType accessor exists.
+        // Capture persists that sentinel. The factory result's runtime class validates the subtype.
+        if(id(row.get("save_type"))!=-1)throw new IllegalStateException("Saved item type changed");
+    }
     /** Validate single ownership and bounded root reachability before creating engine objects. */
     static void validateOwnership(ApocBRPlayerRelationalReader.Profile source) {
         int root=id(source.one("character_state").get("inventory_container_id"));
@@ -184,6 +201,13 @@ final class ApocBRPlayerRelationalReconstruction {
             if(container!=root){int owner=id(r.get("owner_item_id"));if(!items.contains(owner)||parents.put(container,owner)!=null)throw new IllegalStateException("Invalid container owner");}
         }
         if(!containers.contains(root))throw new IllegalStateException("Missing root inventory");
+        Set<Integer> bags=new HashSet<>(),bagContainers=new HashSet<>();
+        for(var r:source.rows("bag_state")) {
+            int bag=id(r.get("item_id")),contents=id(r.get("container_id"));
+            if(!items.contains(bag)||contents==root||!containers.contains(contents)||!Objects.equals(parents.get(contents),bag)
+                    ||!bags.add(bag)||!bagContainers.add(contents))throw new IllegalStateException("Invalid bag contents ownership");
+        }
+        if(bagContainers.size()!=containers.size()-1)throw new IllegalStateException("Missing bag contents ownership");
         Set<String> positions=new HashSet<>();
         for(var r:source.rows("item_location")) {
             int item=id(r.get("item_id")),parent;
