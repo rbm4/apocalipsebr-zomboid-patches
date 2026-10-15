@@ -78,7 +78,7 @@ final class ApocBRPlayerRelationalDatabase {
                 }
                 insert(connection,"character",values("id",graph.character(),"player_slot_id",slotId,"incarnation",1,"created_at",now,"retired_at",null,"retirement_reason",null)," ON CONFLICT (id) DO NOTHING");
                 insert(connection,"snapshot",values("id",graph.snapshot(),"character_id",graph.character(),"source_dataset_id",candidate.dataset,"schema_version",ApocBRPlayerRelationalCapture.SCHEMA_VERSION,"codec_version",ApocBRPlayerRelationalCapture.CODEC_VERSION,"source_world_version",candidate.worldVersion,"source_blob_sha256",candidate.blobHash,"capture_revision",0L,"capture_reason","sqlite_load","captured_at",graph.capturedAt(),"status","staging","expected_object_count",graph.objects(),"expected_item_count",graph.items(),"expected_container_count",graph.containers(),"expected_edge_count",graph.edges(),"committed_at",null),"");
-                long deadline=System.nanoTime()+15_000_000_000L;
+                long deadline=System.nanoTime()+ApocBRPlayerRelationalLimits.IMPORT_WRITE_MS*1_000_000L;
                 Map<String,List<ApocBRPlayerRelationalCapture.Row>> groups=new LinkedHashMap<>();
                 for(var row:graph.rows()) groups.computeIfAbsent(row.table(),k->new ArrayList<>()).add(row);
                 List<ApocBRPlayerRelationalCapture.Row> objects=groups.getOrDefault("object",List.of());
@@ -120,6 +120,86 @@ final class ApocBRPlayerRelationalDatabase {
                 try{connection.rollback();}catch(SQLException ignored){}
                 throw error;
             }
+        }
+    }
+    /** Worker-only scalar patch. The initial generation is retained; only live_fields generations mutate. */
+    boolean applyFields(ApocBRPlayerRelationalMutations.Batch batch) throws SQLException {
+        Candidate candidate=batch.candidate();
+        try(Connection connection=connections.open()) {
+            try {
+                execute(connection,"SET LOCAL lock_timeout = '250ms'");
+                execute(connection,"SET CONSTRAINTS ALL DEFERRED");
+                try(PreparedStatement lock=statement(connection,"SELECT pg_try_advisory_xact_lock(?)")) {
+                    lock.setLong(1,candidate.playerId().getMostSignificantBits());
+                    try(ResultSet rows=lock.executeQuery()){if(!rows.next()||!rows.getBoolean(1)){connection.rollback();return false;}}
+                }
+                UUID character,head;long revision;String reason;
+                try(PreparedStatement query=statement(connection,"""
+                        SELECT p.active_character_id,h.snapshot_id,h.revision,s.status,s.schema_version,s.codec_version,s.source_dataset_id,s.capture_reason
+                        FROM player_rel.player_slot p
+                        JOIN player_rel.character_head h ON h.character_id=p.active_character_id
+                        JOIN player_rel.snapshot s ON s.id=h.snapshot_id AND s.character_id=p.active_character_id
+                        WHERE p.world=? AND p.identity_mode=? AND p.identity_key=? AND p.player_index=?
+                        FOR UPDATE OF h
+                        """)) {
+                    query.setString(1,candidate.world());query.setString(2,candidate.coop()?"steam_coop":"username");query.setString(3,candidate.identity());query.setInt(4,candidate.slot());
+                    try(ResultSet rows=query.executeQuery()) {
+                        if(!rows.next()){connection.rollback();return false;}
+                        if(!candidate.dataset().equals(rows.getObject(7,UUID.class)))throw new SQLException("Live source dataset mismatch","22023");
+                        if(!"complete".equals(rows.getString(4))||rows.getInt(5)!=ApocBRPlayerRelationalCapture.SCHEMA_VERSION||rows.getInt(6)!=ApocBRPlayerRelationalCapture.CODEC_VERSION){connection.rollback();return false;}
+                        character=rows.getObject(1,UUID.class);head=rows.getObject(2,UUID.class);revision=rows.getLong(3);reason=rows.getString(8);
+                        if(!Objects.equals(character,batch.character()))throw new SQLException("Live character life changed","40001");
+                        if(rows.next())throw new SQLException("Ambiguous live player slot","21000");
+                    }
+                }
+                long deadline=System.nanoTime()+("live_fields".equals(reason)?15_000_000_000L:ApocBRPlayerRelationalLimits.IMPORT_WRITE_MS*1_000_000L);
+                if(!"live_fields".equals(reason)) {
+                    UUID live=UUID.randomUUID();
+                    List<String> columns=ApocBRPlayerRelationalSchema.TABLES.get("snapshot").stream().map(ApocBRPlayerRelationalSchema.Column::name).toList();
+                    ArrayList<String> select=new ArrayList<>();for(String column:columns)select.add(column.equals("id")?"?":column);
+                    try(PreparedStatement copy=statement(connection,"INSERT INTO player_rel.snapshot ("+String.join(",",columns)+") SELECT "+String.join(",",select)+" FROM player_rel.snapshot WHERE id=?")) {
+                        copy.setQueryTimeout(ApocBRPlayerRelationalLimits.IMPORT_QUERY_SECONDS);
+                        copy.setObject(1,live);copy.setObject(2,head);if(copy.executeUpdate()!=1)throw new SQLException("Missing baseline snapshot","P0001");
+                    }
+                    for(var table:ApocBRPlayerRelationalSchema.TABLES.entrySet()) {
+                        if(Set.of("sync_issue","character_head").contains(table.getKey())||table.getValue().stream().noneMatch(c->c.name().equals("snapshot_id")))continue;
+                        List<String> names=table.getValue().stream().map(ApocBRPlayerRelationalSchema.Column::name).toList();
+                        select.clear();for(String column:names)select.add(column.equals("snapshot_id")?"?":column);
+                        try(PreparedStatement copy=statement(connection,"INSERT INTO player_rel."+table.getKey()+" ("+String.join(",",names)+") SELECT "+String.join(",",select)+" FROM player_rel."+table.getKey()+" WHERE snapshot_id=?")) {
+                            copy.setQueryTimeout(ApocBRPlayerRelationalLimits.IMPORT_QUERY_SECONDS);
+                            copy.setObject(1,live);copy.setObject(2,head);copy.executeUpdate();
+                        }
+                        if(System.nanoTime()>deadline)throw new SQLException("Live fork time budget","57014");
+                    }
+                    head=live;
+                }
+                record RowKey(String table,String key) {}
+                Map<RowKey,Map<String,Object>> groups=new LinkedHashMap<>();
+                for(var field:batch.fields().entrySet())groups.computeIfAbsent(new RowKey(field.getKey().table(),field.getKey().key()),k->new LinkedHashMap<>()).put(field.getKey().column(),field.getValue().value());
+                Map<String,PreparedStatement> statements=new LinkedHashMap<>();Map<String,Integer> counts=new HashMap<>();
+                try {
+                    for(var group:groups.entrySet()) {
+                        List<String> assignments=group.getValue().keySet().stream().map(name->name+"=?").toList();
+                        String sql="UPDATE player_rel."+group.getKey().table()+" SET "+String.join(",",assignments)+" WHERE snapshot_id=? AND character_id=?"+(group.getKey().key()==null?"":" AND stat_key=?");
+                        PreparedStatement update=statements.get(sql);
+                        if(update==null){update=statement(connection,sql);statements.put(sql,update);}
+                        int index=1;for(Object value:group.getValue().values())update.setObject(index++,value);
+                        update.setObject(index++,head);update.setObject(index++,character);
+                        if(group.getKey().key()!=null)update.setString(index,group.getKey().key());
+                        update.addBatch();int count=counts.getOrDefault(sql,0)+1;
+                        if(count==128){checkedBatch(update,false);update.clearBatch();count=0;}counts.put(sql,count);
+                        if(System.nanoTime()>deadline)throw new SQLException("Live patch time budget","57014");
+                    }
+                    for(var entry:statements.entrySet())if(counts.get(entry.getKey())>0){checkedBatch(entry.getValue(),false);if(System.nanoTime()>deadline)throw new SQLException("Live patch time budget","57014");}
+                } finally {for(PreparedStatement update:statements.values())try{update.close();}catch(SQLException ignored){}}
+                try(PreparedStatement update=statement(connection,"UPDATE player_rel.snapshot SET capture_reason='live_fields',capture_revision=?,captured_at=?,committed_at=CURRENT_TIMESTAMP WHERE id=?")) {
+                    update.setLong(1,revision+1);update.setTimestamp(2,Timestamp.from(batch.capturedAt()));update.setObject(3,head);if(update.executeUpdate()!=1)throw new SQLException("Missing live snapshot","P0001");
+                }
+                try(PreparedStatement update=statement(connection,"UPDATE player_rel.character_head SET snapshot_id=?,revision=revision+1,published_at=CURRENT_TIMESTAMP WHERE character_id=? AND revision=?")) {
+                    update.setObject(1,head);update.setObject(2,character);update.setLong(3,revision);if(update.executeUpdate()!=1)throw new SQLException("Stale live head","40001");
+                }
+                connection.commit();return true;
+            } catch(SQLException|RuntimeException error){try{connection.rollback();}catch(SQLException ignored){}throw error;}
         }
     }
     private static Map<String,Object> values(Object... pairs) {

@@ -249,6 +249,10 @@ public class RelationalTest {
  static class Cheats {public List<String> cheats=List.of();}
  static class Craft {public Map<Object,Object> craftHistory=new HashMap<>();}
  static class Stats {public float get(zombie.characters.CharacterStat stat){return 0.25f;}}
+ static class Descriptor {
+  public int id=7,voiceType=1;public String forename="Before",surname="Surname",torso="torso",characterGender="female",characterProfession="base:unemployed",voicePrefix="VoiceFemale";
+  public float voicePitch=1;public List<String> extra=List.of();public Map<Object,Object> XPBoostMap=Map.of();
+ }
  public static class P {
   public Container inventory=new Container();public Object descriptor,table,leftHandItem,rightHandItem;
   public boolean forbidExportReads;
@@ -473,6 +477,149 @@ public class RelationalTest {
   var unset=nativeComponent(zombie.entity.components.script.EntityScriptInfo.class);
   check(ApocBRPlayerRelationalSnapshot.componentState(unset).containsKey("originalScript")&&ApocBRPlayerRelationalSnapshot.componentState(unset).get("originalScript")==null,"absent original script preserved");
  }
+ static ApocBRPlayerRelationalDatabase.Candidate candidate(int i) {
+  return new ApocBRPlayerRelationalDatabase.Candidate(UUID.nameUUIDFromBytes(new byte[]{1}),"test","world","live"+i,false,0,i,249,null,List.of());
+ }
+ static void mutationQueue() {
+  var q=new ApocBRPlayerRelationalMutations.DirtyQueue();var c=candidate(1);UUID session=UUID.randomUUID(),character=UUID.randomUUID();
+  var x=new ApocBRPlayerRelationalMutations.Field("character_state","x",null);
+  q.register(c.key(),session);q.mark(c,session,Map.of(x,1f),0,java.time.Instant.EPOCH);
+  check(q.poll(0)==null,"live fields wait for initial character binding");q.bind(c.key(),session,character);
+  var first=q.poll(0);check(first.fields().get(x).value().equals(1f),"first dirty value eligible immediately");
+  q.mark(c,session,Map.of(x,2f),1,java.time.Instant.EPOCH);q.finish(first,true,2);
+  check(q.size()==1&&q.poll(999_999_999L)==null,"in-flight acknowledgement preserves new marks and cadence");
+  q.mark(c,session,Map.of(x,3f),999_999_999L,java.time.Instant.EPOCH);
+  var second=q.poll(1_000_000_000L);check(second.fields().get(x).value().equals(3f),"repeated marks coalesce without postponing due time");
+  q.finish(second,false,1_000_000_000L);check(q.poll(2_999_999_999L)==null,"failed patch backs off without losing dirty values");
+  var retry=q.poll(3_000_000_000L);check(retry.fields().get(x).value().equals(3f),"failed value retained for retry");
+  UUID replacement=UUID.randomUUID();q.register(c.key(),replacement);q.mark(c,replacement,Map.of(x,4f),3_000_000_000L,java.time.Instant.EPOCH);
+  q.finish(retry,true,3_000_000_000L);q.bind(c.key(),session,UUID.randomUUID());
+  check(q.poll(3_000_000_000L)==null,"old session cannot bind or acknowledge replacement session");
+  q.bind(c.key(),replacement,character);var current=q.poll(3_000_000_000L);check(current.fields().get(x).value().equals(4f),"replacement session retains its own latest value");q.finish(current,true,3_000_000_000L);
+  q.mark(c,replacement,Map.of(x,5f),3_000_000_001L,java.time.Instant.EPOCH);
+  check(q.poll(3_999_999_999L)==null,"cooldown survives a fully drained pending entry");q.finish(q.poll(4_000_000_000L),true,4_000_000_000L);
+  var many=new ApocBRPlayerRelationalMutations.DirtyQueue();
+  for(int i=0;i<512;i++){var ci=candidate(i);UUID si=UUID.randomUUID();check(many.register(ci.key(),si),"bounded registration accepted");many.bind(ci.key(),si,character);many.mark(ci,si,Map.of(x,(float)i),0,java.time.Instant.EPOCH);}
+  check(!many.register(candidate(999).key(),UUID.randomUUID())&&many.size()==512,"registry and dirty cache stay bounded");
+  for(int i=0;i<512;i++){var b=many.poll(0);check(b!=null,"due players are not starved");many.finish(b,true,0);}
+  check(many.size()==0,"more than 200 independent players drain without lost work");many.prune(Set.of());check(many.register(candidate(999).key(),UUID.randomUUID()),"idle session bindings are reclaimable");
+  P player=new P();player.forbidExportReads=true;
+  var before=ApocBRPlayerRelationalMutations.read(player);player.x=1;var after=ApocBRPlayerRelationalMutations.read(player);
+  check(after.entrySet().stream().filter(e->!Objects.equals(before.get(e.getKey()),e.getValue())).count()==1,"scalar sample detects one changed field without touching inventory/equipment");
+  try{new ApocBRPlayerRelationalMutations.Field("item","name",null);throw new AssertionError("untracked SQL field accepted");}catch(IllegalArgumentException expected){checks++;}
+ }
+ static class LiveFake {
+  UUID dataset=candidate(1).dataset(),character=UUID.randomUUID(),head=UUID.randomUUID(),nextHead;
+  String reason="sqlite_load";boolean fail,missing,missingRow,locked=true,stale;int codec=ApocBRPlayerRelationalCapture.CODEC_VERSION;volatile int commits,rollbacks,opened,closed;long revision;
+  List<String> queries=new ArrayList<>();List<Map<Integer,Object>> updates=new ArrayList<>();Map<String,List<Map<Integer,Object>>> bound=new LinkedHashMap<>();
+  Connection open(){opened++;return(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{Connection.class},(o,m,a)->{
+   switch(m.getName()){
+    case "close":closed++;return null;
+    case "commit":commits++;if(nextHead!=null){head=nextHead;reason="live_fields";nextHead=null;}revision++;return null;
+    case "rollback":rollbacks++;nextHead=null;return null;
+    case "prepareStatement":String sql=(String)a[0];queries.add(sql);Map<Integer,Object> values=new HashMap<>();List<Map<Integer,Object>> batch=new ArrayList<>();
+     return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{PreparedStatement.class},(p,pm,pa)->{
+      if(pm.getName().startsWith("set")&&pa.length>=2&&pa[0] instanceof Integer){values.put((int)pa[0],pa[1]);return null;}
+      switch(pm.getName()){
+       case "addBatch":batch.add(new HashMap<>(values));return null;
+       case "clearBatch":batch.clear();return null;
+       case "executeBatch":
+        if(sql.startsWith("UPDATE player_rel.character_nutrition")&&fail)throw new SQLException("simulated","08006");
+        updates.addAll(batch);bound.computeIfAbsent(sql,k->new ArrayList<>()).addAll(batch);int[] results=new int[batch.size()];Arrays.fill(results,missingRow?0:1);return results;
+       case "executeQuery":boolean[] advanced={false};return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{ResultSet.class},(r,rm,ra)->{
+        switch(rm.getName()){
+         case "next":boolean result=!advanced[0]&&(!missing||sql.contains("advisory"));advanced[0]=true;return result;
+         case "getBoolean":return locked;
+         case "getObject":int col=(int)ra[0];return col==1?character:col==2?head:dataset;
+         case "getString":return (int)ra[0]==4||(int)ra[0]==3?"complete":reason;
+         case "getInt":return (int)ra[0]==(sql.contains("FOR UPDATE")?5:4)?ApocBRPlayerRelationalCapture.SCHEMA_VERSION:codec;
+         case "getLong":return revision;
+        }return zero(rm.getReturnType());
+       });
+       case "executeUpdate":
+        if(sql.startsWith("UPDATE player_rel.character_nutrition")&&fail)throw new SQLException("simulated","08006");
+        if(sql.startsWith("UPDATE player_rel.character_state")||sql.startsWith("UPDATE player_rel.character_nutrition"))updates.add(new HashMap<>(values));
+        if(sql.startsWith("UPDATE player_rel.character_head")){if(stale)return 0;nextHead=(UUID)values.get(1);}
+        return 1;
+       case "execute":return true;
+      }return zero(pm.getReturnType());
+     });
+   }return zero(m.getReturnType());
+  });}
+ }
+ static void mutationDatabase()throws Exception {
+  LiveFake f=new LiveFake();var db=new ApocBRPlayerRelationalDatabase(f::open);UUID original=f.head;
+  var x=new ApocBRPlayerRelationalMutations.Field("character_state","x",null);var calories=new ApocBRPlayerRelationalMutations.Field("character_nutrition","calories",null);
+  var patch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),f.character,Map.of(x,new ApocBRPlayerRelationalMutations.Value(1,123f),calories,new ApocBRPlayerRelationalMutations.Value(2,456f)),java.time.Instant.EPOCH);
+  check(db.applyFields(patch)&&f.commits==1&&!f.head.equals(original),"first live patch atomically forks and publishes a live head");
+  check(f.queries.stream().noneMatch(s->s.startsWith("INSERT INTO player_rel.character_head")),"fork never clones the head metadata table");
+  check(f.updates.stream().allMatch(v->!original.equals(v.get(2))),"initial baseline scalar rows remain untouched");
+  check(f.queries.stream().anyMatch(s->s.startsWith("UPDATE player_rel.character_state SET x=? WHERE")),"only the dirty state column is updated");
+  long copies=f.queries.stream().filter(s->s.startsWith("INSERT")).count();UUID live=f.head;
+  check(db.applyFields(patch)&&f.head.equals(live)&&f.queries.stream().filter(s->s.startsWith("INSERT")).count()==copies,"later patches update live generation without copying inventory again");
+  int committed=f.commits;f.fail=true;
+  try{db.applyFields(patch);throw new AssertionError("SQL failure accepted");}catch(SQLException expected){checks++;}
+  check(f.commits==committed&&f.rollbacks>0&&f.head.equals(live),"failed live patch rolls back without publishing");f.fail=false;
+  f.missingRow=true;try{db.applyFields(patch);throw new AssertionError("missing scalar row accepted");}catch(SQLException expected){check(f.commits==committed,"zero-row updates never acknowledge missing baseline data");}f.missingRow=false;
+  f.missing=true;check(!db.applyFields(patch)&&f.commits==committed,"missing baseline retains queued work");f.missing=false;
+  f.locked=false;check(!db.applyFields(patch)&&f.commits==committed,"busy slot never blocks or acknowledges dirty fields");f.locked=true;
+  f.codec=1;check(!db.applyFields(patch),"old codec head waits for baseline upgrade");f.codec=ApocBRPlayerRelationalCapture.CODEC_VERSION;
+  f.character=UUID.randomUUID();try{db.applyFields(patch);throw new AssertionError("wrong character life accepted");}catch(SQLException expected){check(expected.getSQLState().equals("40001"),"character-life mismatch rejected");}f.character=patch.character();
+  f.dataset=UUID.randomUUID();try{db.applyFields(patch);throw new AssertionError("foreign dataset accepted");}catch(SQLException expected){check(expected.getSQLState().equals("22023"),"foreign source rejected");}f.dataset=candidate(1).dataset();
+  f.stale=true;try{db.applyFields(patch);throw new AssertionError("stale revision accepted");}catch(SQLException expected){check(expected.getSQLState().equals("40001"),"stale head publication rolls back");}
+  check(f.opened==f.closed,"live transactions always return their lease");
+ }
+ static void extendedMutations()throws Exception {
+  P player=new P();Descriptor descriptor=new Descriptor();player.descriptor=descriptor;
+  var before=ApocBRPlayerRelationalMutations.read(player);var frozen=ApocBRPlayerRelationalSnapshot.copy(player);
+  UUID character=UUID.randomUUID();var graph=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(frozen,List.of());
+  for(var entry:before.entrySet()){
+   var field=entry.getKey();var row=graph.rows().stream().filter(r->r.table().equals(field.table())&&(field.key()==null||field.key().equals(r.values().get("stat_key")))).findFirst().orElseThrow();
+   check(Objects.equals(entry.getValue(),row.values().get(field.column())),"live field matches initial codec: "+field);
+  }
+  player.tagColor.r=0.25f;player.tagPrefix=null;player.displayName="After";player.allChatMuted=true;player.factionPvp=true;
+  descriptor.forename="After";descriptor.characterProfession=null;descriptor.voicePitch=1.5f;descriptor.voiceType=3;
+  player.bodyDamage.hasACold=true;player.bodyDamage.infectionTime=123.5f;player.bodyDamage.painReduction=0.75f;
+  player.forbidExportReads=true;player.bodyDamage.bodyParts=List.of(new Object());
+  var after=ApocBRPlayerRelationalMutations.read(player);Map<ApocBRPlayerRelationalMutations.Field,Object> changed=new LinkedHashMap<>();
+  for(var entry:after.entrySet())if(!Objects.equals(entry.getValue(),before.get(entry.getKey())))changed.put(entry.getKey(),entry.getValue());
+  Set<String> actual=new HashSet<>();for(var field:changed.keySet())actual.add(field.table()+"."+field.column());
+  check(actual.equals(Set.of("character_presentation.tag_r","character_presentation.tag_prefix","character_presentation.display_name","character_presentation.all_chat_muted","character_presentation.faction_pvp",
+   "character_descriptor.forename","character_descriptor.profession_key","character_descriptor.voice_pitch","character_descriptor.voice_type",
+   "body_damage.has_a_cold","body_damage.infection_time","body_damage.pain_reduction")),"new scopes detect precisely edited scalar fields without scanning body parts or inventory");
+  check(ApocBRPlayerRelationalMutations.read(frozen.player()).equals(before),"extended scalar reads accept detached snapshots and remain isolated from mutation");
+  LiveFake fake=new LiveFake();fake.character=character;fake.reason="live_fields";var c=candidate(1);UUID session=UUID.randomUUID();
+  var queue=new ApocBRPlayerRelationalMutations.DirtyQueue();queue.register(c.key(),session);queue.bind(c.key(),session,character);
+  check(queue.mark(c,session,changed,0,java.time.Instant.EPOCH),"nullable extended fields enter bounded dirty queue");
+  var batch=queue.poll(0);check(new ApocBRPlayerRelationalDatabase(fake::open).applyFields(batch),"new groups persist in one atomic live patch");queue.finish(batch,true,0);
+  check(queue.size()==0&&fake.commits==1,"extended field acknowledgement follows transaction commit");
+  for(String table:List.of("character_presentation","character_descriptor","body_damage"))check(fake.queries.stream().anyMatch(sql->sql.startsWith("UPDATE player_rel."+table+" SET ")),"extended row uses partial UPDATE: "+table);
+  check(fake.bound.entrySet().stream().anyMatch(e->e.getKey().contains("tag_prefix=?")&&e.getValue().stream().anyMatch(values->values.containsValue(null))),"nullable presentation values bind as SQL null");
+  check(fake.bound.entrySet().stream().anyMatch(e->e.getKey().contains("profession_key=?")&&e.getValue().stream().anyMatch(values->values.containsValue(null))),"nullable descriptor values bind as SQL null");
+  player.descriptor=null;var absent=ApocBRPlayerRelationalMutations.read(player);
+  check(absent.keySet().stream().noneMatch(f->f.table().equals("character_descriptor")),"absent optional descriptor produces no deletion or default writes");
+  check(fake.queries.stream().noneMatch(sql->sql.startsWith("DELETE")),"scalar extension does not invent row lifecycle operations");
+ }
+ static void largeImport() {
+  P player=new P();for(int i=0;i<600;i++)player.inventory.items.add(new Item(i+1));
+  var input=ApocBRPlayerRelationalSnapshot.copy(player);
+  var graph=new ApocBRPlayerRelationalCapture(UUID.randomUUID(),Map.of(),Long.MAX_VALUE).capture(input,List.of());
+  check(graph.bytes()>2*1024*1024&&graph.items()==600,"initial import accepts graph larger than former 2MiB ceiling");
+  check(graph.issues().isEmpty(),"large import is complete without discarding state");
+ }
+ static void sizeLimits(String mode) {
+  check(ApocBRPlayerRelationalLimits.GRAPH_BYTES==1024*1024&&ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES==1024*1024,"configured byte allowances apply");
+  check(ApocBRPlayerRelationalLimits.QUEUE_BYTES==2*1024*1024,"queue floor admits one maximum snapshot/source pair");
+  P player=new P();for(int i=0;i<600;i++)player.inventory.items.add(new Item(i+1));
+  try{new ApocBRPlayerRelationalCapture(UUID.randomUUID(),Map.of(),Long.MAX_VALUE).capture(player,List.of());throw new AssertionError("configured graph limit ignored");}
+  catch(ApocBRPlayerRelationalLimits.SizeExceeded error){
+   check(error.getMessage().equals("CAPTURE_SIZE_BUDGET")&&error.rows>0&&error.bytes>0,"graph failure preserves size diagnostics");
+   check(mode.equals("size-rows")?error.rows>ApocBRPlayerRelationalLimits.ROWS:error.bytes>error.byteLimit,"requested graph boundary enforced");
+   check(error.diagnostic().contains("rowLimit=")&&error.diagnostic().contains("estimatedBytes="),"controlled counters included in diagnostics");
+  }
+  try{ApocBRPlayerRelationalSnapshot.copy(player);throw new AssertionError("configured snapshot limit ignored");}
+  catch(ApocBRPlayerRelationalLimits.SizeExceeded error){check(error.bytes>error.byteLimit&&error.getMessage().equals("SNAPSHOT_SIZE_BUDGET"),"snapshot bound independent of graph bound");}
+ }
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static class Fake {
   int opened,closed,commits,rollbacks,inserts,headWrites,batches,codecVersion=ApocBRPlayerRelationalCapture.CODEC_VERSION;boolean complete,fail,stale;UUID dataset,character,head;String status;
@@ -572,17 +719,30 @@ public class RelationalTest {
   check(fake.itemNames.equals(List.of("fixture")),"worker consumes pre-mutation inventory snapshot");
   Field bytes=ApocBRPlayerRelationalSync.class.getDeclaredField("QUEUED_BYTES");bytes.setAccessible(true);
   check(((java.util.concurrent.atomic.AtomicLong)bytes.get(null)).get()==0,"drained snapshots release queue byte reservations");
+  LiveFake live=new LiveFake();live.dataset=ApocBRPlayerRelationalDatabase.named("sqlite-save:test-save");live.reason="live_fields";
+  zombie.savefile.ApocBRPostgresConnector.connections=live::open;
+  var moving=new zombie.characters.IsoPlayer();
+  ApocBRPlayerRelationalSync.offerLoadedPlayer(moving,77,"world","moving",0,249,new byte[]{1},List.of());
+  moving.x=123;ApocBRPlayerRelationalMutations.finalSample(moving);moving.x=999;
+  until=System.nanoTime()+3_000_000_000L;
+  while(live.commits<2&&System.nanoTime()<until)Thread.sleep(10);
+  check(live.updates.stream().anyMatch(v->v.containsValue(123f))&&live.updates.stream().noneMatch(v->v.containsValue(999f)),"shared worker persists detached scalar changes after initial receipt binding");
   ApocBRPlayerRelationalSync.shutdown();check(fake.opened==fake.closed,"shutdown returns worker lease");
+  check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();componentCodecs();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();componentCodecs();mutationQueue();mutationDatabase();extendedMutations();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
  target=Path(folder);harness=target/'RelationalTest.java';native_harness=HARNESS[:HARNESS.index(' static void worker()')]+HARNESS[HARNESS.index(' public static void main'):];native_harness=native_harness.replace('if(args.length>0){worker();System.out.println(\"Worker checks=\"+checks);return;}','');harness.write_text(native_harness,encoding='utf-8')
- sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
+ sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalLimits','ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalMutations','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
  subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(harness)],check=True)
  subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.RelationalTest'],check=True)
+ for mode in ['size-bytes','size-rows']:
+  options=['-Dapocbr.postgres.playerRelational.'+setting+'=1' for setting in ['maxGraphMiB','maxSnapshotMiB','maxSourceMiB','queuedMiB']]
+  if mode=='size-rows':options.append('-Dapocbr.postgres.playerRelational.maxRows=50')
+  subprocess.run([str(JDK/'java.exe'),*options,'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.RelationalTest',mode],check=True)
 
  # Recompile a separate worker fixture against small engine boundary stubs.
  stubs={

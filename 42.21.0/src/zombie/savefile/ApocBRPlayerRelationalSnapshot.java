@@ -36,9 +36,9 @@ final class ApocBRPlayerRelationalSnapshot {
     private final IdentityHashMap<Object,Object> copies=new IdentityHashMap<>();
     private int bytes,nodes;
     private void charge(int amount) {
-        if(amount<0||amount>ApocBRPlayerRelationalCapture.MAX_BYTES-bytes)throw new IllegalStateException("SNAPSHOT_SIZE_BUDGET");
+        if(amount<0||amount>ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-bytes)throw new ApocBRPlayerRelationalLimits.SizeExceeded("SNAPSHOT_SIZE_BUDGET",(long)bytes+amount,ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES,0,0,nodes);
         bytes+=amount;
-        if(bytes>ApocBRPlayerRelationalCapture.MAX_BYTES||++nodes>100_000)throw new IllegalStateException("SNAPSHOT_SIZE_BUDGET");
+        if(++nodes>ApocBRPlayerRelationalLimits.NODES)throw new ApocBRPlayerRelationalLimits.SizeExceeded("SNAPSHOT_SIZE_BUDGET",bytes,ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES,0,0,nodes);
     }
     private Object scalar(Object value) {
         charge(32);

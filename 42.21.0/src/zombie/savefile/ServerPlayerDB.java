@@ -132,6 +132,7 @@ public final class ServerPlayerDB {
 
     public void serverUpdateNetworkCharacter(IsoPlayer player, int playerIndex, UdpConnection connection) {
         this.charactersToSave.add(new ServerPlayerDB.NetworkCharacterData(player, playerIndex, connection));
+        if (ApocBRPlayerRelationalSync.enabled()) ApocBRPlayerRelationalMutations.finalSample(player);
     }
 
     private void serverUpdateNetworkCharacterInt(ServerPlayerDB.NetworkCharacterData data) {

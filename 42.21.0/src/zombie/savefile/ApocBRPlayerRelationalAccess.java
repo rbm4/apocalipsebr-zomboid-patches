@@ -9,6 +9,8 @@ import java.util.concurrent.ConcurrentHashMap;
 final class ApocBRPlayerRelationalAccess {
     private record Key(Class<?> type,String name) {}
     private static final Map<Key,AccessibleObject> CACHE=new ConcurrentHashMap<>();
+    private record CallKey(Class<?> type,String name,List<Class<?>> arguments) {}
+    private static final Map<CallKey,Method> METHODS=new ConcurrentHashMap<>();
     static Object get(Object value,String path) {
         if(value instanceof ApocBRPlayerRelationalSnapshot.Node node)return node.get(path);
         if(value instanceof ApocBRPlayerRelationalSnapshot.Table table&&path.equals("isEmpty"))return table.entries().isEmpty();
@@ -39,8 +41,10 @@ final class ApocBRPlayerRelationalAccess {
         if(object instanceof ApocBRPlayerRelationalSnapshot.Node node&&name.equals("getComponentForIndex"))
             return ((List<?>)node.get("components")).get(((Number)args[0]).intValue());
         try {
+            CallKey key=new CallKey(object.getClass(),name,Arrays.stream(args).map(a->a==null?Void.class:a.getClass()).toList());
+            Method cached=METHODS.get(key);if(cached!=null)return cached.invoke(object,args);
             for (Method method:object.getClass().getMethods()) if (method.getName().equals(name) && method.getParameterCount()==args.length) {
-                try { method.setAccessible(true);return method.invoke(object,args); } catch (IllegalArgumentException mismatch) { }
+                try { method.setAccessible(true);Object result=method.invoke(object,args);METHODS.putIfAbsent(key,method);return result; } catch (IllegalArgumentException mismatch) { }
             }
             throw new IllegalStateException("Missing capture method "+object.getClass().getName()+"."+name);
         } catch (ReflectiveOperationException error) { throw new IllegalStateException("Cannot capture "+name,error); }

@@ -11,10 +11,10 @@ import zombie.core.znet.SteamUtils;
 import zombie.debug.DebugLog;
 import zombie.network.GameServer;
 
-/** Initial-only SQLite -> relational handoff. Native login/save results never depend on it. */
+/** SQLite backfill and live-field worker. Native login/save results never depend on its JDBC work. */
 public final class ApocBRPlayerRelationalSync {
     private static final int LIMIT=16;
-    private static final long BYTE_LIMIT=16L*1024*1024;
+    private static final long BYTE_LIMIT=ApocBRPlayerRelationalLimits.QUEUE_BYTES;
     private static final Map<String,Pending> PENDING=new ConcurrentHashMap<>();
     private static final BlockingQueue<Pending> QUEUE=new ArrayBlockingQueue<>(LIMIT);
     private static final AtomicLong QUEUED_BYTES=new AtomicLong();
@@ -27,6 +27,7 @@ public final class ApocBRPlayerRelationalSync {
         final ApocBRPlayerRelationalSnapshot.Snapshot snapshot;
         final byte[] sourceBytes;
         final long snapshotNanos;
+        volatile UUID character;
         final int bytes;
         long readyAt;
         final long expires=System.nanoTime()+120_000_000_000L;
@@ -49,12 +50,14 @@ public final class ApocBRPlayerRelationalSync {
             UUID dataset=configured==null?ApocBRPlayerRelationalDatabase.named("sqlite-save:"+label):UUID.fromString(configured);
             var candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,label,world,identity,
                     GameServer.coop&&SteamUtils.isSteamModeEnabled(),slot,sqlId,worldVersion,null,loadIssues);
+            UUID session=ApocBRPlayerRelationalMutations.register(player,candidate);
             synchronized(PENDING) {
-                if(PENDING.containsKey(candidate.key()))return;
+                Pending existing=PENDING.get(candidate.key());
+                if(existing!=null){if(existing.character!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,existing.character);return;}
                 if(PENDING.size()>=LIMIT){deferred();return;}
                 // Reserve worst-case input capacity before reading/copying player state.
-                if(sourceBytes.length>ApocBRPlayerRelationalCapture.MAX_BYTES
-                        ||QUEUED_BYTES.get()>BYTE_LIMIT-ApocBRPlayerRelationalCapture.MAX_BYTES-sourceBytes.length){deferred();return;}
+                if(sourceBytes.length>ApocBRPlayerRelationalLimits.SOURCE_BYTES){log("OFFER_FAILED; code=SOURCE_SIZE_BUDGET; sourceBytes="+sourceBytes.length+"; byteLimit="+ApocBRPlayerRelationalLimits.SOURCE_BYTES);return;}
+                if(QUEUED_BYTES.get()>BYTE_LIMIT-ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-sourceBytes.length){deferred();return;}
                 long started=System.nanoTime();
                 var snapshot=ApocBRPlayerRelationalSnapshot.copy(player);
                 Pending pending=new Pending(candidate,snapshot,sourceBytes.clone(),System.nanoTime()-started);
@@ -67,18 +70,24 @@ public final class ApocBRPlayerRelationalSync {
     private static synchronized void start() {
         if(worker!=null||stopping)return;
         worker=new Thread(ApocBRPlayerRelationalSync::run,"ApocBR-player-relational");worker.setDaemon(true);worker.start();
-        log("worker started; source=SQLite; pendingLimit="+LIMIT);
+        log("worker started; source=SQLite; pendingLimit="+LIMIT+"; graphByteLimit="+ApocBRPlayerRelationalLimits.GRAPH_BYTES+"; snapshotByteLimit="+ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES+"; queueByteLimit="+BYTE_LIMIT+"; rowLimit="+ApocBRPlayerRelationalLimits.ROWS+"; nodeLimit="+ApocBRPlayerRelationalLimits.NODES);
     }
     private static void run() {
         ApocBRPlayerRelationalCapture.prepare();
+        boolean liveTurn=true;
         while(!stopping) {
             try {
-                Pending pending=QUEUE.poll(200,TimeUnit.MILLISECONDS);if(pending==null)continue;
+                if(liveTurn&&ApocBRPlayerRelationalMutations.flushOne(DATABASE)){liveTurn=false;continue;}
+                liveTurn=true;
+                Pending pending=QUEUE.poll();
+                if(pending==null){if(ApocBRPlayerRelationalMutations.flushOne(DATABASE))continue;pending=QUEUE.poll(50,TimeUnit.MILLISECONDS);if(pending==null)continue;}
                 if(System.nanoTime()>pending.expires){forget(pending);continue;}
-                if(System.nanoTime()<pending.readyAt){QUEUE.offer(pending);Thread.sleep(50);continue;}
+                if(System.nanoTime()<pending.readyAt){QUEUE.offer(pending);if(!ApocBRPlayerRelationalMutations.flushOne(DATABASE))Thread.sleep(10);continue;}
                 String phase="CHECK_FAILURE";
                 try {
                     var receipt=DATABASE.inspect(pending.candidate);
+                    pending.character=receipt.character();
+                    ApocBRPlayerRelationalMutations.bindCurrent(pending.candidate,receipt.character());
                     if(receipt.complete()){log("SYNC_SKIPPED; receipt=complete; snapshotMs="+TimeUnit.NANOSECONDS.toMillis(pending.snapshotNanos));forget(pending);continue;}
                     if(pending.candidate.blobHash()==null) {
                         // Provenance only; changing source bytes never invent a new character life.
@@ -95,8 +104,9 @@ public final class ApocBRPlayerRelationalSync {
                             +"; projectionMs="+TimeUnit.NANOSECONDS.toMillis(elapsed)+"; items="+graph.items()
                             +"; rows="+graph.rows().size()+"; bytes="+graph.bytes());
                     phase="SQL_FAILURE";
+                    long writeStarted=System.nanoTime();
                     if(DATABASE.persist(pending.candidate,receipt,graph)) {
-                        log((graph.issues().isEmpty()?"SYNC_COMPLETE":"SYNC_INCOMPLETE")+"; items="+graph.items()+"; rows="+graph.rows().size()+"; issues="+graph.issues().size());
+                        log((graph.issues().isEmpty()?"SYNC_COMPLETE":"SYNC_INCOMPLETE")+"; items="+graph.items()+"; rows="+graph.rows().size()+"; issues="+graph.issues().size()+"; writeMs="+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-writeStarted));
                         forget(pending);
                     } else retry(pending,"STALE_CAPTURE");
                 } catch(SQLException error){retry(pending,phase+"; SQLState="+error.getSQLState());}
@@ -111,6 +121,7 @@ public final class ApocBRPlayerRelationalSync {
         log(code+"; retry="+pending.attempts);
     }
     private static String safeCode(Throwable error){
+        if(error instanceof ApocBRPlayerRelationalLimits.SizeExceeded size)return size.diagnostic();
         String message=error.getMessage();
         if(message!=null&&(message.matches("[A-Z_]+")||message.matches("Missing (capture|required|snapshot) [A-Za-z0-9_.$ ]+")))return message;
         return error.getClass().getSimpleName();
@@ -125,6 +136,7 @@ public final class ApocBRPlayerRelationalSync {
         if(current!=null){current.interrupt();try{current.join(4000);}catch(InterruptedException error){Thread.currentThread().interrupt();}}
         if(!PENDING.isEmpty())log("shutdown; pending="+PENDING.size()+"; retryOnNextLoad=true");
         QUEUE.clear();PENDING.clear();QUEUED_BYTES.set(0);
+        ApocBRPlayerRelationalMutations.shutdown();
     }
     private ApocBRPlayerRelationalSync() {}
 }

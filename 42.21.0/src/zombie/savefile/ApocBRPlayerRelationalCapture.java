@@ -9,7 +9,7 @@ import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Relational graph projection. Production calls this on the worker with a detached snapshot. */
 final class ApocBRPlayerRelationalCapture {
-    static final int CODEC_VERSION=2, SCHEMA_VERSION=1, MAX_BYTES=2*1024*1024;
+    static final int CODEC_VERSION=2, SCHEMA_VERSION=1, MAX_BYTES=ApocBRPlayerRelationalLimits.GRAPH_BYTES;
     record Row(String table,Map<String,Object> values) {
         Row { values=Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
     }
@@ -48,6 +48,7 @@ final class ApocBRPlayerRelationalCapture {
     static {
         bind("character_state","last_hour_slept=lastHourSleeped","total_xp=xp.totalXp","xp_level=xp.level","xp_last_level=xp.lastlevel","direction=forwardIsoDirection","is_dead=isDead");
         bind("character_descriptor","native_descriptor_id=id","gender=characterGender","profession_key=characterProfession");
+        bind("character_presentation","tag_r=tagColor.r","tag_g=tagColor.g","tag_b=tagColor.b");
         bind("item","native_id=id","full_type=getFullType","source_registry_id=registryId","remote_control_id=remoteControlId","recorded_media_id=recordedMediaIndex","source_recorded_media_index=recordedMediaIndex","texture_name=texture.name","initialised=isInitialised","color_r=col.r","color_g=col.g","color_b=col.b","color_a=col.a");
         bind("container","native_id=id","has_been_looted=hasBeenLooted");
         bind("body_damage","has_a_cold=hasACold");
@@ -329,7 +330,8 @@ final class ApocBRPlayerRelationalCapture {
         node(id,null,0,null,value,0);
     }
     private void node(UUID component,UUID parent,int position,Object key,Object value,int depth) {
-        check(); if(depth>64 || ++nodes>100_000) throw new IllegalStateException("Oversized structured state");
+        check(); if(depth>64) throw new IllegalStateException("Oversized structured state");
+        if(++nodes>ApocBRPlayerRelationalLimits.NODES)throw new ApocBRPlayerRelationalLimits.SizeExceeded("CAPTURE_SIZE_BUDGET",bytes,MAX_BYTES,rows.size(),itemIds.size(),nodes);
         UUID id=UUID.randomUUID(); Map<String,Object> values=new LinkedHashMap<>();
         values.put("component_id",component); values.put("id",id); values.put("parent_id",parent); values.put("position",position);
         if(key!=null) {
@@ -364,7 +366,7 @@ final class ApocBRPlayerRelationalCapture {
     private void check() {
         long elapsed=clock.getAsLong()-started;
         if(elapsed>budgetNanos) throw new TimeBudgetExceeded(elapsed,budgetNanos,rows.size(),itemIds.size(),bytes);
-        if(bytes>MAX_BYTES || rows.size()>100_000) throw new IllegalStateException("CAPTURE_SIZE_BUDGET");
+        if(bytes>MAX_BYTES || rows.size()>ApocBRPlayerRelationalLimits.ROWS) throw new ApocBRPlayerRelationalLimits.SizeExceeded("CAPTURE_SIZE_BUDGET",bytes,MAX_BYTES,rows.size(),itemIds.size(),nodes);
     }
     private static int colorByte(Object value) { return Math.max(0,Math.min(255,Math.round(((Number)value).floatValue()*255))); }
     private static Map<String,Object> pairs(Object... pairs) {

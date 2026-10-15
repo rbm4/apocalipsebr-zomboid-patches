@@ -1,7 +1,8 @@
 # Player relational persistence contract — 42.21.0
 
-Status: initial SQLite-load capture, receipt-check worker and V5 JDBC writes are
-implemented. Mutation tracking and a relational loader are not implemented.
+Status: initial SQLite-load capture, receipt-check worker, V5 JDBC writes and
+phase-one character scalar mutation sync are implemented. Inventory/collection
+mutation tracking and a relational loader are not implemented.
 The backend V5 migration supplies the 63-table contract. First phase is an asynchronous relational
 backfill from the native SQLite `players.db` store, which remains authoritative.
 `ApocBRPlayerDatabase.enabled()` defaults to false: the master PostgreSQL switch
@@ -85,6 +86,7 @@ Configuration (JVM options before the main class):
 -Dapocbr.postgres.players.enabled=false
 -Dapocbr.postgres.vehicles.enabled=false
 -Dapocbr.postgres.playerRelational.enabled=true
+-Dapocbr.postgres.playerRelational.mutations.enabled=true
 ```
 
 Use the existing complete JDBC URL/pool configuration. Relational sync defaults
@@ -101,13 +103,39 @@ a head from a different source dataset.
 
 Implemented limits supersede the proposed defaults later in this document:
 
-- One daemon exporter/JDBC worker/lease, 16 pending candidates, 16 MiB estimated
-  pending input memory including snapshots and copied SQLite source bytes.
-  Snapshot and source-byte inputs are each capped at 2 MiB. The graph has its own
-  2 MiB conservative row accounting; one graph is constructed at a time in addition
-  to queued input memory. Collections are capped at 10,000 members, depth at 64,
-  with 100,000 rows/nodes as additional upper bounds. Capacity and duplicate checks
-  happen before reading player state. Full queues defer until another native load.
+- One daemon exporter/JDBC worker/lease and 16 pending initial candidates. Initial
+  imports allow a 128 MiB estimated relational graph, 32 MiB detached snapshot,
+  8 MiB native source blob, 500,000 rows and 1,000,000 structured nodes/snapshot
+  accounting operations. The total pending input estimate is capped at 64 MiB,
+  including the source/snapshot currently being processed. Only one graph is
+  projected at a time in addition to that pending input. Byte accounting includes
+  conservative Java row/map overhead: it is not native BLOB size or SQL wire size,
+  nor an exact upper bound on actual JVM heap usage. The default graph-plus-input
+  accounting envelope is 192 MiB. Native collections/items still have their
+  10,000-member guard and depth remains 64. No truncation occurs on an exceeded
+  limit. Capacity and duplicate checks happen before reading player state.
+  Full queues defer until another native load.
+
+Initial-import JVM settings (the small live-field cache is independent):
+
+```text
+-Dapocbr.postgres.playerRelational.maxGraphMiB=128
+-Dapocbr.postgres.playerRelational.maxSnapshotMiB=32
+-Dapocbr.postgres.playerRelational.maxSourceMiB=8
+-Dapocbr.postgres.playerRelational.queuedMiB=64
+-Dapocbr.postgres.playerRelational.maxRows=500000
+-Dapocbr.postgres.playerRelational.maxNodes=1000000
+-Dapocbr.postgres.playerRelational.importWriteBudgetMs=60000
+```
+
+MiB means 1,048,576 bytes; 2 MiB is approximately 2.10 decimal MB. The old 2 MiB
+estimated graph cap could reject a compact native character after expansion into
+many relational rows. Limits above are startup settings, clamped to positive
+values, with ceilings of 512/128/64/512 MiB respectively, 5,000,000 rows/nodes and
+300,000 ms for writes. The effective queue allowance has a floor of one maximum
+snapshot plus one maximum source blob, so a valid single input can be admitted.
+These settings do not change codec version or force reseeding completed receipts.
+
 - Snapshot copying is synchronous at offer time and has no time-abort threshold.
   The queued snapshot is private and read-only; graph projection runs entirely on
   the worker with no capture time-abort threshold. The earlier capture-budget JVM
@@ -120,8 +148,8 @@ Implemented limits supersede the proposed defaults later in this document:
   database receipt/aliases. Expiration or exhausted attempts defer until another
   native load. There is no offline-player scan or durable retry spool.
 - JDBC batches of 128 for graph rows, identities and aliases, 2-second statement
-  timeout, 250 ms lock timeout, nonwaiting per-slot advisory lock, 15-second checked
-  write budget. The graph commits in **one bounded transaction** because V5 deferred
+  timeout, 250 ms lock timeout, nonwaiting per-slot advisory lock, configurable
+  60-second checked initial-write budget. The graph commits in **one bounded transaction** because V5 deferred
   cyclic graph FKs cannot be split arbitrarily across staging commits. No public
   table locks/DDL or native-store writes. Transaction budgets are cooperative;
   an in-flight JDBC statement may extend them until its own timeout.
@@ -141,7 +169,12 @@ messages or player payloads. There are no per-item success logs.
 relational projection), and item/row/byte counts before attempting JDBC writes.
 This keeps projection measurements visible even if SQL writes fail. JDBC
 write/statement timeouts remain enforced independently. Snapshot failures report
-`OFFER_FAILED`; graph projection failures report `CAPTURE_FAILED`.
+`OFFER_FAILED`; graph projection failures report `CAPTURE_FAILED`. Size failures
+include estimated bytes and their limit, row count/limit, item count and node
+count/limit where available. `SYNC_COMPLETE` / `SYNC_INCOMPLETE` additionally report
+`writeMs`, measuring the worker's JDBC persist call. Startup logs print effective
+memory/row/node allowances. Source-blob size failures have a separate source-byte
+count. Size estimates do not disclose player payloads.
 
 Validation: `python tools/test_postgres_player_relational.py` compiles the actual
 snapshot/projection/JDBC/worker code. It checks V5 drift, native accessor
@@ -155,10 +188,117 @@ projection class, but production sync does not impose that time limit.
 Component fixtures use native AttributeContainer/AttributeInstance/EntityScriptInfo
 classes: all eleven value types, mixed enum/string sets, full-width integers,
 empty/null state, unchanged native attribute-save bytes, mutation isolation,
-typed-node persistence and complete versus unknown-component publication.
+typed-node persistence and complete versus unknown-component publication. A large
+600-item fixture exceeds the previous 2 MiB graph ceiling and completes. Separate
+JVM runs verify configurable graph/snapshot limits, row limits, queue-admission
+floor and controlled size diagnostics.
 Actual native deserialization, modded data round trips, PostgreSQL constraint
 execution, capture latency and queue saturation still require an isolated server
 trial. These tests do not validate a future relational loader.
+
+## Phase-one live character fields
+
+`NetworkPlayerManager.update` samples already registered, fully connected players
+using the existing player traversal. Only players offered by the successful SQLite
+load hook are registered; offline inspection objects are not periodically sampled.
+Native new-character creation/respawn registration is not added in this phase.
+Each cursor has a one-second sample interval. Across the whole tick, sampling stops
+after 16 players or a 1 ms soft allowance; later due players are sampled on later
+ticks. A single sample can exceed this allowance. One second is a target, not a
+guaranteed delay under overload. Native save/disconnect calls request a final scalar
+sample, without changing native serialization, queueing, SQL writes or save cadence.
+
+The tracked column bindings are precomputed from the pinned schema and existing
+capture bindings. The supported groups are:
+
+| Table | Live fields |
+| --- | --- |
+| `character_state` | All native scalar columns, including position, survival, XP counters, sleep and flags; excludes IDs, inventory-container reference and source offsets |
+| `character_nutrition` | Calories, proteins, lipids, carbohydrates, weight |
+| `character_stat` | Each registered native stat value, addressed by stable stat key |
+| `character_effects` | Depression, beta-blocker, pain, sleeping-tablet and infection-reduction fields |
+| `character_presentation` | Display name, tag prefix/RGB colour/visibility, chat-muted and faction-PvP flags |
+| `character_descriptor` | Native descriptor ID, forename/surname/torso, gender, profession, voice prefix/pitch/type; sampled when descriptor is present |
+| `body_damage` | Cold probability/state/strength/stage, sneeze/cough timer, fake-infection reduction, food-health timer, pain/cold reduction, infection time/mortality duration |
+
+These are value comparisons over the selected groups, not automatic interception
+of annotated Java fields. They also catch direct assignments to those scalar
+fields. They do not scan inventory, visuals, body-part arrays, perks/recipes or Lua
+tables. Those groups retain their baseline values until their mutation lifecycle
+is implemented. No claim of complete live character synchronization is made.
+In particular, `body_damage` here covers general illness/infection scalars, not
+per-body-part wounds, bleeding, bandages or temperatures. Descriptor absence does
+not request row deletion or replace it with default values. If a descriptor appears
+without a corresponding baseline row, the patch rolls back under the existing
+missing-row guard; optional-row creation/deletion remains outside this phase.
+First observation of a session refreshes all tracked fields; subsequent observations
+enqueue only changes. The worker performs no live player reads.
+
+The dirty cache coalesces latest values per slot/session/field, with at most one
+dispatch per player per second. Repeated marks do not slide the deadline forward.
+An acknowledgement clears only the exact field revisions written, so a change
+during an in-flight write remains queued. Errors retain dirty values with bounded
+2–30-second backoff. A new load session supersedes its pending predecessor; old
+acknowledgements cannot erase its work. Batches bind to the character UUID obtained
+by initial receipt inspection; changing character life or source dataset rejects
+the write. There are at most 512 tracked cursors/session bindings and 512 pending
+players, at most 256 fields per player, with text scalars/keys capped at 256
+characters. Cursors use weak player references through a weak-key map, with cleanup
+of inactive cursors and unused bindings. Capacity pressure retries sampling without
+advancing the observed values; it does not acknowledge dropped work.
+
+The existing single exporter worker interleaves eligible live patches with initial
+captures; idle polling is 50 ms. Initial retry backoff does not prevent live work.
+It never waits on
+JDBC from the game thread. Each patch acquires the same nonwaiting per-slot advisory
+lock and locks the head row. A missing/incomplete/old-codec baseline is not patched.
+The first patch forks all graph rows from the immutable baseline into a new
+generation once, in one deferred-FK transaction, then applies the scalar fields.
+This one-time fork uses the initial-import write allowance and corresponding copy
+statement timeouts. Ordinary live patches retain their 15-second checked budget
+and two-second statement timeouts. A large initial import/fork can delay other
+relational updates on the shared worker; it does not wait on the game thread.
+Its `capture_reason` is `live_fields`. Subsequent patches mutate this live generation
+in place, using UPDATEs containing only the changed columns. Rows sharing an SQL
+shape (notably stats) use JDBC batches of at most 128. Each expected row must exist;
+a missing row rolls back and requires baseline repair/upgrade rather than silently
+creating an incomplete graph. This phase does not add/delete stat definitions or
+inventory objects. Native database writes remain authoritative.
+
+Snapshot metadata and head revision advance atomically with the patch. Previous
+immutable baseline generations are retained. Readers needing a coherent multi-query
+view of a live head must use repeatable-read transactions: the live generation is
+mutable. `status=complete` continues to describe codec coverage, not that untracked
+groups reflect current gameplay. `captured_at` on the live generation is the latest
+scalar sample time and `capture_revision` follows the head revision.
+
+`LIVE_METRICS` reports cumulative sample count, changed fields, sample milliseconds,
+maximum sample microseconds, committed patch count, worker write milliseconds and
+pending players, at most once per 30 seconds. `writeMs` includes JDBC and the initial
+fork cost. `LIVE_SAMPLE_FAILED` / `LIVE_WRITE_FAILED` are rate-limited. Initial-load
+`snapshotMs` measures copying and `projectionMs` projection; neither measures SQL.
+The native 180-second player-save schedule is unchanged; live sampling is separate.
+`mutations.enabled=false` disables this phase at startup while retaining initial
+backfill. Registrations above the 512-cursor/session cap log `LIVE_TRACK_LIMIT` and
+become eligible again on a later load after capacity is available.
+Shutdown still relies on native persistence for recovery: the dirty cache is not a
+durable spool and final scalar samples are not guaranteed committed before exit.
+
+The fixture exercises revision acknowledgements, coalescing, cadence, backoff,
+session replacement, binding/capacity reclamation, 512 independent queued players,
+single-column detection, live-generation fork/reuse, partial-column SQL, rollback,
+source/life/codec guards and lease cleanup.
+Extended-group checks compare every sampled field with initial-codec rows and
+exercise nickname/tag/RGB/chat/PvP, descriptor identity/profession/voice, illness
+timers and nullable text changes. They verify partial SQL updates, commit-gated
+acknowledgement, missing-descriptor behavior and absence of inventory/body-part
+array traversal. The extension requires no migration or codec-version bump because
+the initial exporter already populates these scalar rows.
+These checks validate behavior and work boundaries; they do not prove one-second
+service for 200 concurrent players. Representative
+server/PostgreSQL metrics are required before claiming that throughput or reduced
+CPU relative to native saving. Inventory transfer, creation/deletion, equipment,
+array mutation and respawn lifecycles remain the next stage.
 
 ## Verified boundary
 
