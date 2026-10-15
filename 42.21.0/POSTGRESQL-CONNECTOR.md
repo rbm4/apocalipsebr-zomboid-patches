@@ -246,6 +246,12 @@ extra server/identity/timestamp columns or required conflict-target unique keys.
   payload growth is bounded by `maxSourceMiB`; the relational slot supplies the
   split username. A missing relational head means no profile, not an auto-created
   default character or legacy-blob fallback. Clients keep the vanilla decoder.
+- PostgreSQL server-player registration now binds live tracking directly from
+  the validated login profile's persisted character UUID and source dataset UUID.
+  It skips the initial import snapshot, receipt SQL and import queue entirely,
+  then starts the worker. It must not derive an existing life's dataset from
+  the current SQLite save path or unrelated `sourceDatasetId` setting. The
+  initial-import path remains for SQLite backfills and newly created lives.
 
 - Steam conversion, Steam lookup, account-limit counts and server-side
   `PlayerDBHelper.containsNetworkPlayer/removePlayer` now use PostgreSQL. This
@@ -414,3 +420,52 @@ After deploying/restarting, inspect all three outcomes together:
 ```bash
 journalctl --since "20 minutes ago" --no-pager --grep='LIVE_WRITE_(FAILED|DEFERRED|RECOVERED)'
 ```
+
+### Exercise regularity persistence investigation
+
+`samples>0`, `pending>0`, but `writes=failedPatches=deferredPatches=graphSamples=0`
+can identify pending scalar work stranded before character binding. The old
+PostgreSQL login relied on a separate import receipt for that binding; a receipt
+failure left sampling active while the entry was ineligible for processing.
+The direct registration above removes that dependency for PostgreSQL loads.
+Look for `LIVE_TRACK_READY; source=PostgreSQL; initialSync=skipped`, followed by
+increasing graph/write counters. `unboundPending` exposes remaining entries with
+no matching character binding, and `graphReconcileEnabled` reports whether full
+graph reconciliation is configured on. Cache baselines only appear after graph
+work succeeds; increasing the cache limit does not make an unbound entry eligible.
+
+The exercise progress bar reads `Fitness.regularityMap`; body-part stiffness is
+a different value. The local vanilla shared Lua `ISFitnessAction.serverStart`
+initializes the server fitness exercise, and `exeLooped` calls
+`Fitness.exerciseRepeat`. That increments regularity and sends `PF_Fitness=32`
+to the client. A client bar update therefore is not a database commit receipt.
+
+Persistence follows `NetworkPlayerManager.update` -> mutation `observe/endTick`
+-> `Snapshot.copyLive` -> capture `fitness_value` rows with
+`map_name='regularityMap'` -> graph delta -> `Database.applyFields` commit.
+The default graph cadence is 30 seconds; the smaller scalar sample does not
+include fitness maps. Login reconstructs these rows into `Fitness` and uses
+its native save/load codec for the unmodified client.
+
+Disconnect calls `serverUpdateNetworkCharacter`, which queues the native save
+and requests `finalSample`. This queues relational work asynchronously; neither
+that method nor the ordinary disconnect waits for a relational commit. Native
+`networkplayers.data` being saved does not make the relational head current.
+Any incomplete inventory/component graph rejects the entire graph, including
+regularity updates. A further confirmed gap is that `DirtyQueue.register`
+removes the previous session's pending entry: reconnecting before it commits
+can read an older head and replace uncommitted work. These lifecycle behaviors
+are not changed by the diagnostic/tests in this investigation.
+
+Use `tools/inspect_postgres_player_fitness.sql` against the live database after
+exercise, after logout, and after login. It reports the current head, commit
+timestamps, source dataset, regularity and soreness values. If regularity is
+absent/old before login, investigate capture/write failures and pending work;
+if it is persisted correctly but the client bar resets, investigate the login
+profile/runtime deployment. Existing retained snapshots do not provide a full
+history because live heads are updated in place.
+
+Fixtures verify native regularity increments, numeric reconstruction of all
+four fitness maps, fitness wire round trips and actual JDBC batch bindings for
+regularity graph inserts. They do not prove a successful commit on the live
+server or execution of its multiplayer exercise actions.

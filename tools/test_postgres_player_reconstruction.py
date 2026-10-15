@@ -86,6 +86,7 @@ public class ReconstructionTest {
   zombie.world.ApocBRWorldDictionaryDecode.install(sourceOrigin,new zombie.world.ApocBRWorldDictionarySnapshot(List.of(),List.of()));
   check(reader.load("world","alice",0,false)!=null,"warm attributed graph admitted without a second dictionary fetch");
   String sql=ApocBRPlayerRelationalReader.SQL;
+  check(sql.contains("'persisted_character_id',s.character_id")&&sql.contains("'source_dataset_id',s.source_dataset_id"),"login retains persistent life/dataset UUIDs for immediate live tracking, separate from graph ordinals");
   for(String column:List.of("source_dictionary_namespace_id","source_dictionary_view_id"))check(sql.contains("'"+column+"',t."+column)&&!sql.contains(".id=t."+column),"external dictionary UUID is projected literally, never collapsed to an absent graph reference");
   check(!sql.contains("networkplayers")&&!sql.contains("to_jsonb(t)")&&!sql.contains("SELECT *"),"explicit relational projection, no native blob");
   for(var table:ApocBRPlayerRelationalSchema.TABLES.entrySet())if(table.getValue().stream().anyMatch(c->c.name().equals("snapshot_id"))&&!Set.of("character_head","sync_issue").contains(table.getKey())) {
@@ -172,6 +173,55 @@ public class ReconstructionTest {
   for(var item:List.of(outer,inner,leaf))item.setName("fixture");
   check(root.getContentsWeight()==6f,"native nested contents weight completes with expected total");
  }
+ static void fluidBag()throws Exception {
+  // Supply only the Water name registry; no game scripts/native world are initialized.
+  var registryField=zombie.entity.components.fluids.Fluid.class.getDeclaredField("fluidStringMap");registryField.setAccessible(true);
+  @SuppressWarnings("unchecked") var registry=(Map<String,Object>)registryField.get(null);
+  Object previous=registry.put("Water",zombie.entity.components.fluids.Fluid.Water);
+  try {
+   var root=new zombie.inventory.ItemContainer();var contents=new zombie.inventory.ItemContainer();
+   var bag=(zombie.inventory.types.InventoryContainer)blank(zombie.inventory.types.InventoryContainer.class);bag.setName("fixture");
+   ApocBRPlayerRelationalReconstruction.set(bag,"actualWeight",1f);
+   ApocBRPlayerRelationalReconstruction.restoreBag(bag,contents,40);ApocBRPlayerRelationalReconstruction.restoreContainerItem(root,bag);
+   Map<String,Object> state=new LinkedHashMap<>();state.put("capacity",4f);state.put("inputLocked",false);state.put("canPlayerEmpty",true);state.put("containerName","FluidContainer");state.put("hiddenAmount",false);state.put("rainCatcher",0f);
+   state.put("whitelist",null);state.put("blacklist",null);state.put("fluids",List.of(Map.of("type","Water","amount",2.5f,"colorOverride",Map.of("r",0.2f,"g",0.4f,"b",0.8f))));
+   invoke("restoreComponent",new Class[]{Object.class,String.class,Object.class},bag,"FluidContainer",state);
+   var fluid=bag.getFluidContainer();
+   check(fluid!=null&&fluid.getAmount()==2.5f&&fluid.getCapacity()==4f,"bag fluid component restores water amount and capacity");
+   check(bag.getInventory()==contents&&bag.getContainer()==root&&contents.containingItem==bag,"fluid restoration preserves bag inventory ownership");
+   check(root.getContentsWeight()==3.5f,"native bag weight includes reconstructed water");
+   var bytes=java.nio.ByteBuffer.allocate(4096);fluid.save(bytes);bytes.flip();
+   var client=(zombie.entity.components.fluids.FluidContainer)ApocBRPlayerRelationalReconstruction.create("zombie.entity.components.fluids.FluidContainer");
+   client.load(bytes,249);
+   check(!bytes.hasRemaining()&&client.getAmount()==2.5f&&client.getCapacity()==4f,"native fluid save/load preserves reconstructed water on client wire path");
+  }finally{if(previous==null)registry.remove("Water");else registry.put("Water",previous);}
+ }
+ static void fitnessPersistence()throws Exception {
+  var nativeFitness=new zombie.characters.BodyDamage.Fitness(null);
+  Object exercise=blank(Class.forName("zombie.characters.BodyDamage.Fitness$FitnessExercise"));
+  ApocBRPlayerRelationalReconstruction.set(exercise,"type","squats");
+  ApocBRPlayerRelationalReconstruction.set(nativeFitness,"currentExe",exercise);
+  nativeFitness.incRegularity();nativeFitness.incRegularity();
+  float regularity=nativeFitness.getRegularity("squats");check(regularity>0,"native exercise repetition increases regularity");
+  var tables=new HashMap<String,List<Map<String,Object>>>();var rows=new ArrayList<Map<String,Object>>();
+  rows.add(Map.of("map_name","regularityMap","key","squats","real_value",(double)regularity));
+  rows.add(Map.of("map_name","stiffnessIncMap","key","legs","real_value",12.5d));
+  rows.add(Map.of("map_name","stiffnessTimerMap","key","legs","integer_value",72L));
+  rows.add(Map.of("map_name","exeTimer","key","squats","integer_value",1729000000123L));
+  tables.put("fitness_value",rows);tables.put("fitness_body_part",List.of(Map.of("position",0,"body_part_key","arms")));
+  var profile=new ApocBRPlayerRelationalReader.Profile(tables);
+  var constructor=ApocBRPlayerRelationalReconstruction.class.getDeclaredConstructor(ApocBRPlayerRelationalReader.Profile.class);constructor.setAccessible(true);
+  Object reconstruction=constructor.newInstance(profile);
+  var player=(zombie.characters.IsoPlayer)blank(zombie.characters.IsoPlayer.class);
+  var restored=new zombie.characters.BodyDamage.Fitness(null);ApocBRPlayerRelationalReconstruction.set(player,"fitness",restored);
+  var method=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod("sequences",zombie.characters.IsoPlayer.class);method.setAccessible(true);method.invoke(reconstruction,player);
+  check(restored.getRegularity("squats")==regularity,"relational regularity restores without precision loss");
+  check(restored.getCurrentExeStiffnessInc("legs")==12.5f&&restored.getCurrentExeStiffnessTimer("legs")==72,"exercise stiffness amount and timer restore");
+  var bytes=java.nio.ByteBuffer.allocate(4096);restored.save(bytes);bytes.flip();
+  var client=new zombie.characters.BodyDamage.Fitness(null);client.load(bytes,249);
+  check(client.getRegularity("squats")==regularity&&!bytes.hasRemaining(),"vanilla fitness wire save/load preserves relational exercise progress");
+  for(String field:List.of("regularityMap","stiffnessIncMap","stiffnessTimerMap","exeTimer","bodypartToIncStiffness"))check(ApocBRPlayerRelationalAccess.get(restored,field).equals(ApocBRPlayerRelationalAccess.get(client,field)),"fitness wire round trip preserves "+field);
+ }
  static void itemTypes()throws Exception {
   for(Class<?> type:List.of(zombie.inventory.InventoryItem.class,zombie.inventory.types.DrainableComboItem.class,zombie.inventory.types.HandWeapon.class,zombie.inventory.types.Food.class)) {
    var item=(zombie.inventory.InventoryItem)blank(type);
@@ -205,7 +255,7 @@ public class ReconstructionTest {
   tables.remove("bag_state");
   try{ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));throw new AssertionError("unbound bag contents accepted");}catch(IllegalStateException expected){checks++;}
  }
- public static void main(String[] args)throws Exception{collectionAccess();bagLinks();itemTypes();nativeFields();jdbc();components();ownership();System.out.println("Reconstruction checks="+checks);}
+ public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();fitnessPersistence();itemTypes();nativeFields();jdbc();components();ownership();System.out.println("Reconstruction checks="+checks);}
 }
 '''.replace('ROOTS',roots)
 with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:

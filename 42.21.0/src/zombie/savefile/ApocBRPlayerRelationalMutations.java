@@ -148,6 +148,7 @@ public final class ApocBRPlayerRelationalMutations {
             return recovery==null?null:recovery+"; queueDrained="+(!pending.containsKey(batch.candidate.key()));
         }
         synchronized int size(){return pending.size();}
+        synchronized int unboundSize(){int count=0;for(Pending p:pending.values()){Binding b=bindings.get(p.candidate.key());if(b==null||b.character==null||!b.session.equals(p.session))count++;}return count;}
         synchronized long bytes(){return queuedBytes;}
         synchronized long oldestAgeMs(long now){long oldest=0;for(Pending p:pending.values())oldest=Math.max(oldest,now-p.enqueuedAt);return oldest/1_000_000;}
         synchronized void prune(Set<UUID> active){bindings.entrySet().removeIf(e->!active.contains(e.getValue().session)&&!pending.containsKey(e.getKey()));}
@@ -273,7 +274,7 @@ public final class ApocBRPlayerRelationalMutations {
         return true;
     }
     private static void metrics(long now,ApocBRPlayerRelationalDatabase database) {
-        if(now-lastLog>=30_000_000_000L){double busy=lastLog==0?0:100.0*(writeNanos-lastMeasuredWriteNanos)/(now-lastLog);lastMeasuredWriteNanos=writeNanos;lastLog=now;log("LIVE_METRICS; samples="+measuredSamples.get()+"; changedFields="+measuredFields.get()+"; sampleMs="+sampleNanos.get()/1_000_000+"; maxSampleUs="+maxSampleNanos.get()/1000+"; writes="+writes+"; failedPatches="+failedPatches+"; deferredPatches="+deferredPatches+"; writeMs="+writeNanos/1_000_000+"; scalarCaptureFailures="+scalarCaptureFailures.get()+"; graphCaptureFailures="+graphCaptureFailures.get()+"; graphSamples="+graphSamples.get()+"; graphMs="+graphNanos.get()/1_000_000+"; maxGraphUs="+graphMaxNanos.get()/1000+"; pending="+DIRTY.size()+"; queuedGraphBytes="+DIRTY.bytes()+"; oldestPendingMs="+DIRTY.oldestAgeMs(now)+"; workerBusyPercent="+String.format(Locale.ROOT,"%.2f",busy)+database.mutationMetrics());}
+        if(now-lastLog>=30_000_000_000L){double busy=lastLog==0?0:100.0*(writeNanos-lastMeasuredWriteNanos)/(now-lastLog);lastMeasuredWriteNanos=writeNanos;lastLog=now;log("LIVE_METRICS; samples="+measuredSamples.get()+"; changedFields="+measuredFields.get()+"; sampleMs="+sampleNanos.get()/1_000_000+"; maxSampleUs="+maxSampleNanos.get()/1000+"; writes="+writes+"; failedPatches="+failedPatches+"; deferredPatches="+deferredPatches+"; writeMs="+writeNanos/1_000_000+"; scalarCaptureFailures="+scalarCaptureFailures.get()+"; graphCaptureFailures="+graphCaptureFailures.get()+"; graphSamples="+graphSamples.get()+"; graphMs="+graphNanos.get()/1_000_000+"; maxGraphUs="+graphMaxNanos.get()/1000+"; pending="+DIRTY.size()+"; queuedGraphBytes="+DIRTY.bytes()+"; oldestPendingMs="+DIRTY.oldestAgeMs(now)+"; workerBusyPercent="+String.format(Locale.ROOT,"%.2f",busy)+"; unboundPending="+DIRTY.unboundSize()+"; graphReconcileEnabled="+RECONCILE+database.mutationMetrics());}
     }
     static String writeFailure(Throwable failure) {
         String state=failure instanceof java.sql.SQLException sql?sql.getSQLState():"LOCAL";

@@ -408,8 +408,7 @@ public final class ServerPlayerDB {
             ApocBRPlayerRelationalReader.Profile profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
             if (profile==null) return null;
             IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
-            ApocBRPlayerRelationalSync.offerLoadedPlayer(player,0,Core.gameSaveWorld,identity,slot,
-                    ((Number)profile.one("snapshot").get("source_world_version")).intValue(),new byte[0],java.util.List.of());
+            ApocBRPlayerRelationalSync.registerPostgresPlayer(player,Core.gameSaveWorld,identity,slot,coop,profile);
             return player;
         } catch (Exception failure) { ExceptionLogger.logException(failure); return null; }
     }

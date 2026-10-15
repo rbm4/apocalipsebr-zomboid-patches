@@ -50,6 +50,23 @@ public final class ApocBRPlayerRelationalSync {
     public static void offerCreatedPlayer(IsoPlayer player,String world,String identity,int slot,int worldVersion) {
         offerPlayer(player,0,world,identity,slot,worldVersion,new byte[0],List.of(),UUID.randomUUID());
     }
+    /** An authoritative relational load is already synced. Bind its actual life/dataset
+     * immediately, rather than waiting on an import receipt based on a local SQLite path. */
+    static void registerPostgresPlayer(IsoPlayer player,String world,String identity,int slot,boolean coop,
+                                       ApocBRPlayerRelationalReader.Profile profile) {
+        if(!enabled())return;
+        if(stopping)throw new IllegalStateException("Relational worker is stopping");
+        var metadata=profile.one("snapshot");
+        UUID character=UUID.fromString(Objects.requireNonNull(metadata.get("persisted_character_id"),"Missing persisted character ID").toString());
+        UUID dataset=UUID.fromString(Objects.requireNonNull(metadata.get("source_dataset_id"),"Missing persisted source dataset").toString());
+        var candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,ZomboidFileSystem.instance.getCurrentSaveDir(),world,identity,
+                coop,slot,0,((Number)metadata.get("source_world_version")).intValue(),null,List.of());
+        UUID session=ApocBRPlayerRelationalMutations.register(player,candidate);
+        if(session==null)throw new IllegalStateException("Relational tracking capacity exceeded");
+        ApocBRPlayerRelationalMutations.bind(candidate,session,character);
+        start();
+        log("LIVE_TRACK_READY; source=PostgreSQL; initialSync=skipped");
+    }
     private static void offerPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,int worldVersion,byte[] sourceBytes,List<String> loadIssues,UUID life) {
         if(!enabled()||stopping)return;
         try {

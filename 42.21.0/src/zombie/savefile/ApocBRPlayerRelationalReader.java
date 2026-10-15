@@ -48,7 +48,8 @@ final class ApocBRPlayerRelationalReader {
                 )
                 SELECT 'snapshot' AS table_name,jsonb_build_object(
                   'status',s.status,'schema_version',s.schema_version,'codec_version',s.codec_version,
-                  'source_world_version',s.source_world_version,'split_username',s.profile_split_username,'expected_object_count',s.expected_object_count,
+                  'source_world_version',s.source_world_version,'split_username',s.profile_split_username,
+                  'persisted_character_id',s.character_id,'source_dataset_id',s.source_dataset_id,'expected_object_count',s.expected_object_count,
                   'expected_item_count',s.expected_item_count,'expected_container_count',s.expected_container_count,
                   'expected_edge_count',s.expected_edge_count) AS payload FROM selected s
                 """;

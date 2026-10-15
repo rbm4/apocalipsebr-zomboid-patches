@@ -643,7 +643,8 @@ public class RelationalTest {
   var q=new ApocBRPlayerRelationalMutations.DirtyQueue();var c=candidate(1);UUID session=UUID.randomUUID(),character=UUID.randomUUID();
   var x=new ApocBRPlayerRelationalMutations.Field("character_state","x",null);
   q.register(c.key(),session);q.mark(c,session,Map.of(x,1f),0,java.time.Instant.EPOCH);
-  check(q.poll(0)==null,"live fields wait for initial character binding");q.bind(c.key(),session,character);
+  check(q.poll(0)==null&&q.unboundSize()==1,"live fields wait for initial character binding and report unbound pending work");q.bind(c.key(),session,character);
+  check(q.unboundSize()==0,"binding clears the unbound pending diagnostic");
   var first=q.poll(0);check(first.fields().get(x).value().equals(1f),"first dirty value eligible immediately");
   q.mark(c,session,Map.of(x,2f),1,java.time.Instant.EPOCH);q.finish(first,true,2);
   check(q.size()==1&&q.poll(999_999_999L)==null,"in-flight acknowledgement preserves new marks and cadence");
@@ -804,6 +805,7 @@ public class RelationalTest {
   check(db.applyFields(batch,after),"full graph delta commits against a locked complete head");
   String componentMetrics=metricValues(db.mutationMetrics()).get("topComponents");check(componentMetrics.contains("entity.FluidContainer:")&&componentMetrics.contains("lua.modData:"),"generic value-node changes are attributed to component kinds without logging user keys or values");
   check(fake.bound.keySet().stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.item SET condition=? WHERE")),"JDBC uses partial item updates");
+  check(fake.bound.entrySet().stream().anyMatch(e->e.getKey().startsWith("INSERT INTO player_rel.fitness_value")&&e.getValue().stream().anyMatch(values->values.containsValue("regularityMap")&&values.containsValue("squats")&&values.containsValue(0.5f))),"exercise regularity reaches actual JDBC batch bindings through detached capture and graph delta");
   check(fake.queries.stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.source_item_alias SET retired_at"))&&fake.queries.stream().anyMatch(sql->sql.startsWith("INSERT INTO player_rel.source_item_alias")),"deleted/new items retire and allocate source alias generations");
   int firstInsert=100000,lastDelete=-1;for(int i=0;i<fake.queries.size();i++){String sql=fake.queries.get(i);if(sql.startsWith("DELETE FROM"))lastDelete=i;if(sql.startsWith("INSERT INTO player_rel.item_location"))firstInsert=Math.min(firstInsert,i);}
   check(lastDelete<firstInsert,"all deletes precede destination inserts for swaps");
@@ -1024,6 +1026,26 @@ public class RelationalTest {
   zombie.savefile.ApocBRPostgresConnector.connections=fake::open;
   System.setProperty("apocbr.postgres.enabled","true");System.setProperty("apocbr.postgres.players.enabled","false");
   var player=new zombie.characters.IsoPlayer();
+  // PostgreSQL-loaded lives must bind without a SQLite receipt or snapshot copy.
+  UUID importedDataset=UUID.randomUUID(),persistedLife=UUID.randomUUID();
+  var loadedProfile=new ApocBRPlayerRelationalReader.Profile(Map.of("snapshot",List.of(Map.of(
+      "persisted_character_id",persistedLife.toString(),"source_dataset_id",importedDataset.toString(),"source_world_version",249))));
+  var postgresPlayer=new zombie.characters.IsoPlayer();postgresPlayer.forbidExportReads=true;
+  System.setProperty("apocbr.postgres.playerRelational.sourceDatasetId",UUID.randomUUID().toString());
+  try{ApocBRPlayerRelationalSync.registerPostgresPlayer(postgresPlayer,"world","imported",0,false,loadedProfile);}
+  finally{System.clearProperty("apocbr.postgres.playerRelational.sourceDatasetId");}
+  Field trackedField=ApocBRPlayerRelationalMutations.class.getDeclaredField("TRACKED");trackedField.setAccessible(true);
+  Object cursor=((Map<?,?>)trackedField.get(null)).get(postgresPlayer);
+  Field candidateField=cursor.getClass().getDeclaredField("candidate");candidateField.setAccessible(true);
+  var loadedCandidate=(ApocBRPlayerRelationalDatabase.Candidate)candidateField.get(cursor);
+  Field sessionField=cursor.getClass().getDeclaredField("session");sessionField.setAccessible(true);UUID loadedSession=(UUID)sessionField.get(cursor);
+  Field loadedDirtyField=ApocBRPlayerRelationalMutations.class.getDeclaredField("DIRTY");loadedDirtyField.setAccessible(true);
+  var loadedQueue=(ApocBRPlayerRelationalMutations.DirtyQueue)loadedDirtyField.get(null);
+  check(loadedCandidate.dataset().equals(importedDataset),"loaded life retains actual snapshot dataset despite unrelated local config/save path");
+  check(loadedQueue.canSnapshot(loadedCandidate.key(),loadedSession),"PostgreSQL login enables graph reconciliation immediately without an import receipt");
+  check(fake.opened==0,"PostgreSQL registration performs no receipt SQL or initial mirror work");
+  try{ApocBRPlayerRelationalSync.registerPostgresPlayer(new zombie.characters.IsoPlayer(),"world","broken",0,false,new ApocBRPlayerRelationalReader.Profile(Map.of("snapshot",List.of(Map.of("source_world_version",249)))));throw new AssertionError("missing persisted identity accepted");}catch(RuntimeException expected){checks++;}
+  ApocBRPlayerRelationalMutations.shutdown();
   ApocBRPlayerRelationalSync.offerLoadedPlayer(player,1,"world","alice",0,249,new byte[]{1},List.of());
   long until=System.nanoTime()+2_000_000_000L;
   Field pending=ApocBRPlayerRelationalSync.class.getDeclaredField("PENDING");pending.setAccessible(true);
@@ -1086,6 +1108,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
 
  # Recompile a separate worker fixture against small engine boundary stubs.
  stubs={
+ 'zombie/savefile/ApocBRPlayerRelationalReader.java':'package zombie.savefile; final class ApocBRPlayerRelationalReader {record Profile(java.util.Map<String,java.util.List<java.util.Map<String,Object>>> tables){java.util.Map<String,Object> one(String name){return tables.get(name).getFirst();}}}',
  'zombie/network/GameServer.java':'package zombie.network; public class GameServer {public static boolean server=true,coop;}',
  'zombie/core/Core.java':'package zombie.core; public class Core {}',
  'zombie/core/znet/SteamUtils.java':'package zombie.core.znet; public class SteamUtils {public static boolean isSteamModeEnabled(){return false;}}',
