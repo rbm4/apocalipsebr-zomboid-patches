@@ -26,14 +26,24 @@ branch, profile response packet, constructors, or new-character creation path.
 Newly created players become eligible when subsequently loaded from SQLite;
 automatic respawn/incarnation transition detection is not implemented in this phase.
 
-The handoff registers bounded metadata plus a weak player reference; the JDBC
-worker never dereferences a live player. It queries the slot/head/snapshot first.
-A complete head for this source dataset and schema/codec version skips capture
-and writes entirely. For a missing receipt the game-thread `ServerMap.preupdate`
-pump captures one immutable graph, then the worker persists it. The captured state
-is the owning-thread state at capture time, not necessarily the exact instant
-SQLite decoding returned. Offline inspection loads can also offer candidates;
-an object collected before capture is deferred until another load.
+The load hook copies the export fields into a detached, bounded snapshot and
+nonblockingly enqueues it with immutable provenance inputs. It returns without
+waiting for JDBC or relational projection. No live player/item/container/Lua-table
+references are retained. The export worker checks the slot/head receipt, resolves
+item aliases, builds and validates the relational graph from that snapshot, then
+persists it. There is no `ServerMap.preupdate` capture pump. A complete receipt
+skips graph projection and writes; copying the offered snapshot still occurs
+before that asynchronous receipt check. The snapshot represents the completed
+SQLite load at the offer hook, including native dead/remote restoration. Offline
+inspection loads use the same detached-copy path.
+
+The owning/load thread still pays for reading and copying relevant fields and
+collections; mutable engine state cannot safely be copied by an unsynchronized
+worker. Snapshot copying does not construct SQL rows, assign relational UUIDs,
+resolve database aliases, deserialize another player or wait for the exporter.
+Native registry keys and recorded-media identities are resolved while copying;
+only scalar values, private snapshot nodes and copied collections/bytes cross the
+queue. Snapshot copying preserves item identity for equipment and cycle validation.
 
 `InventoryItem` and `GameEntity` report swallowed failures into a scoped quality
 collector during SQLite player load. Skipped items, length mismatches, failed item
@@ -59,7 +69,6 @@ Configuration (JVM options before the main class):
 -Dapocbr.postgres.players.enabled=false
 -Dapocbr.postgres.vehicles.enabled=false
 -Dapocbr.postgres.playerRelational.enabled=true
--Dapocbr.postgres.playerRelational.captureBudgetMs=8
 ```
 
 Use the existing complete JDBC URL/pool configuration. Relational sync defaults
@@ -76,17 +85,24 @@ a head from a different source dataset.
 
 Implemented limits supersede the proposed defaults later in this document:
 
-- One daemon JDBC worker/lease, 16 pending candidates, 16 MiB estimated DTO queue,
-  2 MiB conservative per-graph accounting including row overhead, 10,000 members
-  per native collection, depth 64, 100,000 rows/nodes as additional upper bounds.
-- One **one-shot** game-thread capture per tick with an 8 ms soft time budget
-  (configurable 1–25 ms). It is not a multi-tick inconsistent traversal. Checks occur
-  at row/node boundaries; class loading, a getter, collection copy or reflection
-  can overrun the soft budget. Budget failure discards the partial graph. First-use
-  cold captures may require retries; oversized graphs need a later capture strategy.
-- At most three attempts with 2/4-second backoff, 120-second candidate lifetime.
-  Queue full, collected object, expiration or exhausted attempts defer until another
-  native load. There is no automatic offline-player scan or durable retry spool.
+- One daemon exporter/JDBC worker/lease, 16 pending candidates, 16 MiB estimated
+  pending input memory including snapshots and copied SQLite source bytes.
+  Snapshot and source-byte inputs are each capped at 2 MiB. The graph has its own
+  2 MiB conservative row accounting; one graph is constructed at a time in addition
+  to queued input memory. Collections are capped at 10,000 members, depth at 64,
+  with 100,000 rows/nodes as additional upper bounds. Capacity and duplicate checks
+  happen before reading player state. Full queues defer until another native load.
+- Snapshot copying is synchronous at offer time and has no time-abort threshold.
+  The queued snapshot is private and read-only; graph projection runs entirely on
+  the worker with no capture time-abort threshold. The earlier capture-budget JVM
+  settings are no longer used. Snapshot/projection size and graph validation
+  limits remain enforced. Oversized snapshots fail the export, preserving the
+  native SQLite load result. Copy/projection timings are measured independently;
+  this change does not claim measured load-thread savings without runtime data.
+- At most three worker attempts with 2/4-second backoff, 120-second candidate
+  lifetime. Retries reuse the same detached load-time snapshot and recheck the
+  database receipt/aliases. Expiration or exhausted attempts defer until another
+  native load. There is no offline-player scan or durable retry spool.
 - JDBC batches of 128 for graph rows, identities and aliases, 2-second statement
   timeout, 250 ms lock timeout, nonwaiting per-slot advisory lock, 15-second checked
   write budget. The graph commits in **one bounded transaction** because V5 deferred
@@ -105,12 +121,21 @@ Look for `[ApocBR][PlayerRelational]` messages: `worker started`, `SYNC_SKIPPED`
 `SYNC_COMPLETE`, `SYNC_INCOMPLETE`, `CHECK_FAILURE`, `SQL_FAILURE`, `CAPTURE_FAILED`,
 and `QUEUE_FULL`. Errors expose SQLState or controlled capture codes, not driver
 messages or player payloads. There are no per-item success logs.
+`CAPTURE_COMPLETE` logs `snapshotMs` (load-thread copy), `projectionMs` (worker
+relational projection), and item/row/byte counts before attempting JDBC writes.
+This keeps projection measurements visible even if SQL writes fail. JDBC
+write/statement timeouts remain enforced independently. Snapshot failures report
+`OFFER_FAILED`; graph projection failures report `CAPTURE_FAILED`.
 
 Validation: `python tools/test_postgres_player_relational.py` compiles the actual
-capture/JDBC/worker code. It checks V5 drift, native scalar/accessor compatibility,
-nested bags and equipment, alias reuse, graph rejection/time limits, receipt reads,
-batched commit, rollback, incomplete/stale publication, source-dataset mismatch,
-quality scopes and asynchronous skip/first-sync behavior using engine/JDBC fixtures.
+snapshot/projection/JDBC/worker code. It checks V5 drift, native accessor
+compatibility, detached nested bag/equipment graph parity, preservation of the
+load timestamp, scalar/inventory/Lua/byte-buffer mutation isolation, rejection of
+cycles and oversized snapshots, absence of live game objects in snapshots, alias
+reuse, batched commit/rollback, incomplete/stale publication, source-dataset
+mismatch, quality scopes, duplicate coalescing and asynchronous skip/first-sync
+without a main-thread pump. Deterministic time-limit tests remain for the standalone
+projection class, but production sync does not impose that time limit.
 Actual native deserialization, modded data round trips, PostgreSQL constraint
 execution, capture latency and queue saturation still require an isolated server
 trial. These tests do not validate a future relational loader.

@@ -447,7 +447,6 @@ public class ServerMap {
     }
 
     public void preupdate() {
-        zombie.savefile.ApocBRPlayerRelationalSync.updateMain();
         this.lastTick = System.nanoTime();
         mapLoading = DebugType.MapLoading.isEnabled();
 

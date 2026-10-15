@@ -3,9 +3,11 @@ package zombie.savefile;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.*;
+import java.util.function.LongSupplier;
+import java.util.concurrent.TimeUnit;
 import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
-/** Owning-thread, one-shot bounded capture. This class never opens a connection. */
+/** Relational graph projection. Production calls this on the worker with a detached snapshot. */
 final class ApocBRPlayerRelationalCapture {
     static final int CODEC_VERSION=1, SCHEMA_VERSION=1, MAX_BYTES=2*1024*1024;
     record Row(String table,Map<String,Object> values) {
@@ -23,8 +25,24 @@ final class ApocBRPlayerRelationalCapture {
     private final Set<Object> containersSeen=Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Object> tableStack=Collections.newSetFromMap(new IdentityHashMap<>());
     private final Map<Integer,UUID> aliases;
-    private final long deadline;
+    private final LongSupplier clock;
+    private final long started,budgetNanos;
     private int bytes,objects,containers,edges,nodes;
+
+    static final class TimeBudgetExceeded extends IllegalStateException {
+        final long elapsedNanos,budgetNanos;
+        final int rows,items,bytes;
+        TimeBudgetExceeded(long elapsedNanos,long budgetNanos,int rows,int items,int bytes) {
+            super("CAPTURE_TIME_BUDGET");
+            this.elapsedNanos=elapsedNanos;this.budgetNanos=budgetNanos;
+            this.rows=rows;this.items=items;this.bytes=bytes;
+        }
+        String diagnostic() {
+            return "CAPTURE_TIME_BUDGET; elapsedMs="+TimeUnit.NANOSECONDS.toMillis(elapsedNanos)
+                    +"; budgetMs="+TimeUnit.NANOSECONDS.toMillis(budgetNanos)
+                    +"; rows="+rows+"; items="+items+"; bytes="+bytes;
+        }
+    }
 
     private static final Map<String,Map<String,String>> BINDINGS=new HashMap<>();
     static {
@@ -44,8 +62,22 @@ final class ApocBRPlayerRelationalCapture {
         Map<String,String> map=BINDINGS.computeIfAbsent(table,k->new HashMap<>());
         for(String mapping:mappings) { String[] pair=mapping.split("=",2); map.put(pair[0],pair[1]); }
     }
+    static void prepare() {
+        if(ApocBRPlayerRelationalSchema.TABLES.isEmpty()) throw new IllegalStateException("Missing capture schema");
+    }
+    static String path(String table,String column) {
+        return BINDINGS.getOrDefault(table,Map.of()).getOrDefault(column,camel(column));
+    }
     ApocBRPlayerRelationalCapture(UUID character,Map<Integer,UUID> aliases,long budgetNanos) {
-        this.character=character; this.aliases=Map.copyOf(aliases); deadline=System.nanoTime()+budgetNanos;
+        this(character,aliases,budgetNanos,System::nanoTime);
+    }
+    ApocBRPlayerRelationalCapture(UUID character,Map<Integer,UUID> aliases,long budgetNanos,LongSupplier clock) {
+        this.character=character; this.aliases=Map.copyOf(aliases);
+        this.clock=clock;this.budgetNanos=budgetNanos;started=clock.getAsLong();
+    }
+    Graph capture(ApocBRPlayerRelationalSnapshot.Snapshot source,List<String> loadIssues) {
+        Graph graph=capture(source.player(),loadIssues);
+        return new Graph(graph.snapshot(),graph.character(),source.capturedAt(),graph.rows(),graph.issues(),graph.bytes(),graph.objects(),graph.items(),graph.containers(),graph.edges());
     }
     Graph capture(Object player,List<String> loadIssues) {
         issues.addAll(loadIssues); object(character,"character");
@@ -63,12 +95,8 @@ final class ApocBRPlayerRelationalCapture {
         int seat=number(get(player,"savedVehicleSeat"));
         if(seat>=0) row("character_vehicle_return","character_id",character,"x",get(player,"savedVehicleX"),"y",get(player,"savedVehicleY"),"seat",seat,"running",get(player,"savedVehicleRunning"));
         project("character_nutrition",get(player,"nutrition"),"character_id",character);
-        Object stats=get(player,"stats");
-        try {
-            Class<?> stat=Class.forName("zombie.characters.CharacterStat");
-            for(Object type:list(stat.getField("ORDERED_STATS").get(null)))
-                row("character_stat","character_id",character,"stat_key",get(type,"id"),"value",call(stats,"get",type));
-        } catch(ReflectiveOperationException error) { throw new IllegalStateException(error); }
+        for(var stat:ApocBRPlayerRelationalSnapshot.stats(player))
+            row("character_stat","character_id",character,"stat_key",stat.key(),"value",stat.value());
         for(Object trait:list(get(player,"characterTraits.knownTraits"))) row("character_trait","character_id",character,"trait_key",key(trait));
         perks(player,descriptor);
         sequence("character_recipe","recipe_key",get(player,"knownRecipes"));
@@ -173,24 +201,26 @@ final class ApocBRPlayerRelationalCapture {
         int nativeId=number(get(item,"id")); if(!nativeIds.add(nativeId)) throw new IllegalStateException("Duplicate native item id");
         UUID id=aliases.getOrDefault(nativeId,UUID.randomUUID()); itemIds.put(item,id); object(id,"item");
         row("item_location","item_id",id,"container_id",container,"parent_item_id",parent,"relation",parent==null?"container":"weapon_attachment","position",position,"attachment_slot",parent==null?null:key(get(item,"partType"))); edges++;
-        String media=media(get(item,"recordedMediaIndex"));
-        project("item",item,"id",id,"runtime_class",item.getClass().getName(),"recorded_media_id",media,"save_type",-1);
+        String media=resolvedMedia(item,"recordedMediaIndex");
+        project("item",item,"id",id,"runtime_class",item instanceof ApocBRPlayerRelationalSnapshot.Node n?n.runtimeClass:item.getClass().getName(),"recorded_media_id",media,"save_type",-1);
         visual(get(item,"visual"),null,id,0); lua(id,get(item,"table"));
         int extra=0; for(Object fullType:list(get(item,"extraItems"))) row("item_extra","item_id",id,"position",extra++,"full_type",fullType);
         Object byteData=get(item,"byteData");
         if(byteData!=null) {
-            ByteBuffer source=((ByteBuffer)byteData).duplicate(); source.rewind();
+            ByteBuffer source=byteData instanceof byte[] array?ByteBuffer.wrap(array):((ByteBuffer)byteData).duplicate(); source.rewind();
             if(source.remaining()>MAX_BYTES) throw new IllegalStateException("Oversized byteData");
             byte[] copy=new byte[source.remaining()]; source.get(copy); componentValue(id,"item.byteData",copy,"incomplete"); issue("OPAQUE_ITEM_BYTES");
         }
         Object track=get(item,"animalTracks"); if(track!=null) project("animal_track",track,"item_id",id);
-        if(item instanceof zombie.inventory.InventoryItem) try {
+        if(item instanceof ApocBRPlayerRelationalSnapshot.Node n) {
+            if(!(boolean)n.get("supportedWriter")){componentValue(id,"item.unknownSubtype",null,"unsupported");issue("UNSUPPORTED_ITEM_SUBTYPE");}
+        } else if(item instanceof zombie.inventory.InventoryItem) try {
             String writer=item.getClass().getMethod("save",ByteBuffer.class,boolean.class).getDeclaringClass().getSimpleName();
             if(!Set.of("InventoryItem","InventoryContainer","HandWeapon","Food","Clothing","Literature","AlarmClock","AlarmClockClothing","Key","Moveable","MapItem","Radio","AnimalInventoryItem").contains(writer)) {
                 componentValue(id,"item.unknownSubtype",null,"unsupported");issue("UNSUPPORTED_ITEM_SUBTYPE");
             }
         } catch(NoSuchMethodException error) { throw new IllegalStateException("Missing item writer",error); }
-        for(Class<?> type=item.getClass();type!=null;type=type.getSuperclass()) switch(type.getSimpleName()) {
+        for(String type:typeNames(item)) switch(type) {
             case "InventoryContainer" -> {
                 UUID bag=UUID.nameUUIDFromBytes((id+":inventory").getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 row("bag_state","item_id",id,"container_id",bag,"weight_reduction",get(item,"weightReduction"));
@@ -220,7 +250,7 @@ final class ApocBRPlayerRelationalCapture {
         }
         int count=number(get(item,"componentSize"));
         for(int index=0;index<count;index++) {
-            Object c=call(item,"getComponentForIndex",index); String kind=c.getClass().getSimpleName();
+            Object c=call(item,"getComponentForIndex",index); String kind=typeName(c);
             if(kind.equals("FluidContainer")) fluid(c,id);
             else if(kind.equals("Durability")) {
                 Map<String,Object> value=new LinkedHashMap<>();
@@ -242,7 +272,7 @@ final class ApocBRPlayerRelationalCapture {
         row("map_state","item_id",id,"map_id",get(item,"mapId"),"source_symbols_format",2); int position=0;
         for(Object symbol:list(get(item,"symbols.symbols"))) {
             if(!(boolean)get(symbol,"isUserDefined") || get(symbol,"networkInfo")!=null) continue;
-            boolean text=symbol.getClass().getSimpleName().equals("WorldMapTextSymbol");
+            boolean text=typeName(symbol).equals("WorldMapTextSymbol");
             project("map_symbol",symbol,"item_id",id,"position",position++,"kind",text?"text":"texture",
                 "color_r",colorByte(get(symbol,"r")),"color_g",colorByte(get(symbol,"g")),"color_b",colorByte(get(symbol,"b")),"color_a",colorByte(get(symbol,"a")),
                 "text",text?get(symbol,"text"):null,"translated",text?get(symbol,"translated"):null,"layer_id",text?get(symbol,"layerId"):null,"symbol_id",text?null:get(symbol,"symbolId"));
@@ -250,10 +280,13 @@ final class ApocBRPlayerRelationalCapture {
     }
     private void radio(Object device,UUID id) {
         if(device==null) return; Object presets=get(device,"presets");
-        project("radio_state",device,"item_id",id,"max_presets",presets==null?null:get(presets,"maxPresets"),"recorded_media_id",media(get(device,"mediaIndex")));
+        project("radio_state",device,"item_id",id,"max_presets",presets==null?null:get(presets,"maxPresets"),"recorded_media_id",resolvedMedia(device,"mediaIndex"));
         if(presets!=null) { int position=0; for(Object preset:list(get(presets,"presets"))) project("radio_preset",preset,"item_id",id,"position",position++); }
     }
-    private static String media(Object index) {
+    private static String resolvedMedia(Object source,String path) {
+        return source instanceof ApocBRPlayerRelationalSnapshot.Node node?(String)node.get("resolvedMedia"):media(get(source,path));
+    }
+    static String media(Object index) {
         if(number(index)<0) return null;
         try {
             Object recorded=Class.forName("zombie.radio.ZomboidRadio").getMethod("getRecordedMedia").invoke(null);
@@ -299,7 +332,7 @@ final class ApocBRPlayerRelationalCapture {
             String type=key instanceof String?"string":key instanceof Number?"number":key instanceof Boolean?"boolean":null;
             if(type==null) throw new IllegalStateException("Unsupported Lua key"); values.put("key_kind",type); values.put("key_"+(type.equals("string")?"text":type),key);
         }
-        String type=value==null?"null":value instanceof String?"string":value instanceof Boolean?"boolean":value instanceof Float||value instanceof Double?"number":value instanceof Number?"integer":value instanceof byte[]?"opaque":value instanceof List<?>?"array":value instanceof Map<?,?>?"object":"table";
+        String type=value==null?"null":value instanceof String?"string":value instanceof Boolean?"boolean":value instanceof Float||value instanceof Double?"number":value instanceof Number?"integer":value instanceof byte[]?"opaque":value instanceof List<?>?"array":value instanceof Map<?,?>?"object":value instanceof ApocBRPlayerRelationalSnapshot.Table table?table.kind:"table";
         values.put("value_kind",type);
         switch(type) {
             case "string" -> values.put("text_value",value);
@@ -310,7 +343,8 @@ final class ApocBRPlayerRelationalCapture {
         completeRow("value_node",values); int next=0;
         if(Set.of("object","array","table").contains(type)) {
             if(!tableStack.add(value)) throw new IllegalStateException("Cyclic/shared structured table requires reference codec");
-            if(value instanceof Map<?,?> map) { for(var e:map.entrySet()) node(component,id,next++,e.getKey(),e.getValue(),depth+1); }
+            if(value instanceof ApocBRPlayerRelationalSnapshot.Table table) { for(var e:table.entries().entrySet()) node(component,id,next++,e.getKey(),e.getValue(),depth+1); }
+            else if(value instanceof Map<?,?> map) { for(var e:map.entrySet()) node(component,id,next++,e.getKey(),e.getValue(),depth+1); }
             else if(value instanceof List<?> list) { for(Object child:list) node(component,id,next++,null,child,depth+1); }
             else {
                 Object iterator=call(value,"iterator");
@@ -324,7 +358,8 @@ final class ApocBRPlayerRelationalCapture {
     private void object(UUID id,String kind) { row("object","id",id,"kind",kind); objects++; }
     private void issue(String code) { if(!issues.contains(code) && issues.size()<32) issues.add(code); }
     private void check() {
-        if(System.nanoTime()>deadline) throw new IllegalStateException("CAPTURE_TIME_BUDGET");
+        long elapsed=clock.getAsLong()-started;
+        if(elapsed>budgetNanos) throw new TimeBudgetExceeded(elapsed,budgetNanos,rows.size(),itemIds.size(),bytes);
         if(bytes>MAX_BYTES || rows.size()>100_000) throw new IllegalStateException("CAPTURE_SIZE_BUDGET");
     }
     private static int colorByte(Object value) { return Math.max(0,Math.min(255,Math.round(((Number)value).floatValue()*255))); }
@@ -336,7 +371,7 @@ final class ApocBRPlayerRelationalCapture {
         Map<String,Object> values=new LinkedHashMap<>(overrides);
         for(var column:ApocBRPlayerRelationalSchema.TABLES.get(table)) {
             if(column.name().equals("snapshot_id") || values.containsKey(column.name())) continue;
-            String path=BINDINGS.getOrDefault(table,Map.of()).getOrDefault(column.name(),camel(column.name()));
+            String path=path(table,column.name());
             values.put(column.name(),get(source,path));
         }
         completeRow(table,values);

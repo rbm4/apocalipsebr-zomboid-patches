@@ -156,6 +156,7 @@ public class RelationalTest {
   public int id; public String getFullType(){return "Base.Test";}
   public Color col=new Color();public Object visual,table,byteData,animalTracks,texture;public List<String> extraItems=new ArrayList<>();
   public int componentSize=0;
+  public List<Object> components=new ArrayList<>();public Object getComponentForIndex(int index){return components.get(index);}
   public int currentUses=0;
   public int condition=0;
   public String name="fixture";
@@ -250,7 +251,8 @@ public class RelationalTest {
  static class Stats {public float get(zombie.characters.CharacterStat stat){return 0.25f;}}
  public static class P {
   public Container inventory=new Container();public Object descriptor,table,leftHandItem,rightHandItem;
-  public Object getPrimaryHandItem(){return leftHandItem;}public Object getSecondaryHandItem(){return rightHandItem;}
+  public boolean forbidExportReads;
+  public Object getPrimaryHandItem(){if(forbidExportReads)throw new AssertionError("live player read after handoff");return leftHandItem;}public Object getSecondaryHandItem(){return rightHandItem;}
   public XP xp=new XP();public Traits characterTraits=new Traits();public Stats stats=new Stats();public Fitness fitness=new Fitness();public Nutrition nutrition=new Nutrition();public Damage bodyDamage=new Damage();public Human visual=new Human();
   public Cheats cheats=new Cheats();public Craft craftHistory=new Craft();public Color tagColor=new Color();public int savedVehicleSeat=-1;public float savedVehicleX,savedVehicleY;public boolean savedVehicleRunning;
   public List<Object> perkList=List.of(),readBooks=List.of(),wornItems=new ArrayList<>(),attachedItems=List.of();
@@ -305,12 +307,31 @@ public class RelationalTest {
   public boolean knowAllRecipes;
  }
  static class Worn {public String location="base:back";public Object item;Worn(Object item){this.item=item;}}
+ static class ItemVisual {
+  public String fullType="Base.Test",alternateModelName="alternate",clothingItemName="shirt",decal="decal";
+  public int baseTexture=2,textureChoice=3;public float hue=0.5f;public Color tint=new Color();
+  public byte[] blood={1,2},dirt={3},holes={0},basicPatches={1},denimPatches={2},leatherPatches={3};
+ }
+ static class Durability {public float currentHitPoints=12,maxHitPoints=20;public String material="metal";}
+ static class FluidType {public String fluidTypeString="Water";}
+ static class FluidInstance {public FluidType fluid=new FluidType();public float amount=2;public Color color=new Color();}
+ static class FluidFilter {public String filterType="Whitelist";public List<String> fluidEnums=List.of("Water"),fluidStrings=List.of("CustomFluid"),categories=List.of("Drink");}
+ static class FluidContainer {
+  public float capacity=5,hiddenAmount=0;public boolean inputLocked=false,canPlayerEmpty=true,rainCatcher=false;
+  public String containerName="bottle";public List<FluidInstance> fluids=new ArrayList<>(List.of(new FluidInstance()));
+  public FluidFilter whitelist=new FluidFilter(),blacklist;
+ }
  static void captures() {
   P player=new P();var outer=new InventoryContainer(1);var inner=new InventoryContainer(2);var weapon=new HandWeapon(3);Item child=new Item(4);
   player.inventory.items.add(outer);outer.container.items.add(inner);inner.container.items.add(child);player.inventory.items.add(weapon);
   player.leftHandItem=weapon;player.rightHandItem=weapon;player.wornItems.add(new Worn(outer));
   UUID character=UUID.randomUUID(),known=UUID.randomUUID();
   var graph=new ApocBRPlayerRelationalCapture(character,Map.of(3,known),5_000_000_000L).capture(player,List.of());
+  var snapshot=ApocBRPlayerRelationalSnapshot.copy(player);
+  detached(snapshot.player(),Collections.newSetFromMap(new IdentityHashMap<>()));
+  var projected=new ApocBRPlayerRelationalCapture(character,Map.of(3,known),Long.MAX_VALUE).capture(snapshot,List.of());
+  check(canonical(graph).equals(canonical(projected)),"detached nested inventory/equipment matches live graph");
+  check(projected.capturedAt().equals(snapshot.capturedAt()),"graph preserves load-time snapshot timestamp");
   check(graph.items()==4&&graph.containers()==3,"recursive bag graph captured once");
   var equipment=graph.rows().stream().filter(r->r.table().equals("equipment")).toList();
   check(equipment.size()==3,"worn bag and both hands retained");
@@ -323,15 +344,70 @@ public class RelationalTest {
   try{new ApocBRPlayerRelationalCapture(character,Map.of(),5_000_000_000L).capture(player,List.of());throw new AssertionError("cycle accepted");}catch(IllegalStateException expected){checks++;}
   inner.container.items.removeLast();
   try{new ApocBRPlayerRelationalCapture(character,Map.of(),-1L).capture(player,List.of());throw new AssertionError("time limit ignored");}catch(IllegalStateException expected){checks++;}
+  // Deterministic clock: abort a partially built graph, then retry from scratch.
+  long[] ticks={0};
+  try {
+   new ApocBRPlayerRelationalCapture(character,Map.of(),8_000_000L,()->ticks[0]++*1_000_000L).capture(player,List.of());
+   throw new AssertionError("partial capture accepted");
+  } catch(ApocBRPlayerRelationalCapture.TimeBudgetExceeded expected) {
+   check(expected.rows>0&&expected.bytes>0&&expected.elapsedNanos>expected.budgetNanos,"timeout retains partial progress diagnostics");
+   check(expected.diagnostic().contains("budgetMs=8")&&expected.diagnostic().contains("elapsedMs=9"),"controlled timeout diagnostics");
+  }
+  ticks[0]=0;
+  var retried=new ApocBRPlayerRelationalCapture(character,Map.of(3,known),5_000_000_000L,()->ticks[0]++*1_000_000L).capture(player,List.of());
+  check(retried.items()==graph.items()&&retried.rows().size()==graph.rows().size(),"retry captures entire graph with no partial rows reused");
   var damaged=new ApocBRPlayerRelationalCapture(character,Map.of(),5_000_000_000L).capture(player,List.of("ITEM_LOAD_FAILED"));
   check(damaged.issues().contains("ITEM_LOAD_FAILED"),"load quality survives capture");
+ }
+
+ static List<String> canonical(ApocBRPlayerRelationalCapture.Graph graph) {
+  Map<UUID,Integer> ids=new HashMap<>();List<String> result=new ArrayList<>();
+  for(var row:graph.rows()){
+   StringBuilder text=new StringBuilder(row.table());
+   for(var e:row.values().entrySet()){
+    Object value=e.getValue();if(value instanceof UUID id)value=ids.computeIfAbsent(id,k->ids.size());
+    if(value instanceof byte[] data)value=Arrays.toString(data);
+    text.append('|').append(e.getKey()).append('=').append(value);
+   }result.add(text.toString());
+  }return result;
+ }
+ static void detached(Object value,Set<Object> visited) {
+  if(value==null||!visited.add(value))return;
+  if(value instanceof String||value instanceof Boolean||value instanceof Number||value instanceof byte[])return;
+  if(value instanceof ApocBRPlayerRelationalSnapshot.Node node){
+   try{Field f=node.getClass().getDeclaredField("fields");f.setAccessible(true);detached(f.get(node),visited);detached(node.types,visited);}catch(Exception e){throw new AssertionError(e);}return;
+  }
+  if(value instanceof ApocBRPlayerRelationalSnapshot.Table table){detached(table.entries(),visited);return;}
+  if(value instanceof ApocBRPlayerRelationalSnapshot.Stat stat){detached(stat.key(),visited);detached(stat.value(),visited);return;}
+  if(value instanceof Map<?,?> map){for(var e:map.entrySet()){detached(e.getKey(),visited);detached(e.getValue(),visited);}return;}
+  if(value instanceof Collection<?> values){for(Object child:values)detached(child,visited);return;}
+  throw new AssertionError("Snapshot retained live object "+value.getClass());
+ }
+ static void snapshots() {
+  P p=new P();Item item=new Item(1);p.inventory.items.add(item);p.leftHandItem=item;
+  ItemVisual visual=new ItemVisual();item.visual=visual;p.visual.bodyVisuals=List.of(new ItemVisual());p.visual.blood=new byte[]{4,5};
+  Durability durability=new Durability();FluidContainer fluid=new FluidContainer();item.components.add(durability);item.components.add(fluid);item.componentSize=2;
+  byte[] data={1,2};item.byteData=java.nio.ByteBuffer.wrap(data);
+  Map<Object,Object> mod=new LinkedHashMap<>();mod.put("values",new ArrayList<>(List.of(1.25,true,"before")));mod.put(2.5,"numeric");mod.put(false,"boolean");item.table=mod;
+  UUID character=UUID.randomUUID();Map<Integer,UUID> aliases=Map.of(1,UUID.randomUUID());
+  var before=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(p,List.of());
+  var snapshot=ApocBRPlayerRelationalSnapshot.copy(p);detached(snapshot.player(),Collections.newSetFromMap(new IdentityHashMap<>()));
+  mod.clear();data[0]=99;item.name="after";p.inventory.items.clear();p.leftHandItem=null;p.x=999;p.forbidExportReads=true;
+  visual.blood[0]=99;visual.tint.r=0;p.visual.blood[0]=99;durability.currentHitPoints=0;fluid.fluids.clear();
+  var after=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(snapshot,List.of());
+  check(canonical(before).equals(canonical(after)),"snapshot survives inventory, scalar, mod-data, bytes, visuals and component mutations");
+  P cyclic=new P();Map<Object,Object> table=new HashMap<>();table.put("self",table);cyclic.table=table;
+  var invalid=ApocBRPlayerRelationalSnapshot.copy(cyclic);
+  try{new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(invalid,List.of());throw new AssertionError("cyclic table accepted");}catch(IllegalStateException expected){checks++;}
+  Item oversized=new Item(2);oversized.name="x".repeat(65537);cyclic.inventory.items.add(oversized);
+  try{ApocBRPlayerRelationalSnapshot.copy(cyclic);throw new AssertionError("oversized snapshot accepted");}catch(IllegalStateException expected){checks++;}
  }
 
 
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static class Fake {
   int opened,closed,commits,rollbacks,inserts,headWrites,batches;boolean complete,fail,stale;UUID dataset,character,head;String status;
-  List<String> queries=new ArrayList<>();
+  List<String> queries=new ArrayList<>(),itemNames=new ArrayList<>();
   Connection open(){opened++;return(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{Connection.class},(o,m,a)->{
    switch(m.getName()){
     case "close":closed++;return null;
@@ -350,7 +426,12 @@ public class RelationalTest {
        if(name.equals("getObject")){int index=(int)ra[0];if(sql.startsWith("SELECT id FROM"))return UUID.randomUUID();return index==1?character:index==2?head:dataset;}
        return zero(rm.getReturnType());
       });
-      case "addBatch":queued[0]++;return null;
+      case "addBatch":
+       if(sql.startsWith("INSERT INTO player_rel.item (")){
+        String[] columns=sql.substring(sql.indexOf('(')+1,sql.indexOf(')')).split(",");
+        for(int i=0;i<columns.length;i++)if(columns[i].equals("name"))itemNames.add((String)values.get(i+1));
+       }
+       queued[0]++;return null;
       case "clearBatch":queued[0]=0;return null;
       case "executeBatch":if(fail)throw new SQLException("simulated","08006");batches++;int[] result=new int[queued[0]];Arrays.fill(result,1);return result;
       case "executeUpdate":if(sql.startsWith("INSERT"))inserts++;if(sql.contains("INSERT INTO player_rel.character_head"))headWrites++;if(sql.startsWith("UPDATE player_rel.snapshot"))status=(String)values.get(1);return 1;
@@ -397,20 +478,37 @@ public class RelationalTest {
   Field pending=ApocBRPlayerRelationalSync.class.getDeclaredField("PENDING");pending.setAccessible(true);
   while(!((Map<?,?>)pending.get(null)).isEmpty()&&System.nanoTime()<until)Thread.sleep(10);
   check(((Map<?,?>)pending.get(null)).isEmpty()&&fake.inserts==0,"worker skips capture/write for committed receipt");
-  fake.complete=false;System.setProperty("apocbr.postgres.playerRelational.captureBudgetMs","25");
+  fake.complete=false;
+  java.util.concurrent.CountDownLatch release=new java.util.concurrent.CountDownLatch(1);
+  zombie.savefile.ApocBRPostgresConnector.connections=()->{
+   check(Thread.currentThread().getName().equals("ApocBR-player-relational"),"JDBC runs on exporter worker");
+   try{release.await();}catch(InterruptedException e){throw new RuntimeException(e);}return fake.open();
+  };
+  player.inventory.items.add(new Item(77));
   ApocBRPlayerRelationalSync.offerLoadedPlayer(player,1,"world","alice",0,249,new byte[]{1},List.of());
+  player.inventory.items.clear();player.x=999;player.forbidExportReads=true;
+  ApocBRPlayerRelationalSync.offerLoadedPlayer(player,1,"world","alice",0,249,new byte[]{1},List.of());
+  check(((Map<?,?>)pending.get(null)).size()==1,"duplicate offer coalesced before reading snapshot");
+  for(int i=0;i<15;i++)ApocBRPlayerRelationalSync.offerLoadedPlayer(new zombie.characters.IsoPlayer(),i+2,"world","queued"+i,0,249,new byte[]{1},List.of());
+  var overflow=new zombie.characters.IsoPlayer();overflow.forbidExportReads=true;
+  ApocBRPlayerRelationalSync.offerLoadedPlayer(overflow,99,"world","overflow",0,249,new byte[]{1},List.of());
+  check(((Map<?,?>)pending.get(null)).size()==16,"pending cap defers overflow before copying");
+  release.countDown();
   until=System.nanoTime()+3_000_000_000L;
-  while(fake.headWrites==0&&System.nanoTime()<until){ApocBRPlayerRelationalSync.updateMain();Thread.sleep(10);}
-  check(fake.headWrites==1,"worker persists first captured graph");
+  while(!((Map<?,?>)pending.get(null)).isEmpty()&&System.nanoTime()<until)Thread.sleep(10);
+  check(fake.headWrites==16,"worker drains snapshots without a main-thread pump");
+  check(fake.itemNames.equals(List.of("fixture")),"worker consumes pre-mutation inventory snapshot");
+  Field bytes=ApocBRPlayerRelationalSync.class.getDeclaredField("QUEUED_BYTES");bytes.setAccessible(true);
+  check(((java.util.concurrent.atomic.AtomicLong)bytes.get(null)).get()==0,"drained snapshots release queue byte reservations");
   ApocBRPlayerRelationalSync.shutdown();check(fake.opened==fake.closed,"shutdown returns worker lease");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
  target=Path(folder);harness=target/'RelationalTest.java';native_harness=HARNESS[:HARNESS.index(' static void worker()')]+HARNESS[HARNESS.index(' public static void main'):];native_harness=native_harness.replace('if(args.length>0){worker();System.out.println(\"Worker checks=\"+checks);return;}','');harness.write_text(native_harness,encoding='utf-8')
- sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
+ sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
  subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(harness)],check=True)
  subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.RelationalTest'],check=True)
 

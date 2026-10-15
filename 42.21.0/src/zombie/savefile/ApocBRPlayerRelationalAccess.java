@@ -10,6 +10,8 @@ final class ApocBRPlayerRelationalAccess {
     private record Key(Class<?> type,String name) {}
     private static final Map<Key,AccessibleObject> CACHE=new ConcurrentHashMap<>();
     static Object get(Object value,String path) {
+        if(value instanceof ApocBRPlayerRelationalSnapshot.Node node)return node.get(path);
+        if(value instanceof ApocBRPlayerRelationalSnapshot.Table table&&path.equals("isEmpty"))return table.entries().isEmpty();
         for (String part:path.split("\\.")) {
             if (value==null) return null;
             try {
@@ -34,6 +36,8 @@ final class ApocBRPlayerRelationalAccess {
         return value;
     }
     static Object call(Object object,String name,Object... args) {
+        if(object instanceof ApocBRPlayerRelationalSnapshot.Node node&&name.equals("getComponentForIndex"))
+            return ((List<?>)node.get("components")).get(((Number)args[0]).intValue());
         try {
             for (Method method:object.getClass().getMethods()) if (method.getName().equals(name) && method.getParameterCount()==args.length) {
                 try { method.setAccessible(true);return method.invoke(object,args); } catch (IllegalArgumentException mismatch) { }
@@ -75,4 +79,13 @@ final class ApocBRPlayerRelationalAccess {
         throw new IllegalStateException("No stable key codec for "+value.getClass().getName());
     }
     static int number(Object value) { return ((Number)value).intValue(); }
+    static String typeName(Object value) {
+        return value instanceof ApocBRPlayerRelationalSnapshot.Node node?node.types.getFirst():value.getClass().getSimpleName();
+    }
+    static List<String> typeNames(Object value) {
+        if(value instanceof ApocBRPlayerRelationalSnapshot.Node node)return node.types;
+        ArrayList<String> names=new ArrayList<>();
+        for(Class<?> type=value.getClass();type!=null;type=type.getSuperclass())names.add(type.getSimpleName());
+        return names;
+    }
 }
