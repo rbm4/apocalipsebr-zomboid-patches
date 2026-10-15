@@ -246,7 +246,10 @@ final class ApocBRPlayerRelationalReconstruction {
             Object owner=ref(r.get("owner_object_id")),value=value(Objects.requireNonNull(roots.get(id(r.get("id")))),children,new HashSet<>(),0);
             String kind=(String)r.get("kind");
             if(kind.equals("lua.modData"))set(owner,"table",value);
-            else if(kind.equals("item.byteData"))set(owner,"byteData",ByteBuffer.wrap((byte[])value));
+            else if(kind.equals("item.byteData")) {
+                ByteBuffer buffer=ByteBuffer.wrap((byte[])value);
+                ApocBRPayloadProvenance.copy(value,buffer);set(owner,"byteData",buffer);
+            }
             else if(kind.startsWith("entity."))restoreComponent(owner,kind.substring(7),value);
             else if(kind.equals("item.embeddedAnimal"))restoreAnimal(owner,value);
             else throw new IllegalStateException("Unsupported saved component");
@@ -258,7 +261,13 @@ final class ApocBRPlayerRelationalReconstruction {
         switch(kind) {
             case "null":return null;case "string":return row.get("text_value");case "boolean":return row.get("boolean_value");
             case "integer":return ((Number)row.get("integer_value")).longValue();case "number":return ((Number)row.get("number_value")).doubleValue();
-            case "opaque":return HexFormat.of().parseHex((String)row.get("opaque_value"));
+            case "opaque": {
+                byte[] bytes=HexFormat.of().parseHex((String)row.get("opaque_value"));
+                var origin=ApocBRPayloadProvenance.of(row.get("source_server_id"),row.get("source_dictionary_namespace_id"),row.get("source_dictionary_view_id"));
+                Integer version=row.get("payload_world_version")==null?null:((Number)row.get("payload_world_version")).intValue();
+                if(origin!=null||version!=null)ApocBRPayloadProvenance.remember(bytes,new ApocBRPayloadProvenance.Metadata(origin,version));
+                return bytes;
+            }
             case "object", "array", "table": {
                 Object result=kind.equals("array")?new ArrayList<>():kind.equals("table")?zombie.Lua.LuaManager.platform.newTable():new LinkedHashMap<>();
                 for(var child:children.getOrDefault(id(row.get("id")),List.of())) {

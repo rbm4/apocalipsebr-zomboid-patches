@@ -141,7 +141,7 @@ public final class ServerPlayerDB {
                 ApocBRPostgresConnector.savePlayerSnapshot(new ApocBRPostgresConnector.Snapshot(
                     Core.gameSaveWorld,data.username,data.steamid,data.playerIndex,data.playerName,
                     data.x,data.y,data.z,data.worldVersion,data.isDead,data.splitUsername,
-                    GameServer.coop && SteamUtils.isSteamModeEnabled(),data.capturedAtMillis,data.buffer));
+                    GameServer.coop && SteamUtils.isSteamModeEnabled(),data.capturedAtMillis,data.buffer,data.origin));
             } catch (SQLException | IllegalArgumentException failure) { ExceptionLogger.logException(failure); }
             return;
         }
@@ -394,6 +394,7 @@ public final class ServerPlayerDB {
 
     private static final class NetworkCharacterData {
         final long capturedAtMillis = System.currentTimeMillis();
+        ApocBRPayloadProvenance origin;
         byte[] buffer;
         String username;
         String steamid;
@@ -420,7 +421,9 @@ public final class ServerPlayerDB {
             while (true) {
                 try {
                     ByteBuffer sliceBuffer4NetworkPlayer = ByteBuffer.allocate(bufferSize);
+                    ApocBRPayloadProvenance encodingOrigin=ApocBRPayloadProvenance.localEncoding();
                     player.save(sliceBuffer4NetworkPlayer);
+                    this.origin=encodingOrigin;
                     this.buffer = new byte[sliceBuffer4NetworkPlayer.position()];
                     sliceBuffer4NetworkPlayer.rewind();
                     sliceBuffer4NetworkPlayer.get(this.buffer);

@@ -15,6 +15,10 @@ if MIGRATION.exists():
   for line in body.splitlines():
    match=re.match(r'    (\w+) (uuid|text|integer|bigint|real|double precision|boolean|timestamptz|bytea)\b(.*)',line)
    if match: expected.append((match[1],match[2],str('NOT NULL' in match[3]).lower()))
+  if table=='value_node':
+   v7=(MIGRATION.parent/'V7__Add_Server_And_Payload_Provenance.sql').read_text(encoding='utf-8')
+   alter=re.search(r'ALTER TABLE player_rel.value_node(.*?);',v7,re.S).group(1)
+   expected += [(name,kind,'false') for name,kind in re.findall(r'ADD COLUMN (\w+) (integer|uuid)',alter)]
   block=re.search(r'TABLES.put\("'+table+r'", List.of\((.*?)\)\);',contract).group(1)
   actual=re.findall(r'new Column\("([^"]+)","([^"]+)",(true|false)\)',block)
   assert actual==expected, f'Backend V5 contract drift: {table}'
@@ -394,14 +398,19 @@ public class RelationalTest {
   ItemVisual visual=new ItemVisual();item.visual=visual;p.visual.bodyVisuals=List.of(new ItemVisual());p.visual.blood=new byte[]{4,5};
   Durability durability=new Durability();FluidContainer fluid=new FluidContainer();item.components.add(durability);item.components.add(fluid);item.componentSize=2;
   byte[] data={1,2};item.byteData=java.nio.ByteBuffer.wrap(data);
+  var origin=new ApocBRPayloadProvenance(2,UUID.randomUUID(),UUID.randomUUID());
+  ApocBRPayloadProvenance.remember(item.byteData,new ApocBRPayloadProvenance.Metadata(origin,249));
   Map<Object,Object> mod=new LinkedHashMap<>();mod.put("values",new ArrayList<>(List.of(1.25,true,"before")));mod.put(2.5,"numeric");mod.put(false,"boolean");item.table=mod;
   UUID character=UUID.randomUUID();Map<Integer,UUID> aliases=Map.of(1,UUID.randomUUID());
   var before=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(p,List.of());
   var snapshot=ApocBRPlayerRelationalSnapshot.copy(p);detached(snapshot.player(),Collections.newSetFromMap(new IdentityHashMap<>()));
+  ApocBRPayloadProvenance.remember(item.byteData,new ApocBRPayloadProvenance.Metadata(new ApocBRPayloadProvenance(1,UUID.randomUUID(),UUID.randomUUID()),250));
   mod.clear();data[0]=99;item.name="after";p.inventory.items.clear();p.leftHandItem=null;p.x=999;p.forbidExportReads=true;
   visual.blood[0]=99;visual.tint.r=0;p.visual.blood[0]=99;durability.currentHitPoints=0;fluid.fluids.clear();
   var after=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(snapshot,List.of());
   check(canonical(before).equals(canonical(after)),"snapshot survives inventory, scalar, mod-data, bytes, visuals and component mutations");
+  var opaque=after.rows().stream().filter(r->r.table().equals("value_node")&&r.values().get("opaque_value")!=null).findFirst().orElseThrow().values();
+  check(opaque.get("source_server_id").equals(2)&&opaque.get("source_dictionary_view_id").equals(origin.viewId())&&opaque.get("payload_world_version").equals(249),"detached item bytes retain foreign encoder and version after live buffer is reused");
   P cyclic=new P();Map<Object,Object> table=new HashMap<>();table.put("self",table);cyclic.table=table;
   var invalid=ApocBRPlayerRelationalSnapshot.copy(cyclic);
   try{new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(invalid,List.of());throw new AssertionError("cyclic table accepted");}catch(IllegalStateException expected){checks++;}
@@ -596,6 +605,28 @@ public class RelationalTest {
   check(fake.opened==fake.closed,"measurement proxies preserve connection lease ownership");
  }
 
+ static void payloadOrigins()throws Exception {
+  System.clearProperty("apocbr.postgres.serverId");
+  for(String invalid:List.of("", "0", "-1", "apoc-1", "2147483648")) {
+   System.setProperty("apocbr.postgres.serverId",invalid);
+   try{ApocBRPayloadProvenance.configuredServerId();throw new AssertionError("invalid server ID accepted");}catch(IllegalArgumentException expected){checks++;}
+  }
+  System.setProperty("apocbr.postgres.serverId","3");check(ApocBRPayloadProvenance.configuredServerId()==3,"registered numeric configuration parsed without server key fallback");
+  P p=new P();Item a=new Item(1),b=new Item(2);p.inventory.items.addAll(List.of(a,b));
+  a.byteData=java.nio.ByteBuffer.wrap(new byte[]{1,2});b.byteData=java.nio.ByteBuffer.wrap(new byte[]{1,2});
+  var oa=new ApocBRPayloadProvenance(1,UUID.randomUUID(),UUID.randomUUID());var ob=new ApocBRPayloadProvenance(2,UUID.randomUUID(),UUID.randomUUID());
+  ApocBRPayloadProvenance.remember(a.byteData,new ApocBRPayloadProvenance.Metadata(oa,249));ApocBRPayloadProvenance.remember(b.byteData,new ApocBRPayloadProvenance.Metadata(ob,249));
+  ((java.nio.ByteBuffer)a.byteData).position(1);
+  UUID character=UUID.randomUUID();var before=liveGraph(p,character);
+  var leaves=before.rows().stream().filter(r->r.table().equals("value_node")&&r.values().get("opaque_value")!=null).toList();
+  check(leaves.size()==2&&leaves.stream().map(r->r.values().get("source_server_id")).collect(java.util.stream.Collectors.toSet()).equals(Set.of(1,2)),"identical bytes in distinct buffers retain independent dictionary origins in one graph");
+  check(((java.nio.ByteBuffer)a.byteData).position()==1,"provenance capture leaves native cursor intact");
+  ApocBRPayloadProvenance.remember(a.byteData,new ApocBRPayloadProvenance.Metadata(ob,250));
+  var changes=ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(before.rows()),ApocBRPlayerRelationalDelta.index(liveGraph(p,character).rows()));
+  check(changes.size()==1&&changes.getFirst().key().table().equals("value_node")&&new HashSet<>(changes.getFirst().columns()).equals(Set.of("source_server_id","source_dictionary_namespace_id","source_dictionary_view_id","payload_world_version")),"re-encoding identical bytes updates provenance alone through graph mutation diff");
+  ApocBRPayloadProvenance.remember(a.byteData,null);var unknown=liveGraph(p,character);
+  check(unknown.rows().stream().filter(r->r.table().equals("value_node")&&r.values().get("opaque_value")!=null).anyMatch(r->r.values().get("source_server_id")==null&&r.values().get("payload_world_version")==null),"unknown bytes are never stamped with configured local ID");
+ }
  static void sharedLuaState()throws Exception {
   var child=new se.krka.kahlua.j2se.KahluaTableImpl(new LinkedHashMap<>());child.rawset("value",1.0);
   var parent=new se.krka.kahlua.j2se.KahluaTableImpl(new LinkedHashMap<>());parent.rawset("left",child);parent.rawset("right",child);
@@ -690,6 +721,7 @@ public class RelationalTest {
   var x=new ApocBRPlayerRelationalMutations.Field("character_state","x",null);var calories=new ApocBRPlayerRelationalMutations.Field("character_nutrition","calories",null);
   var patch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),f.character,Map.of(x,new ApocBRPlayerRelationalMutations.Value(1,123f),calories,new ApocBRPlayerRelationalMutations.Value(2,456f)),java.time.Instant.EPOCH);
   check(db.applyFields(patch)&&f.commits==1&&!f.head.equals(original),"first live patch atomically forks and publishes a live head");
+  check(f.queries.stream().anyMatch(s->s.startsWith("INSERT INTO player_rel.value_node")&&s.contains("source_server_id,source_dictionary_namespace_id,source_dictionary_view_id,payload_world_version")&&s.contains("SELECT ?,component_id")),"live fork copies every opaque origin column unchanged");
   check(f.queries.stream().noneMatch(s->s.startsWith("INSERT INTO player_rel.character_head")),"fork never clones the head metadata table");
   check(f.updates.stream().allMatch(v->!original.equals(v.get(2))),"initial baseline scalar rows remain untouched");
   check(f.queries.stream().anyMatch(s->s.startsWith("UPDATE player_rel.character_state SET x=? WHERE")),"only the dirty state column is updated");
@@ -1004,12 +1036,12 @@ public class RelationalTest {
   check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
  target=Path(folder);harness=target/'RelationalTest.java';native_harness=HARNESS[:HARNESS.index(' static void worker()')]+HARNESS[HARNESS.index(' public static void main'):];native_harness=native_harness.replace('if(args.length>0){worker();System.out.println(\"Worker checks=\"+checks);return;}','');harness.write_text(native_harness,encoding='utf-8')
- sources=[SRC/(name+'.java') for name in ['ApocBRPlayerRelationalLimits','ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCodecs','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalMutations','ApocBRPlayerRelationalDelta','ApocBRPlayerRelationalMetrics','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
+ sources=[SRC/(name+'.java') for name in ['ApocBRPayloadProvenance','ApocBRPlayerRelationalLimits','ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCodecs','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalMutations','ApocBRPlayerRelationalDelta','ApocBRPlayerRelationalMetrics','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
  subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(harness)],check=True)
  subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.RelationalTest'],check=True)
  for mode in ['size-bytes','size-rows']:

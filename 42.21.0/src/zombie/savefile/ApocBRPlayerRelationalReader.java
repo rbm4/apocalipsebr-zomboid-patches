@@ -24,7 +24,7 @@ final class ApocBRPlayerRelationalReader {
         }
     }
     // One statement gives every table the same MVCC view, including a head being updated in place.
-    // UUIDs remain on the server. All graph references on the wire are per-result integer ordinals.
+    // Graph UUIDs remain on the server; dictionary provenance UUIDs identify external immutable views.
     static final String SQL=sql();
     /** Supply a bounded JDBC executor. Complete engine reconstruction later on the simulation thread. */
     CompletableFuture<Profile> loadAsync(String world,String identity,int slot,boolean coop,Executor executor) {
@@ -60,7 +60,7 @@ final class ApocBRPlayerRelationalReader {
             for(var column:table.getValue()) {
                 if(column.name().equals("snapshot_id"))continue;
                 String value="t."+column.name();
-                if(column.type().equals("uuid")) {
+                if(column.type().equals("uuid")&&!column.name().startsWith("source_dictionary_")) {
                     String alias="r"+reference++;
                     joins.append(" LEFT JOIN refs ").append(alias).append(" ON ").append(alias).append(".id=").append(value);
                     value=alias+".ordinal";

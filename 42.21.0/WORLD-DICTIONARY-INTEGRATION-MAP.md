@@ -1,6 +1,6 @@
 # World dictionary PostgreSQL integration map — 42.21.0
 
-Status: source investigation only. No runtime patch, migration, or database operation is implemented by this document. The backend agent is implementing V6 using `player_rel` with revised table names. This map intentionally describes engine responsibilities without adopting the earlier proposal's SQL names or reconciling V6. All vanilla references are relative to this version's `decompiled/zombie` tree. Existing patched consumers and the current connector were checked separately.
+Status: original engine integration audit. The subsequent vanilla-dictionary mirror and change listener are now implemented against V6; see [WORLD-DICTIONARY-MIRROR.md](WORLD-DICTIONARY-MIRROR.md). Multi-dictionary installation/decoding remains unimplemented. This audit describes engine responsibilities independently of SQL table names; current code uses the backend's `player_rel.world_dictionary_*` tables. All vanilla references are relative to this version's `decompiled/zombie` tree. Existing patched consumers and the connector were checked separately.
 
 ## Main finding
 
@@ -161,4 +161,4 @@ Commit before allowing PostWorldDictionaryInit/world consumers or client handsha
 - Test native mode disabled, single-player, client and no-save branches separately. No blanket `GameServer.server || GameClient.client` JDBC condition.
 - Reconcile actual V6 table names, publication semantics and source namespace/view provenance **after** this call-site map is reviewed. The earlier WORLD-DICTIONARY-SCHEMA proposal may differ from the backend agent's final migration.
 
-Verification performed: searched direct initialization/registration/client transport callers across the complete target-version vanilla tree; traced mutations and persistence in the dictionary package; checked existing patched consumers, startup failure handling and connector lease semantics. No dictionary replacement sources currently exist under `42.21.0/src/zombie/world`. No Java changes, database access, deployment or runtime tests were performed. Documentation-only work does not require compilation.
+Original audit verification: searched direct initialization/registration/client transport callers across the complete target-version vanilla tree; traced mutations and persistence in the dictionary package; checked existing patched consumers, startup failure handling and connector lease semantics. At that stage there were no dictionary replacement sources under `42.21.0/src/zombie/world`. Subsequent implementation/verification is recorded in WORLD-DICTIONARY-MIRROR.md; its publication/listener scope does not replace the native dictionary authority described in this map.

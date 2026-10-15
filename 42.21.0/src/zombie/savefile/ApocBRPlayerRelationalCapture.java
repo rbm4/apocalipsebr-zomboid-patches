@@ -212,7 +212,7 @@ final class ApocBRPlayerRelationalCapture {
         if(byteData!=null) {
             ByteBuffer source=byteData instanceof byte[] array?ByteBuffer.wrap(array):((ByteBuffer)byteData).duplicate(); source.rewind();
             if(source.remaining()>MAX_BYTES) throw new IllegalStateException("Oversized byteData");
-            byte[] copy=new byte[source.remaining()]; source.get(copy); componentValue(id,"item.byteData",copy,"complete");
+            byte[] copy=new byte[source.remaining()]; source.get(copy); ApocBRPayloadProvenance.copy(byteData,copy); componentValue(id,"item.byteData",copy,"complete");
         }
         Object track=get(item,"animalTracks"); if(track!=null) project("animal_track",track,"item_id",id);
         if(item instanceof ApocBRPlayerRelationalSnapshot.Node n) {
@@ -346,7 +346,19 @@ final class ApocBRPlayerRelationalCapture {
         switch(type) {
             case "string" -> values.put("text_value",value);
             case "boolean","integer","number" -> values.put(type+"_value",value);
-            case "opaque" -> values.put("opaque_value",((byte[])value).clone());
+            case "opaque" -> {
+                values.put("opaque_value",((byte[])value).clone());
+                var metadata=ApocBRPayloadProvenance.metadata(value);
+                if(metadata!=null) {
+                    values.put("payload_world_version",metadata.worldVersion());
+                    var origin=metadata.origin();
+                    if(origin!=null) {
+                        values.put("source_server_id",origin.serverId());
+                        values.put("source_dictionary_namespace_id",origin.namespaceId());
+                        values.put("source_dictionary_view_id",origin.viewId());
+                    }
+                }
+            }
             default -> { }
         }
         completeRow("value_node",values); int next=0;

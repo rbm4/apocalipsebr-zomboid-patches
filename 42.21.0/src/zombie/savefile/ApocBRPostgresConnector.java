@@ -18,14 +18,15 @@ import zombie.debug.DebugLog;
 public final class ApocBRPostgresConnector {
     private static volatile ApocBRPostgresConnector instance;
     private static boolean configured;
+    private static volatile Runnable dictionaryShutdown=()->{};
     private static final String INSERT = """
         INSERT INTO public.networkplayers
-        (world, username, steamid, playerindex, name, x, y, z, worldversion, isdead, splitusername, data)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (world, username, steamid, playerindex, name, x, y, z, worldversion, isdead, splitusername, data, source_server_id, source_dictionary_namespace_id, source_dictionary_view_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """;
     private static final String UPDATE = """
         UPDATE public.networkplayers SET world=?, username=?, steamid=?, playerindex=?,
-        name=?, x=?, y=?, z=?, worldversion=?, isdead=?, splitusername=?, data=? WHERE id=?
+        name=?, x=?, y=?, z=?, worldversion=?, isdead=?, splitusername=?, data=?, source_server_id=?, source_dictionary_namespace_id=?, source_dictionary_view_id=? WHERE id=?
         """;
     private static final String SELECT_USERNAME = "SELECT id FROM public.networkplayers WHERE username=? AND world=? AND playerindex=?";
     private static final String SELECT_STEAM = "SELECT id FROM public.networkplayers WHERE steamid=? AND world=? AND playerindex=?";
@@ -34,7 +35,11 @@ public final class ApocBRPostgresConnector {
     public record Snapshot(String world, String username, String steamid, int playerIndex,
                            String name, float x, float y, float z, int worldVersion,
                            boolean dead, String splitUsername, boolean steamCoop,
-                           long capturedAtMillis, byte[] data) {
+                           long capturedAtMillis, byte[] data, ApocBRPayloadProvenance origin) {
+        public Snapshot(String world,String username,String steamid,int playerIndex,String name,float x,float y,float z,int worldVersion,
+                        boolean dead,String splitUsername,boolean steamCoop,long capturedAtMillis,byte[] data) {
+            this(world,username,steamid,playerIndex,name,x,y,z,worldVersion,dead,splitUsername,steamCoop,capturedAtMillis,data,null);
+        }
         public Snapshot {
             if (world == null || world.isBlank() || username == null || username.isBlank()
                     || playerIndex < 0 || playerIndex > 3 || data == null || data.length == 0
@@ -136,6 +141,19 @@ public final class ApocBRPostgresConnector {
 
     public static Connection borrowPlayerConnection() throws SQLException { return borrowConnection(false); }
 
+    public static Connection borrowDictionaryConnection() throws SQLException { return borrowConnection(false); }
+
+    /** LISTEN owns an extra physical session, outside the query pool (also safe with poolSize=1). */
+    public static Connection openDictionaryListenerConnection() throws SQLException {
+        ApocBRPostgresConnector target=current();
+        if(target==null||target.closed)throw new SQLException("PostgreSQL dictionary listener unavailable","08001");
+        DataSource source=target.datasource instanceof HikariDataSource pool?pool.getDataSource():target.datasource;
+        Connection connection=source.getConnection();
+        try{connection.setAutoCommit(true);return connection;}catch(SQLException error){connection.close();throw error;}
+    }
+
+    public static void setDictionaryShutdown(Runnable shutdown) { dictionaryShutdown=java.util.Objects.requireNonNull(shutdown); }
+
     /** Native ServerPlayerDB queue owns scheduling in authoritative player mode. */
     public static void savePlayerSnapshot(Snapshot snapshot) throws SQLException {
         ApocBRPostgresConnector target = current();
@@ -187,6 +205,7 @@ public final class ApocBRPostgresConnector {
 
     /** After native vehicle Reset has flushed its remaining work. */
     public static void closePool() {
+        dictionaryShutdown.run();
         if (instance != null) instance.close();
     }
 
@@ -325,7 +344,8 @@ public final class ApocBRPostgresConnector {
                     statement.setBoolean(10, s.dead);
                     statement.setString(11, s.splitUsername);
                     statement.setBytes(12, s.data);
-                    if (id != null) statement.setInt(13, id);
+                    ApocBRPayloadProvenance.bind(statement,13,s.origin);
+                    if (id != null) statement.setInt(16, id);
                     if (statement.executeUpdate() != 1) throw new SQLException("Unexpected affected rows", "P0001");
                 }
                 connection.commit();

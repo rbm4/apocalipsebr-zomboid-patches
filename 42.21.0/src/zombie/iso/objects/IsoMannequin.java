@@ -41,6 +41,7 @@ import zombie.debug.DebugLog;
 import zombie.debug.DebugType;
 import zombie.gameStates.GameLoadingState;
 import zombie.inventory.InventoryItem;
+import zombie.savefile.ApocBRPayloadProvenance;
 import zombie.inventory.ItemContainer;
 import zombie.inventory.types.Clothing;
 import zombie.inventory.types.InventoryContainer;
@@ -778,8 +779,8 @@ public class IsoMannequin extends IsoObject implements IHumanVisual {
 
     private void syncModel() {
         this.humanVisual.setForceModelScript(this.modelScriptName);
-        String i = this.modelScriptName;
-        switch (i) {
+        String modelScript = this.modelScriptName;
+        switch (modelScript) {
             case "FemaleBody":
                 this.humanVisual.setForceModel(ModelManager.instance.femaleModel);
                 break;
@@ -899,6 +900,7 @@ public class IsoMannequin extends IsoObject implements IHumanVisual {
     public void setCustomSettingsToItem(InventoryItem item) throws IOException {
         if (item instanceof Moveable) {
             synchronized (SliceY.SliceBufferLock) {
+                var encodingOrigin=ApocBRPayloadProvenance.localEncoding();
                 ByteBuffer output = SliceY.SliceBuffer;
                 output.clear();
                 output.putInt(249);
@@ -906,6 +908,8 @@ public class IsoMannequin extends IsoObject implements IHumanVisual {
                 output.flip();
                 item.byteData = ByteBuffer.allocate(output.limit());
                 item.byteData.put(output);
+                ApocBRPayloadProvenance.remember(item.byteData,
+                    new ApocBRPayloadProvenance.Metadata(encodingOrigin,249));
             }
 
             if (this.container != null) {

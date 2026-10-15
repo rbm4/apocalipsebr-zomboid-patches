@@ -55,7 +55,7 @@ public class PostgresConnectorTest {
             switch(method.getName()) {
                 case "prepareStatement": sql=(String)args[0]; params.clear(); prepared.add(sql);
                     return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{PreparedStatement.class}, this);
-                case "setString", "setInt", "setFloat", "setBoolean", "setBytes", "setTimestamp":
+                case "setString", "setInt", "setFloat", "setBoolean", "setBytes", "setTimestamp", "setObject":
                     params.put((Integer)args[0], args[1]); return null;
                 case "executeQuery":
                     lookupSql=sql; lookupParams=new HashMap<>(params);
@@ -86,7 +86,8 @@ public class PostgresConnectorTest {
     public static void main(String[] args) throws Exception {
         Fake fake=new Fake(); List<String> logs=new ArrayList<>();
         ApocBRPostgresConnector connector=new ApocBRPostgresConnector(fake.source(), logs::add);
-        byte[] bytes={1,2,3}; var first=snapshot(1, false, bytes); bytes[0]=99;
+        byte[] bytes={1,2,3}; var origin=new ApocBRPayloadProvenance(2,UUID.randomUUID(),UUID.randomUUID());
+        var first=new ApocBRPostgresConnector.Snapshot("world","alice","7656119",0,"Alice",1,2,3,249,false,"alice",false,1,bytes,origin); bytes[0]=99;
         byte[] exposed=first.data(); exposed[0]=88;
         connector.offer(first); connector.drain();
         check(fake.commits==1 && connector.status().pending()==0, "successful commit retires snapshot");
@@ -96,7 +97,8 @@ public class PostgresConnectorTest {
         check(fake.sql.stripLeading().startsWith("INSERT INTO"), "empty table inserts player with DB generated id");
         check(fake.prepared.get(0).contains("SHARE ROW EXCLUSIVE") && fake.prepared.get(1).startsWith("SELECT id"),
             "transaction locks writers before missing-player lookup");
-        check(fake.params.size()==12 && !fake.sql.contains("server_key") && !fake.sql.contains("ON CONFLICT"), "vanilla schema without extra columns or unique index");
+        check(fake.params.size()==15 && !fake.sql.contains("server_key") && !fake.sql.contains("ON CONFLICT"), "V7 provenance columns without a server string or new identity index");
+        check(fake.params.get(13).equals(2)&&fake.params.get(14).equals(origin.namespaceId())&&fake.params.get(15).equals(origin.viewId()),"native player bytes and original encoder tuple bound together");
         PSQLException missingTable = new PSQLException(new ServerErrorMessage(
             "SERROR\0C42P01\0Mrelation \"public.networkplayers\" does not exist\0DPRIVATE_ROW_DATA\0\0"));
         String diagnostic = ApocBRPostgresConnector.sqlDiagnostic(missingTable);
@@ -115,13 +117,14 @@ public class PostgresConnectorTest {
         fake.failWrite=false; allowRetry(connector); connector.drain();
         check(connector.status().pending()==0 && connector.status().committed()==3, "ordered retry recovers queue");
         check(((byte[])fake.params.get(12))[0]==3, "newest snapshot applied last");
-        check(fake.sql.stripLeading().startsWith("UPDATE") && fake.params.get(13).equals(42), "existing row updated using PostgreSQL id");
+        check(fake.params.get(13)==null&&fake.params.get(14)==null&&fake.params.get(15)==null,"unknown replacement bytes clear old provenance atomically");
+        check(fake.sql.stripLeading().startsWith("UPDATE") && fake.params.get(16).equals(42), "existing row updated using PostgreSQL id");
         check(logs.stream().noneMatch(s -> s.contains("SECRET")), "no exception message credentials");
 
         fake.failCommit=true; connector.offer(snapshot(4,false,new byte[]{4})); connector.drain();
         check(connector.status().pending()==1 && fake.rollbacks==2, "uncertain commit retains identical upsert");
         fake.failCommit=false; allowRetry(connector); connector.drain();
-        check(((byte[])fake.params.get(12))[0]==4 && fake.params.get(13).equals(42), "retry preserves payload and selected id");
+        check(((byte[])fake.params.get(12))[0]==4 && fake.params.get(16).equals(42), "retry preserves payload and selected id");
         check(connector.status().committed()==4, "committed count advances only after acknowledged commit");
 
         for(int i=0;i<64;i++) check(connector.offer(snapshot(i,false,new byte[]{1})), "queue capacity");
@@ -163,7 +166,7 @@ with tempfile.TemporaryDirectory(prefix="apocbr_pg_test_") as directory:
     fixture.write_text(HARNESS, encoding="utf-8")
     dependencies = os.pathsep.join(map(str, [GAME, LIB / "postgresql-42.7.14.jar", LIB / "HikariCP-7.1.0.jar"]))
     subprocess.run([str(JDK / "javac.exe"), "--release", "25", "-cp", dependencies,
-                    "-d", directory, str(SOURCE), str(fixture)], check=True)
+                    "-d", directory, str(SOURCE.parent / "ApocBRPayloadProvenance.java"), str(SOURCE), str(fixture)], check=True)
     subprocess.run([str(JDK / "java.exe"), "-cp", directory + os.pathsep + dependencies,
                     "zombie.savefile.PostgresConnectorTest"], check=True)
     disabled_fixture = target / "DisabledCheck.java"

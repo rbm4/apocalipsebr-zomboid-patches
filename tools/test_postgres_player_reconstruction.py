@@ -77,11 +77,12 @@ public class ReconstructionTest {
   f.fail=false;f.rows=List.of();var executor=java.util.concurrent.Executors.newSingleThreadExecutor(r->new Thread(r,"fixture-jdbc"));
   try{check(reader.loadAsync("world","alice",0,false,executor).get()==null,"future returns detached absent result");}finally{executor.shutdownNow();}
   String sql=ApocBRPlayerRelationalReader.SQL;
+  for(String column:List.of("source_dictionary_namespace_id","source_dictionary_view_id"))check(sql.contains("'"+column+"',t."+column)&&!sql.contains(".id=t."+column),"external dictionary UUID is projected literally, never collapsed to an absent graph reference");
   check(!sql.contains("networkplayers")&&!sql.contains("to_jsonb(t)")&&!sql.contains("SELECT *"),"explicit relational projection, no native blob");
   for(var table:ApocBRPlayerRelationalSchema.TABLES.entrySet())if(table.getValue().stream().anyMatch(c->c.name().equals("snapshot_id"))&&!Set.of("character_head","sync_issue").contains(table.getKey())) {
    String section=sql.substring(sql.indexOf("UNION ALL SELECT '"+table.getKey()+"'"));int end=section.indexOf(" UNION ALL",1);if(end>=0)section=section.substring(0,end);
    int reference=0;
-   for(var col:table.getValue())if(col.type().equals("uuid")&&!col.name().equals("snapshot_id")){String alias="r"+reference++;check(section.contains("'"+col.name()+"',"+alias+".ordinal")&&section.contains("LEFT JOIN refs "+alias+" ON "+alias+".id=t."+col.name()),"UUID stays in SQL: "+table.getKey()+"."+col.name());}
+   for(var col:table.getValue())if(col.type().equals("uuid")&&!col.name().equals("snapshot_id")&&!col.name().startsWith("source_dictionary_")){String alias="r"+reference++;check(section.contains("'"+col.name()+"',"+alias+".ordinal")&&section.contains("LEFT JOIN refs "+alias+" ON "+alias+".id=t."+col.name()),"UUID stays in SQL: "+table.getKey()+"."+col.name());}
   }
  }
  static Object invoke(String name,Class<?>[] types,Object... args)throws Exception {
@@ -99,22 +100,28 @@ public class ReconstructionTest {
   invoke("restoreComponentState",new Class[]{Object.class,String.class,Object.class},restored,"AttributeContainer",state);
   check(ApocBRPlayerRelationalAccess.call(restored,"get",attr).equals(37),"numeric attribute restored through native container");
   check(ApocBRPlayerRelationalAccess.call(restored,"get",enumAttr).equals(enums),"enum-set attribute restored");
+  var origin=new ApocBRPayloadProvenance(2,UUID.randomUUID(),UUID.randomUUID());
+  byte[] opaqueBytes={1,2,(byte)255};ApocBRPayloadProvenance.remember(opaqueBytes,new ApocBRPayloadProvenance.Metadata(origin,249));
   UUID character=UUID.randomUUID();var capture=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE);
   var write=ApocBRPlayerRelationalCapture.class.getDeclaredMethod("componentValue",UUID.class,String.class,Object.class,String.class);write.setAccessible(true);
-  Map<Object,Object> payload=new LinkedHashMap<>();payload.put("text","saved");payload.put("values",Arrays.asList(12L,true,null));payload.put("bytes",new byte[]{1,2,(byte)255});payload.put(2.0,"numeric-key");
+  Map<Object,Object> payload=new LinkedHashMap<>();payload.put("text","saved");payload.put("values",Arrays.asList(12L,true,null));payload.put("bytes",opaqueBytes);payload.put(2.0,"numeric-key");
   write.invoke(capture,character,"test",payload,"complete");
   var field=ApocBRPlayerRelationalCapture.class.getDeclaredField("rows");field.setAccessible(true);
   @SuppressWarnings("unchecked") var graph=(List<ApocBRPlayerRelationalCapture.Row>)field.get(capture);
   Map<UUID,Integer> refs=new HashMap<>();for(var row:graph)for(Object value:row.values().values())if(value instanceof UUID u)refs.computeIfAbsent(u,k->refs.size()+1);
   Map<Integer,List<Map<String,Object>>> children=new HashMap<>();Map<String,Object> root=null;
   for(var row:graph)if(row.table().equals("value_node")) {
-   Map<String,Object> r=new LinkedHashMap<>();row.values().forEach((k,v)->r.put(k,v instanceof UUID u?refs.get(u):v instanceof byte[] b?HexFormat.of().formatHex(b):v));
+   Map<String,Object> r=new LinkedHashMap<>();row.values().forEach((k,v)->r.put(k,v instanceof UUID u?(k.startsWith("source_dictionary_")?u.toString():refs.get(u)):v instanceof byte[] b?HexFormat.of().formatHex(b):v));
    if(r.get("parent_id")==null)root=r;else children.computeIfAbsent(((Number)r.get("parent_id")).intValue(),k->new ArrayList<>()).add(r);
   }
   var decoded=(Map<?,?>)invoke("value",new Class[]{Map.class,Map.class,Set.class,int.class},root,children,new HashSet<Integer>(),0);
   check(decoded.get("text").equals("saved")&&decoded.get(2.0).equals("numeric-key"),"structured scalar keys survive capture/reconstruction");
   check(decoded.get("values").equals(Arrays.asList(12L,true,null)),"structured arrays and null values survive");
   check(Arrays.equals((byte[])decoded.get("bytes"),new byte[]{1,2,(byte)255}),"opaque component payload survives hex transport");
+  var restoredMetadata=ApocBRPayloadProvenance.metadata(decoded.get("bytes"));
+  check(restoredMetadata.origin().equals(origin)&&restoredMetadata.worldVersion()==249,"foreign opaque origin survives SQL hex transport and reconstruction");
+  var restoredBuffer=java.nio.ByteBuffer.wrap((byte[])decoded.get("bytes"));ApocBRPayloadProvenance.copy(decoded.get("bytes"),restoredBuffer);
+  check(ApocBRPayloadProvenance.metadata(restoredBuffer).equals(restoredMetadata),"native byteData wrapper retains reconstructed provenance for the next detached snapshot");
  }
  static void ownership() {
   Map<String,List<Map<String,Object>>> tables=new HashMap<>();
@@ -134,6 +141,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:
     harness=target/'ReconstructionTest.java';harness.write_text(HARNESS,encoding='utf-8')
     connector=target/'ApocBRPostgresConnector.java';connector.write_text('package zombie.savefile; public class ApocBRPostgresConnector {public static java.sql.Connection borrowPlayerConnection() throws java.sql.SQLException {throw new java.sql.SQLException();}}',encoding='utf-8')
     names=['Limits','Schema','Access','Snapshot','Codecs','Capture','Mutations','Delta','Metrics','Database','Reader','Reconstruction']
-    sources=[SRC/('ApocBRPlayerRelational'+n+'.java') for n in names]
+    sources=[SRC/'ApocBRPayloadProvenance.java']+[SRC/('ApocBRPlayerRelational'+n+'.java') for n in names]
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(connector),str(harness)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.ReconstructionTest'],check=True)

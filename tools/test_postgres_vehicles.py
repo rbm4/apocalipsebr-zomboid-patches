@@ -37,8 +37,8 @@ public class VehicleDatabaseTest {
     if(m.getName().startsWith("set")){args.put((Integer)a[0],a[1]);return null;}
     if(m.getName().equals("executeUpdate")){
      if(query.startsWith("DELETE")){int id=(int)args.get(1);pending[0]=()->rows.remove(id);}
-     else {var vehicle=new ApocBRVehicleDatabase.Vehicle((int)args.get(8),(int)args.get(1),(int)args.get(2),
-      (float)args.get(3),(float)args.get(4),(int)args.get(5),(boolean)args.get(6),(byte[])args.get(7));
+     else {var vehicle=new ApocBRVehicleDatabase.Vehicle((int)args.get(11),(int)args.get(1),(int)args.get(2),
+      (float)args.get(3),(float)args.get(4),(int)args.get(5),(boolean)args.get(6),(byte[])args.get(7),ApocBRPayloadProvenance.of(args.get(8),args.get(9),args.get(10)));
       pending[0]=()->rows.put(vehicle.id(),vehicle);}
      return 1;
     }
@@ -55,21 +55,24 @@ public class VehicleDatabaseTest {
       if(rm.getName().equals("next"))return ++index[0]<selected.size();
       if(rm.getName().startsWith("get")){check(index[0]>=0&&index[0]<selected.size(),"positioned cursor");var row=selected.get(index[0]);int column=(int)ra[0];
        if(query.startsWith("SELECT wx"))return column==1?row.wx():column==2?row.wy():row.id();
-       return switch(column){case 1->row.id();case 2->row.wx();case 3->row.wy();case 4->row.x();case 5->row.y();case 6->row.data();case 7->row.worldVersion();case 8->row.inMeta();default->throw new AssertionError("column");};
+       return switch(column){case 1->row.id();case 2->row.wx();case 3->row.wy();case 4->row.x();case 5->row.y();case 6->row.data();case 7->row.worldVersion();case 8->row.inMeta();case 9->row.origin()==null?null:row.origin().serverId();case 10->row.origin()==null?null:row.origin().namespaceId();case 11->row.origin()==null?null:row.origin().viewId();default->throw new AssertionError("column");};
       }return zero(rm.getReturnType());});
     }return zero(m.getReturnType());});}
  }
  public static void main(String[] ignored)throws Exception{
   Fake fake=new Fake();var db=new ApocBRVehicleDatabase(fake::open);
   check(db.initialize().isEmpty(),"empty vehicle database accepted");
-  byte[] bytes={1,2,3};var snapshot=new ApocBRVehicleDatabase.Vehicle(17,4,5,32.5f,40.5f,249,false,bytes);bytes[0]=99;
+  var foreignOrigin=new ApocBRPayloadProvenance(2,UUID.randomUUID(),UUID.randomUUID());
+  byte[] bytes={1,2,3};var snapshot=new ApocBRVehicleDatabase.Vehicle(17,4,5,32.5f,40.5f,249,false,bytes,foreignOrigin);bytes[0]=99;
   db.save(snapshot);check(fake.rows.size()==1 && fake.rows.get(17).data()[0]==1,"insert preserves native ID and bytes");
+  check(db.loadChunk(4,5).getFirst().origin().equals(foreignOrigin),"foreign origin survives SQL read without local relabel");
+  db.save(db.loadChunk(4,5).getFirst());check(fake.rows.get(17).origin().equals(foreignOrigin),"unchanged copied vehicle retains its exact encoding view");
   check(fake.sql.stream().anyMatch(q->q.startsWith("INSERT")),"initial insert path");
   db.save(new ApocBRVehicleDatabase.Vehicle(17,8,9,64.5f,72.5f,249,true,new byte[]{4,5}));
   check(fake.rows.size()==1 && fake.rows.get(17).wx()==8,"existing vehicle moves chunks without another ID");
   check(fake.sql.stream().anyMatch(q->q.startsWith("UPDATE")),"existing update path");
   check(db.loadChunk(4,5).isEmpty(),"old chunk empty after move");
-  var loaded=db.loadChunk(8,9);check(loaded.size()==1&&loaded.get(0).data()[0]==4,"new chunk returns saved payload");
+  var loaded=db.loadChunk(8,9);check(loaded.getFirst().origin()==null,"new unattributed bytes clear previous tuple");check(loaded.size()==1&&loaded.get(0).data()[0]==4,"new chunk returns saved payload");
   check(fake.opened==fake.closed,"read connection released before callback/integration");
   check(db.loadMeta().size()==1,"meta flag filter");
   check(db.initialize().get(0).id()==17,"startup IDs imported");
@@ -100,8 +103,10 @@ public class VehicleDatabaseTest {
   Constructor<?> ctor=bufferType.getDeclaredConstructor();ctor.setAccessible(true);Object buffer=ctor.newInstance();
   for(String name:new String[]{"id","wx","wy","worldVersion"}){Field f=bufferType.getDeclaredField(name);f.setAccessible(true);f.setInt(buffer,name.equals("id")?23:name.equals("worldVersion")?249:4);}
   Field bb=bufferType.getDeclaredField("bb");bb.setAccessible(true);java.nio.ByteBuffer payload=java.nio.ByteBuffer.wrap(new byte[]{1,7,9});payload.position(1);bb.set(buffer,payload);
+  Field originField=bufferType.getDeclaredField("origin");originField.setAccessible(true);originField.set(buffer,foreignOrigin);
   Method update=store.getClass().getDeclaredMethod("updateVehicle",bufferType);update.setAccessible(true);update.invoke(store,buffer);
   check(fake.rows.get(23).data()[0]==1 && payload.position()==1,"native adapter persists bytes without mutating buffer position");
+  check(fake.rows.get(23).origin().equals(foreignOrigin),"native worker adapter uses buffered origin");
   Method remove=store.getClass().getDeclaredMethod("removeVehicle",int.class);remove.setAccessible(true);remove.invoke(store,23);
   check(fake.rows.isEmpty(),"native adapter removes PostgreSQL vehicle");
   connector.close();try{db.initialize();}catch(Exception unexpected){throw new AssertionError("independent fake factory",unexpected);}
@@ -119,7 +124,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_vehicle_test_') as folder:
     for name, body in stubs.items():
         path=target/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body,encoding='utf-8');files.append(path)
     harness=target/'VehicleDatabaseTest.java';harness.write_text(HARNESS,encoding='utf-8');files.append(harness)
-    files += [SRC/'savefile/ApocBRVehicleDatabase.java', SRC/'savefile/ApocBRPostgresConnector.java', SRC/'vehicles/VehiclesDB2.java']
+    files += [SRC/'savefile/ApocBRPayloadProvenance.java', SRC/'savefile/ApocBRVehicleDatabase.java', SRC/'savefile/ApocBRPostgresConnector.java', SRC/'vehicles/VehiclesDB2.java']
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,files)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.savefile.VehicleDatabaseTest'],check=True)

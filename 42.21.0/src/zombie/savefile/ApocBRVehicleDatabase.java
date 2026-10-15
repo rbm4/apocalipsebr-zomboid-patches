@@ -22,7 +22,10 @@ public final class ApocBRVehicleDatabase {
 
     public record Location(int id, int wx, int wy) {}
     public record Vehicle(int id, int wx, int wy, float x, float y, int worldVersion,
-                          boolean inMeta, byte[] data) {
+                          boolean inMeta, byte[] data, ApocBRPayloadProvenance origin) {
+        public Vehicle(int id,int wx,int wy,float x,float y,int worldVersion,boolean inMeta,byte[] data) {
+            this(id,wx,wy,x,y,worldVersion,inMeta,data,null);
+        }
         public Vehicle { if (data != null) data = data.clone(); }
         @Override public byte[] data() { return data == null ? null : data.clone(); }
     }
@@ -41,7 +44,7 @@ public final class ApocBRVehicleDatabase {
     public List<Location> initialize() throws SQLException {
         try (Connection connection = connections.open()) {
             try (PreparedStatement statement = prepare(connection,
-                    "SELECT id,wx,wy,x,y,inmeta,worldversion,data FROM public.vehicles WHERE false");
+                    "SELECT id,wx,wy,x,y,inmeta,worldversion,data,source_server_id,source_dictionary_namespace_id,source_dictionary_view_id FROM public.vehicles WHERE false");
                  ResultSet ignored = statement.executeQuery()) { }
             List<Location> locations = new ArrayList<>();
             try (PreparedStatement statement = prepare(connection,"SELECT wx,wy,id FROM public.vehicles");
@@ -57,14 +60,14 @@ public final class ApocBRVehicleDatabase {
     public List<Vehicle> loadMeta() throws SQLException { return load(0, 0, true); }
 
     private List<Vehicle> load(int wx, int wy, boolean meta) throws SQLException {
-        String sql = "SELECT id,wx,wy,x,y,data,worldversion,inmeta FROM public.vehicles WHERE "
+        String sql = "SELECT id,wx,wy,x,y,data,worldversion,inmeta,source_server_id,source_dictionary_namespace_id,source_dictionary_view_id FROM public.vehicles WHERE "
                 + (meta ? "inmeta=TRUE" : "wx=? AND wy=?");
         try (Connection connection = connections.open(); PreparedStatement statement = prepare(connection, sql)) {
             if (!meta) { statement.setInt(1, wx); statement.setInt(2, wy); }
             List<Vehicle> vehicles = new ArrayList<>();
             try (ResultSet rows = statement.executeQuery()) {
                 while (rows.next()) vehicles.add(new Vehicle(rows.getInt(1), rows.getInt(2), rows.getInt(3),
-                        rows.getFloat(4), rows.getFloat(5), rows.getInt(7), rows.getBoolean(8), rows.getBytes(6)));
+                        rows.getFloat(4), rows.getFloat(5), rows.getInt(7), rows.getBoolean(8), rows.getBytes(6), ApocBRPayloadProvenance.read(rows,9)));
             }
             connection.commit();
             // Connections are returned before native load callbacks run (which may delete a bad vehicle).
@@ -84,13 +87,13 @@ public final class ApocBRVehicleDatabase {
                     try (ResultSet rows = lookup.executeQuery()) { exists = rows.next(); }
                 }
                 String sql = exists
-                        ? "UPDATE public.vehicles SET wx=?,wy=?,x=?,y=?,worldversion=?,inmeta=?,data=? WHERE id=?"
-                        : "INSERT INTO public.vehicles(wx,wy,x,y,worldversion,inmeta,data,id) VALUES(?,?,?,?,?,?,?,?)";
+                        ? "UPDATE public.vehicles SET wx=?,wy=?,x=?,y=?,worldversion=?,inmeta=?,data=?,source_server_id=?,source_dictionary_namespace_id=?,source_dictionary_view_id=? WHERE id=?"
+                        : "INSERT INTO public.vehicles(wx,wy,x,y,worldversion,inmeta,data,source_server_id,source_dictionary_namespace_id,source_dictionary_view_id,id) VALUES(?,?,?,?,?,?,?,?,?,?,?)";
                 try (PreparedStatement statement = prepare(connection,sql)) {
                     statement.setInt(1,vehicle.wx); statement.setInt(2,vehicle.wy);
                     statement.setFloat(3,vehicle.x); statement.setFloat(4,vehicle.y);
                     statement.setInt(5,vehicle.worldVersion); statement.setBoolean(6,vehicle.inMeta);
-                    statement.setBytes(7,vehicle.data); statement.setInt(8,vehicle.id);
+                    statement.setBytes(7,vehicle.data); ApocBRPayloadProvenance.bind(statement,8,vehicle.origin); statement.setInt(11,vehicle.id);
                     if (statement.executeUpdate()!=1) throw new SQLException("Unexpected affected vehicle rows", "P0001");
                 }
                 connection.commit();

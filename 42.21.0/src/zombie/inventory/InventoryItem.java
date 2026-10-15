@@ -440,6 +440,7 @@ public class InventoryItem extends GameEntity {
     }
 
     public void storeInByteData(IsoObject o) {
+        var encodingOrigin=zombie.savefile.ApocBRPayloadProvenance.localEncoding();
         tempBuffer.clear();
 
         try {
@@ -463,6 +464,8 @@ public class InventoryItem extends GameEntity {
         this.byteData.putInt(249);
         this.byteData.put(tempBuffer);
         this.byteData.flip();
+        zombie.savefile.ApocBRPayloadProvenance.remember(this.byteData,
+            new zombie.savefile.ApocBRPayloadProvenance.Metadata(encodingOrigin,249));
     }
 
     public ByteBuffer getByteData() {

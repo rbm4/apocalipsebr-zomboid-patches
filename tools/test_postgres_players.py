@@ -83,7 +83,7 @@ public class PlayersTest {
      if(fail)throw new SQLException("private error","08006");
      if(sql.startsWith("DELETE")){row=null;return 1;}
      if(sql.startsWith("UPDATE public.networkplayers SET steamid=")){if(row!=null&&row.get("steamid").equals(""))row.put("steamid",args.get(1));return 1;}
-     String[] fields={"world","username","steamid","playerindex","name","x","y","z","worldversion","isdead","splitusername","data"};
+     String[] fields={"world","username","steamid","playerindex","name","x","y","z","worldversion","isdead","splitusername","data","source_server_id","source_dictionary_namespace_id","source_dictionary_view_id"};
      row=new HashMap<>();row.put("id",42);for(int i=0;i<fields.length;i++)row.put(fields[i],args.get(i+1));return 1;
     }
     if(m.getName().equals("executeQuery")){
@@ -108,7 +108,7 @@ public class PlayersTest {
        if(sql.startsWith("SELECT COUNT"))return 3;
        if(sql.startsWith("SELECT steamid"))return selected.get("steamid");
        if(sql.startsWith("SELECT id FROM"))return selected.get("id");
-       String[] columns={"id","x","y","z","data","worldversion","isdead","splitusername"};return selected.get(columns[(int)ra[0]-1]);
+       String[] columns={"id","x","y","z","data","worldversion","isdead","splitusername","source_server_id","source_dictionary_namespace_id","source_dictionary_view_id"};return selected.get(columns[(int)ra[0]-1]);
       }return zero(rm.getReturnType());});
     }return zero(m.getReturnType());});}
  }
@@ -129,9 +129,13 @@ public class PlayersTest {
   check(db.conn==null,"PostgreSQL mode never opens players.db");
   var helper=new ApocBRPlayerDatabase();check(helper.load("servertest","alice",0,false)==null,"new account profile absent");
   UdpConnection connection=new UdpConnection();IsoPlayer player=new IsoPlayer(null);
+  System.setProperty("apocbr.postgres.serverId","3");
+  var encodedOrigin=new ApocBRPayloadProvenance(3,UUID.randomUUID(),UUID.randomUUID());ApocBRPayloadProvenance.published(encodedOrigin);
   db.serverUpdateNetworkCharacter(player,0,connection);check(player.captures==1 && fake.row==null,"native queue captures once before SQL");
+  ApocBRPayloadProvenance.published(new ApocBRPayloadProvenance(3,UUID.randomUUID(),UUID.randomUUID()));
   db.process();check(fake.row!=null && connector.status().pending()==0,"native process commits primary data, no mirror queue");
   check(player.captures==1,"no second serialization");
+  check(helper.load("servertest","alice",0,false).origin().equals(encodedOrigin),"queue retains encoding view when current dictionary changes before worker persistence");
   IsoPlayer loaded=db.serverLoadNetworkCharacter(0,"alice");
   check(loaded!=null&&loaded.loaded==0&&loaded.version==249&&loaded.remote&&loaded.serverPlayerIndex==0,"server routes relational profile without native deserialization");
   check(db.serverLoadNetworkCharacter(1,"alice")==null,"different character slot absent");
@@ -160,7 +164,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_players_') as folder:
     for name,body in STUBS.items():
         path=target/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body,encoding='utf-8');files.append(path)
     harness=target/'PlayersTest.java';harness.write_text(HARNESS,encoding='utf-8');files.append(harness)
-    files += [SRC/'savefile'/name for name in ['ApocBRPostgresConnector.java','ApocBRPlayerDatabase.java','ServerPlayerDB.java','PlayerDBHelper.java',
+    files += [SRC/'savefile'/name for name in ['ApocBRPayloadProvenance.java','ApocBRPostgresConnector.java','ApocBRPlayerDatabase.java','ServerPlayerDB.java','PlayerDBHelper.java',
         'ApocBRPlayerLoadQuality.java','ApocBRPlayerRelationalReader.java','ApocBRPlayerRelationalLimits.java','ApocBRPlayerRelationalSchema.java','ApocBRPlayerRelationalAccess.java',
         'ApocBRPlayerRelationalSnapshot.java','ApocBRPlayerRelationalCodecs.java','ApocBRPlayerRelationalCapture.java','ApocBRPlayerRelationalMutations.java','ApocBRPlayerRelationalDelta.java','ApocBRPlayerRelationalMetrics.java','ApocBRPlayerRelationalDatabase.java','ApocBRPlayerRelationalSync.java']]
     files.append(SRC/'network/packets/connection/LoadPlayerProfilePacket.java')

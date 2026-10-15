@@ -289,6 +289,8 @@ public class WorldDictionary {
             data.getDictionaryMods(modIDs);
             data.saveAsText("WorldDictionaryReadable.lua");
             data.save();
+            // Mirror only after native rebuilding and persistence succeeded; decoding remains vanilla.
+            ApocBRWorldDictionaryMirror.afterRebuild(data);
             data.deleteBackupCurrentDataSet();
         } catch (Exception var6) {
             proceedLoadingWorld = false;

@@ -26,7 +26,7 @@ Database functions `player_rel.world_dictionary_guard()` and `player_rel.world_d
 
 Views must be inserted as staging. Updating to ready with `published_at` validates the locked current identity revision, all seven required native registers, complete captured registry counters equal to the current counters, allocator high-water marks except sprites, required info/string/script states, no state from a future revision, and contiguous overrides with `overrides_present=true`. Checks and composite FKs retain exact kind/domain ownership. The engine still owns deterministic allocation, local reconciliation, Java UTF-16 length validation, codec compatibility, binding definitions and pinning the committed ready view. Acquire the namespace `FOR UPDATE` before reading/allocating, even though write triggers also lock it.
 
-No source-dataset/snapshot/vehicle provenance columns are changed by V6. Add explicit namespace/view bindings in the future owning migration; do not reinterpret `player_rel.item.native_id` as a dictionary ID. See the manager's `docs/world-dictionary.md` for the maintained backend guide and isolated test command.
+V6 does not change payload provenance. Backend V7 now adds `player_rel.server` with stable integer IDs, view `server_id` binding, and per-payload server/namespace/view tuples on native player/vehicle rows and opaque value leaves. See [the implemented provenance handoff](WORLD-DICTIONARY-PROVENANCE-HANDOFF.md) for exact names, initial IDs and unknown-origin policy. Relational source_dataset/snapshot records remain unchanged; do not reinterpret `player_rel.item.native_id` as a dictionary ID. See the manager's `docs/world-dictionary.md` for the maintained backend guide and isolated test command.
 
 ## What the audit establishes
 

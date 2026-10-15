@@ -82,7 +82,7 @@ final class ApocBRPlayerRelationalSnapshot {
         if(depth>64)throw new IllegalStateException("SNAPSHOT_DEPTH_BUDGET");
         if(source==null||source instanceof String||source instanceof Number||source instanceof Boolean)return scalar(source);
         Object existing=copies.get(source);if(existing!=null)return existing;
-        if(source instanceof byte[] array){charge(array.length);return array.clone();}
+        if(source instanceof byte[] array){charge(array.length);byte[] copy=array.clone();ApocBRPayloadProvenance.copy(array,copy);return copy;}
         if(source instanceof List<?> values){
             ArrayList<Object> result=new ArrayList<>();List<Object> view=Collections.unmodifiableList(result);copies.put(source,view);
             if(values.size()>10_000)throw new IllegalStateException("SNAPSHOT_SIZE_BUDGET");
@@ -140,7 +140,7 @@ final class ApocBRPlayerRelationalSnapshot {
         put(node,"extraItems",sequence(get(source,"extraItems"),this::scalar));
         ByteBuffer data=(ByteBuffer)get(source,"byteData");
         if(data==null)put(node,"byteData",null);
-        else {ByteBuffer view=data.duplicate();view.rewind();charge(view.remaining());byte[] copy=new byte[view.remaining()];view.get(copy);put(node,"byteData",copy);}
+        else {ByteBuffer view=data.duplicate();view.rewind();charge(view.remaining());byte[] copy=new byte[view.remaining()];view.get(copy);ApocBRPayloadProvenance.copy(data,copy);put(node,"byteData",copy);}
         put(node,"animalTracks",projected(get(source,"animalTracks"),"animal_track"));
         boolean supported=true;
         if(source instanceof zombie.inventory.InventoryItem)try {

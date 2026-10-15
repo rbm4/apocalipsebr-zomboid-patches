@@ -18,7 +18,10 @@ public final class ApocBRPlayerDatabase {
     }
 
     public record Profile(int id, float x, float y, float z, byte[] data, int worldVersion,
-                          boolean dead, String splitUsername) {
+                          boolean dead, String splitUsername, ApocBRPayloadProvenance origin) {
+        public Profile(int id,float x,float y,float z,byte[] data,int worldVersion,boolean dead,String splitUsername) {
+            this(id,x,y,z,data,worldVersion,dead,splitUsername,null);
+        }
         public Profile { if (data != null) data = data.clone(); }
         @Override public byte[] data() { return data == null ? null : data.clone(); }
     }
@@ -35,14 +38,14 @@ public final class ApocBRPlayerDatabase {
 
     public void validate() throws SQLException {
         try (Connection connection = connections.open(); PreparedStatement statement = prepare(connection,
-                "SELECT id,world,username,playerindex,name,steamid,x,y,z,worldversion,data,isdead,splitusername FROM public.networkplayers WHERE false");
+                "SELECT id,world,username,playerindex,name,steamid,x,y,z,worldversion,data,isdead,splitusername,source_server_id,source_dictionary_namespace_id,source_dictionary_view_id FROM public.networkplayers WHERE false");
              ResultSet ignored = statement.executeQuery()) { connection.commit(); }
         catch (SQLException failure) { throw safe("schema validation", failure); }
     }
 
     public Profile load(String world, String identity, int slot, boolean steamCoop) throws SQLException {
         if (slot < 0 || slot > 3) return null;
-        String query = "SELECT id,x,y,z,data,worldversion,isdead,splitusername FROM public.networkplayers WHERE "
+        String query = "SELECT id,x,y,z,data,worldversion,isdead,splitusername,source_server_id,source_dictionary_namespace_id,source_dictionary_view_id FROM public.networkplayers WHERE "
                 + (steamCoop ? "steamid" : "username") + "=? AND world=? AND playerindex=?";
         try (Connection connection = connections.open(); PreparedStatement statement = prepare(connection,query)) {
             statement.setString(1,identity); statement.setString(2,world); statement.setInt(3,slot);
@@ -50,7 +53,7 @@ public final class ApocBRPlayerDatabase {
             try (ResultSet rows = statement.executeQuery()) {
                 if (rows.next()) {
                     profile = new Profile(rows.getInt(1),rows.getFloat(2),rows.getFloat(3),rows.getFloat(4),rows.getBytes(5),
-                            rows.getInt(6),rows.getBoolean(7),rows.getString(8));
+                            rows.getInt(6),rows.getBoolean(7),rows.getString(8),ApocBRPayloadProvenance.read(rows,9));
                     if (rows.next()) throw new SQLException("Ambiguous player identity", "21000");
                 }
             }

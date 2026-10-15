@@ -39,6 +39,7 @@ import zombie.util.Pool;
 import zombie.util.PooledObject;
 import zombie.util.Type;
 import zombie.savefile.ApocBRVehicleDatabase;
+import zombie.savefile.ApocBRPayloadProvenance;
 
 public final class VehiclesDB2 {
     public static final int INVALID_ID = -1;
@@ -435,6 +436,7 @@ public final class VehiclesDB2 {
             vehicle2.worldVersion = vehicle.worldVersion;
             vehicle2.inMeta = vehicle.inMeta;
             vehicle2.setBytes(vehicle.bb);
+            vehicle2.origin = vehicle.origin;
             int key = vehicle2.wy << 16 | vehicle2.wx;
             if (this.chunkToVehicles.get(key) == null) {
                 this.chunkToVehicles.put(key, new ArrayList<>());
@@ -692,6 +694,7 @@ public final class VehiclesDB2 {
             buffer.id=row.id(); buffer.wx=row.wx(); buffer.wy=row.wy();
             buffer.x=row.x(); buffer.y=row.y(); buffer.worldVersion=row.worldVersion(); buffer.inMeta=row.inMeta();
             buffer.setBytes(row.data());
+            buffer.origin=row.origin();
             boolean serialise=buffer.bb.get()!=0;
             byte classID=buffer.bb.get();
             return serialise && classID==IsoObject.getFactoryVehicle().getClassID() ? buffer : null;
@@ -730,7 +733,7 @@ public final class VehiclesDB2 {
                 ByteBuffer bytes=buffer.bb.duplicate(); bytes.rewind();
                 byte[] data=new byte[bytes.remaining()]; bytes.get(data);
                 this.database.save(new ApocBRVehicleDatabase.Vehicle(buffer.id,buffer.wx,buffer.wy,
-                        buffer.x,buffer.y,buffer.worldVersion,buffer.inMeta,data));
+                        buffer.x,buffer.y,buffer.worldVersion,buffer.inMeta,data,buffer.origin));
             } catch (Exception failure) { ExceptionLogger.logException(failure); }
         }
         @Override void removeVehicle(int id) {
@@ -1091,6 +1094,7 @@ public final class VehiclesDB2 {
         float x;
         float y;
         int worldVersion;
+        ApocBRPayloadProvenance origin;
         boolean inMeta;
         ByteBuffer bb = ByteBuffer.allocate(32768);
 
@@ -1108,6 +1112,7 @@ public final class VehiclesDB2 {
             this.y = vehicle.getY();
             this.worldVersion = IsoWorld.getWorldVersion();
             this.inMeta = vehicle.shouldUpdateInMeta();
+            this.origin = ApocBRPayloadProvenance.localEncoding();
             ByteBuffer bb = VehiclesDB2.TL_SliceBuffer.get();
             bb.clear();
 
@@ -1127,10 +1132,13 @@ public final class VehiclesDB2 {
             }
 
             bb.flip();
+            ApocBRPayloadProvenance encodedOrigin=this.origin;
             this.setBytes(bb);
+            this.origin=encodedOrigin;
         }
 
         void setBytes(ByteBuffer bytes) {
+            this.origin=null;
             bytes.rewind();
             ByteBufferOutputStream bbos = new ByteBufferOutputStream(this.bb, true);
             bbos.clear();
@@ -1149,6 +1157,7 @@ public final class VehiclesDB2 {
         }
 
         void setBytes(byte[] bytes) {
+            this.origin=null;
             ByteBufferOutputStream bbos = new ByteBufferOutputStream(this.bb, true);
             bbos.clear();
             bbos.write(bytes);
@@ -1157,6 +1166,7 @@ public final class VehiclesDB2 {
         }
 
         void setBytes(InputStream input) throws IOException {
+            this.origin=null;
             ByteBufferOutputStream bbos = new ByteBufferOutputStream(this.bb, true);
             bbos.clear();
             byte[] temp = VehiclesDB2.TL_Bytes.get();
