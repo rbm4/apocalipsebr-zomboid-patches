@@ -421,6 +421,46 @@ After deploying/restarting, inspect all three outcomes together:
 journalctl --since "20 minutes ago" --no-pager --grep='LIVE_WRITE_(FAILED|DEFERRED|RECOVERED)'
 ```
 
+### Duplicate native inventory IDs
+
+Projection follows the native `ItemContainer.AddItem(InventoryItem)` policy:
+keep the first item and reject a later distinct object with the same native ID,
+rather than overwriting the first or failing the entire player write. The scope
+is the captured player's owned tree. Traversal follows each container's source
+list order, descending into a bag's contents or a weapon's attachments before
+continuing with the next item. "First" refers to this snapshot traversal, not
+the oldest database row or a provenance/creation-time claim. Cross-player
+ownership arbitration is unchanged.
+
+A rejected bag or weapon contributes no rows for itself or its descendants;
+contents are never merged into the retained item. Equipment pointing to the
+rejected object is omitted by the existing object-identity check, never rebound
+to the retained item by native ID. Source positions can have gaps after filtering.
+Repeated ownership of the same accepted object and cycles still reject capture.
+The retained graph keeps unique native IDs, its existing UUID aliases and valid
+counts, allowing other state such as fitness to commit in the same transaction.
+
+This policy applies to initial and live projection, using the detached state the
+engine supplies. It changes neither live inventory nor IDs, native serialization,
+client packets or engine synchronization. No client provenance is required.
+Snapshots still copy source state before projection, so rejected descendants can
+consume copy/alias-read work and remain subject to existing snapshot budgets.
+
+`DUPLICATE_NATIVE_ITEM_SKIPPED` logs the native ID, relation, source position and
+depth at most once per 30 seconds. `LIVE_METRICS.duplicateItemsSkipped` counts
+rejected item occurrences, including repeated captures; it does not count distinct
+lost items or committed deletions. A graph containing only this normalized
+condition is complete; other unsupported state still prevents publication.
+
+`python tools/test_postgres_duplicate_items.py` runs without a game JAR or live
+PostgreSQL. It compiles complete production capture/snapshot/queue/delta/database
+classes against small engine boundary stubs, reuses the relational fixture, and
+compares keep-first behavior with the exact-version vanilla insertion method.
+Checks include nested bags, attachments, equipment, immutable snapshots, ownership
+guards, JDBC batch bindings for fitness/inventory and dirty-queue acknowledgement.
+The full `test_postgres_player_relational.py` suite includes the same regression;
+its native compatibility checks and a patch dry build require the real 42.21.0 JAR.
+
 ### Exercise regularity persistence investigation
 
 Equipment references are resolved by object identity against the captured owned
@@ -429,7 +469,7 @@ than rejecting the whole player graph. Native `IsoPlayer.save/load` similarly
 writes an invalid inventory index for unreachable hand/worn links and ignores
 them on load. Capture does not add such an item to inventory or substitute a
 different object with the same native ID; live equipment is left untouched.
-Valid ownership/cycle/duplicate checks remain enforced. A later capture includes
+Ownership and cycle checks remain enforced. A later capture includes
 the equipment normally if the actual item becomes reachable again.
 
 `EQUIPMENT_REFERENCE_SKIPPED` reports the relation kind, sanitized slot, native

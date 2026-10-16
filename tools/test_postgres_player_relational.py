@@ -157,7 +157,7 @@ public class RelationalTest {
  static class Color {public float r=1,g=1,b=1,a=1;}
  static class Container {public int id=11,capacity=20;public String type="inventory";public boolean explored=true,hasBeenLooted;public List<Object> items=new ArrayList<>();}
  static class Item {
-  public int id; public String getFullType(){return "Base.Test";}
+  public int id; public String partType="fixture"; public String getFullType(){return "Base.Test";}
   public Color col=new Color();public Object visual,table,byteData,animalTracks,texture;public List<String> extraItems=new ArrayList<>();
   public int componentSize=0;
   public List<Object> components=new ArrayList<>();public Object getComponentForIndex(int index){return components.get(index);}
@@ -798,6 +798,86 @@ public class RelationalTest {
   check(db.applyFields(batch,graph),"orphan equipment graph reaches JDBC commit instead of infinite projection retry");
   check(fake.queries.stream().anyMatch(sql->sql.startsWith("DELETE FROM player_rel.equipment")),"obsolete equipment links are removed from persisted state");
  }
+
+ static void duplicateNativeItems()throws Exception {
+  long skipped=ApocBRPlayerRelationalCapture.skippedDuplicateItems();
+  UUID character=UUID.randomUUID(),known=UUID.randomUUID();P player=new P();
+  Item original=new Item(7),duplicate=new Item(7),following=new Item(8);
+  original.name="original";original.condition=91;duplicate.name="duplicate";duplicate.condition=12;
+  player.inventory.items.addAll(List.of(original,duplicate,following));
+  player.leftHandItem=original;player.rightHandItem=duplicate;
+  var snapshot=ApocBRPlayerRelationalSnapshot.copyLive(player);
+  var graph=new ApocBRPlayerRelationalCapture(character,Map.of(7,known),Long.MAX_VALUE).capture(snapshot,List.of());
+  check(graph.issues().isEmpty()&&graph.items()==2,"duplicate native ID does not reject the complete graph");
+  var itemRows=graph.rows().stream().filter(r->r.table().equals("item")).toList();
+  check(itemRows.size()==2&&itemRows.stream().filter(r->r.values().get("native_id").equals(7)).count()==1,"one row per native ID");
+  var retained=itemRows.stream().filter(r->r.values().get("native_id").equals(7)).findFirst().orElseThrow().values();
+  check(retained.get("id").equals(known)&&retained.get("name").equals("original")&&retained.get("condition").equals(91),"first object retains its alias and state without overwrite");
+  var equipment=graph.rows().stream().filter(r->r.table().equals("equipment")).toList();
+  check(equipment.size()==1&&equipment.getFirst().values().get("slot").equals("primary")&&equipment.getFirst().values().get("item_id").equals(known),"rejected copy cannot borrow retained object's equipment identity");
+  check(graph.rows().stream().filter(r->r.table().equals("item_location")).count()==2&&graph.edges()==3&&graph.objects()==4&&graph.containers()==1,"counts and ownership exclude rejected copy");
+  check(ApocBRPlayerRelationalCapture.skippedDuplicateItems()==skipped+1,"duplicate filtering is counted");
+  check(player.inventory.items.equals(List.of(original,duplicate,following))&&player.rightHandItem==duplicate&&duplicate.id==7,"capture leaves engine inventory, equipment and native IDs untouched");
+  var direct=new ApocBRPlayerRelationalCapture(character,Map.of(7,known),Long.MAX_VALUE).capture(player,List.of());
+  check(canonical(direct).equals(canonical(graph)),"direct and detached projection use the same keep-first policy");
+  original.condition=3;duplicate.name="changed-after-copy";
+  var detached=new ApocBRPlayerRelationalCapture(character,Map.of(7,known),Long.MAX_VALUE).capture(snapshot,List.of());
+  check(canonical(detached).equals(canonical(graph)),"worker projection never rereads changed live items");
+
+  // Depth-first source order: a nested child precedes a later item at the root.
+  P nested=new P();var bag=new InventoryContainer(10);Item inside=new Item(11),outside=new Item(11);
+  inside.name="nested-first";outside.name="root-later";bag.container.items.add(inside);
+  nested.inventory.items.addAll(List.of(bag,outside,new Item(12)));
+  var nestedGraph=liveGraph(nested,character);
+  check(nestedGraph.items()==3&&nestedGraph.rows().stream().anyMatch(r->r.table().equals("item")&&r.values().get("name").equals("nested-first")),"nested inventory uses depth-first order");
+  check(nestedGraph.rows().stream().noneMatch(r->r.table().equals("item")&&r.values().get("name").equals("root-later")),"later root duplicate is skipped");
+
+  // Reject an entire duplicate bag, including descendants, without orphan rows.
+  P bags=new P();var keptBag=new InventoryContainer(20);var rejectedBag=new InventoryContainer(20);
+  keptBag.container.items.add(new Item(21));rejectedBag.container.items.add(new Item(22));
+  bags.inventory.items.addAll(List.of(keptBag,rejectedBag,new Item(23)));
+  bags.wornItems.add(new Worn(rejectedBag));
+  var bagGraph=liveGraph(bags,character);
+  check(bagGraph.items()==3&&bagGraph.containers()==2&&bagGraph.edges()==3,"rejected bag adds no container, child or ownership edges");
+  check(bagGraph.rows().stream().noneMatch(r->r.table().equals("item")&&r.values().get("native_id").equals(22)),"rejected bag contents are not merged into retained bag");
+  check(bagGraph.rows().stream().noneMatch(r->r.table().equals("equipment")),"worn rejected bag is not rebound by native ID");
+  check(bags.inventory.items.size()==3&&rejectedBag.container.items.size()==1,"rejected bag and contents remain in engine state");
+
+  P weapons=new P();var weapon=new HandWeapon(30);Item attachment=new Item(31),duplicateAttachment=new Item(31);
+  attachment.name="first-part";duplicateAttachment.name="second-part";
+  weapon.attachmentList.addAll(List.of(attachment,duplicateAttachment));weapons.inventory.items.add(weapon);
+  var weaponGraph=liveGraph(weapons,character);
+  check(weaponGraph.items()==2&&weaponGraph.rows().stream().filter(r->r.table().equals("item_location")&&r.values().get("relation").equals("weapon_attachment")).count()==1,"weapon attachments use the same keep-first policy");
+
+  // Normalization must not hide cyclic ownership or a repeated owned object.
+  P invalid=new P();Item repeated=new Item(40);invalid.inventory.items.addAll(List.of(repeated,repeated));
+  try{liveGraph(invalid,character);throw new AssertionError("duplicate object ownership accepted");}
+  catch(IllegalStateException expected){check(expected.getMessage().equals("Cyclic or duplicate owned item"),"same-object ownership guard remains enforced");}
+  invalid.inventory.items.clear();var cyclicBag=new InventoryContainer(41);invalid.inventory.items.add(cyclicBag);cyclicBag.container.items.add(cyclicBag);
+  try{liveGraph(invalid,character);throw new AssertionError("inventory cycle accepted");}
+  catch(IllegalStateException expected){check(expected.getMessage().equals("Cyclic or duplicate owned item"),"cycle guard remains enforced");}
+
+  // Exercise worker projection, actual JDBC batch bindings and queue acknowledgement.
+  LiveFake fake=new LiveFake();fake.character=character;fake.reason="live_fields";
+  P empty=new P();fake.graphRows=liveGraph(empty,character).rows();
+  var db=new ApocBRPlayerRelationalDatabase(fake::open);
+  var queueField=ApocBRPlayerRelationalMutations.class.getDeclaredField("DIRTY");queueField.setAccessible(true);
+  var queue=(ApocBRPlayerRelationalMutations.DirtyQueue)queueField.get(null);queue.clear();
+  var c=candidate(1);UUID session=UUID.randomUUID();queue.register(c.key(),session);queue.bind(c.key(),session,character);
+  player.fitness.regularityMap.put("squats",0.75f);
+  check(queue.snapshot(c,session,ApocBRPlayerRelationalSnapshot.copyLive(player),0),"duplicate-containing snapshot enters normal dirty queue");
+  check(ApocBRPlayerRelationalMutations.flushOne(db)&&queue.size()==0&&queue.bytes()==0,"duplicate-containing graph commits and drains pending work");
+  check(fake.commits>=2&&fake.rollbacks==0&&fake.opened==fake.closed,"alias read and graph write commit and return leases");
+  check(fake.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.item (")).flatMap(e->e.getValue().stream()).count()==2,"JDBC inserts retained items only");
+  check(fake.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.fitness_value (")).flatMap(e->e.getValue().stream()).anyMatch(v->v.containsValue("regularityMap")&&v.containsValue(0.75f)),"inventory collision does not block fitness persistence");
+  check(db.mutationMetrics().contains("; duplicateItemsSkipped="),"duplicate counter appears in live metrics");
+
+  // The same normalized graph is stable; no DML is required on the next capture.
+  var baseline=liveGraph(player,character);
+  check(ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(baseline.rows()),ApocBRPlayerRelationalDelta.index(liveGraph(player,character).rows())).isEmpty(),"repeated collision capture is a no-op graph");
+  queue.clear();
+ }
+
  static void graphMutations()throws Exception {
   UUID character=UUID.randomUUID();P player=new P();player.descriptor=new Descriptor();
   var bag=new InventoryContainer(1);var a=new Item(2);var b=new Item(3);var removed=new Item(4);
@@ -1116,7 +1196,7 @@ public class RelationalTest {
   check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();orphanEquipment();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();orphanEquipment();duplicateNativeItems();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
