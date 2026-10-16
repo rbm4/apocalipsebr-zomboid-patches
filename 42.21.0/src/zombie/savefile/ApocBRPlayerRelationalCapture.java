@@ -13,6 +13,8 @@ final class ApocBRPlayerRelationalCapture {
     static final int CODEC_VERSION=4, SCHEMA_VERSION=1, MAX_BYTES=ApocBRPlayerRelationalLimits.GRAPH_BYTES;
     private static final AtomicLong equipmentRefsSkipped=new AtomicLong(),lastEquipmentWarning=new AtomicLong();
     static long skippedEquipmentReferences(){return equipmentRefsSkipped.get();}
+    private static final AtomicLong duplicateItemsSkipped=new AtomicLong(),lastDuplicateWarning=new AtomicLong();
+    static long skippedDuplicateItems(){return duplicateItemsSkipped.get();}
     record Row(String table,Map<String,Object> values) {
         Row { values=Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
     }
@@ -217,7 +219,19 @@ final class ApocBRPlayerRelationalCapture {
     private void item(Object item,UUID container,UUID parent,int position,int depth) {
         check(); if(item==null || depth>64 || itemIds.size()>=10_000) throw new IllegalStateException("Invalid/oversized item graph");
         if(itemIds.containsKey(item)) throw new IllegalStateException("Cyclic or duplicate owned item");
-        int nativeId=number(get(item,"id")); if(!nativeIds.add(nativeId)) throw new IllegalStateException("Duplicate native item id");
+        int nativeId=number(get(item,"id"));
+        if(!nativeIds.add(nativeId)) {
+            // Match vanilla ItemContainer.AddItem's keep-existing/reject-incoming rule.
+            // Projection order is inventory order, descending into bags/attachments in place.
+            // Do not alias this distinct object to the retained item, overwrite its state,
+            // or traverse a rejected bag/weapon's children into the retained ownership tree.
+            duplicateItemsSkipped.incrementAndGet();
+            long now=System.nanoTime(),last=lastDuplicateWarning.get();
+            if(zombie.network.GameServer.server&&(last==0||now-last>=30_000_000_000L)&&lastDuplicateWarning.compareAndSet(last,now))
+                zombie.debug.DebugLog.log("[ApocBR][PlayerRelational] DUPLICATE_NATIVE_ITEM_SKIPPED; nativeItemId="+nativeId
+                        +"; relation="+(parent==null?"container":"weapon_attachment")+"; position="+position+"; depth="+depth);
+            return;
+        }
         UUID id=aliases.getOrDefault(nativeId,ApocBRPlayerRelationalDatabase.named("item:"+character+":"+nativeId)); itemIds.put(item,id); object(id,"item");
         row("item_location","item_id",id,"container_id",container,"parent_item_id",parent,"relation",parent==null?"container":"weapon_attachment","position",position,"attachment_slot",parent==null?null:key(get(item,"partType"))); edges++;
         String media=resolvedMedia(item,"recordedMediaIndex");

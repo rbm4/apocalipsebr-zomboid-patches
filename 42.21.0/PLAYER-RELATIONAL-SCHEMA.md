@@ -386,8 +386,12 @@ respawn, since ordinary saves also change that hash.
 
 Graph object UUIDs survive recapture and future ownership transfers. Native item
 integers are compatibility metadata, not global PKs. Assign/resolve object UUIDs
-through a capture identity ledger; duplicate native item IDs in the same graph
-are reported, never deduplicated by guessing. An initial deterministic mapping may
+through a capture identity ledger. Projection reports duplicate native item IDs
+and keeps the first distinct object in depth-first inventory order, rejecting
+later copies and their descendants using vanilla's keep-existing insertion policy.
+It neither overwrites the retained object nor reassigns engine IDs; equipment
+references remain object-identity based. See [duplicate-ID handling](POSTGRESQL-CONNECTOR.md#duplicate-native-inventory-ids).
+An initial deterministic mapping may
 use source dataset + character incarnation + native ID **only after uniqueness is
 validated**. Moving to another player must preserve the UUID, not recompute it.
 The engine implementation must persist that ledger or stable IDs before claiming

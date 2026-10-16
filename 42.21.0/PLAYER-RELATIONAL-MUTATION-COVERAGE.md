@@ -99,6 +99,7 @@ monitoring queries and record no player IDs, item values or Lua keys in log outp
 | `topComponents` | Up to eight component kinds responsible for value-node changes, separating fluids, Lua and carried animals without logging member keys. |
 | `oldestPendingMs`, `workerBusyPercent` | Age of the oldest pending work item, and the window fraction spent processing mutation batches. Busy percentage excludes initial-export work, so it is not total worker utilization. |
 | `failedPatches`, `deferredPatches` | Failed mutation attempts and guarded noncommits retained for retry. |
+| `duplicateItemsSkipped` | Cumulative later distinct owned-item occurrences rejected for a repeated native ID during projection, including repeated captures. The first item in depth-first source order is retained; this is not a committed deletion or distinct-player count. See [duplicate-ID handling](POSTGRESQL-CONNECTOR.md#duplicate-native-inventory-ids). |
 | `scalarCaptureFailures`, `graphCaptureFailures`, `incompleteGraphs`, `incompleteReasons` | Capture errors and rejected incomplete graphs, with window rankings of bounded issue codes. An empty SQL queue alone is not evidence of full capture coverage. |
 
 Table/column/component rankings reset each reporting window. Transaction/JDBC
