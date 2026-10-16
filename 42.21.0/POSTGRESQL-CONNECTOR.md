@@ -423,6 +423,22 @@ journalctl --since "20 minutes ago" --no-pager --grep='LIVE_WRITE_(FAILED|DEFERR
 
 ### Exercise regularity persistence investigation
 
+Equipment references are resolved by object identity against the captured owned
+inventory tree. A hand/worn/attached pointer outside that tree is omitted rather
+than rejecting the whole player graph. Native `IsoPlayer.save/load` similarly
+writes an invalid inventory index for unreachable hand/worn links and ignores
+them on load. Capture does not add such an item to inventory or substitute a
+different object with the same native ID; live equipment is left untouched.
+Valid ownership/cycle/duplicate checks remain enforced. A later capture includes
+the equipment normally if the actual item becomes reachable again.
+
+`EQUIPMENT_REFERENCE_SKIPPED` reports the relation kind, sanitized slot, native
+item ID and whether that ID also exists in owned inventory, at most once per
+30 seconds. `equipmentRefsSkipped` is a cumulative count of references observed
+and omitted during projection, including repeated snapshots; it is not a count
+of lost items, players or committed changes. `LIVE_WRITE_RECOVERED` identifies
+successful commits after the previous unreachable-equipment failure.
+
 `samples>0`, `pending>0`, but `writes=failedPatches=deferredPatches=graphSamples=0`
 can identify pending scalar work stranded before character binding. The old
 PostgreSQL login relied on a separate import receipt for that binding; a receipt

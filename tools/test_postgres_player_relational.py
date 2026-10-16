@@ -775,6 +775,29 @@ public class RelationalTest {
  static ApocBRPlayerRelationalCapture.Graph liveGraph(P player,UUID character) {
   return new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(ApocBRPlayerRelationalSnapshot.copy(player),List.of());
  }
+ static void orphanEquipment()throws Exception {
+  long skipped=ApocBRPlayerRelationalCapture.skippedEquipmentReferences();
+  UUID character=UUID.randomUUID();P player=new P();player.descriptor=new Descriptor();
+  Item owned=new Item(1),stale=new Item(1),outside=new Item(99);player.inventory.items.add(owned);
+  player.leftHandItem=stale;player.rightHandItem=owned;
+  player.wornItems.add(new Worn(outside));player.attachedItems=List.of(new Worn(outside));
+  var graph=liveGraph(player,character);
+  check(graph.issues().isEmpty(),"unreachable equipment references do not reject the supported inventory graph");
+  check(graph.items()==1&&graph.rows().stream().filter(r->r.table().equals("item_location")).count()==1,"orphan equipment never invents ownership or duplicates an item with the same native ID");
+  var equipment=graph.rows().stream().filter(r->r.table().equals("equipment")).toList();
+  check(equipment.size()==1&&equipment.getFirst().values().get("slot").equals("secondary"),"only actual reachable equipment is persisted");
+  check(ApocBRPlayerRelationalCapture.skippedEquipmentReferences()==skipped+3,"unreachable hand, worn and attached references are counted explicitly");
+  check(player.leftHandItem==stale&&player.wornItems.size()==1&&player.attachedItems.size()==1,"projection leaves live equipment untouched");
+  player.leftHandItem=owned;player.inventory.items.add(outside);
+  var recovered=liveGraph(player,character);
+  check(recovered.rows().stream().filter(r->r.table().equals("equipment")).count()==4,"equipment references recover naturally once items become reachable");
+  check(ApocBRPlayerRelationalCapture.skippedEquipmentReferences()==skipped+3,"reachable equipment does not increment the skipped-reference counter");
+  LiveFake fake=new LiveFake();fake.character=character;fake.reason="live_fields";fake.graphRows=recovered.rows();
+  var batch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),character,Map.of(),java.time.Instant.now());
+  var db=new ApocBRPlayerRelationalDatabase(fake::open);
+  check(db.applyFields(batch,graph),"orphan equipment graph reaches JDBC commit instead of infinite projection retry");
+  check(fake.queries.stream().anyMatch(sql->sql.startsWith("DELETE FROM player_rel.equipment")),"obsolete equipment links are removed from persisted state");
+ }
  static void graphMutations()throws Exception {
   UUID character=UUID.randomUUID();P player=new P();player.descriptor=new Descriptor();
   var bag=new InventoryContainer(1);var a=new Item(2);var b=new Item(3);var removed=new Item(4);
@@ -1093,7 +1116,7 @@ public class RelationalTest {
   check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();orphanEquipment();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:

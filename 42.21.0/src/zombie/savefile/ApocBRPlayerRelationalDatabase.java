@@ -30,7 +30,7 @@ final class ApocBRPlayerRelationalDatabase {
     private record Cached(UUID head,long revision,Map<ApocBRPlayerRelationalDelta.Key,Map<String,Object>> rows,long bytes) {}
     private final Map<UUID,Cached> cache=new LinkedHashMap<>(16,.75f,true);
     private long cacheBytes,cacheMisses,createdRows,updatedRows,deletedRows,unchangedGraphs;
-    String mutationMetrics(){return sqlMetrics.report(System.nanoTime())+"; deltaCreated="+createdRows+"; deltaUpdated="+updatedRows+"; deltaDeleted="+deletedRows+"; unchangedGraphs="+unchangedGraphs+"; cacheMisses="+cacheMisses+"; cacheBytes="+cacheBytes;}
+    String mutationMetrics(){return sqlMetrics.report(System.nanoTime())+"; deltaCreated="+createdRows+"; deltaUpdated="+updatedRows+"; deltaDeleted="+deletedRows+"; unchangedGraphs="+unchangedGraphs+"; cacheMisses="+cacheMisses+"; cacheBytes="+cacheBytes+"; equipmentRefsSkipped="+ApocBRPlayerRelationalCapture.skippedEquipmentReferences();}
     private static final long CACHE_LIMIT=Math.max(1,Math.min(512,Long.getLong("apocbr.postgres.playerRelational.mutations.cacheMiB",64L)))*1024*1024;
     ApocBRPlayerRelationalCapture.Graph projectLive(ApocBRPlayerRelationalMutations.Batch batch)throws SQLException {
         Map<Integer,UUID> aliases=new HashMap<>();var ids=ApocBRPlayerRelationalSnapshot.nativeItemIds(batch.snapshot());

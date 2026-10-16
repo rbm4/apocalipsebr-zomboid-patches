@@ -5,11 +5,14 @@ import java.time.Instant;
 import java.util.*;
 import java.util.function.LongSupplier;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicLong;
 import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Relational graph projection. Production calls this on the worker with a detached snapshot. */
 final class ApocBRPlayerRelationalCapture {
     static final int CODEC_VERSION=4, SCHEMA_VERSION=1, MAX_BYTES=ApocBRPlayerRelationalLimits.GRAPH_BYTES;
+    private static final AtomicLong equipmentRefsSkipped=new AtomicLong(),lastEquipmentWarning=new AtomicLong();
+    static long skippedEquipmentReferences(){return equipmentRefsSkipped.get();}
     record Row(String table,Map<String,Object> values) {
         Row { values=Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
     }
@@ -189,7 +192,20 @@ final class ApocBRPlayerRelationalCapture {
     }
     private void equipped(String kind,String slot,Object item,int position) {
         if(item==null) return; UUID id=itemIds.get(item);
-        if(id==null) throw new IllegalStateException("Equipment references unreachable item");
+        if(id==null) {
+            // Native IsoPlayer.save writes indexOf(savedInventoryItems), i.e. -1 for
+            // unreachable hand/worn pointers; load ignores that link. Never invent
+            // ownership, or bind a different object just because its native ID matches.
+            equipmentRefsSkipped.incrementAndGet();
+            long now=System.nanoTime(),last=lastEquipmentWarning.get();
+            if(zombie.network.GameServer.server&&(last==0||now-last>=30_000_000_000L)&&lastEquipmentWarning.compareAndSet(last,now)) {
+                int nativeId=number(get(item,"id"));
+                String safeSlot=slot!=null&&slot.matches("[A-Za-z0-9_:.-]{1,100}")?slot:"CUSTOM_SLOT";
+                zombie.debug.DebugLog.log("[ApocBR][PlayerRelational] EQUIPMENT_REFERENCE_SKIPPED; kind="+kind+"; slot="+safeSlot
+                        +"; nativeItemId="+nativeId+"; sameNativeIdOwned="+nativeIds.contains(nativeId));
+            }
+            return;
+        }
         row("equipment","character_id",character,"kind",kind,"slot",slot,"item_id",id,"position",position); edges++;
     }
     private void container(Object container,UUID id,UUID ownerCharacter,UUID ownerItem,int depth) {
