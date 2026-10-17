@@ -73,6 +73,11 @@ public final class ApocBRPlayerDatabase {
         update("DELETE FROM public.networkplayers WHERE username=? AND world=?",username,world);
     }
     private int update(String query,Object... arguments) throws SQLException {
+        if(ApocBRPersistence.journaling()&&!ApocBRPersistence.background()) {
+            ApocBRPersistence.submit(new ApocBRPersistenceOperations.Account(java.util.List.of(
+                new ApocBRPersistenceOperations.Sql(query,java.util.Arrays.asList(arguments)))));
+            return -1; // Accepted for persistence; no affected-row count exists yet.
+        }
         try (Connection connection = connections.open()) {
             try (PreparedStatement statement = prepare(connection,query)) {
                 for (int i=0;i<arguments.length;i++) {

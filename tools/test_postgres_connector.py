@@ -1,6 +1,8 @@
 """Compile actual 42.21.0 mirror against bundled JDBC/pool and game dependencies.
 Exercise transactional failure and FIFO recovery without contacting a database.
 """
+from postgres_test_support import inactive_persistence_stubs
+
 from pathlib import Path
 import subprocess
 import tempfile
@@ -184,9 +186,10 @@ with tempfile.TemporaryDirectory(prefix="apocbr_pg_test_") as directory:
     target = Path(directory)
     fixture = target / "PostgresConnectorTest.java"
     fixture.write_text(HARNESS, encoding="utf-8")
+    boundary = inactive_persistence_stubs(target, mutations=True)
     dependencies = os.pathsep.join(map(str, [GAME, LIB / "postgresql-42.7.14.jar", LIB / "HikariCP-7.1.0.jar"]))
     subprocess.run([str(JDK / "javac.exe"), "--release", "25", "-cp", dependencies,
-                    "-d", directory, str(SOURCE.parent / "ApocBRPayloadProvenance.java"), str(SOURCE), str(fixture)], check=True)
+                    "-d", directory, *map(str,boundary), str(SOURCE.parent / "ApocBRPayloadProvenance.java"), str(SOURCE), str(fixture)], check=True)
     subprocess.run([str(JDK / "java.exe"), "-cp", directory + os.pathsep + dependencies,
                     "zombie.savefile.PostgresConnectorTest"], check=True)
     disabled_fixture = target / "DisabledCheck.java"
@@ -207,7 +210,7 @@ public class DisabledCheck {
 
 patch = (ROOT / "42.21.0/src/zombie/savefile/ServerPlayerDB.java").read_text(encoding="utf-8")
 worker = (ROOT / "42.21.0/src/zombie/network/ServerPlayersVehicles.java").read_text(encoding="utf-8")
-assert "ApocBRPostgresConnector.enqueue" not in patch
+assert "ApocBRPostgresConnector.enqueuePlayerSnapshot" in patch
 assert "ApocBRPostgresConnector.savePlayerSnapshot" in patch
 assert "ApocBRPostgresConnector.process();" not in patch
 assert "ApocBRPostgresConnector.process();" in worker

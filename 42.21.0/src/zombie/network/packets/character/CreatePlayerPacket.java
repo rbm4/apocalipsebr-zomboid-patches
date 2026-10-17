@@ -172,6 +172,17 @@ public class CreatePlayerPacket implements INetworkPacket {
 
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        if(!zombie.savefile.ApocBRLoginGuard.playerReady(connection,this.playerIndex))return;
+        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.begin()) {
+            processServerDatabase(packetType,connection);
+        }catch(RuntimeException failure) {
+            if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
+            zombie.savefile.ApocBRLoginGuard.deny(connection);
+        }
+    }
+
+    private void processServerDatabase(PacketTypes.PacketType packetType, UdpConnection connection) {
         int spawnPointX = 0;
         int spawnPointY = 0;
         int spawnPointZ = 0;

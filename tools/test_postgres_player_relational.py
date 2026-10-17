@@ -1,4 +1,6 @@
 """Relational capture/JDBC fixtures and native 42.21.0 accessor compatibility; no live DB."""
+from postgres_test_support import inactive_persistence_stubs
+
 from pathlib import Path
 import os, subprocess, tempfile
 ROOT=Path(__file__).resolve().parents[1]
@@ -409,6 +411,21 @@ public class RelationalTest {
   visual.blood[0]=99;visual.tint.r=0;p.visual.blood[0]=99;durability.currentHitPoints=0;fluid.fluids.clear();
   var after=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(snapshot,List.of());
   check(canonical(before).equals(canonical(after)),"snapshot survives inventory, scalar, mod-data, bytes, visuals and component mutations");
+  try {
+   java.nio.file.Path directory=java.nio.file.Files.createTempDirectory("apocbr_snapshot_journal_");
+   try {
+    var batch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),character,Map.of(),java.time.Instant.EPOCH,snapshot,1);
+    try(var journal=new ApocBRPersistenceJournal(directory,1024,s->{})){journal.submit(new ApocBRPersistenceOperations.Live(batch));}
+    try(var journal=new ApocBRPersistenceJournal(directory,1024,s->{})) {
+     var restored=(ApocBRPlayerRelationalMutations.Batch)((ApocBRPersistenceOperations.Live)journal.head().operation()).batch();
+     detached(restored.snapshot().player(),Collections.newSetFromMap(new IdentityHashMap<>()));
+     var restoredGraph=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(restored.snapshot(),List.of());
+     check(canonical(after).equals(canonical(restoredGraph)),"disk journal round-trip preserves detached graph, shared references and opaque payload provenance");
+     journal.acknowledge(journal.head().id());
+    }
+   }finally{try(var paths=java.nio.file.Files.walk(directory)){for(var path:paths.sorted(java.util.Comparator.reverseOrder()).toList())java.nio.file.Files.delete(path);}}
+  }catch(Exception failure){throw new AssertionError("snapshot journal round trip",failure);}
+
   var opaque=after.rows().stream().filter(r->r.table().equals("value_node")&&r.values().get("opaque_value")!=null).findFirst().orElseThrow().values();
   check(opaque.get("source_server_id").equals(2)&&opaque.get("source_dictionary_view_id").equals(origin.viewId())&&opaque.get("payload_world_version").equals(249),"detached item bytes retain foreign encoder and version after live buffer is reused");
   P cyclic=new P();Map<Object,Object> table=new HashMap<>();table.put("self",table);cyclic.table=table;
@@ -652,7 +669,8 @@ public class RelationalTest {
   var second=q.poll(1_000_000_000L);check(second.fields().get(x).value().equals(3f),"repeated marks coalesce without postponing due time");
   q.finish(second,false,1_000_000_000L);check(q.poll(2_999_999_999L)==null,"failed patch backs off without losing dirty values");
   var retry=q.poll(3_000_000_000L);check(retry.fields().get(x).value().equals(3f),"failed value retained for retry");
-  UUID replacement=UUID.randomUUID();q.register(c.key(),replacement);q.mark(c,replacement,Map.of(x,4f),3_000_000_000L,java.time.Instant.EPOCH);
+  UUID replacement=UUID.randomUUID();check(!q.register(c.key(),replacement)&&q.size()==1,"replacement cannot discard an in-flight previous session");
+  q.finish(retry,true,3_000_000_000L);check(q.register(c.key(),replacement),"replacement may register after previous work is handed off");q.mark(c,replacement,Map.of(x,4f),3_000_000_000L,java.time.Instant.EPOCH);
   q.finish(retry,true,3_000_000_000L);q.bind(c.key(),session,UUID.randomUUID());
   check(q.poll(3_000_000_000L)==null,"old session cannot bind or acknowledge replacement session");
   q.bind(c.key(),replacement,character);var current=q.poll(3_000_000_000L);check(current.fields().get(x).value().equals(4f),"replacement session retains its own latest value");q.finish(current,true,3_000_000_000L);
@@ -934,6 +952,7 @@ public class RelationalTest {
   q.mark(c,session,Map.of(x,1f),0,java.time.Instant.EPOCH);var first=ApocBRPlayerRelationalSnapshot.copy(new P());
   check(q.snapshot(c,session,first,0)&&q.bytes()==first.bytes(),"detached graph queue accounts bytes and replaces older scalar marks");
   var batch=q.poll(0);check(batch.snapshot()==first&&batch.fields().isEmpty(),"graph and scalar marks share ordering and dispatch cadence");
+  check(!q.register(c.key(),UUID.randomUUID())&&q.bytes()==first.bytes(),"replacement preserves in-flight detached graph and byte accounting");
   check(q.oldestAgeMs(5_000_000L)==5,"queue latency includes work awaiting an in-flight acknowledgement");
   P player=new P();player.x=2;var second=ApocBRPlayerRelationalSnapshot.copy(player);
   check(q.snapshot(c,session,second,1)&&q.bytes()==first.bytes()+second.bytes(),"final capture can replace an in-flight graph within byte bound");
@@ -1201,8 +1220,9 @@ public class RelationalTest {
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
  target=Path(folder);harness=target/'RelationalTest.java';native_harness=HARNESS[:HARNESS.index(' static void worker()')]+HARNESS[HARNESS.index(' public static void main'):];native_harness=native_harness.replace('if(args.length>0){worker();System.out.println(\"Worker checks=\"+checks);return;}','');harness.write_text(native_harness,encoding='utf-8')
+ boundary=inactive_persistence_stubs(target)
  sources=[SRC/(name+'.java') for name in ['ApocBRPayloadProvenance','ApocBRPlayerRelationalLimits','ApocBRPlayerRelationalSchema','ApocBRPlayerRelationalAccess','ApocBRPlayerRelationalSnapshot','ApocBRPlayerRelationalCodecs','ApocBRPlayerRelationalCapture','ApocBRPlayerRelationalMutations','ApocBRPlayerRelationalDelta','ApocBRPlayerRelationalMetrics','ApocBRPlayerRelationalDatabase','ApocBRPlayerLoadQuality']]
- subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(harness)],check=True)
+ subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,boundary),*map(str,sources),str(harness)],check=True)
  subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.RelationalTest'],check=True)
  for mode in ['size-bytes','size-rows']:
   options=['-Dapocbr.postgres.playerRelational.'+setting+'=1' for setting in ['maxGraphMiB','maxSnapshotMiB','maxSourceMiB','queuedMiB']]

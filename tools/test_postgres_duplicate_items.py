@@ -5,6 +5,8 @@ accessor suite. Compile the complete production capture/snapshot/queue/delta/JDB
 classes against engine boundary stubs. Also run vanilla AddItem itself to compare
 its duplicate-insertion result with capture's keep-first behavior.
 """
+from postgres_test_support import inactive_persistence_stubs
+
 import ast
 from pathlib import Path
 import subprocess
@@ -106,6 +108,7 @@ public void Remove(InventoryItem item){items.remove(item);}
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content)
             sources.append(path)
+        sources += inactive_persistence_stubs(work)
         output = work / "classes"
         subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-d", str(output),
                         *map(str, sources)], check=True)

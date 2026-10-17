@@ -726,6 +726,7 @@ public class GameServer {
             ZipBackup.onStartup();
             ZipBackup.onVersion();
             int updateDBCount = 0;
+            zombie.savefile.ApocBRPostgresConnector.prepareStartup();
 
             try {
                 ServerWorldDatabase.instance.create();
@@ -737,6 +738,7 @@ public class GameServer {
             }
 
             Roles.init();
+            zombie.savefile.ApocBRPostgresConnector.finishStartup();
             if (ServerOptions.instance.uPnp.getValue()) {
                 DebugLog.log("Router detection/configuration starting.");
                 DebugLog.log("If the server hangs here, set UPnP=false.");
@@ -2726,6 +2728,7 @@ public class GameServer {
     }
 
     public static void receiveClientConnect(UdpConnection connection, ServerWorldDatabase.LogonResult r) {
+        if(!zombie.savefile.ApocBRLoginGuard.continueRequest(connection))return;
         ConnectionManager.log("receive-packet", "client-connect", connection);
         int slot = getFreeSlot();
         if (slot == -1) {
@@ -2842,6 +2845,16 @@ public class GameServer {
     }
 
     public static void receivePlayerConnect(ByteBufferReader bb, IConnection connection, String username) {
+        if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.begin()) {
+            receivePlayerConnectDatabase(bb,connection,username);
+        }catch(RuntimeException failure) {
+            if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
+            zombie.savefile.ApocBRLoginGuard.deny(connection);
+        }
+    }
+
+    private static void receivePlayerConnectDatabase(ByteBufferReader bb,IConnection connection,String username) {
         ConnectionManager.log("receive-packet", "player-connect", connection);
         if (SteamUtils.isSteamModeEnabled() && !coop && connection.getSteamId() <= 0L) {
             LoggerManager.getLogger("user")

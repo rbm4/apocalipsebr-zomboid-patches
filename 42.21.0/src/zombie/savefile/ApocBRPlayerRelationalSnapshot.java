@@ -7,9 +7,10 @@ import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Copies only export-owned state on the load thread. No game object escapes to the worker. */
 final class ApocBRPlayerRelationalSnapshot {
-    record Snapshot(Node player,Instant capturedAt,int bytes) {}
-    record Stat(String key,Object value) {}
-    static final class Node {
+    record Snapshot(Node player,Instant capturedAt,int bytes) implements java.io.Serializable {}
+    record Stat(String key,Object value) implements java.io.Serializable {}
+    static final class Node implements java.io.Serializable {
+        private static final long serialVersionUID=1L;
         final String runtimeClass;
         final List<String> types;
         private Map<String,Object> fields=new LinkedHashMap<>();
@@ -19,17 +20,37 @@ final class ApocBRPlayerRelationalSnapshot {
             for(Class<?> type=source.getClass();type!=null;type=type.getSuperclass())names.add(type.getSimpleName());
             types=List.copyOf(names);
         }
+        private void writeObject(java.io.ObjectOutputStream out)throws java.io.IOException {out.defaultWriteObject();writePayloadMetadata(out,fields);}
+        private void readObject(java.io.ObjectInputStream in)throws java.io.IOException,ClassNotFoundException {in.defaultReadObject();readPayloadMetadata(in);}
         Object get(String path) {
             if(!fields.containsKey(path))throw new IllegalStateException("Missing snapshot field "+path);
             return fields.get(path);
         }
     }
     // Preserve Lua table identity and kind, including shared/cyclic references for codec rejection.
-    static final class Table {
+    static final class Table implements java.io.Serializable {
+        private static final long serialVersionUID=1L;
         final String kind;
         private Map<Object,Object> entries=new LinkedHashMap<>();
         Table(String kind){this.kind=kind;}
         Map<Object,Object> entries(){return entries;}
+        private void writeObject(java.io.ObjectOutputStream out)throws java.io.IOException {out.defaultWriteObject();writePayloadMetadata(out,entries);}
+        private void readObject(java.io.ObjectInputStream in)throws java.io.IOException,ClassNotFoundException {in.defaultReadObject();readPayloadMetadata(in);}
+    }
+    private static void payloads(Object value,IdentityHashMap<Object,Boolean> seen,IdentityHashMap<byte[],ApocBRPayloadProvenance.Metadata> found) {
+        if(value==null||seen.put(value,true)!=null)return;
+        if(value instanceof byte[] bytes){var metadata=ApocBRPayloadProvenance.metadata(bytes);if(metadata!=null)found.put(bytes,metadata);}
+        else if(value instanceof Map<?,?> map)for(Object child:map.values())payloads(child,seen,found);
+        else if(value instanceof Iterable<?> list)for(Object child:list)payloads(child,seen,found);
+        // Other Nodes/Tables serialize their own metadata; never walk back into cyclic graphs.
+    }
+    private static void writePayloadMetadata(java.io.ObjectOutputStream out,Object values)throws java.io.IOException {
+        var found=new IdentityHashMap<byte[],ApocBRPayloadProvenance.Metadata>();payloads(values,new IdentityHashMap<>(),found);
+        out.writeInt(found.size());for(var entry:found.entrySet()){out.writeObject(entry.getKey());out.writeObject(entry.getValue());}
+    }
+    private static void readPayloadMetadata(java.io.ObjectInputStream in)throws java.io.IOException,ClassNotFoundException {
+        int count=in.readInt();if(count<0||count>ApocBRPlayerRelationalLimits.NODES)throw new java.io.IOException("Invalid payload metadata count");
+        for(int i=0;i<count;i++)ApocBRPayloadProvenance.remember((byte[])in.readObject(),(ApocBRPayloadProvenance.Metadata)in.readObject());
     }
     private static final Set<String> GENERATED=Set.of("snapshot_id","id","character_id","item_id",
             "owner_character_id","owner_item_id","position","body_part_key");

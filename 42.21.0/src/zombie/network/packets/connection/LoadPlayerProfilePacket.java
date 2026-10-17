@@ -160,6 +160,16 @@ public class LoadPlayerProfilePacket implements INetworkPacket {
 
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.begin()) {
+            processServerDatabase(packetType,connection);
+        }catch(RuntimeException failure) {
+            if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
+            zombie.savefile.ApocBRLoginGuard.deny(connection);
+        }
+    }
+
+    private void processServerDatabase(PacketTypes.PacketType packetType, UdpConnection connection) {
         if (this.playerIndex < 0 || this.playerIndex >= 4) {
             this.isExist = false;
             ByteBufferWriter b = connection.startPacket();
@@ -180,7 +190,7 @@ public class LoadPlayerProfilePacket implements INetworkPacket {
                 ByteBufferWriter b=connection.startPacket();
                 PacketTypes.PacketType.LoadPlayerProfile.doPacket(b); this.write(b);
                 PacketTypes.PacketType.LoadPlayerProfile.send(connection);
-            } catch (Exception failure) { ExceptionLogger.logException(failure); }
+            } catch (Exception failure) { zombie.savefile.ApocBRLoginGuard.deny(connection); }
         } else if (ServerPlayerDB.getInstance().conn != null) {
             if (GameServer.coop && SteamUtils.isSteamModeEnabled()) {
                 ServerPlayerDB.getInstance().serverConvertNetworkCharacter(connection.getUserName(), connection.getIDStr());

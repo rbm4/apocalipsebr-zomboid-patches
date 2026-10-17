@@ -1,4 +1,6 @@
 """Actual PostgreSQL vehicle SQL/store tests with isolated JDBC and engine fixtures."""
+from postgres_test_support import inactive_persistence_stubs
+
 from pathlib import Path
 import os
 import subprocess
@@ -126,6 +128,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_vehicle_test_') as folder:
     harness=target/'VehicleDatabaseTest.java';harness.write_text(HARNESS,encoding='utf-8');files.append(harness)
     files += [SRC/'savefile/ApocBRPayloadProvenance.java', SRC/'savefile/ApocBRVehicleDatabase.java', SRC/'savefile/ApocBRPostgresConnector.java', SRC/'vehicles/VehiclesDB2.java']
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
+    files += inactive_persistence_stubs(target, mutations=True)
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,files)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.savefile.VehicleDatabaseTest'],check=True)
 

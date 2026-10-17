@@ -1,5 +1,102 @@
 # PostgreSQL JDBC dependency for 42.21.0
 
+## Outage resilience: accounts and players
+
+The connector owns an ordered local journal and two daemon workers: one flushes
+detached operations to disk, the other replays them into PostgreSQL. Simulation
+continues during a database outage. New login, second-factor, profile-load,
+character-create and player-connect requests receive the existing `AccessDenied`
+response while recovery/backlog work remains. There is no SQLite fallback.
+Vehicles retain their existing persistence behavior and are not journaled here.
+
+**Provision before deploying:** apply
+[`tools/postgres-persistence-receipt.sql`](tools/postgres-persistence-receipt.sql)
+through the backend migration process. The game never runs this DDL. Every replayed
+mutation claims its operation UUID in `public.apocbr_persistence_receipt` in the
+same transaction as its data changes. This prevents duplicate execution after a
+lost commit response or restart before the local acknowledgement. Keep receipts
+for as long as any journal/backup could be replayed; restoring PostgreSQL without
+its matching receipts invalidates this guarantee.
+
+Startup waits for PostgreSQL and replays the journal **before** account bootstrap,
+role initialization and login admission. Missing receipt schema or invalid
+credentials stop startup with a migration/configuration error. Runtime states are
+`STARTING`, `AVAILABLE`, `UNAVAILABLE`, `RECOVERING`, `DRAINING`, `CLOSED`. Recovery
+probes back off from 250 ms to 30 seconds. SQL/schema/unsupported-capture failures
+retain the offending head and block later replay; they require correction, not
+automatic discard. Login stays closed until recovery work drains. Player
+profile/creation/connection phases also check that identity/slot for staged
+writes and unsent relational mutations. Routine healthy-server writes do not close
+admission for unrelated identities.
+
+Account/player foreground calls keep their synchronous contracts. Pool acquisition
+uses a maximum 250 ms foreground wait, socket operations use at most 250 ms, and
+login packet phases share a 500 ms workflow deadline across nested calls. The
+first undetected failure can briefly pause a tick; this is not asynchronous login
+or a hard real-time guarantee. Subsequent calls fail before borrowing while the
+connector is unavailable/recovering. Background writes retain normal pool/socket
+budgets. Vehicle and dictionary leases bypass foreground admission/deadlines.
+
+The default journal location is
+`<Zomboid saves>/Multiplayer/<serverName>/postgres-journal`; override it with
+`-Dapocbr.postgres.journalDirectory=<absolute-path>`. Keep this directory persistent
+and private to the server: operations include player data and account updates.
+Only one process can own a journal. It contains version-one serialized detached
+operations, UUIDs, timestamps, CRC32C records and an atomically replaced checkpoint.
+Replay preserves FIFO/transaction ordering. It truncates incomplete final appends
+on restart, rejects corrupt complete records, and rotates drained generations.
+Do not edit or remove pending journal files to unblock startup.
+
+RAM staging is limited to 256 operations/64 MiB of estimated input. A dedicated
+writer flushes every 25 ms; overflow spills to local disk on the submitting thread,
+without waiting for PostgreSQL. Large captures, serialization and filesystem I/O
+can still consume time. Records are durable only after file flush; native captures,
+dirty/coalesced state and operations still staged in RAM can be lost on forced
+termination. Disk is assumed sufficient. An I/O failure is reported and never
+acknowledges unsaved work; no disk-capacity management policy is implemented.
+
+Journaled operations include native character snapshots, initial relational
+captures/new lives, live scalar/graph batches, player-store conversion/deletion,
+and independent account writes. Relational captures are saved **before** projection
+because alias reads need PostgreSQL. Serialization preserves object identity and
+opaque byte-payload provenance. Initial captures do not expire during an outage.
+Periodic captures still coalesce before journal handoff; this is state persistence,
+not an audit history of every intermediate simulation mutation. Session registration
+refuses replacement while prior mutations remain pending.
+
+Independent account writes include allow-list changes, explicit password/display
+updates, 2FA reset, last-connection timestamps, log aggregation/deletion, tickets,
+IP/Steam bans, existing role/default-role updates and capability replacement. String-returning queued methods return
+`Database update queued; pending persistence`, never a committed-success result.
+Void methods retain their interfaces. Operations requiring authorization/existence
+reads or generated IDs remain synchronous and fail unavailable for retry. For
+example, new account/role creation, password verification, role reassignment and
+2FA registration are not accepted blindly during an outage. Deferred player-store
+conversion returns `-1` because its eventual affected-row count is unavailable.
+
+Graceful shutdown queues final player samples, closes admission, waits before
+synchronous role saving (retrying database failures), then drains relational work
+before closing workers and
+the shared pool. It waits indefinitely during an outage, including when the queue
+is empty but PostgreSQL is unreachable. Forced process termination cannot provide
+this drain guarantee. Existing final vehicle Reset still precedes pool closure.
+
+`ApocBRPostgresConnector.persistenceStatus()` exposes state, RAM staging count/bytes,
+durable count/bytes, oldest pending age and in-flight replay. Legacy `mirrorStatus()`
+does not represent this backlog. `[ApocBR][Persistence]` logs availability changes,
+rate-limited replay progress/defer/block events and shutdown wait status. They
+contain operation UUID/type, SQLState and exception type, without bound values.
+`LIVE_METRICS.journaledPatches` counts capture handoffs; journal commits are owned by the
+replay adapter rather than the old relational worker's JDBC counters.
+
+`python tools/test_postgres_resilience.py` exercises the production journal,
+coordinator, foreground deadlines, login guard and native/account replay adapters
+with fake JDBC. Existing account/player/relational fixtures remain SQL/engine
+boundary tests; their inactive lifecycle stub is explicit in
+`tools/postgres_test_support.py`. The relational fixture additionally round-trips
+real detached captures through the journal, including opaque provenance and session
+replacement retention. Full deployed multiplayer/outage validation is still required.
+
 ## Authoritative server accounts and administration
 
 The patched `network/ServerWorldDatabase.java` now routes its existing account,
@@ -34,9 +131,9 @@ PostgreSQL startup bypasses native SQLite file creation, `sqlite_master` probes,
 legacy schema alterations and duplicate cleanup. It validates all nine table/column
 contracts using read-only queries, then preserves vanilla administrator lookup,
 creation and command-line password update behavior. Backend migrations and data
-import must run first. Missing tables/columns or unavailable connections stop
-startup rather than continuing against a different database. No engine DDL or
-automatic import is executed.
+import must run first. Missing tables/columns stop startup; connectivity outages
+hold startup until PostgreSQL returns. Startup never continues against a different
+database. No engine DDL or automatic import is executed.
 
 The native SQL outside bootstrap uses unquoted names; PostgreSQL folds them to the
 migration's lowercase identifiers. Connections explicitly select `public`.
@@ -49,11 +146,9 @@ statements to the pool even when native code returns early or catches an error.
 
 These APIs are **synchronous**, unlike character snapshot queues: the engine needs
 the whitelist/ban/role result before allowing login or responding to an admin action.
-Preserving those return contracts means calls can wait on the original calling
-thread, including the main thread. Connection acquisition is bounded by the pool's
-two-second timeout; JDBC statements get a two-second query timeout, and pgJDBC uses
-the configured three-second socket/connect timeouts. Multiple statements can extend
-total API-call latency. This is not a new asynchronous login protocol.
+They retain the original calling thread, including the main thread, with the
+foreground budgets and outage gate described above. Background leases retain the
+two-second pool and three-second pgJDBC socket/connect budgets.
 
 Account authentication remains vanilla: existing password encodings and second-factor
 data are used unchanged, and bans/capabilities still determine access. SQL or pool
@@ -195,7 +290,7 @@ is required or stored.
 
 The shared Hikari pool defaults to maximum 8 (configurable 1-32), minimum idle 2
 (or the maximum if smaller), acquisition timeout 2 seconds, validation timeout
-1 second and lifetime 30 minutes. pgJDBC connect/socket timeouts are 3 seconds,
+250 ms and lifetime 30 minutes. pgJDBC connect/socket timeouts are 3 seconds,
 with TCP keepalive and `ApplicationName=ApocBR-game-persistence`. This is an initial
 capacity setting, not a measured runtime guarantee.
 
@@ -221,13 +316,13 @@ extra server/identity/timestamp columns or required conflict-target unique keys.
 
 - Native save triggers and `NetworkCharacterData` capture remain unchanged. Normal
   saves enter the original queue; `ServerPlayersVehicles` calls `process()` to
-  commit PostgreSQL directly. There is no second serialization or mirror queue.
-- New-character creation still calls `ServerPlayerDB.process()` directly. This is
-  intentionally synchronous, so the first PostgreSQL row is committed before the
-  native creation response/later character lookup. It is not a new login handoff.
-- `process()` is serialized between its native callers to keep FIFO processing
-  and prevent simultaneous main/worker drains. `saveFinishWait()` also waits for
-  a polled operation still committing inside that method.
+  hand them to the connector journal. PostgreSQL execution occurs on replay only.
+- New-character creation still invokes `ServerPlayerDB.process()`, but it now
+  submits local detached work without JDBC. Its response is not a commit receipt;
+  subsequent connection phases deny admission while initial work remains pending.
+- `process()` serializes local handoff between native callers, with no PostgreSQL
+  work under that monitor. `saveFinishWait()` waits for native queue handoff;
+  graceful shutdown separately waits for journal and relational persistence.
 - Writes reuse the lookup-insert/update implementation: a transaction-scoped
   `SHARE ROW EXCLUSIVE` table lock, lookup by vanilla identity, insert missing
   players with PostgreSQL-generated ID or update the selected row, then commit.
@@ -249,7 +344,7 @@ extra server/identity/timestamp columns or required conflict-target unique keys.
 - PostgreSQL server-player registration now binds live tracking directly from
   the validated login profile's persisted character UUID and source dataset UUID.
   It skips the initial import snapshot, receipt SQL and import queue entirely,
-  then starts the worker. It must not derive an existing life's dataset from
+  then starts the capture/handoff worker. It must not derive an existing life's dataset from
   the current SQLite save path or unrelated `sourceDatasetId` setting. The
   initial-import path remains for SQLite backfills and newly created lives.
 
@@ -261,9 +356,9 @@ extra server/identity/timestamp columns or required conflict-target unique keys.
   Reads borrow independent connections and never use a shared physical player
   connection. Character reconstruction runs in the same native caller context.
 
-As with the requested native baseline, failed saves are logged after being polled;
-there is no new authoritative retry/spool protocol. Invalid null/empty/over-1-MiB
-captures are rejected rather than overwriting valid data. A deserialization failure
+Native saves remain queued until journal acceptance; database failures retain the
+journal head for retry. Invalid null/empty/over-1-MiB captures are rejected rather
+than overwriting valid data. A deserialization failure
 still takes the native deletion branch, now with an explicit PostgreSQL transaction.
 Null data fails before that branch. This is not a quarantine/revision-history design.
 
@@ -275,7 +370,9 @@ queue, and shared pool closure remains after final native vehicle Reset.
 ### Diagnostics and validation
 
 Look for `[ApocBR][Postgres] connector enabled`, `player database ready;
-backend=PostgreSQL`, `player snapshot committed`, and `PLAYER_SQL_FAILURE`.
+backend=PostgreSQL`, and the `[ApocBR][Persistence]` availability/replay events.
+The older `player snapshot committed` / `PLAYER_SQL_FAILURE` messages belong to
+the direct compatibility helper, not journal replay.
 Failure messages preserve SQLState and bounded, redacted server diagnostics without
 bound snapshot bytes or driver DETAIL fields. `42P01` identifies a missing relation;
 `42703` identifies missing columns. Check the target from the same database:
@@ -395,6 +492,12 @@ boundaries are stubbed in this routing fixture; a real login remains necessary
 to validate the complete inventory/mod-data payload with installed mods.
 ## Diagnosing live mutation retries
 
+With the active journal, use `[ApocBR][Persistence]` replay events and
+`persistenceStatus()` from the outage-resilience section above. The following
+`LIVE_WRITE_*` diagnostics describe the direct relational worker path retained
+for inactive-lifecycle fixtures and older deployments. Journal handoff is reported
+as `journaledPatches`; it does not mean the PostgreSQL transaction committed.
+
 `LIVE_WRITE_FAILED` reports exceptions; `SQLState=LOCAL` identifies a Java
 runtime exception or linkage error rather than a JDBC SQLState. Diagnostics
 include the processing stage, exception types, controlled issue codes and
@@ -508,10 +611,9 @@ and requests `finalSample`. This queues relational work asynchronously; neither
 that method nor the ordinary disconnect waits for a relational commit. Native
 `networkplayers.data` being saved does not make the relational head current.
 Any incomplete inventory/component graph rejects the entire graph, including
-regularity updates. A further confirmed gap is that `DirtyQueue.register`
-removes the previous session's pending entry: reconnecting before it commits
-can read an older head and replace uncommitted work. These lifecycle behaviors
-are not changed by the diagnostic/tests in this investigation.
+regularity updates. The outage-resilience change now refuses replacement of a pending dirty session,
+blocks login while capture/journal work remains, and drains final captures during
+graceful shutdown. Ordinary disconnect still does not synchronously await a commit.
 
 Use `tools/inspect_postgres_player_fitness.sql` against the live database after
 exercise, after logout, and after login. It reports the current head, commit

@@ -1,4 +1,6 @@
 """Actual player DB and profile packet with isolated game/JDBC fixtures; no live DB."""
+from postgres_test_support import inactive_persistence_stubs
+
 from pathlib import Path
 import os
 import subprocess
@@ -219,5 +221,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr_players_') as folder:
     files += [SRC/path for path in ['world/ApocBRWorldDictionaryDecode.java','world/ApocBRWorldDictionarySnapshot.java','savefile/ApocBRWorldDictionaryDatabase.java']]
     files.append(SRC/'network/packets/connection/LoadPlayerProfilePacket.java')
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
+    files += inactive_persistence_stubs(target, mutations=False)
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,files)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-Dapocbr.test.gameJar='+str(GAME),'-cp',folder+os.pathsep+cp,'zombie.savefile.PlayersTest'],check=True)

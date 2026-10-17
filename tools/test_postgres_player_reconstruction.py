@@ -1,4 +1,5 @@
 """Relational login SQL/JDBC and actual native field restoration contracts (42.21.0)."""
+from postgres_test_support import inactive_persistence_stubs
 from pathlib import Path
 import os, re, subprocess, tempfile
 
@@ -265,5 +266,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:
     names=['Limits','Schema','Access','Snapshot','Codecs','Capture','Mutations','Delta','Metrics','Database','Reader','Reconstruction']
     sources=[SRC/'ApocBRPayloadProvenance.java']+[SRC/('ApocBRPlayerRelational'+n+'.java') for n in names]
     sources += [SRC.parent/path for path in ['world/ApocBRWorldDictionaryDecode.java','world/ApocBRWorldDictionarySnapshot.java','savefile/ApocBRWorldDictionaryDatabase.java']]
+    sources += inactive_persistence_stubs(target)
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(connector),str(harness)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.savefile.ReconstructionTest'],check=True)

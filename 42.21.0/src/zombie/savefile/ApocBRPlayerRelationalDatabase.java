@@ -9,7 +9,7 @@ import java.util.*;
 final class ApocBRPlayerRelationalDatabase {
     interface Connections { Connection open() throws SQLException; }
     record Candidate(UUID dataset,String label,String world,String identity,boolean coop,int slot,int nativeId,
-                     int worldVersion,String blobHash,List<String> loadIssues,UUID newLife) {
+                     int worldVersion,String blobHash,List<String> loadIssues,UUID newLife) implements java.io.Serializable {
         Candidate(UUID d,String l,String w,String i,boolean c,int s,int n,int v,String h,List<String> issues){this(d,l,w,i,c,s,n,v,h,issues,null);}
         Candidate { loadIssues=List.copyOf(loadIssues); }
         String key() { return dataset+":"+world+":"+(coop?"steam_coop":"username")+":"+identity+":"+slot; }
@@ -102,6 +102,7 @@ final class ApocBRPlayerRelationalDatabase {
     boolean persist(Candidate candidate,Receipt inspected,ApocBRPlayerRelationalCapture.Graph graph) throws SQLException {
         try(Connection connection=connections.open()) {
             try {
+                if(!ApocBRPersistence.claim(connection)){connection.rollback();return true;}
                 execute(connection,"SET LOCAL lock_timeout = '250ms'");
                 execute(connection,"SET CONSTRAINTS ALL DEFERRED");
                 // Non-waiting per-slot lock. Does not lock public/native tables or other characters.
@@ -184,6 +185,7 @@ final class ApocBRPlayerRelationalDatabase {
         Candidate candidate=batch.candidate();
         try(Connection connection=connections.open()) {
             try {
+                if(!ApocBRPersistence.claim(connection)){connection.rollback();return true;}
                 execute(connection,"SET LOCAL lock_timeout = '250ms'");
                 execute(connection,"SET CONSTRAINTS ALL DEFERRED");
                 try(PreparedStatement lock=statement(connection,"SELECT pg_try_advisory_xact_lock(?)")) {

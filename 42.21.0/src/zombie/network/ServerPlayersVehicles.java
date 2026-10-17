@@ -32,7 +32,7 @@ public class ServerPlayersVehicles {
     }
 
     private static final class SPVThread extends Thread {
-        boolean stop;
+        volatile boolean stop;
 
         @Override
         public void run() {

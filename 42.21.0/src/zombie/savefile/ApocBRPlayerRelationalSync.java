@@ -76,6 +76,18 @@ public final class ApocBRPlayerRelationalSync {
             var candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,label,world,identity,
                     GameServer.coop&&SteamUtils.isSteamModeEnabled(),slot,sqlId,worldVersion,null,loadIssues,life);
             UUID session=ApocBRPlayerRelationalMutations.register(player,candidate);
+            if(ApocBRPersistence.journaling()) {
+                if(session==null)throw new IllegalStateException("Relational tracking capacity exceeded");
+                if(sourceBytes.length>ApocBRPlayerRelationalLimits.SOURCE_BYTES)throw new IllegalStateException("SOURCE_SIZE_BUDGET");
+                if(life==null&&sourceBytes.length>0) {
+                    String hash=HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(sourceBytes));
+                    candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,label,world,identity,candidate.coop(),slot,sqlId,worldVersion,hash,loadIssues,life);
+                }
+                var snapshot=life==null?ApocBRPlayerRelationalSnapshot.copy(player):ApocBRPlayerRelationalSnapshot.copyLive(player);
+                ApocBRPersistence.submit(new ApocBRPersistenceOperations.Initial(candidate,session,snapshot));
+                if(life!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,life);
+                start();return;
+            }
             synchronized(PENDING) {
                 Pending existing=PENDING.get(candidate.key());
                 if(existing!=null&&life!=null){existing.cancelled=true;QUEUE.remove(existing);forget(existing);existing=null;}
@@ -161,10 +173,19 @@ public final class ApocBRPlayerRelationalSync {
     private static synchronized void deferred(){long now=System.nanoTime();if(now-lastDeferredLog>30_000_000_000L){lastDeferredLog=now;log("QUEUE_FULL; deferredUntilNextLoad=true");}}
     public static void shutdown() {
         stopping=true;Thread current=worker;
-        if(current!=null){current.interrupt();try{current.join(4000);}catch(InterruptedException error){Thread.currentThread().interrupt();}}
+        boolean interrupted=false;
+        if(current!=null){current.interrupt();while(current.isAlive())try{current.join(1000);}catch(InterruptedException error){interrupted=true;}}
+        if(ApocBRPersistence.journaling()) {
+            // Initial replay binds SQLite-backfill sessions before their final scalar batches.
+            ApocBRPersistence.drain();
+            // Every detached batch goes to the journal before tracking state can be cleared.
+            ApocBRPlayerRelationalMutations.journalPending();
+            ApocBRPersistence.drain();
+        }
         if(!PENDING.isEmpty())log("shutdown; pending="+PENDING.size()+"; retryOnNextLoad=true");
         QUEUE.clear();PENDING.clear();QUEUED_BYTES.set(0);
         ApocBRPlayerRelationalMutations.shutdown();
+        if(interrupted)Thread.currentThread().interrupt();
     }
     private ApocBRPlayerRelationalSync() {}
 }

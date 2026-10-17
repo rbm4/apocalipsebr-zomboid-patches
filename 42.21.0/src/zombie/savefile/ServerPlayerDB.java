@@ -92,6 +92,25 @@ public final class ServerPlayerDB {
     }
 
     public synchronized void process() {
+        if (ApocBRPlayerDatabase.enabled()) {
+            for (NetworkCharacterData data=charactersToSave.peek();data!=null;data=charactersToSave.peek()) {
+                ApocBRPostgresConnector.Snapshot snapshot;
+                try{snapshot=new ApocBRPostgresConnector.Snapshot(
+                    Core.gameSaveWorld,data.username,data.steamid,data.playerIndex,data.playerName,
+                    data.x,data.y,data.z,data.worldVersion,data.isDead,data.splitUsername,
+                    GameServer.coop && SteamUtils.isSteamModeEnabled(),data.capturedAtMillis,data.buffer,data.origin);
+                }catch(IllegalArgumentException invalid){
+                    charactersToSave.poll();DebugLog.log("[ApocBR][Postgres] INVALID_PLAYER_SNAPSHOT; rejected=true");continue;
+                }
+                ApocBRPostgresConnector.enqueuePlayerSnapshot(snapshot);
+                charactersToSave.poll();
+            }
+            return;
+        }
+        processSqlite();
+    }
+
+    private void processSqlite() {
         if (!this.charactersToSave.isEmpty()) {
             for (ServerPlayerDB.NetworkCharacterData characterData = this.charactersToSave.poll();
                 characterData != null;
@@ -384,6 +403,7 @@ public final class ServerPlayerDB {
      * Packet dispatch invokes this on the server simulation thread. No import or live registration
      * is offered for this temporary player; the subsequent player-connect performs that setup. */
     public ApocBRPlayerDatabase.Profile serverLoadPostgresClientProfile(int slot,String identity,boolean coop,String username) throws SQLException,IOException {
+        if(!ApocBRPostgresConnector.playerReadable(Core.gameSaveWorld,identity,slot,coop))throw new SQLException("Player persistence is pending","55000");
         var profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
         if(profile==null)return null;
         IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
@@ -404,6 +424,7 @@ public final class ServerPlayerDB {
 
     private IsoPlayer loadPostgresPlayer(int slot,String identity) {
         boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
+        if(!ApocBRPostgresConnector.playerReadable(Core.gameSaveWorld,identity,slot,coop))return null;
         try {
             ApocBRPlayerRelationalReader.Profile profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
             if (profile==null) return null;

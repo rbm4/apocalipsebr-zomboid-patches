@@ -6,7 +6,7 @@ import java.sql.*;
 import java.util.*;
 
 /** Out-of-band encoder identity. Never infer the origin of existing bytes from this JVM's ID. */
-public record ApocBRPayloadProvenance(int serverId, UUID namespaceId, UUID viewId) {
+public record ApocBRPayloadProvenance(int serverId, UUID namespaceId, UUID viewId) implements java.io.Serializable {
     public ApocBRPayloadProvenance {
         if(serverId<1)throw new IllegalArgumentException("Server ID must be positive");
         Objects.requireNonNull(namespaceId);Objects.requireNonNull(viewId);
@@ -37,7 +37,7 @@ public record ApocBRPayloadProvenance(int serverId, UUID namespaceId, UUID viewI
         statement.setObject(start+1,origin==null?null:origin.namespaceId(),Types.OTHER);
         statement.setObject(start+2,origin==null?null:origin.viewId(),Types.OTHER);
     }
-    public record Metadata(ApocBRPayloadProvenance origin,Integer worldVersion) {
+    public record Metadata(ApocBRPayloadProvenance origin,Integer worldVersion) implements java.io.Serializable {
         public Metadata {if(worldVersion!=null&&worldVersion<1)throw new IllegalArgumentException("Invalid payload version");}
     }
     // Native byteData has no extension fields or origin header. Track buffer/array identity weakly;

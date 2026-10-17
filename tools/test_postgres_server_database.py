@@ -1,4 +1,6 @@
 """Execute actual ServerWorldDatabase/connector code with isolated engine and JDBC fixtures."""
+from postgres_test_support import inactive_persistence_stubs
+
 from pathlib import Path
 import os
 import re
@@ -178,6 +180,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_server_db_') as folder:
     files += [harness, SRC / 'network/ServerWorldDatabase.java', SRC / 'savefile/ApocBRServerDatabase.java', SRC / 'savefile/ApocBRPostgresConnector.java', SRC / 'savefile/ApocBRPlayerDatabase.java']
     files.append(SRC / 'savefile/ApocBRPayloadProvenance.java')
     cp = os.pathsep.join(map(str, [GAME, LIB / 'postgresql-42.7.14.jar', LIB / 'HikariCP-7.1.0.jar']))
+    files += inactive_persistence_stubs(target, mutations=True)
     subprocess.run([str(JDK / 'javac.exe'), '--release', '25', '-cp', cp, '-d', folder, *map(str,files)], check=True)
     subprocess.run([str(JDK / 'java.exe'), '-cp', folder + os.pathsep + cp, 'zombie.savefile.ServerDatabaseTest'], check=True)
 

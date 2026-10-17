@@ -273,6 +273,7 @@ public class ServerWorldDatabase {
     }
 
     public String addSteamID(String steamID) throws SQLException {
+        if(ApocBRServerDatabase.queue("INSERT INTO allowedsteamid(steamid) VALUES(?)",steamID))return ApocBRServerDatabase.PENDING;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -290,6 +291,7 @@ public class ServerWorldDatabase {
     }
 
     public String removeSteamID(String steamID) throws SQLException {
+        if(ApocBRServerDatabase.queue("DELETE FROM allowedsteamid WHERE steamid=?",steamID))return ApocBRServerDatabase.PENDING;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -364,6 +366,7 @@ public class ServerWorldDatabase {
     }
 
     public void updateDisplayName(String user, String displayName) {
+        if(ApocBRServerDatabase.queue("UPDATE whitelist SET displayname=? WHERE username=? AND world=?",displayName,user,Core.gameSaveWorld))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -414,6 +417,7 @@ public class ServerWorldDatabase {
     }
 
     public String removeUser(String username, String world) throws SQLException {
+        if(ApocBRServerDatabase.queue("DELETE FROM whitelist WHERE world=? AND username=?",world,username))return ApocBRServerDatabase.PENDING;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -436,6 +440,7 @@ public class ServerWorldDatabase {
     }
 
     public void removeWholeUserLog(String username) throws SQLException {
+        if(ApocBRServerDatabase.queue("DELETE FROM userlog WHERE username=?",username))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -451,6 +456,7 @@ public class ServerWorldDatabase {
     }
 
     public void removeUserLog(String username, String type, String text) throws SQLException {
+        if(ApocBRServerDatabase.queue("DELETE FROM userlog WHERE username=? AND type=? AND text=?",username,type,text))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -933,6 +939,14 @@ public class ServerWorldDatabase {
     }
 
     public void saveRole(Role role) {
+        if(role.getId()!=-1) {
+            java.util.ArrayList<String> queries=new java.util.ArrayList<>();java.util.ArrayList<Object[]> parameters=new java.util.ArrayList<>();
+            queries.add("UPDATE role SET name=?,description=?,colorr=?,colorg=?,colorb=?,position=? WHERE id=? AND readonly=false");
+            parameters.add(new Object[]{role.getName(),role.getDescription(),role.getColor().r,role.getColor().g,role.getColor().b,role.getPosition(),role.getId()});
+            queries.add("DELETE FROM capabilities WHERE role=?");parameters.add(new Object[]{role.getId()});
+            for(Capability capability:role.getCapabilities()){queries.add("INSERT INTO capabilities(name,role) VALUES(?,?)");parameters.add(new Object[]{capability.name(),role.getId()});}
+            if(ApocBRServerDatabase.queueBatch(queries.toArray(String[]::new),parameters.toArray(Object[][]::new)))return;
+        }
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             boolean isNewRole = role.getId() == -1;
@@ -1023,6 +1037,9 @@ public class ServerWorldDatabase {
     }
 
     public void saveDefaultRole(Role role, String name) {
+        if(ApocBRServerDatabase.queueBatch(new String[]{
+            "INSERT INTO defaultroles(name,role) SELECT ?,? WHERE NOT EXISTS(SELECT 1 FROM defaultroles WHERE LOWER(name)=LOWER(?))",
+            "UPDATE defaultroles SET role=? WHERE name=?"},new Object[][]{{name,role.getId(),name},{role.getId(),name}}))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -1081,6 +1098,10 @@ public class ServerWorldDatabase {
     }
 
     public void saveRoleCapabilities(Role role) {
+        java.util.ArrayList<String> queries=new java.util.ArrayList<>();java.util.ArrayList<Object[]> parameters=new java.util.ArrayList<>();
+        queries.add("DELETE FROM capabilities WHERE role=?");parameters.add(new Object[]{role.getId()});
+        for(Capability capability:role.getCapabilities()){queries.add("INSERT INTO capabilities(name,role) VALUES(?,?)");parameters.add(new Object[]{capability.name(),role.getId()});}
+        if(ApocBRServerDatabase.queueBatch(queries.toArray(String[]::new),parameters.toArray(Object[][]::new)))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -1508,6 +1529,7 @@ public class ServerWorldDatabase {
     }
 
     public String changePassword(String username, String newPwd) throws SQLException {
+        if(ApocBRServerDatabase.queue("UPDATE whitelist SET password=?,authtype=? WHERE username=? AND world=?",newPwd,1,username,Core.gameSaveWorld))return ApocBRServerDatabase.PENDING;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             PreparedStatement stat = database.prepareStatement("UPDATE whitelist SET password = ?, authType = ? WHERE username = ? and world = ?");
@@ -1604,6 +1626,7 @@ public class ServerWorldDatabase {
     }
 
     public void addUserlog(String username, Userlog.UserlogType type, String text, String issuedBy, int amount) {
+        if(ApocBRServerDatabase.queueUserlog(username,type.toString(),text,issuedBy,amount,dateFormat.format(Calendar.getInstance().getTime())))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -1761,6 +1784,14 @@ public class ServerWorldDatabase {
     }
 
     public String banIp(String ip, String username, String reason, boolean ban) throws SQLException {
+        if(ban) {
+            if(ApocBRServerDatabase.queue("INSERT INTO bannedip(ip,username,reason) VALUES(?,?,?)",ip,username,reason))return ApocBRServerDatabase.PENDING;
+        }else {
+            java.util.ArrayList<String> queries=new java.util.ArrayList<>();java.util.ArrayList<Object[]> parameters=new java.util.ArrayList<>();
+            if(ip!=null){queries.add("DELETE FROM bannedip WHERE ip=?");parameters.add(new Object[]{ip});}
+            if(username!=""){queries.add("DELETE FROM bannedip WHERE username=?");parameters.add(new Object[]{username});}
+            if(!queries.isEmpty()&&ApocBRServerDatabase.queueBatch(queries.toArray(String[]::new),parameters.toArray(Object[][]::new)))return ApocBRServerDatabase.PENDING;
+        }
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             if (ban) {
@@ -1815,6 +1846,10 @@ public class ServerWorldDatabase {
     }
 
     public String banSteamID(String steamID, String reason, boolean ban) throws SQLException {
+        if(ban) {
+            if(ApocBRServerDatabase.queueBatch(new String[]{"INSERT INTO bannedid(steamid,reason) VALUES(?,?)","DELETE FROM allowedsteamid WHERE steamid=?"},
+                new Object[][]{{steamID,reason},{steamID}}))return ApocBRServerDatabase.PENDING;
+        }else if(ApocBRServerDatabase.queue("DELETE FROM bannedid WHERE steamid=?",steamID))return ApocBRServerDatabase.PENDING;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             if (ban) {
@@ -1840,6 +1875,7 @@ public class ServerWorldDatabase {
     }
 
     public String setUserSteamID(String user, String steamID) {
+        if(ApocBRServerDatabase.queue("UPDATE whitelist SET steamid=? WHERE username=?",steamID,user))return ApocBRServerDatabase.PENDING;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -1867,6 +1903,7 @@ public class ServerWorldDatabase {
     }
 
     public void setPassword(String username, String encryptedPwd) throws SQLException {
+        if(ApocBRServerDatabase.queue("UPDATE whitelist SET password=? WHERE username=? AND world=?",encryptedPwd,username,Core.gameSaveWorld))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -1928,6 +1965,7 @@ public class ServerWorldDatabase {
                 stat.executeUpdate();
                 stat.close();
             } catch (SQLException var6) {
+                if(ApocBRServerDatabase.enabled())return false;
                 DebugType.General.printException(var6, LogSeverity.Error);
             }
 
@@ -1937,6 +1975,7 @@ public class ServerWorldDatabase {
     }
 
     public void resetUserGoogleKey(String username) throws SQLException {
+        if(ApocBRServerDatabase.queue("UPDATE whitelist SET googlekey=?,authtype=? WHERE username=? AND world=?","",1,username,Core.gameSaveWorld))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -1955,6 +1994,7 @@ public class ServerWorldDatabase {
     }
 
     public void updateLastConnectionDate(String u, String p) {
+        if(ApocBRServerDatabase.queue("UPDATE whitelist SET lastconnection=? WHERE username=? AND password=?",dateFormat.format(Calendar.getInstance().getTime()),u,p))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
@@ -1993,6 +2033,9 @@ public class ServerWorldDatabase {
     }
 
     public void addTicket(String author, String message, int ticketID) throws SQLException {
+        if(ticketID>-1) {
+            if(ApocBRServerDatabase.queue("INSERT INTO tickets(author,message,answeredid) VALUES(?,?,?)",author,message,ticketID))return;
+        }else if(ApocBRServerDatabase.queue("INSERT INTO tickets(author,message) VALUES(?,?)",author,message))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             if (ticketID > -1) {
@@ -2014,6 +2057,7 @@ public class ServerWorldDatabase {
     }
 
     public void viewedTicket(int ticketID, boolean viewed) throws SQLException {
+        if(ApocBRServerDatabase.queue("UPDATE tickets SET viewed=? WHERE id=? AND id>=0",viewed,ticketID))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             if (ticketID > -1) {

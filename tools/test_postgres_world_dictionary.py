@@ -1,4 +1,6 @@
 """42.21.0 native dictionary capture, V6 JDBC publication and listener lifecycle; no live DB."""
+from postgres_test_support import inactive_persistence_stubs
+
 from pathlib import Path
 import os, re, subprocess, tempfile
 
@@ -233,6 +235,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_dictionary_') as folder:
     for name,body in [('DictionarySnapshotFixture.java',SNAPSHOT),('DictionaryDatabaseTest.java',DATABASE)]:
         path=target/name;path.write_text(body,encoding='utf-8');fixtures.append(path)
     sources=[SRC/'world/ApocBRWorldDictionaryDecode.java',SRC/'savefile/ApocBRPayloadProvenance.java',SRC/'world/ApocBRWorldDictionarySnapshot.java',SRC/'savefile/ApocBRWorldDictionaryDatabase.java',SRC/'savefile/ApocBRPostgresConnector.java']
+    sources += inactive_persistence_stubs(target, mutations=True)
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,sources+fixtures)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.savefile.DictionaryDatabaseTest'],check=True)

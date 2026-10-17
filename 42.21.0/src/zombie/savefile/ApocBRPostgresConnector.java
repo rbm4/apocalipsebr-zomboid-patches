@@ -35,7 +35,7 @@ public final class ApocBRPostgresConnector {
     public record Snapshot(String world, String username, String steamid, int playerIndex,
                            String name, float x, float y, float z, int worldVersion,
                            boolean dead, String splitUsername, boolean steamCoop,
-                           long capturedAtMillis, byte[] data, ApocBRPayloadProvenance origin) {
+                           long capturedAtMillis, byte[] data, ApocBRPayloadProvenance origin) implements java.io.Serializable {
         public Snapshot(String world,String username,String steamid,int playerIndex,String name,float x,float y,float z,int worldVersion,
                         boolean dead,String splitUsername,boolean steamCoop,long capturedAtMillis,byte[] data) {
             this(world,username,steamid,playerIndex,name,x,y,z,worldVersion,dead,splitUsername,steamCoop,capturedAtMillis,data,null);
@@ -49,10 +49,13 @@ public final class ApocBRPostgresConnector {
             data = data.clone();
         }
         @Override public byte[] data() { return data.clone(); }
+        int payloadBytes(){return data.length;}
     }
 
     public record Status(int pending, long pendingBytes, long committed, long failures,
                          long rejected, String lastError, boolean closed) {}
+    public record PersistenceStatus(String state,int staged,long stagedBytes,long durable,long durableBytes,long oldestPendingMs,boolean inFlight) {}
+    public static PersistenceStatus persistenceStatus(){return ApocBRPersistence.status();}
 
     private final DataSource datasource;
     private final Consumer<String> log;
@@ -97,7 +100,7 @@ public final class ApocBRPostgresConnector {
             config.setMaximumPoolSize(size);
             config.setMinimumIdle(Math.min(2, size));
             config.setConnectionTimeout(2_000);
-            config.setValidationTimeout(1_000);
+            config.setValidationTimeout(250);
             config.setInitializationFailTimeout(-1);
             config.setAutoCommit(false);
             config.setMaxLifetime(1_800_000);
@@ -118,8 +121,10 @@ public final class ApocBRPostgresConnector {
         ApocBRPostgresConnector target = current();
         if (target == null) return;
         try {
-            target.offer(new Snapshot(world, username, steamid, index, name, x, y, z,
-                    version, dead, splitUsername, steamCoop, capturedAtMillis, data));
+            Snapshot snapshot=new Snapshot(world, username, steamid, index, name, x, y, z,
+                    version, dead, splitUsername, steamCoop, capturedAtMillis, data);
+            if(ApocBRPersistence.journaling())ApocBRPersistence.submit(new ApocBRPersistenceOperations.Native(snapshot));
+            else target.offer(snapshot);
         } catch (IllegalArgumentException invalid) {
             target.reject("INVALID_SNAPSHOT");
         }
@@ -136,7 +141,7 @@ public final class ApocBRPostgresConnector {
     }
 
     public static Connection borrowVehicleConnection() throws SQLException {
-        return borrowConnection(false);
+        return borrowConnection(false,false);
     }
 
     public static Connection borrowPlayerConnection() throws SQLException { return borrowConnection(false); }
@@ -148,7 +153,7 @@ public final class ApocBRPostgresConnector {
     }
 
     public static Connection borrowDictionaryConnection() throws SQLException {
-        Connection connection=borrowConnection(false);
+        Connection connection=borrowConnection(false,false);
         try {
             // pgJDBC implements this using the socket read timeout. Hikari tracks this change
             // and restores the pool's original timeout when this lease is returned.
@@ -183,12 +188,38 @@ public final class ApocBRPostgresConnector {
         }
     }
 
-    private static Connection borrowConnection(boolean autoCommit) throws SQLException {
+    public static void prepareStartup(){ApocBRPersistence.startup();}
+    public static void finishStartup(){ApocBRPersistence.finishStartup();}
+    public static boolean acceptingLogins(){return !ApocBRPersistence.enabled()||ApocBRPersistence.admitting();}
+    static boolean playerReadable(String world,String identity,int slot,boolean coop) {
+        return acceptingLogins()&&(!ApocBRPersistence.journaling()||!ApocBRPersistence.pendingPlayer(ApocBRPersistenceOperations.key(world,identity,slot,coop))
+            &&!ApocBRPlayerRelationalMutations.hasPending(world,identity,slot,coop));
+    }
+    public static void awaitPersistence(){ApocBRPersistence.drain();}
+    public static void runShutdownDatabaseWork(Runnable work){ApocBRPersistence.shutdownWork(work);}
+    public static String availability(){return ApocBRPersistence.state();}
+    static void writeJournalSnapshot(Snapshot snapshot)throws SQLException {
+        ApocBRPostgresConnector target=current();
+        if(target==null||target.closed)throw new SQLException("PostgreSQL unavailable","08001");
+        target.write(snapshot);
+    }
+    public static void enqueuePlayerSnapshot(Snapshot snapshot){
+        if(ApocBRPersistence.journaling())ApocBRPersistence.submit(new ApocBRPersistenceOperations.Native(snapshot));
+        else try{savePlayerSnapshot(snapshot);}catch(SQLException error){throw new IllegalStateException("Player save failed",error);}
+    }
+
+    private static Connection borrowConnection(boolean autoCommit) throws SQLException {return borrowConnection(autoCommit,!ApocBRPersistence.background());}
+    private static Connection borrowConnection(boolean autoCommit,boolean foreground) throws SQLException {
+        if(ApocBRPersistence.journaling()&&foreground&&!ApocBRPersistence.reachable())
+            throw new SQLException("PostgreSQL temporarily unavailable","08001");
         ApocBRPostgresConnector target = current();
         if (target == null || target.closed) throw new SQLException("PostgreSQL connector unavailable", "08001");
         try {
-            Connection connection = target.datasource.getConnection();
+            Connection connection = ApocBRPersistence.journaling()&&foreground&&target.datasource instanceof HikariDataSource pool
+                    ? ((com.zaxxer.hikari.pool.HikariPool)pool.getHikariPoolMXBean()).getConnection(ApocBRForegroundDatabase.acquisitionMillis())
+                    : target.datasource.getConnection();
             try {
+                if(ApocBRPersistence.journaling()&&foreground)connection=ApocBRForegroundDatabase.wrap(connection);
                 connection.setAutoCommit(autoCommit);
                 connection.setSchema("public");
                 return connection;
@@ -197,6 +228,7 @@ public final class ApocBRPostgresConnector {
                 throw failure;
             }
         } catch (SQLException failure) {
+            ApocBRPersistence.failed(failure);
             throw new SQLException("PostgreSQL connection acquisition failed", failure.getSQLState());
         }
     }
@@ -206,8 +238,9 @@ public final class ApocBRPostgresConnector {
         return instance == null ? new Status(0, 0, 0, 0, 0, "DISABLED_OR_UNCONFIGURED", false) : instance.status();
     }
 
-    /** Invoked on the existing worker as it terminates. Bounded best-effort final flush. */
+    /** Active persistence drains without a deadline. The inactive legacy mirror retains its compatibility flush. */
     public static void shutdown() {
+        if (ApocBRPersistence.enabled()) ApocBRPersistence.drain();
         if (instance == null) return;
         instance.nextAttemptNanos = 0; // One final attempt even if the normal retry delay has not expired.
         long deadline = System.nanoTime() + 10_000_000_000L;
@@ -219,6 +252,7 @@ public final class ApocBRPostgresConnector {
 
     /** After native vehicle Reset has flushed its remaining work. */
     public static void closePool() {
+        ApocBRPersistence.close();
         dictionaryShutdown.run();
         if (instance != null) instance.close();
     }
@@ -337,7 +371,7 @@ public final class ApocBRPostgresConnector {
         return cleaned.substring(0, Math.min(512, cleaned.length()));
     }
 
-    private void write(Snapshot s) throws SQLException {
+    void write(Snapshot s) throws SQLException {
         try (Connection connection = datasource.getConnection()) {
             if (!connectionObserved) {
                 connectionObserved = true;
@@ -345,6 +379,7 @@ public final class ApocBRPostgresConnector {
             }
             connection.setAutoCommit(false);
             try {
+                if(!ApocBRPersistence.claim(connection)){connection.rollback();return;}
                 // The existing migration has only an id PK. Serialize lookup+insert without DDL.
                 try (PreparedStatement lock = connection.prepareStatement(WRITE_LOCK)) {
                     lock.setQueryTimeout(2);

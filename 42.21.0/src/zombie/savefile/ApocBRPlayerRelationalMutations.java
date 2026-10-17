@@ -28,7 +28,7 @@ public final class ApocBRPlayerRelationalMutations {
     private static long lastCleanup,lastCapacityLog;
     private static int samples;
     private static volatile boolean active;
-    record Field(String table,String column,String key) {
+    record Field(String table,String column,String key) implements java.io.Serializable {
         Field {
             boolean valid=SINGLETONS.contains(table)
                     ?key==null&&!SKIP.contains(column)&&ApocBRPlayerRelationalSchema.TABLES.get(table).stream().anyMatch(c->c.name().equals(column))
@@ -44,9 +44,9 @@ public final class ApocBRPlayerRelationalMutations {
         long lastSeen=System.nanoTime();
         Cursor(ApocBRPlayerRelationalDatabase.Candidate candidate){this.candidate=candidate;}
     }
-    record Value(long revision,Object value) {}
+    record Value(long revision,Object value) implements java.io.Serializable {}
     record Batch(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character,Map<Field,Value> fields,Instant capturedAt,
-                 ApocBRPlayerRelationalSnapshot.Snapshot snapshot,long snapshotRevision) {
+                 ApocBRPlayerRelationalSnapshot.Snapshot snapshot,long snapshotRevision) implements java.io.Serializable {
         Batch(ApocBRPlayerRelationalDatabase.Candidate c,UUID s,UUID ch,Map<Field,Value> f,Instant at){this(c,s,ch,f,at,null,0);}
     }
     static final class DirtyQueue {
@@ -86,7 +86,9 @@ public final class ApocBRPlayerRelationalMutations {
         }
         synchronized boolean register(String key,UUID session) {
             if(!bindings.containsKey(key)&&bindings.size()>=MAX_PLAYERS)return false;
-            bindings.put(key,new Binding(session,null,0));Pending old=pending.remove(key);if(old!=null){if(old.snapshot!=null)queuedBytes-=old.snapshot.bytes();if(old.inFlightSnapshot!=null&&old.inFlightSnapshot!=old.snapshot)queuedBytes-=old.inFlightSnapshot.bytes();}return true;
+            Pending old=pending.get(key);
+            if(old!=null)return old.session.equals(session); // Never replace uncommitted work.
+            bindings.put(key,new Binding(session,null,0));return true;
         }
         synchronized void bind(String key,UUID session,UUID character) {
             Binding binding=bindings.get(key);
@@ -148,6 +150,7 @@ public final class ApocBRPlayerRelationalMutations {
             return recovery==null?null:recovery+"; queueDrained="+(!pending.containsKey(batch.candidate.key()));
         }
         synchronized int size(){return pending.size();}
+        synchronized boolean contains(String world,String identity,int slot,boolean coop){for(Pending p:pending.values()){var c=p.candidate;if(c.world().equals(world)&&c.identity().equals(identity)&&c.slot()==slot&&c.coop()==coop)return true;}return false;}
         synchronized int unboundSize(){int count=0;for(Pending p:pending.values()){Binding b=bindings.get(p.candidate.key());if(b==null||b.character==null||!b.session.equals(p.session))count++;}return count;}
         synchronized long bytes(){return queuedBytes;}
         synchronized long oldestAgeMs(long now){long oldest=0;for(Pending p:pending.values())oldest=Math.max(oldest,now-p.enqueuedAt);return oldest/1_000_000;}
@@ -250,14 +253,19 @@ public final class ApocBRPlayerRelationalMutations {
         if(values.size()>MAX_FIELDS)throw new IllegalStateException("LIVE_FIELD_LIMIT");return values;
     }
     private static final AtomicLong measuredSamples=new AtomicLong(),measuredFields=new AtomicLong(),sampleNanos=new AtomicLong(),maxSampleNanos=new AtomicLong();
-    private static long writes,writeNanos,lastMeasuredWriteNanos,failedPatches,deferredPatches;
+    private static long writes,journaledPatches,writeNanos,lastMeasuredWriteNanos,failedPatches,deferredPatches;
     static boolean flushOne(ApocBRPlayerRelationalDatabase database) {
         if(!ENABLED)return false;
         long now=System.nanoTime();Batch batch=DIRTY.poll(now);if(batch==null){metrics(now,database);return false;}
         boolean committed=false;
         String stage="graph_projection";
         String graphIssues="none";
-        try {var graph=batch.snapshot()==null?null:database.projectLive(batch);
+        try {
+            if(ApocBRPersistence.journaling()) {
+                ApocBRPersistence.submit(new ApocBRPersistenceOperations.Live(batch));journaledPatches++;committed=true;
+                return true;
+            }
+            var graph=batch.snapshot()==null?null:database.projectLive(batch);
             // Log incompleteness with the same operation context; it must not suppress
             // the exception diagnostic that follows when applyFields rejects the graph.
             if(graph!=null&&!graph.issues().isEmpty()) {
@@ -274,7 +282,7 @@ public final class ApocBRPlayerRelationalMutations {
         return true;
     }
     private static void metrics(long now,ApocBRPlayerRelationalDatabase database) {
-        if(now-lastLog>=30_000_000_000L){double busy=lastLog==0?0:100.0*(writeNanos-lastMeasuredWriteNanos)/(now-lastLog);lastMeasuredWriteNanos=writeNanos;lastLog=now;log("LIVE_METRICS; samples="+measuredSamples.get()+"; changedFields="+measuredFields.get()+"; sampleMs="+sampleNanos.get()/1_000_000+"; maxSampleUs="+maxSampleNanos.get()/1000+"; writes="+writes+"; failedPatches="+failedPatches+"; deferredPatches="+deferredPatches+"; writeMs="+writeNanos/1_000_000+"; scalarCaptureFailures="+scalarCaptureFailures.get()+"; graphCaptureFailures="+graphCaptureFailures.get()+"; graphSamples="+graphSamples.get()+"; graphMs="+graphNanos.get()/1_000_000+"; maxGraphUs="+graphMaxNanos.get()/1000+"; pending="+DIRTY.size()+"; queuedGraphBytes="+DIRTY.bytes()+"; oldestPendingMs="+DIRTY.oldestAgeMs(now)+"; workerBusyPercent="+String.format(Locale.ROOT,"%.2f",busy)+"; unboundPending="+DIRTY.unboundSize()+"; graphReconcileEnabled="+RECONCILE+database.mutationMetrics());}
+        if(now-lastLog>=30_000_000_000L){double busy=lastLog==0?0:100.0*(writeNanos-lastMeasuredWriteNanos)/(now-lastLog);lastMeasuredWriteNanos=writeNanos;lastLog=now;log("LIVE_METRICS; samples="+measuredSamples.get()+"; changedFields="+measuredFields.get()+"; sampleMs="+sampleNanos.get()/1_000_000+"; maxSampleUs="+maxSampleNanos.get()/1000+"; writes="+writes+"; journaledPatches="+journaledPatches+"; failedPatches="+failedPatches+"; deferredPatches="+deferredPatches+"; writeMs="+writeNanos/1_000_000+"; scalarCaptureFailures="+scalarCaptureFailures.get()+"; graphCaptureFailures="+graphCaptureFailures.get()+"; graphSamples="+graphSamples.get()+"; graphMs="+graphNanos.get()/1_000_000+"; maxGraphUs="+graphMaxNanos.get()/1000+"; pending="+DIRTY.size()+"; queuedGraphBytes="+DIRTY.bytes()+"; oldestPendingMs="+DIRTY.oldestAgeMs(now)+"; workerBusyPercent="+String.format(Locale.ROOT,"%.2f",busy)+"; unboundPending="+DIRTY.unboundSize()+"; graphReconcileEnabled="+RECONCILE+database.mutationMetrics());}
     }
     static String writeFailure(Throwable failure) {
         String state=failure instanceof java.sql.SQLException sql?sql.getSQLState():"LOCAL";
@@ -301,6 +309,18 @@ public final class ApocBRPlayerRelationalMutations {
         return message!=null&&(message.matches("[A-Z_]+")||message.matches("Missing (capture|required|snapshot) [A-Za-z0-9_.$ ]+"))?message:failure.getClass().getSimpleName();
     }
     private static void log(String text){DebugLog.log("[ApocBR][PlayerRelational] "+text);}
+    public static boolean hasPending(){return ENABLED&&DIRTY.size()>0;}
+    static boolean hasPending(String world,String identity,int slot,boolean coop){return ENABLED&&DIRTY.contains(world,identity,slot,coop);}
+    static void journalPending(){
+        if(!ApocBRPersistence.journaling())return;
+        Batch batch;
+        while((batch=DIRTY.poll(Long.MAX_VALUE-CADENCE))!=null) {
+            boolean submitted=false;
+            try{ApocBRPersistence.submit(new ApocBRPersistenceOperations.Live(batch));journaledPatches++;submitted=true;}
+            finally{DIRTY.finish(batch,submitted,System.nanoTime());}
+        }
+        if(DIRTY.size()!=0)throw new IllegalStateException("Unbound or in-flight player mutations remain");
+    }
     static void shutdown(){active=false;graphPlayer=null;graphTurn=null;DIRTY.clear();TRACKED.clear();}
     private ApocBRPlayerRelationalMutations() {}
 }
