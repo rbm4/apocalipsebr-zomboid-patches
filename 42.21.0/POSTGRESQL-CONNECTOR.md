@@ -574,6 +574,59 @@ guards, JDBC batch bindings for fitness/inventory and dirty-queue acknowledgemen
 The full `test_postgres_player_relational.py` suite includes the same regression;
 its native compatibility checks and a patch dry build require the real 42.21.0 JAR.
 
+### Typed modData values and object references
+
+Structured copying checks each nested value explicitly. Scalars, byte arrays,
+lists and maps retain their existing codecs; only an actual `KahluaTable` is
+traversed through its table iterator. An unrelated Java object is never assumed
+to implement `iterator()`. This fixes the accidental
+`Missing capture method zombie.inventory.types.Clothing.iterator` path when the
+clothing is a supported reference to an owned inventory item.
+
+Supported engine references are `InventoryItem` (including Clothing and other
+subtypes), `ItemContainer`, and the current player. They must resolve by object
+identity to the accepted inventory ownership tree/current character. The copier
+collects detached references and binds them after all source items and equipment
+have been copied, allowing forward references and self references without copying
+another item or retaining live engine state. Worker projection resolves them
+against the accepted item UUID aliases and player/container IDs. Reference rows
+are charged against the ordinary graph budgets before their targets are bound.
+
+The existing `value_node.value_kind='reference'` and `reference_object_id` FK store
+the relationship. No SQL migration is needed. A reference change updates that FK;
+the referenced item's state stays in its normal item/subtype tables. References
+do not add inventory ownership edges or change the existing edge-count definition.
+Reconstruction creates the owned objects first, then restores table references
+to those same instances through the reader's ordinal identity map. Shared acyclic
+Lua tables still restore by value; references to the same item restore by identity.
+Lua table cycles remain rejected, while an item's table can reference that item
+without recursively serializing its ownership graph.
+
+`UNSUPPORTED_STRUCTURED_VALUE` rejects Java types without a supported codec.
+`UNOWNED_STRUCTURED_REFERENCE` rejects targets absent from the copied/accepted
+ownership tree, including equipment-only objects and rejected duplicate items.
+These are explicit capture failures: values are not silently dropped, assigned
+another item's ID, or added to inventory. Other players and world objects require
+separate reviewed reference codecs. Keys retain the existing scalar-key contract.
+
+Detached reference targets survive the outage journal's serialization/filter and
+are resolved again during replay. Snapshot/schema codec metadata stays at 4/1,
+using the already declared reference variant; deploy the updated capture and
+reconstruction together. Earlier patch readers cannot decode the newly emitted
+reference values, and earlier journal readers lack the new reference DTO class.
+Existing table-only heads and journal records remain readable by this patch.
+This implements explicit relational references; it is not a claim that native
+Kahlua serialization preserves every arbitrary Java userdata value.
+
+`python tools/test_postgres_moddata_references.py` exercises actual table
+interfaces, forward/backward/self and nested references, alias identity,
+immutable snapshots, journal encode/decode with its real input filter, structured
+reconstruction, targeted JDBC updates and invalid targets. It compiles production
+capture/snapshot/database classes and extracts the production structured reader
+methods against small engine boundaries. The native reconstruction fixture also
+checks the new reference branch; full game-JAR compilation and live round trips
+remain required for deployment validation.
+
 ### Exercise regularity persistence investigation
 
 Equipment references are resolved by object identity against the captured owned

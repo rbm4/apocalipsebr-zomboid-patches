@@ -131,9 +131,14 @@ public class ReconstructionTest {
   check(Arrays.equals((byte[])decoded.get("bytes"),new byte[]{1,2,(byte)255}),"opaque component payload survives hex transport");
   var restoredMetadata=ApocBRPayloadProvenance.metadata(decoded.get("bytes"));
   check(restoredMetadata.origin().equals(origin)&&restoredMetadata.worldVersion()==249,"foreign opaque origin survives SQL hex transport and reconstruction");
+  Object existing=new Object();
+  Map<String,Object> reference=Map.of("id",9001,"value_kind","reference","reference_object_id",9002);
+  check(invoke("value",new Class[]{Map.class,Map.class,Set.class,int.class,Map.class},reference,Map.of(),new HashSet<Integer>(),0,Map.of(9002,existing))==existing,"structured reference restores the already registered object");
+  check(sqlReferenceColumn(),"login SELECT projects reference_object_id through the ordinal map");
   var restoredBuffer=java.nio.ByteBuffer.wrap((byte[])decoded.get("bytes"));ApocBRPayloadProvenance.copy(decoded.get("bytes"),restoredBuffer);
   check(ApocBRPayloadProvenance.metadata(restoredBuffer).equals(restoredMetadata),"native byteData wrapper retains reconstructed provenance for the next detached snapshot");
  }
+ static boolean sqlReferenceColumn(){return ApocBRPlayerRelationalReader.SQL.contains("'reference_object_id',r");}
  static void collectionAccess()throws Exception {
   Object cheats=ApocBRPlayerRelationalAccess.get(new zombie.characters.PlayerCheats(),"cheats");
   var flag=zombie.characters.CheatType.values()[0];

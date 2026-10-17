@@ -3,12 +3,21 @@ package zombie.savefile;
 import java.nio.ByteBuffer;
 import java.time.Instant;
 import java.util.*;
+import se.krka.kahlua.vm.KahluaTable;
+import zombie.inventory.InventoryItem;
+import zombie.inventory.ItemContainer;
 import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Copies only export-owned state on the load thread. No game object escapes to the worker. */
 final class ApocBRPlayerRelationalSnapshot {
     record Snapshot(Node player,Instant capturedAt,int bytes) implements java.io.Serializable {}
     record Stat(String key,Object value) implements java.io.Serializable {}
+    /** Bound only to detached owned state before publication; never retains an engine object. */
+    static final class Reference implements java.io.Serializable {
+        private static final long serialVersionUID=1L;
+        private Node target;
+        Node target(){return target;}
+    }
     static final class Node implements java.io.Serializable {
         private static final long serialVersionUID=1L;
         final String runtimeClass;
@@ -55,6 +64,8 @@ final class ApocBRPlayerRelationalSnapshot {
     private static final Set<String> GENERATED=Set.of("snapshot_id","id","character_id","item_id",
             "owner_character_id","owner_item_id","position","body_part_key");
     private final IdentityHashMap<Object,Object> copies=new IdentityHashMap<>();
+    private final IdentityHashMap<Object,Reference> references=new IdentityHashMap<>();
+    private Object playerSource;
     private int bytes,nodes;
     private boolean live;
     private void charge(int amount) {
@@ -102,6 +113,13 @@ final class ApocBRPlayerRelationalSnapshot {
     private Object structured(Object source,int depth) {
         if(depth>64)throw new IllegalStateException("SNAPSHOT_DEPTH_BUDGET");
         if(source==null||source instanceof String||source instanceof Number||source instanceof Boolean)return scalar(source);
+        if(source instanceof InventoryItem||source instanceof ItemContainer||source==playerSource) {
+            Reference reference=references.get(source);
+            if(reference==null){charge(64);reference=new Reference();references.put(source,reference);}
+            return reference;
+        }
+        if(!(source instanceof byte[]||source instanceof List<?>||source instanceof Map<?,?>||source instanceof KahluaTable))
+            throw new IllegalStateException("UNSUPPORTED_STRUCTURED_VALUE");
         Object existing=copies.get(source);if(existing!=null)return existing;
         if(source instanceof byte[] array){charge(array.length);byte[] copy=array.clone();ApocBRPayloadProvenance.copy(array,copy);return copy;}
         if(source instanceof List<?> values){
@@ -113,11 +131,11 @@ final class ApocBRPlayerRelationalSnapshot {
         if(source instanceof Map<?,?> map) {
             if(map.size()>10_000)throw new IllegalStateException("SNAPSHOT_SIZE_BUDGET");
             for(var entry:map.entrySet()){charge(64);result.entries.put(tableKey(entry.getKey()),structured(entry.getValue(),depth+1));}
-        } else {
-            Object iterator=call(source,"iterator");int count=0;
-            while((boolean)call(iterator,"advance")) {
+        } else if(source instanceof KahluaTable table) {
+            var iterator=table.iterator();int count=0;
+            while(iterator.advance()) {
                 if(++count>10_000)throw new IllegalStateException("SNAPSHOT_SIZE_BUDGET");
-                charge(64);result.entries.put(tableKey(call(iterator,"getKey")),structured(call(iterator,"getValue"),depth+1));
+                charge(64);result.entries.put(tableKey(iterator.getKey()),structured(iterator.getValue(),depth+1));
             }
         }
         result.entries=Collections.unmodifiableMap(result.entries);return result;
@@ -308,7 +326,7 @@ final class ApocBRPlayerRelationalSnapshot {
     static Snapshot copy(Object player) {return copy(player,false);}
     static Snapshot copyLive(Object player) {return copy(player,true);}
     private static Snapshot copy(Object player,boolean live) {
-        var copy=new ApocBRPlayerRelationalSnapshot();copy.live=live;Instant captured=Instant.now();Node p=copy.begin(player);
+        var copy=new ApocBRPlayerRelationalSnapshot();copy.live=live;copy.playerSource=player;Instant captured=Instant.now();Node p=copy.begin(player);
         copy.project(p,player,"character_state","inventory_container_id");
         copy.fields(p,player,"extraInfoFlags");
         copy.project(p,player,"character_effects");copy.project(p,player,"character_presentation","tag_r","tag_g","tag_b");
@@ -344,6 +362,10 @@ final class ApocBRPlayerRelationalSnapshot {
         for(String hand:new String[]{"primaryHandItem","secondaryHandItem"})copy.put(p,hand,copy.item(get(player,hand),0));
         for(String path:new String[]{"wornItems","attachedItems"})copy.put(p,path,copy.sequence(get(player,path),v->{Node n=copy.begin(v);copy.fields(n,v,"location");copy.put(n,"item",copy.item(get(v,"item"),0));return n;}));
         copy.put(p,"table",copy.structured(get(player,"table"),0));
+        for(var entry:copy.references.entrySet()) {
+            if(!(copy.copies.get(entry.getKey()) instanceof Node target))throw new IllegalStateException("UNOWNED_STRUCTURED_REFERENCE");
+            entry.getValue().target=target;
+        }
         for(Object value:copy.copies.values())if(value instanceof Node node)node.fields=Collections.unmodifiableMap(node.fields);
         return new Snapshot(p,captured,copy.bytes);
     }

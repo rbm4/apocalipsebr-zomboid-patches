@@ -565,7 +565,12 @@ Enforce exactly the value column appropriate to value_kind (no value columns for
 object/array/table/null). For map entries enforce the matching key column; array
 children have no map key. One root per component. Preserve typed Lua keys: numeric
 1 and string "1" are different. Encode references by object IDs, not addresses.
-Cycles require a reference codec and remain rejected. Shared acyclic Lua tables
+Lua table cycles remain rejected. Owned InventoryItem/ItemContainer/current-player
+values use the existing `reference` variant; they resolve to existing objects on
+reconstruction without introducing another ownership edge. Forward references
+are bound after ownership capture. Unsupported types or targets outside that
+graph fail explicitly. See [typed modData values](POSTGRESQL-CONNECTOR.md#typed-moddata-values-and-object-references).
+Shared acyclic Lua tables
 are written independently at each path, matching native Kahlua save/load semantics.
 SQL column `position` preserves ordering independently of keys.
 
