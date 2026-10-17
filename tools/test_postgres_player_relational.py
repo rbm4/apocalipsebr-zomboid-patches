@@ -390,6 +390,7 @@ public class RelationalTest {
    try{Field f=node.getClass().getDeclaredField("fields");f.setAccessible(true);detached(f.get(node),visited);detached(node.types,visited);}catch(Exception e){throw new AssertionError(e);}return;
   }
   if(value instanceof ApocBRPlayerRelationalSnapshot.Table table){detached(table.entries(),visited);return;}
+  if(value instanceof ApocBRPlayerRelationalSnapshot.Reference reference){detached(reference.target(),visited);return;}
   if(value instanceof ApocBRPlayerRelationalSnapshot.Stat stat){detached(stat.key(),visited);detached(stat.value(),visited);return;}
   if(value instanceof Map<?,?> map){for(var e:map.entrySet()){detached(e.getKey(),visited);detached(e.getValue(),visited);}return;}
   if(value instanceof Collection<?> values){for(Object child:values)detached(child,visited);return;}

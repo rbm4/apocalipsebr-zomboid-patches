@@ -61,6 +61,8 @@ static int checks;
 
 
 STUBS = {
+    "se/krka/kahlua/vm/KahluaTable.java": "package se.krka.kahlua.vm; public interface KahluaTable {KahluaTableIterator iterator();}",
+    "se/krka/kahlua/vm/KahluaTableIterator.java": "package se.krka.kahlua.vm; public interface KahluaTableIterator {boolean advance();Object getKey();Object getValue();}",
     "zombie/network/GameServer.java": "package zombie.network; public class GameServer {public static boolean server=true;}",
     "zombie/debug/DebugLog.java": "package zombie.debug; public class DebugLog {public static final java.util.List<String> messages=new java.util.ArrayList<>();public static void log(String s){messages.add(s);}}",
     "zombie/debug/DebugType.java": "package zombie.debug; public class DebugType {public static final DebugType General=new DebugType();public void error(String s){}}",

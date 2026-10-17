@@ -267,7 +267,7 @@ final class ApocBRPlayerRelationalReconstruction {
         for(var r:rows("value_node")){if(r.get("parent_id")==null){if(roots.put(id(r.get("component_id")),r)!=null)throw new IllegalStateException("Duplicate component root");}else children.computeIfAbsent(id(r.get("parent_id")),k->new ArrayList<>()).add(r);}
         for(var r:rows("component")) {
             if(!"complete".equals(r.get("coverage"))||id(r.get("codec_version"))!=ApocBRPlayerRelationalCapture.CODEC_VERSION)throw new IllegalStateException("Incomplete component");
-            Object owner=ref(r.get("owner_object_id")),value=value(Objects.requireNonNull(roots.get(id(r.get("id")))),children,new HashSet<>(),0);
+            Object owner=ref(r.get("owner_object_id")),value=value(Objects.requireNonNull(roots.get(id(r.get("id")))),children,new HashSet<>(),0,objects);
             String kind=(String)r.get("kind");
             if(kind.equals("lua.modData"))set(owner,"table",value);
             else if(kind.equals("item.byteData")) {
@@ -280,11 +280,15 @@ final class ApocBRPlayerRelationalReconstruction {
         }
     }
     private static Object value(Map<String,Object> row,Map<Integer,List<Map<String,Object>>> children,Set<Integer> visited,int depth) {
+        return value(row,children,visited,depth,Map.of());
+    }
+    private static Object value(Map<String,Object> row,Map<Integer,List<Map<String,Object>>> children,Set<Integer> visited,int depth,Map<Integer,Object> references) {
         if(depth>64||!visited.add(id(row.get("id"))))throw new IllegalStateException("Cyclic structured value");
         String kind=(String)row.get("value_kind");
         switch(kind) {
             case "null":return null;case "string":return row.get("text_value");case "boolean":return row.get("boolean_value");
             case "integer":return ((Number)row.get("integer_value")).longValue();case "number":return ((Number)row.get("number_value")).doubleValue();
+            case "reference":return Objects.requireNonNull(references.get(id(row.get("reference_object_id"))),"Unresolved structured reference");
             case "opaque": {
                 byte[] bytes=HexFormat.of().parseHex((String)row.get("opaque_value"));
                 var origin=ApocBRPayloadProvenance.of(row.get("source_server_id"),row.get("source_dictionary_namespace_id"),row.get("source_dictionary_view_id"));
@@ -295,7 +299,7 @@ final class ApocBRPlayerRelationalReconstruction {
             case "object", "array", "table": {
                 Object result=kind.equals("array")?new ArrayList<>():kind.equals("table")?zombie.Lua.LuaManager.platform.newTable():new LinkedHashMap<>();
                 for(var child:children.getOrDefault(id(row.get("id")),List.of())) {
-                    Object v=value(child,children,visited,depth+1);
+                    Object v=value(child,children,visited,depth+1,references);
                     if(result instanceof List<?>){add(result,v);continue;}
                     Object key=switch((String)child.get("key_kind")){case "string"->child.get("key_text");case "number"->((Number)child.get("key_number")).doubleValue();case "boolean"->child.get("key_boolean");default->throw new IllegalStateException("Invalid structured key");};
                     if(kind.equals("table"))call(result,"rawset",key,v);else put(result,key,v);

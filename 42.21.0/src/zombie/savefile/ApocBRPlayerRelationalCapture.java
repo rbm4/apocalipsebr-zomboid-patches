@@ -26,6 +26,10 @@ final class ApocBRPlayerRelationalCapture {
     private final ArrayList<Row> rows=new ArrayList<>();
     private final ArrayList<String> issues=new ArrayList<>();
     private final IdentityHashMap<Object,UUID> itemIds=new IdentityHashMap<>();
+    // Reuse itemIds for items; this map only adds the player and inventory containers.
+    private final IdentityHashMap<Object,UUID> ownedIds=new IdentityHashMap<>();
+    private record PendingReference(int row,Object target) {}
+    private final List<PendingReference> references=new ArrayList<>();
     private final Set<Integer> nativeIds=new HashSet<>();
     private final Set<Object> containersSeen=Collections.newSetFromMap(new IdentityHashMap<>());
     private final Set<Object> tableStack=Collections.newSetFromMap(new IdentityHashMap<>());
@@ -86,7 +90,7 @@ final class ApocBRPlayerRelationalCapture {
         return new Graph(graph.snapshot(),graph.character(),source.capturedAt(),graph.rows(),graph.issues(),graph.bytes(),graph.objects(),graph.items(),graph.containers(),graph.edges());
     }
     Graph capture(Object player,List<String> loadIssues) {
-        issues.addAll(loadIssues); object(character,"character");
+        issues.addAll(loadIssues); object(character,"character");ownedIds.put(player,character);
         UUID inventory=UUID.nameUUIDFromBytes((character+":inventory").getBytes(java.nio.charset.StandardCharsets.UTF_8));
         container(get(player,"inventory"),inventory,character,null,0);
         project("character_state",player,"character_id",character,"inventory_container_id",inventory);
@@ -129,6 +133,13 @@ final class ApocBRPlayerRelationalCapture {
         for(Object cheat:list(get(player,"cheats.cheats"))) row("character_cheat","character_id",character,"cheat_key","set."+key(cheat),"enabled",true);
         health(get(player,"bodyDamage")); human(get(player,"visual"));
         equipment(player); lua(character,get(player,"table"));
+        for(var reference:references) {
+            UUID target=itemIds.get(reference.target());
+            if(target==null)target=ownedIds.get(reference.target());
+            if(target==null)throw new IllegalStateException("UNOWNED_STRUCTURED_REFERENCE");
+            Row row=rows.get(reference.row());Map<String,Object> values=new LinkedHashMap<>(row.values());
+            values.put("reference_object_id",target);rows.set(reference.row(),new Row(row.table(),values));
+        }
         check();
         return new Graph(snapshot,character,captured,rows,issues,bytes,objects,itemIds.size(),containers,edges);
     }
@@ -212,7 +223,7 @@ final class ApocBRPlayerRelationalCapture {
     }
     private void container(Object container,UUID id,UUID ownerCharacter,UUID ownerItem,int depth) {
         check(); if(depth>64 || !containersSeen.add(container)) throw new IllegalStateException("Cyclic or shared inventory container");
-        object(id,"container"); containers++;
+        object(id,"container"); containers++;ownedIds.put(container,id);
         project("container",container,"id",id,"owner_character_id",ownerCharacter,"owner_item_id",ownerItem);
         int position=0; for(Object item:list(get(container,"items"))) item(item,id,null,position++,depth+1);
     }
@@ -371,7 +382,14 @@ final class ApocBRPlayerRelationalCapture {
             String type=key instanceof String?"string":key instanceof Number?"number":key instanceof Boolean?"boolean":null;
             if(type==null) throw new IllegalStateException("Unsupported Lua key"); values.put("key_kind",type); values.put("key_"+(type.equals("string")?"text":type),key);
         }
-        String type=value==null?"null":value instanceof String?"string":value instanceof Boolean?"boolean":value instanceof Float||value instanceof Double?"number":value instanceof Number?"integer":value instanceof byte[]?"opaque":value instanceof List<?>?"array":value instanceof Map<?,?>?"object":value instanceof ApocBRPlayerRelationalSnapshot.Table table?table.kind:"table";
+        if(value instanceof ApocBRPlayerRelationalSnapshot.Reference reference) {
+            reference(values,reference.target());return;
+        }
+        if(value instanceof zombie.inventory.InventoryItem||value instanceof zombie.inventory.ItemContainer||ownedIds.containsKey(value)) {
+            reference(values,value);return;
+        }
+        String type=value==null?"null":value instanceof String?"string":value instanceof Boolean?"boolean":value instanceof Float||value instanceof Double?"number":value instanceof Number?"integer":value instanceof byte[]?"opaque":value instanceof List<?>?"array":value instanceof Map<?,?>?"object":value instanceof ApocBRPlayerRelationalSnapshot.Table table?table.kind:value instanceof se.krka.kahlua.vm.KahluaTable?"table":null;
+        if(type==null)throw new IllegalStateException("UNSUPPORTED_STRUCTURED_VALUE");
         values.put("value_kind",type);
         switch(type) {
             case "string" -> values.put("text_value",value);
@@ -397,13 +415,17 @@ final class ApocBRPlayerRelationalCapture {
             if(value instanceof ApocBRPlayerRelationalSnapshot.Table table) { for(var e:table.entries().entrySet()) node(component,id,next++,e.getKey(),e.getValue(),depth+1); }
             else if(value instanceof Map<?,?> map) { for(var e:map.entrySet()) node(component,id,next++,e.getKey(),e.getValue(),depth+1); }
             else if(value instanceof List<?> list) { for(Object child:list) node(component,id,next++,null,child,depth+1); }
-            else {
-                Object iterator=call(value,"iterator");
-                while((boolean)call(iterator,"advance")) node(component,id,next++,call(iterator,"getKey"),call(iterator,"getValue"),depth+1);
+            else if(value instanceof se.krka.kahlua.vm.KahluaTable table) {
+                var iterator=table.iterator();
+                while(iterator.advance()) node(component,id,next++,iterator.getKey(),iterator.getValue(),depth+1);
             }
             // Native Kahlua serialization writes shared acyclic tables by value at each path.
             tableStack.remove(value);
         }
+    }
+    private void reference(Map<String,Object> values,Object target) {
+        values.put("value_kind","reference");int position=rows.size();
+        completeRow("value_node",values);references.add(new PendingReference(position,target));
     }
     private void sequence(String table,String column,Object source) {
         int position=0; for(Object value:list(source)) row(table,"character_id",character,"position",position++,column,value);

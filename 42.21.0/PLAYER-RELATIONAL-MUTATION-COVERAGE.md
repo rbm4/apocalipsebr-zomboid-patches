@@ -14,6 +14,13 @@ for scalar sampling and graph reconciliation; native final-save/disconnect sampl
 bypass that interval. This is reconciliation, not comprehensive mutation-site hooks.
 One-shot full copying still costs CPU on the simulation thread.
 
+Nested structured values now dispatch by explicit type, including actual
+`KahluaTable` checks. Owned inventory-item/container and current-player references
+use typed `value_node` reference rows and restore the existing object identity.
+Changing a reference participates in the ordinary graph delta. Unsupported Java
+values and references outside the accepted graph remain capture failures; see
+[typed modData values](POSTGRESQL-CONNECTOR.md#typed-moddata-values-and-object-references).
+
 The reviewed writers are the exact-version IsoMovingObject, IsoGameCharacter and
 IsoPlayer saves, the existing concrete inventory subtype writers, GameEntity's
 component save dispatch, and the nested IsoAnimal writer. Missing reflected fields
