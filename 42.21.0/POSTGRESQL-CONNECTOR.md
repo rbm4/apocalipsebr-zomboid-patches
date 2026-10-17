@@ -22,9 +22,13 @@ Startup waits for PostgreSQL and replays the journal **before** account bootstra
 role initialization and login admission. Missing receipt schema or invalid
 credentials stop startup with a migration/configuration error. Runtime states are
 `STARTING`, `AVAILABLE`, `UNAVAILABLE`, `RECOVERING`, `DRAINING`, `CLOSED`. Recovery
-probes back off from 250 ms to 30 seconds during normal runtime. SQL/schema/unsupported-capture
-failures retain the offending head and block later replay during normal runtime;
-startup and shutdown use the five-attempt discard policy described below. Startup
+probes back off from 250 ms to 30 seconds during normal runtime. Connection failures
+retain the head for recovery. Operation-specific runtime failures are durably
+quarantined so unrelated replay, logins and account commands can continue; see
+[runtime failure isolation](docs/persistence-runtime.md). SQLState classes `22`/`23`
+are quarantined immediately; other non-connectivity failures get five attempts.
+Only the affected player's reload stays blocked until a newer complete capture
+commits. Startup and shutdown use the five-attempt discard policy described below. Startup
 still requires a successful database/receipt-schema probe before executing entries;
 failed probes do not count as attempts or discard journal data. Login stays closed until recovery work drains. Player
 profile/creation/connection phases also check that identity/slot for staged
@@ -45,7 +49,7 @@ The default journal location is
 and private to the server: operations include player data and account updates.
 Only one process can own a journal. It contains version-one serialized detached
 operations, UUIDs, timestamps, CRC32C records and an atomically replaced checkpoint.
-Replay preserves FIFO/transaction ordering. It truncates incomplete final appends
+Replay preserves FIFO/transaction ordering around isolated rejected entries. It truncates incomplete final appends
 on restart, rejects corrupt complete records, and rotates drained generations.
 Do not edit or remove pending journal files to unblock startup.
 
@@ -96,6 +100,8 @@ durable count/bytes, oldest pending age and in-flight replay. Legacy `mirrorStat
 does not represent this backlog. `[ApocBR][Persistence]` logs availability changes,
 rate-limited replay progress/defer/block events and shutdown wait status. They
 contain operation UUID/type, SQLState and exception type, without bound values.
+`REPLAY_QUARANTINED` records durable runtime rejection; `blockedPlayers` counts
+player reload guards. Quarantine archives are excluded from active backlog totals.
 Detailed `REPLAY_FAILED`/discard events now include bounded cause/stack diagnostics;
 incomplete graph rejections include their stage and sanitized issue codes. Live
 capture failures include static field/type context. See

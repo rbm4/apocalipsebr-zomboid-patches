@@ -12,7 +12,10 @@ import static java.nio.file.StandardOpenOption.*;
 /** Local, single-process, ordered write-ahead journal. Never holds its lock during JDBC.
  * The owner supplies versioned detached operations; no JDBC/engine objects belong here. */
 final class ApocBRPersistenceJournal implements AutoCloseable {
-    interface Operation extends Serializable { String kind(); long estimatedBytes(); default String playerKey(){return null;} }
+    interface Operation extends Serializable {
+        String kind(); long estimatedBytes(); default String playerKey(){return null;}
+        default boolean completePlayerState(){return false;}
+    }
     record Entry(UUID id, long capturedAt, Operation operation) implements Serializable {}
     record Status(int staged, long stagedBytes, long durable, long bytes, long oldestAgeMs) {}
     private static final int MAGIC=0x41504f31, MAX_RECORD=256*1024*1024;
@@ -21,6 +24,7 @@ final class ApocBRPersistenceJournal implements AutoCloseable {
     private final long memoryLimit;
     private final ArrayDeque<Entry> staging=new ArrayDeque<>();
     private final Map<String,Integer> pendingPlayers=new HashMap<>();
+    private final Set<String> rejectedPlayers=new HashSet<>();
     private final FileChannel owner;
     private final java.nio.channels.FileLock ownerLock;
     private UUID generation;
@@ -56,7 +60,7 @@ final class ApocBRPersistenceJournal implements AutoCloseable {
                 if((int)checksum(bytes)!=crc)throw new IOException("Journal checksum mismatch");
                 Entry entry=decode(bytes);track(entry.operation(),1);if(durable++==0)oldest=entry.capturedAt();position+=12L+length;
             }
-            written=file.length();file.getChannel().force(true);
+            written=file.length();file.getChannel().force(true);loadRejections();
         } catch(IOException|RuntimeException error){if(file!=null)file.close();ownerLock.release();owner.close();throw error;}
     }
     private Path path(){return directory.resolve(generation+".log");}
@@ -97,6 +101,59 @@ final class ApocBRPersistenceJournal implements AutoCloseable {
         Entry following=head();oldest=following==null?0:following.capturedAt();
         if(durable==0&&staging.isEmpty())compact();
     }
+    synchronized void acknowledgeCommitted(UUID id)throws IOException {
+        Entry entry=head();if(entry==null||!entry.id().equals(id))throw new IOException("Journal acknowledgement out of order");
+        String key=entry.operation().playerKey();
+        if(key!=null&&entry.operation().completePlayerState()&&rejectedPlayers.contains(key)) {
+            // The newer full state is committed. Keep the rejected payload for inspection,
+            // but no longer prevent this player from loading the now-current head.
+            Files.deleteIfExists(rejectionMarker(key));rejectedPlayers.remove(key);
+        }
+        acknowledge(id);
+    }
+    synchronized boolean quarantined(UUID id){return Files.isRegularFile(quarantineFile(id));}
+    synchronized void quarantine(UUID id)throws IOException {
+        Entry entry=head();if(entry==null||!entry.id().equals(id))throw new IOException("Quarantine out of order");
+        Path archive=quarantineFile(id);Files.createDirectories(archive.getParent());
+        if(Files.exists(archive)) {
+            if(!decode(readRecord(archive)).id().equals(id))throw new IOException("Quarantine identity mismatch");
+        } else writeRecord(archive,encode(entry));
+        String key=entry.operation().playerKey();
+        if(key!=null) {
+            ByteArrayOutputStream bytes=new ByteArrayOutputStream();
+            try(DataOutputStream out=new DataOutputStream(bytes)){out.writeUTF(key);out.writeLong(id.getMostSignificantBits());out.writeLong(id.getLeastSignificantBits());}
+            writeRecord(rejectionMarker(key),bytes.toByteArray());rejectedPlayers.add(key);
+        }
+        // Advance only after the original UUID/payload and reload guard are durable.
+        acknowledge(id);
+    }
+    private Path quarantineFile(UUID id){return directory.resolve("quarantine").resolve(id+".record");}
+    private Path rejectionMarker(String key){return directory.resolve("quarantine").resolve(UUID.nameUUIDFromBytes(key.getBytes(java.nio.charset.StandardCharsets.UTF_8))+".pending");}
+    private void loadRejections()throws IOException {
+        Path quarantine=directory.resolve("quarantine");if(!Files.isDirectory(quarantine))return;
+        try(var markers=Files.newDirectoryStream(quarantine,"*.pending")) {
+            for(Path marker:markers)try(DataInputStream in=new DataInputStream(new ByteArrayInputStream(readRecord(marker)))) {
+                String key=in.readUTF();UUID id=new UUID(in.readLong(),in.readLong());
+                if(in.read()!=-1||!marker.equals(rejectionMarker(key))||!Files.isRegularFile(quarantineFile(id)))throw new IOException("Invalid player rejection marker");
+                rejectedPlayers.add(key);
+            }
+        }
+    }
+    private static void writeRecord(Path target,byte[] bytes)throws IOException {
+        Path temporary=target.resolveSibling(target.getFileName()+".tmp");
+        try(var channel=FileChannel.open(temporary,CREATE,TRUNCATE_EXISTING,WRITE)) {
+            ByteBuffer header=ByteBuffer.allocate(12).putInt(MAGIC).putInt(bytes.length).putInt((int)checksum(bytes));header.flip();
+            while(header.hasRemaining())channel.write(header);ByteBuffer body=ByteBuffer.wrap(bytes);while(body.hasRemaining())channel.write(body);channel.force(true);
+        }
+        Files.move(temporary,target,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
+    }
+    private static byte[] readRecord(Path target)throws IOException {
+        try(DataInputStream in=new DataInputStream(Files.newInputStream(target))) {
+            if(in.readInt()!=MAGIC)throw new IOException("Invalid quarantine magic");int size=in.readInt(),crc=in.readInt();
+            if(size<0||size>MAX_RECORD||Files.size(target)!=12L+size)throw new IOException("Invalid quarantine length");
+            byte[] bytes=in.readNBytes(size);if(bytes.length!=size||(int)checksum(bytes)!=crc)throw new IOException("Quarantine checksum mismatch");return bytes;
+        }
+    }
     private void compact()throws IOException {
         UUID next=UUID.randomUUID();Path previous=path(),replacement=directory.resolve(next+".log");
         try(var created=FileChannel.open(replacement,CREATE_NEW,WRITE)){created.force(true);}
@@ -111,7 +168,8 @@ final class ApocBRPersistenceJournal implements AutoCloseable {
     }
     synchronized Status status(){long first=oldest!=0?oldest:staging.isEmpty()?0:staging.peekFirst().capturedAt();return new Status(staging.size(),stagedBytes,durable,written-acknowledged,first==0?0:Math.max(0,System.currentTimeMillis()-first));}
     synchronized boolean empty(){return staging.isEmpty()&&durable==0;}
-    synchronized boolean pendingPlayer(String key){return pendingPlayers.containsKey(key);}
+    synchronized boolean pendingPlayer(String key){return pendingPlayers.containsKey(key)||rejectedPlayers.contains(key);}
+    synchronized int blockedPlayers(){return rejectedPlayers.size();}
     private void track(Operation operation,int change){String key=operation.playerKey();if(key!=null)pendingPlayers.compute(key,(k,count)->{int next=(count==null?0:count)+change;return next==0?null:next;});}
     private static long checksum(byte[] bytes){CRC32C crc=new CRC32C();crc.update(bytes);return crc.getValue();}
     private static byte[] encode(Entry entry)throws IOException {

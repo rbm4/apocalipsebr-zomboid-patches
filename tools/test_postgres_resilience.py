@@ -3,6 +3,7 @@ Only engine initialization and the JDBC transport are stubbed; no live server/da
 """
 from pathlib import Path
 import os
+import ast
 import subprocess
 import tempfile
 
@@ -32,6 +33,36 @@ public class ApocBRResilienceTest {
  }
  record Value(int value) implements ApocBRPersistenceJournal.Operation {
   public String kind(){return "test-v1";}public long estimatedBytes(){return 128;}public String playerKey(){return "identity-"+value;}
+ }
+ record PlayerValue(String playerKey,boolean completePlayerState,String state) implements ApocBRPersistenceJournal.Operation {
+  public String kind(){return "fixture-player-v1";}public long estimatedBytes(){return 128;}
+ }
+ static void quarantine(Path root)throws Exception {
+  Path directory=root.resolve("isolation");UUID rejected;
+  try(var journal=new ApocBRPersistenceJournal(directory,256,s->{})) {
+   rejected=journal.submit(new PlayerValue("blocked",true,"bad-capture"));journal.submit(new Value(1));journal.flush();
+   // Simulate failure after archive/marker fsync but before the active checkpoint advances.
+   Files.createDirectory(directory.resolve("checkpoint.tmp"));
+   try{journal.quarantine(rejected);throw new AssertionError("checkpoint failure ignored");}catch(IOException expected){}
+   check(journal.head().id().equals(rejected)&&journal.quarantined(rejected),"checkpoint failure keeps original head plus durable rejected payload");
+   Files.delete(directory.resolve("checkpoint.tmp"));
+  }
+  try(var journal=new ApocBRPersistenceJournal(directory,256,s->{})) {
+   check(journal.head().id().equals(rejected)&&journal.pendingPlayer("blocked"),"restart recovers rejected head and player reload marker");
+   journal.quarantine(rejected);
+   check(((Value)journal.head().operation()).value()==1,"idempotent quarantine completes acknowledgement and exposes next operation");
+   journal.acknowledgeCommitted(journal.head().id());
+   check(journal.empty()&&journal.pendingPlayer("blocked")&&!journal.pendingPlayer("unrelated"),"quarantined player does not obstruct active queue or unrelated identities");
+   journal.submit(new PlayerValue("blocked",false,"scalar-only"));journal.flush();journal.acknowledgeCommitted(journal.head().id());
+   check(journal.pendingPlayer("blocked"),"scalar-only commit cannot authorize loading an older incomplete graph");
+  }
+  try(var journal=new ApocBRPersistenceJournal(directory,256,s->{})) {
+   check(journal.pendingPlayer("blocked"),"reload protection persists even after active journal compaction/restart");
+   journal.submit(new PlayerValue("blocked",true,"new-full-capture"));journal.flush();journal.acknowledgeCommitted(journal.head().id());
+   check(!journal.pendingPlayer("blocked"),"newer committed full capture resolves only the affected reload protection");
+   check(journal.quarantined(rejected),"superseded rejected payload is retained for diagnosis and never re-executed automatically");
+  }
+  try(var journal=new ApocBRPersistenceJournal(directory,256,s->{})){check(journal.empty()&&!journal.pendingPlayer("blocked"),"resolved reload protection survives restart");}
  }
  static void journal(Path root)throws Exception {
   Path directory=root.resolve("journal");List<UUID> ids=new ArrayList<>();
@@ -117,6 +148,7 @@ public class ApocBRResilienceTest {
        if(permanentFailure&&value.startsWith("constraint"))throw new SQLException("PRIVATE_ROW","23505");
        if(value.equals("transient-four")&&attempt<=4)throw new SQLException("PRIVATE_TRANSIENT","22000");
        if(value.equals("runtime-failure"))throw new IllegalStateException("PRIVATE_RUNTIME");
+       if(value.equals("runtime-retry-four")&&attempt<=4)throw new SQLException("PRIVATE_LOCK","55P03");
        if(blockWrite){entered.countDown();release.await();}
        writes.add(sql.startsWith("INSERT INTO public.networkplayers")?"native:"+((byte[])values.get(12))[0]:String.valueOf(values.get(1)));return 1;
       }
@@ -183,11 +215,24 @@ public class ApocBRResilienceTest {
   fake.blockWrite=false;fake.release.countDown();
   until(()->fake.committed.size()==307&&ApocBRPostgresConnector.acceptingLogins(),"blocked worker resumes and drains every overflow operation");
   for(int i=0;i<300;i++)check(fake.committed.get(i+7).equals("overflow-"+i),"overflow preserves FIFO");
-  fake.permanentFailure=true;ApocBRPersistence.submit(write("constraint"));ApocBRPersistence.submit(write("after-constraint"));
-  until(()->ApocBRPersistence.state().equals("RECOVERING"),"non-connectivity SQL failure remains distinguishable from outage");
-  check(fake.committed.size()==307&&!ApocBRPostgresConnector.acceptingLogins(),"permanent failure retains head and later writes without false acknowledgement");
+  fake.permanentFailure=true;UUID constraint=ApocBRPersistence.submit(write("constraint"));ApocBRPersistence.submit(write("after-constraint"));
+  until(()->fake.committed.size()==308&&ApocBRPostgresConnector.acceptingLogins(),"rejected row no longer closes global admission or stalls unrelated account sync");
+  check(!fake.receipts.contains(constraint)&&fake.writeAttempts.get("constraint")==1,"data rejection quarantines without a success receipt or pointless retries");
+  check(Files.isRegularFile(root.resolve("runtime/quarantine/"+constraint+".record")),"rejected account operation remains durable for inspection");
   fake.permanentFailure=false;
-  until(()->fake.committed.size()==309&&ApocBRPostgresConnector.acceptingLogins(),"correcting permanent failure allows retained FIFO replay");
+  var candidate=new ApocBRPlayerRelationalDatabase.Candidate(UUID.randomUUID(),"fixture","world","blocked",false,0,0,249,null,List.of("UNSUPPORTED_TEST_STATE"));
+  var snapshot=ApocBRPlayerRelationalSnapshot.copy(new P());
+  var badBatch=new ApocBRPlayerRelationalMutations.Batch(candidate,UUID.randomUUID(),UUID.randomUUID(),Map.of(),java.time.Instant.EPOCH,snapshot,1);
+  UUID invalidPlayer=ApocBRPersistence.submit(new ApocBRPersistenceOperations.Live(badBatch));
+  ApocBRPersistence.submit(write("after-invalid-player"));
+  ApocBRPostgresConnector.enqueuePlayerSnapshot(new ApocBRPostgresConnector.Snapshot("world","blocked",null,0,"player",1,2,0,249,false,"fixture",false,0,new byte[]{9}));
+  until(()->fake.committed.size()==310&&ApocBRPostgresConnector.acceptingLogins(),"actual incomplete live graph cannot block following SQL or native player saves");
+  check(Files.isRegularFile(root.resolve("runtime/quarantine/"+invalidPlayer+".record"))&&!fake.receipts.contains(invalidPlayer),"real SQLState 22000 graph is retained without being reported committed");
+  check(!ApocBRPostgresConnector.playerReadable("world","blocked",0,false)&&ApocBRPostgresConnector.playerReadable("world","other",0,false),"only affected identity stays protected against stale relational reload; a legacy blob does not clear that guard");
+  UUID runtimeFailure=ApocBRPersistence.submit(write("runtime-failure"));ApocBRPersistence.submit(write("runtime-retry-four"));
+  until(()->fake.committed.size()==311&&ApocBRPostgresConnector.acceptingLogins(),"local operation failure is bounded and retryable lock failure may succeed on fifth try");
+  check(fake.writeAttempts.get("runtime-failure")==5&&Files.isRegularFile(root.resolve("runtime/quarantine/"+runtimeFailure+".record")),"local operation failure gets five attempts then durable isolation");
+  check(fake.writeAttempts.get("runtime-retry-four")==5,"runtime retry preserves fifth-attempt success");
   fake.offline=true;ApocBRPersistence.failed(new SQLException("secret","08006"));ApocBRPersistence.submit(write("shutdown"));
   final int[] shutdownAttempts={0};
   Thread stop=new Thread(()->{ApocBRPersistence.shutdownWork(()->{if(++shutdownAttempts[0]==1)throw new RuntimeException(new SQLException("PRIVATE_ROLE_SAVE","08006"));});ApocBRPersistence.close();});stop.start();
@@ -291,11 +336,17 @@ public class ApocBRResilienceTest {
    else shutdownBudget(root,args[1].equals("offline"));
    System.out.println(args[1]+" checks="+checks);return;
   }
-  journal(root);deadlines();runtime(root);
+  journal(root);quarantine(root);deadlines();runtime(root);
   System.out.println("Resilience checks="+checks);
  }
 }
 '''
+
+_fixture_tree = ast.parse((ROOT / 'tools/test_postgres_player_relational.py').read_text(encoding='utf-8'))
+_fixture_harness = next(ast.literal_eval(node.value) for node in _fixture_tree.body
+                        if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'HARNESS' for t in node.targets))
+_models = _fixture_harness[_fixture_harness.index(' static class Color'):_fixture_harness.index(' static void captures()')]
+HARNESS = HARNESS.replace(' static int checks;', _models + '\n static int checks;', 1)
 
 with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
     target = Path(folder)

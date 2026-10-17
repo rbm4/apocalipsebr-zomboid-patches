@@ -27,8 +27,11 @@ Entering drain wakes a replay worker waiting in normal recovery backoff without
 interrupting an in-flight JDBC operation. Shutdown skips the independent database
 probe, allowing connection failures to consume the selected operation's budget.
 An empty journal can finish draining while PostgreSQL remains unavailable.
-Startup still checks database availability/schema/credentials and normal runtime
-retains failed entries for recovery.
+Startup still checks database availability/schema/credentials. Normal runtime
+retains connection failures for recovery, while operation-specific failures use
+[durable quarantine](persistence-runtime.md) so the running server can continue
+unrelated synchronization and admission. Already quarantined entries do not
+re-enter startup/shutdown replay; player reload markers remain enforced.
 
 Startup probes must succeed before an operation is executed. Failed connection or
 receipt-schema probes do not count as operation attempts and cannot discard queued

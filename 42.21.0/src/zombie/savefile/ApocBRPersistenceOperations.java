@@ -13,11 +13,15 @@ final class ApocBRPersistenceOperations {
     record Initial(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,
                    ApocBRPlayerRelationalSnapshot.Snapshot snapshot) implements ApocBRPersistenceJournal.Operation {
         public String kind(){return "player-initial-v1";}
+        // Existing SQLite imports may skip an already complete (but older) head.
+        // A new life publishes a full graph; other imports resolve via their next live graph.
+        public boolean completePlayerState(){return candidate.newLife()!=null;}
         public long estimatedBytes(){return snapshot.bytes()+4096L;}
         public String playerKey(){return key(candidate.world(),candidate.identity(),candidate.slot(),candidate.coop());}
     }
     record Live(ApocBRPlayerRelationalMutations.Batch batch) implements ApocBRPersistenceJournal.Operation {
         public String kind(){return "player-live-v1";}
+        public boolean completePlayerState(){return batch.snapshot()!=null;}
         public long estimatedBytes(){return (batch.snapshot()==null?0:batch.snapshot().bytes())+64L*batch.fields().size()+4096;}
         public String playerKey(){var c=batch.candidate();return key(c.world(),c.identity(),c.slot(),c.coop());}
     }

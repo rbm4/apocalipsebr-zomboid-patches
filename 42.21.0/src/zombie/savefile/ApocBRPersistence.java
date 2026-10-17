@@ -26,6 +26,7 @@ final class ApocBRPersistence {
     // Owned by the replay worker. Normal runtime failures do not consume the startup/shutdown budget.
     private UUID retryOperation;
     private int replayFailures;
+    private int runtimeFailures;
     private boolean reportedEntryFailure;
     private String discardIssue,discardSqlState,discardDetails;
 
@@ -49,11 +50,23 @@ final class ApocBRPersistence {
         var pending=current.journal.status();return new ApocBRPostgresConnector.PersistenceStatus(current.state.name(),pending.staged(),pending.stagedBytes(),pending.durable(),pending.bytes(),pending.oldestAgeMs(),current.inFlight);
     }
     static void failed(SQLException error) {
-        String sqlState=error.getSQLState();
-        if(sqlState!=null&&(sqlState.startsWith("08")||sqlState.equals("57P01")||sqlState.equals("57P02")||sqlState.equals("57P03"))
-                ||error instanceof SQLTransientConnectionException||error instanceof SQLRecoverableException) {
+        if(connectionFailure(error)) {
             ApocBRPersistence current=instance;if(current!=null)current.transition(current.draining?State.DRAINING:State.UNAVAILABLE);
         }
+    }
+    private static boolean connectionFailure(Throwable error) {
+        for(int depth=0;error!=null&&depth<8;depth++,error=error.getCause()) {
+            if(error instanceof SQLTransientConnectionException||error instanceof SQLRecoverableException)return true;
+            if(error instanceof SQLException sql){String state=sql.getSQLState();if(state!=null&&(state.startsWith("08")||java.util.Set.of("57P01","57P02","57P03").contains(state)))return true;}
+            if(error instanceof java.net.SocketException||error instanceof java.net.SocketTimeoutException||error instanceof java.io.EOFException)return true;
+        }
+        return false;
+    }
+    private static boolean rejectedData(Throwable error) {
+        for(int depth=0;error!=null&&depth<8;depth++,error=error.getCause())if(error instanceof SQLException sql) {
+            String state=sql.getSQLState();if(state!=null&&(state.startsWith("22")||state.startsWith("23")))return true;
+        }
+        return false;
     }
     static UUID submit(ApocBRPersistenceJournal.Operation value) {
         try{return get().journal.submit(value);}
@@ -133,14 +146,17 @@ final class ApocBRPersistence {
                 }
                 delay=250;
             }catch(SQLException error){lastIssue=error.getClass().getName();failed(error);if(state!=State.UNAVAILABLE&&!draining)transition(State.RECOVERING);report("REPLAY_DEFERRED",error.getSQLState());pauseReplay(delay);delay=Math.min(30_000,delay*2);}
-            catch(IOException|RuntimeException|LinkageError error){lastIssue=error.getClass().getName();if(!draining)transition(State.RECOVERING);report("REPLAY_BLOCKED",null);pauseReplay(1000);}
+            catch(IOException|RuntimeException|LinkageError error){lastIssue=error.getClass().getName();if(!draining&&state!=State.UNAVAILABLE)transition(State.RECOVERING);report("REPLAY_BLOCKED",null);pauseReplay(1000);}
         }
     }
     private void pauseReplay(long milliseconds) {
         synchronized(replayPause){try{replayPause.wait(startup||draining?Math.min(milliseconds,250):milliseconds);}catch(InterruptedException ignored){}}
     }
     private void replayEntry(ApocBRPersistenceJournal.Entry entry)throws SQLException,IOException {
-        if(!entry.id().equals(retryOperation)){retryOperation=entry.id();replayFailures=0;reportedEntryFailure=false;}
+        if(!entry.id().equals(retryOperation)){retryOperation=entry.id();replayFailures=0;runtimeFailures=0;reportedEntryFailure=false;}
+        // A crash/checkpoint failure after durable quarantine must not execute that old
+        // operation again, especially after a newer full player capture has committed.
+        if(journal.quarantined(entry.id())){journal.quarantine(entry.id());return;}
         // A failed checkpoint must be retried without executing an exhausted operation again.
         if((startup||draining)&&replayFailures>=REPLAY_MAX_ATTEMPTS){discard(entry);return;}
         try{ApocBRPersistenceOperations.apply(entry.operation());}
@@ -150,7 +166,20 @@ final class ApocBRPersistence {
                 log("REPLAY_FAILED; operation="+entry.id()+"; kind="+entry.operation().kind()
                     +"; phase="+(draining?"shutdown":startup?"startup":"runtime")+"; "+ApocBRPlayerRelationalMutations.writeFailure(error));
             }
-            if(!startup&&!draining)throw error;
+            if(!startup&&!draining) {
+                if(connectionFailure(error)) {
+                    failed(new SQLException("PostgreSQL transport unavailable","08006"));throw error;
+                }
+                runtimeFailures++;
+                if(rejectedData(error)||runtimeFailures>=REPLAY_MAX_ATTEMPTS) {
+                    journal.quarantine(entry.id());
+                    log("REPLAY_QUARANTINED; operation="+entry.id()+"; kind="+entry.operation().kind()+"; attempts="+runtimeFailures
+                        +"; reloadBlocked="+(entry.operation().playerKey()!=null)+"; "+ApocBRPlayerRelationalMutations.writeFailure(error));
+                } else {
+                    report("REPLAY_OPERATION_RETRY",error instanceof SQLException sql?sql.getSQLState():null);pauseReplay(250);
+                }
+                return;
+            }
             replayFailures++;
             discardIssue=error.getClass().getName();
             discardDetails=ApocBRPlayerRelationalMutations.failureDetails(error);
@@ -159,7 +188,7 @@ final class ApocBRPersistence {
             if(replayFailures<REPLAY_MAX_ATTEMPTS)throw error;
             discard(entry);return;
         }
-        journal.acknowledge(entry.id());lastIssue="NONE";report("REPLAY_PROGRESS",null);
+        journal.acknowledgeCommitted(entry.id());lastIssue="NONE";report("REPLAY_PROGRESS",null);
     }
     private void discard(ApocBRPersistenceJournal.Entry entry)throws IOException {
         journal.acknowledge(entry.id());
@@ -197,7 +226,7 @@ final class ApocBRPersistence {
         long now=System.nanoTime();if(now-lastProgress<30_000_000_000L)return;lastProgress=now;
         var pending=journal.status();log(code+"; state="+state+"; staged="+pending.staged()+"; stagedBytes="+pending.stagedBytes()
             +"; durable="+pending.durable()+"; durableBytes="+pending.bytes()+"; oldestPendingMs="+pending.oldestAgeMs()
-            +"; inFlight="+inFlight+"; operation="+replayOperation+"; kind="+replayKind+"; issue="+lastIssue
+            +"; inFlight="+inFlight+"; blockedPlayers="+journal.blockedPlayers()+"; operation="+replayOperation+"; kind="+replayKind+"; issue="+lastIssue
             +"; SQLState="+(sqlState!=null&&sqlState.matches("[A-Z0-9]{5}")?sqlState:"LOCAL"));
     }
     /** Receipt and mutation must share the caller's transaction. Existing fixtures/direct
