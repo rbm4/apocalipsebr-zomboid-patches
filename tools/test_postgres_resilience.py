@@ -112,6 +112,8 @@ public class ApocBRResilienceTest {
        }
        String value=String.valueOf(values.get(1));
        int attempt=writeAttempts.merge(value,1,Integer::sum);
+       if(value.equals("incomplete-live"))ApocBRPlayerRelationalCapture.requireComplete(
+        new ApocBRPlayerRelationalCapture.Graph(UUID.randomUUID(),UUID.randomUUID(),java.time.Instant.EPOCH,List.of(),List.of("UNSUPPORTED_ITEM_SUBTYPE","PRIVATE_VALUE token=secret"),0,0,0,0,0),"live_fields");
        if(permanentFailure&&value.startsWith("constraint"))throw new SQLException("PRIVATE_ROW","23505");
        if(value.equals("transient-four")&&attempt<=4)throw new SQLException("PRIVATE_TRANSIENT","22000");
        if(value.equals("runtime-failure"))throw new IllegalStateException("PRIVATE_RUNTIME");
@@ -262,7 +264,7 @@ public class ApocBRResilienceTest {
   UUID bad;
   try(var journal=new ApocBRPersistenceJournal(root,256,s->{})){
    journal.submit(write("barrier"));bad=journal.submit(write("constraint-one"));
-   journal.submit(write("constraint-two"));journal.submit(write("transient-four"));
+   journal.submit(write("constraint-two"));journal.submit(write("incomplete-live"));journal.submit(write("transient-four"));
    journal.submit(write("runtime-failure"));journal.submit(write("after-failures"));
   }
   List<Throwable> failures=new CopyOnWriteArrayList<>();
@@ -274,6 +276,7 @@ public class ApocBRResilienceTest {
   check(!start.isAlive()&&failures.isEmpty(),"startup completes after discarding exhausted entries");
   check(fake.writeAttempts.get("constraint-one")==5&&fake.writeAttempts.get("constraint-two")==5,"startup SQL entries have independent five-attempt budgets");
   check(fake.writeAttempts.get("runtime-failure")==5,"startup runtime failures are bounded too");
+  check(fake.writeAttempts.get("incomplete-live")==5,"incomplete graph retains its independent retry budget");
   check(fake.writeAttempts.get("transient-four")==5,"startup allows success on fifth attempt");
   check(fake.committed.equals(List.of("barrier","transient-four","after-failures")),"startup progresses through failed heads in FIFO order");
   check(!fake.receipts.contains(bad),"startup discard does not fabricate a success receipt");
@@ -322,5 +325,9 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
         print(result.stdout)
         assert 'PRIVATE_' not in result.stdout, 'discard diagnostics must not expose exception messages or bound values'
         discards = [line for line in result.stdout.splitlines() if 'REPLAY_DISCARDED;' in line]
-        assert len(discards) == (4 if mode == 'offline' else 3), 'every discarded operation must be logged without rate limiting'
+        assert len(discards) == (3 if mode == 'shutdown' else 4), 'every discarded operation must be logged without rate limiting'
         assert all('attempts=5;' in line for line in discards), 'discard logs must report the five-attempt budget'
+        if mode == 'startup':
+            assert any('stage=live_fields;' in line and 'graphIssues=UNSUPPORTED_ITEM_SUBTYPE,UNCLASSIFIED_CAPTURE_ISSUE' in line for line in discards), 'discard must retain sanitized graph rejection details'
+        first_failures = [line for line in result.stdout.splitlines() if 'REPLAY_FAILED;' in line]
+        assert len({line.split('operation=')[1].split(';')[0] for line in first_failures}) == len(first_failures), 'replay emits detailed first failure once per operation'

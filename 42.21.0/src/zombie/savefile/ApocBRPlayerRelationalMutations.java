@@ -200,7 +200,7 @@ public final class ApocBRPlayerRelationalMutations {
         try {
             var snapshot=ApocBRPlayerRelationalSnapshot.copyLive(player);
             if(DIRTY.snapshot(cursor.candidate,cursor.session,snapshot,now))cursor.nextGraph=now+GRAPH_CADENCE;
-        }catch(RuntimeException|LinkageError failure){graphCaptureFailures.incrementAndGet();cursor.nextGraph=now+GRAPH_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_GRAPH_CAPTURE_FAILED; code="+captureFailure(failure));}}
+        }catch(RuntimeException|LinkageError failure){graphCaptureFailures.incrementAndGet();cursor.nextGraph=now+GRAPH_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_GRAPH_CAPTURE_FAILED; "+writeFailure(failure));}}
         finally {long elapsed=System.nanoTime()-started;graphSamples.incrementAndGet();graphNanos.addAndGet(elapsed);graphMaxNanos.accumulateAndGet(elapsed,Math::max);}
     }
     private static void sample(Object player,Cursor cursor,long now) {
@@ -212,7 +212,7 @@ public final class ApocBRPlayerRelationalMutations {
                 cursor.observed=values;cursor.nextSample=now+SAMPLE_CADENCE;
             }
             long elapsed=System.nanoTime()-started;measuredSamples.incrementAndGet();measuredFields.addAndGet(changed.size());sampleNanos.addAndGet(elapsed);maxSampleNanos.accumulateAndGet(elapsed,Math::max);
-        }catch(RuntimeException|LinkageError failure){scalarCaptureFailures.incrementAndGet();cursor.nextSample=now+SAMPLE_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_SAMPLE_FAILED; code="+captureFailure(failure));}}
+        }catch(RuntimeException|LinkageError failure){scalarCaptureFailures.incrementAndGet();cursor.nextSample=now+SAMPLE_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_SAMPLE_FAILED; "+writeFailure(failure));}}
     }
     private record Plan(Field field,String path,String type,boolean required) {}
     private record Group(String table,String source,List<Plan> plans) {}
@@ -286,13 +286,18 @@ public final class ApocBRPlayerRelationalMutations {
     }
     static String writeFailure(Throwable failure) {
         String state=failure instanceof java.sql.SQLException sql?sql.getSQLState():"LOCAL";
-        StringBuilder result=new StringBuilder("SQLState="+(state!=null&&state.matches("[A-Z0-9]{5}")?state:"UNKNOWN"));
+        return "SQLState="+(state!=null&&state.matches("[A-Z0-9]{5}")?state:"UNKNOWN")+failureDetails(failure);
+    }
+    static String failureDetails(Throwable failure) {
+        StringBuilder result=new StringBuilder();
         Set<Throwable> seen=Collections.newSetFromMap(new IdentityHashMap<>());
         // Throwable messages may contain player values or SQL parameters. Only emit types,
         // controlled capture codes and bounded stack locations, including wrapped causes.
         for(int depth=0;failure!=null&&depth<4&&seen.add(failure);depth++,failure=failure.getCause()) {
             result.append(depth==0?"; exception=":"; cause=").append(failure.getClass().getName());
             result.append("; code=").append(captureFailure(failure));
+            if(failure instanceof ApocBRPlayerRelationalSnapshot.CaptureFailure context)result.append("; captureContext=").append(context.diagnostic());
+            if(failure instanceof ApocBRPlayerRelationalCapture.IncompleteGraphException incomplete)result.append("; ").append(incomplete.diagnostic());
             StackTraceElement[] frames=failure.getStackTrace();
             result.append("; frames=");
             for(int i=0;i<Math.min(6,frames.length);i++) {
@@ -305,9 +310,14 @@ public final class ApocBRPlayerRelationalMutations {
     }
     private static String captureFailure(Throwable failure) {
         if(failure instanceof ApocBRPlayerRelationalLimits.SizeExceeded size)return size.diagnostic();
+        // JDBC/provider messages are not controlled capture codes, even if uppercase.
+        if(failure instanceof java.sql.SQLException)return failure.getClass().getSimpleName();
         String message=failure.getMessage();
-        return message!=null&&(message.matches("[A-Z_]+")||message.matches("Missing (capture|required|snapshot) [A-Za-z0-9_.$ ]+"))?message:failure.getClass().getSimpleName();
+        return message!=null&&(CAPTURE_CODES.contains(message)||message.matches("Missing (capture|required|snapshot) [A-Za-z0-9_.$ ]+"))?message:failure.getClass().getSimpleName();
     }
+    private static final Set<String> CAPTURE_CODES=Set.of("UNSUPPORTED_STRUCTURED_VALUE","UNOWNED_STRUCTURED_REFERENCE",
+        "UNSUPPORTED_ITEM_SUBTYPE","UNSUPPORTED_COMPONENT_STATE","UNSUPPORTED_ATTRIBUTE_VALUE_TYPE","UNSUPPORTED_ANIMAL_WRITER",
+        "INVALID_ATTRIBUTE_IDENTITY","SNAPSHOT_DEPTH_BUDGET","SNAPSHOT_SIZE_BUDGET","CAPTURE_SIZE_BUDGET","LIVE_ITEM_LIMIT");
     private static void log(String text){DebugLog.log("[ApocBR][PlayerRelational] "+text);}
     public static boolean hasPending(){return ENABLED&&DIRTY.size()>0;}
     static boolean hasPending(String world,String identity,int slot,boolean coop){return ENABLED&&DIRTY.contains(world,identity,slot,coop);}

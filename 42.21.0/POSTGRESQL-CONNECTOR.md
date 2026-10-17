@@ -96,6 +96,10 @@ durable count/bytes, oldest pending age and in-flight replay. Legacy `mirrorStat
 does not represent this backlog. `[ApocBR][Persistence]` logs availability changes,
 rate-limited replay progress/defer/block events and shutdown wait status. They
 contain operation UUID/type, SQLState and exception type, without bound values.
+Detailed `REPLAY_FAILED`/discard events now include bounded cause/stack diagnostics;
+incomplete graph rejections include their stage and sanitized issue codes. Live
+capture failures include static field/type context. See
+[capture diagnostics](docs/player-capture-diagnostics.md) for interpretation and validation.
 `LIVE_METRICS.journaledPatches` counts capture handoffs; journal commits are owned by the
 replay adapter rather than the old relational worker's JDBC counters.
 

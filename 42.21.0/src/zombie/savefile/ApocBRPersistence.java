@@ -26,7 +26,8 @@ final class ApocBRPersistence {
     // Owned by the replay worker. Normal runtime failures do not consume the startup/shutdown budget.
     private UUID retryOperation;
     private int replayFailures;
-    private String discardIssue,discardSqlState;
+    private boolean reportedEntryFailure;
+    private String discardIssue,discardSqlState,discardDetails;
 
     static boolean enabled(){return Boolean.getBoolean("apocbr.postgres.enabled")
         &&(ApocBRServerDatabase.enabled()||ApocBRPlayerDatabase.enabled()||ApocBRPlayerRelationalSync.enabled());}
@@ -139,26 +140,32 @@ final class ApocBRPersistence {
         synchronized(replayPause){try{replayPause.wait(startup||draining?Math.min(milliseconds,250):milliseconds);}catch(InterruptedException ignored){}}
     }
     private void replayEntry(ApocBRPersistenceJournal.Entry entry)throws SQLException,IOException {
-        if(!entry.id().equals(retryOperation)){retryOperation=entry.id();replayFailures=0;}
+        if(!entry.id().equals(retryOperation)){retryOperation=entry.id();replayFailures=0;reportedEntryFailure=false;}
         // A failed checkpoint must be retried without executing an exhausted operation again.
         if((startup||draining)&&replayFailures>=REPLAY_MAX_ATTEMPTS){discard(entry);return;}
         try{ApocBRPersistenceOperations.apply(entry.operation());}
         catch(SQLException|RuntimeException|LinkageError error){
+            if(!reportedEntryFailure){
+                reportedEntryFailure=true;
+                log("REPLAY_FAILED; operation="+entry.id()+"; kind="+entry.operation().kind()
+                    +"; phase="+(draining?"shutdown":startup?"startup":"runtime")+"; "+ApocBRPlayerRelationalMutations.writeFailure(error));
+            }
             if(!startup&&!draining)throw error;
             replayFailures++;
             discardIssue=error.getClass().getName();
+            discardDetails=ApocBRPlayerRelationalMutations.failureDetails(error);
             String sqlState=error instanceof SQLException sql?sql.getSQLState():null;
             discardSqlState=sqlState!=null&&sqlState.matches("[A-Z0-9]{5}")?sqlState:"LOCAL";
             if(replayFailures<REPLAY_MAX_ATTEMPTS)throw error;
             discard(entry);return;
         }
-        journal.acknowledge(entry.id());report("REPLAY_PROGRESS",null);
+        journal.acknowledge(entry.id());lastIssue="NONE";report("REPLAY_PROGRESS",null);
     }
     private void discard(ApocBRPersistenceJournal.Entry entry)throws IOException {
         journal.acknowledge(entry.id());
         // Never rate limit discards: every deliberately lost operation must be identifiable.
         log("REPLAY_DISCARDED; operation="+entry.id()+"; kind="+entry.operation().kind()
-            +"; attempts="+replayFailures+"; issue="+discardIssue+"; SQLState="+discardSqlState);
+            +"; attempts="+replayFailures+"; issue="+discardIssue+"; SQLState="+discardSqlState+discardDetails);
     }
     private void probe()throws SQLException {
         try(Connection connection=ApocBRPostgresConnector.borrowPlayerConnection();

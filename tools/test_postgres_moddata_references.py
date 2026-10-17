@@ -30,6 +30,9 @@ TESTS = r'''
  }
  static TestTable table(Object... pairs){var table=new TestTable();for(int i=0;i<pairs.length;i+=2)table.rawset(pairs[i],pairs[i+1]);return table;}
  static class Impostor {public Object iterator(){throw new AssertionError("unsupported object's iterator called");}}
+ public static class BrokenTable extends TestTable {
+  public se.krka.kahlua.vm.KahluaTableIterator iterator(){throw new NullPointerException("PRIVATE_VALUE token=secret");}
+ }
  static void rejected(Runnable call,String code){try{call.run();throw new AssertionError("accepted "+code);}catch(IllegalStateException expected){check(expected.getMessage().equals(code),"explicit rejection: "+code);}}
  static List<ApocBRPlayerRelationalCapture.Row> refs(ApocBRPlayerRelationalCapture.Graph graph){return graph.rows().stream().filter(r->r.table().equals("value_node")&&r.values().get("value_kind").equals("reference")).toList();}
  static void referenceTests()throws Exception {
@@ -110,6 +113,17 @@ TESTS = r'''
   rejected(()->liveGraph(duplicates,character),"UNOWNED_STRUCTURED_REFERENCE");
   P cyclic=new P();var cycle=table();cycle.rawset("cycle",cycle);cyclic.table=cycle;
   try{liveGraph(cyclic,character);throw new AssertionError("Lua cycle accepted");}catch(IllegalStateException expected){check(expected.getMessage().contains("Cyclic structured"),"table cycles still fail rather than becoming item references");}
+  P broken=new P();broken.table=table("PRIVATE_KEY",new BrokenTable());
+  try{ApocBRPlayerRelationalSnapshot.copyLive(broken);throw new AssertionError("null-pointer capture accepted");}
+  catch(ApocBRPlayerRelationalSnapshot.CaptureFailure expected){
+   String diagnostic=ApocBRPlayerRelationalMutations.writeFailure(expected);
+   check(diagnostic.contains("snapshot.structured:depth[1]")&&diagnostic.contains("BrokenTable"),"nested capture diagnostics identify stage, depth and runtime type");
+   check(diagnostic.contains("snapshot.player:live")&&diagnostic.contains("cause=java.lang.NullPointerException"),"capture retains outer context and original null-pointer cause");
+   check(diagnostic.contains("BrokenTable.iterator:"),"null-pointer diagnostic retains the failing frame");
+   check(!diagnostic.contains("PRIVATE_")&&!diagnostic.contains("secret"),"capture excludes modData keys, values and exception messages");
+  }
+  broken.table=null;var recovered=ApocBRPlayerRelationalSnapshot.copyLive(broken);
+  check(new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(recovered,List.of()).issues().isEmpty(),"failed capture leaves later valid snapshots usable");
  }
  public static void main(String[] args)throws Exception {referenceTests();System.out.println("ModData reference checks="+checks);}
 '''

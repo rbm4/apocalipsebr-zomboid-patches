@@ -45,11 +45,26 @@ the database callback is discarded.
 
 ## Diagnostics, configuration and limits
 
-Every discard emits an unthrottled `REPLAY_DISCARDED` with operation UUID, kind,
-attempt count, exception class and sanitized SQLState. Synchronous callback
+Each failed journal entry emits one detailed `REPLAY_FAILED` with its UUID, kind,
+startup/runtime/shutdown phase, SQLState, exception/cause classes and bounded stack
+locations. Retries of the same head do not repeat this first-failure event. Every
+discard emits an unthrottled `REPLAY_DISCARDED` with operation UUID, kind,
+attempt count and the final failure details. Incomplete relational graphs include
+`stage=live_fields` or `stage=initial_capture`, `graphIssueCount` and up to eight
+distinct `graphIssues` codes; unrecognized free text becomes
+`UNCLASSIFIED_CAPTURE_ISSUE`. Synchronous callback
 exhaustion emits `DRAIN_DATABASE_WORK_DISCARDED`. Logs omit SQL text, bound values,
 player data, credentials and exception messages. Periodic `DRAIN_WAITING` and
 `REPLAY_DEFERRED` remain rate limited; `SQLState=LOCAL` is a logging fallback.
+Successful replay clears the retained exception class, so later progress no longer
+reports an earlier failure as its current `issue`.
+
+`LIVE_GRAPH_CAPTURE_FAILED` and `LIVE_SAMPLE_FAILED` also include bounded exception
+causes and stack locations. Snapshot failures carry `captureContext`: up to eight
+static field/table paths, collection positions, traversal depths and runtime
+classes, from the failing inner operation to the outer snapshot. ModData keys and
+values are excluded. Capture still rejects invalid state rather than replacing it
+with null/default values. See [capture diagnostics](player-capture-diagnostics.md).
 
 Five attempts and the 250 ms delay are fixed constants with no profile override.
 The existing `apocbr.postgres.enabled` and `apocbr.postgres.journalDirectory`

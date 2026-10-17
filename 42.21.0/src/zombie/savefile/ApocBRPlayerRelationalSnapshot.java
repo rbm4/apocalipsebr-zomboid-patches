@@ -10,6 +10,23 @@ import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
 /** Copies only export-owned state on the load thread. No game object escapes to the worker. */
 final class ApocBRPlayerRelationalSnapshot {
+    /** Failure-only context: static field paths and runtime types, never copied values. */
+    static final class CaptureFailure extends IllegalStateException {
+        private final List<String> contexts=new ArrayList<>();
+        CaptureFailure(Throwable cause){super(cause.getMessage(),cause);}
+        String diagnostic(){return String.join("|",contexts);}
+        void context(String stage,String path,Object source){
+            if(contexts.size()<8)contexts.add(stage+":"+path+"@"+(source==null?"null":source.getClass().getName()).replaceAll("[^A-Za-z0-9_.$]","_"));
+        }
+    }
+    private static <T>T capture(String stage,String path,Object source,java.util.function.Supplier<T> work) {
+        try{return work.get();}
+        catch(ApocBRPlayerRelationalLimits.SizeExceeded error){throw error;}
+        catch(RuntimeException|LinkageError error){
+            CaptureFailure failure=error instanceof CaptureFailure context?context:new CaptureFailure(error);
+            failure.context(stage,path,source);throw failure;
+        }
+    }
     record Snapshot(Node player,Instant capturedAt,int bytes) implements java.io.Serializable {}
     record Stat(String key,Object value) implements java.io.Serializable {}
     /** Bound only to detached owned state before publication; never retains an engine object. */
@@ -84,7 +101,7 @@ final class ApocBRPlayerRelationalSnapshot {
         return scalar(key(value));
     }
     private void put(Node node,String path,Object value){charge(64+path.length()*2);node.fields.put(path,value);}
-    private void fields(Node node,Object source,String... paths){for(String path:paths)put(node,path,scalar(get(source,path)));}
+    private void fields(Node node,Object source,String... paths){for(String path:paths)put(node,path,capture("snapshot.field",path,source,()->scalar(get(source,path))));}
     private Node begin(Object source) {
         charge(128);Node node=new Node(source);copies.put(source,node);return node;
     }
@@ -93,7 +110,7 @@ final class ApocBRPlayerRelationalSnapshot {
         for(var column:ApocBRPlayerRelationalSchema.TABLES.get(table)) {
             if(GENERATED.contains(column.name())||skip.contains(column.name()))continue;
             String path=ApocBRPlayerRelationalCapture.path(table,column.name());
-            put(node,path,scalar(get(source,path)));
+            put(node,path,capture("snapshot.project",table+"."+column.name(),source,()->scalar(get(source,path))));
         }
     }
     private Node projected(Object source,String table,String... excluded) {
@@ -102,15 +119,18 @@ final class ApocBRPlayerRelationalSnapshot {
     }
     private Object sequence(Object source,java.util.function.Function<Object,Object> copy) {
         ArrayList<Object> result=new ArrayList<>();
-        for(Object value:list(source)){charge(16);result.add(copy.apply(value));}
+        for(Object value:list(source)){charge(16);String path="element["+result.size()+"]";result.add(capture("snapshot.sequence",path,value,()->copy.apply(value)));}
         return Collections.unmodifiableList(result);
     }
     private Object mapping(Object source,java.util.function.Function<Object,Object> copy) {
         Map<Object,Object> result=new LinkedHashMap<>();
-        for(var entry:map(source).entrySet()){charge(64);result.put(scalar(entry.getKey()),copy.apply(entry.getValue()));}
+        for(var entry:map(source).entrySet()){charge(64);String path="value["+result.size()+"]";result.put(scalar(entry.getKey()),capture("snapshot.mapping",path,entry.getValue(),()->copy.apply(entry.getValue())));}
         return Collections.unmodifiableMap(result);
     }
     private Object structured(Object source,int depth) {
+        return capture("snapshot.structured","depth["+depth+"]",source,()->structuredValue(source,depth));
+    }
+    private Object structuredValue(Object source,int depth) {
         if(depth>64)throw new IllegalStateException("SNAPSHOT_DEPTH_BUDGET");
         if(source==null||source instanceof String||source instanceof Number||source instanceof Boolean)return scalar(source);
         if(source instanceof InventoryItem||source instanceof ItemContainer||source==playerSource) {
@@ -169,6 +189,9 @@ final class ApocBRPlayerRelationalSnapshot {
         Node node=projected(source,"container");put(node,"items",sequence(get(source,"items"),v->item(v,depth+1)));return node;
     }
     private Object item(Object source,int depth) {
+        return capture("snapshot.item","depth["+depth+"]",source,()->itemState(source,depth));
+    }
+    private Object itemState(Object source,int depth) {
         if(source==null)return null;
         if(depth>64)throw new IllegalStateException("SNAPSHOT_DEPTH_BUDGET");
         if(copies.containsKey(source))return copies.get(source);
@@ -326,6 +349,9 @@ final class ApocBRPlayerRelationalSnapshot {
     static Snapshot copy(Object player) {return copy(player,false);}
     static Snapshot copyLive(Object player) {return copy(player,true);}
     private static Snapshot copy(Object player,boolean live) {
+        return capture("snapshot.player",live?"live":"initial",player,()->copyPlayer(player,live));
+    }
+    private static Snapshot copyPlayer(Object player,boolean live) {
         var copy=new ApocBRPlayerRelationalSnapshot();copy.live=live;copy.playerSource=player;Instant captured=Instant.now();Node p=copy.begin(player);
         copy.project(p,player,"character_state","inventory_container_id");
         copy.fields(p,player,"extraInfoFlags");

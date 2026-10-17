@@ -181,7 +181,7 @@ final class ApocBRPlayerRelationalDatabase {
     boolean applyFields(ApocBRPlayerRelationalMutations.Batch batch) throws SQLException {return applyFields(batch,null);}
     boolean applyFields(ApocBRPlayerRelationalMutations.Batch batch,ApocBRPlayerRelationalCapture.Graph graph) throws SQLException {
         if(graph!=null&&!graph.character().equals(batch.character()))throw new SQLException("Live graph life mismatch","40001");
-        if(graph!=null&&!graph.issues().isEmpty()){sqlMetrics.incomplete(graph.issues());throw new SQLException("Incomplete live graph","22000");}
+        if(graph!=null&&!graph.issues().isEmpty()){sqlMetrics.incomplete(graph.issues());ApocBRPlayerRelationalCapture.requireComplete(graph,"live_fields");}
         Candidate candidate=batch.candidate();
         try(Connection connection=connections.open()) {
             try {

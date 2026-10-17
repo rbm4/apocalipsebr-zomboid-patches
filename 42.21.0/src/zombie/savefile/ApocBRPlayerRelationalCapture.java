@@ -21,6 +21,19 @@ final class ApocBRPlayerRelationalCapture {
     record Graph(UUID snapshot,UUID character,Instant capturedAt,List<Row> rows,List<String> issues,int bytes,int objects,int items,int containers,int edges) {
         Graph { rows=List.copyOf(rows); issues=List.copyOf(issues); }
     }
+    static final class IncompleteGraphException extends java.sql.SQLException {
+        private final String stage,issueCodes;
+        private final int issueCount;
+        IncompleteGraphException(Graph graph,String stage){
+            super("Incomplete relational graph","22000");this.stage=stage;issueCount=graph.issues().size();
+            issueCodes=graph.issues().stream().map(code->code!=null&&code.matches("[A-Z][A-Z0-9_]{0,99}")?code:"UNCLASSIFIED_CAPTURE_ISSUE")
+                .distinct().limit(8).reduce((a,b)->a+","+b).orElse("none");
+        }
+        String diagnostic(){return "stage="+stage+"; graphIssueCount="+issueCount+"; graphIssues="+issueCodes;}
+    }
+    static void requireComplete(Graph graph,String stage)throws java.sql.SQLException {
+        if(!graph.issues().isEmpty())throw new IncompleteGraphException(graph,stage);
+    }
     private final UUID snapshot=UUID.randomUUID(), character;
     private final Instant captured=Instant.now();
     private final ArrayList<Row> rows=new ArrayList<>();

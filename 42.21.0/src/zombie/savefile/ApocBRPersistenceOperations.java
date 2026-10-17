@@ -43,7 +43,7 @@ final class ApocBRPersistenceOperations {
             UUID character=initial.candidate().newLife()==null?receipt.character():initial.candidate().newLife();
             if(!receipt.complete()||initial.candidate().newLife()!=null&&!Objects.equals(receipt.character(),character)) {
                 var graph=new ApocBRPlayerRelationalCapture(character,receipt.aliases(),Long.MAX_VALUE).capture(initial.snapshot(),initial.candidate().loadIssues());
-                if(!graph.issues().isEmpty())throw new SQLException("Incomplete journaled initial capture","22000");
+                ApocBRPlayerRelationalCapture.requireComplete(graph,"initial_capture");
                 if(!database.persist(initial.candidate(),receipt,graph))throw new SQLException("Journaled initial capture deferred","40001");
             } else {
                 // An already complete import needs a receipt as well, including retries after commit loss.

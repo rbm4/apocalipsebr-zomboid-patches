@@ -1125,6 +1125,14 @@ public class RelationalTest {
   check(ApocBRPlayerRelationalMutations.writeFailure(new SQLException("private-player-value","23505")).contains("SQLState=23505"),"write diagnostics retain SQLState");
   check(ApocBRPlayerRelationalMutations.writeFailure(new SQLException("private-player-value","secret\n")).contains("SQLState=UNKNOWN"),"invalid SQLState is sanitized");
   check(ApocBRPlayerRelationalMutations.writeFailure(new NoSuchMethodError("private-player-value")).contains("exception=java.lang.NoSuchMethodError"),"write diagnostics identify linkage errors");
+  var badGraph=new ApocBRPlayerRelationalCapture(UUID.randomUUID(),Map.of(),Long.MAX_VALUE).capture(new P(),List.of("UNSUPPORTED_ITEM_SUBTYPE","private-player-value token=secret"));
+  try{new ApocBRPlayerRelationalDatabase(new LiveFake()::open).applyFields(new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),badGraph.character(),Map.of(),java.time.Instant.EPOCH),badGraph);throw new AssertionError("incomplete graph accepted");}
+  catch(SQLException expected){
+   String details=ApocBRPlayerRelationalMutations.writeFailure(expected);
+   check(details.contains("SQLState=22000")&&details.contains("stage=live_fields")&&details.contains("graphIssueCount=2"),"rejected live graph includes SQLState, stage and issue count");
+   check(details.contains("UNSUPPORTED_ITEM_SUBTYPE")&&details.contains("UNCLASSIFIED_CAPTURE_ISSUE"),"graph diagnostics preserve controlled codes and sanitize unknown text");
+   check(!details.contains("private-player-value")&&!details.contains("secret"),"graph diagnostics never expose raw load issue strings");
+  }
   cause.initCause(failure);
   check(ApocBRPlayerRelationalMutations.writeFailure(failure).length()==diagnostic.length(),"cyclic causes terminate without duplicated diagnostics");
  }
