@@ -12,6 +12,7 @@ import zombie.network.GameServer;
 final class ApocBRPersistence {
     enum State { STARTING, AVAILABLE, UNAVAILABLE, RECOVERING, DRAINING, CLOSED }
     private static volatile ApocBRPersistence instance;
+    private static final int REPLAY_MAX_ATTEMPTS=5;
     private static final ThreadLocal<UUID> operation=new ThreadLocal<>();
     private static final ThreadLocal<Boolean> background=ThreadLocal.withInitial(()->false);
     private final ApocBRPersistenceJournal journal;
@@ -21,6 +22,11 @@ final class ApocBRPersistence {
     private volatile UUID replayOperation;
     private volatile String replayKind="NONE",lastIssue="NONE";
     private final Thread writer,replay;
+    private final Object replayPause=new Object();
+    // Owned by the replay worker. Normal runtime failures do not consume the startup/shutdown budget.
+    private UUID retryOperation;
+    private int replayFailures;
+    private String discardIssue,discardSqlState;
 
     static boolean enabled(){return Boolean.getBoolean("apocbr.postgres.enabled")
         &&(ApocBRServerDatabase.enabled()||ApocBRPlayerDatabase.enabled()||ApocBRPlayerRelationalSync.enabled());}
@@ -61,11 +67,15 @@ final class ApocBRPersistence {
         current.transition(State.AVAILABLE);
     }
     static void finishStartup(){background.remove();}
-    static void drain() {if(!enabled())return;ApocBRPersistence current=get();current.draining=true;current.transition(State.DRAINING);current.awaitDrain();}
+    static void drain() {
+        if(!enabled())return;ApocBRPersistence current=get();
+        synchronized(current.replayPause){current.draining=true;current.replayPause.notifyAll();}
+        current.transition(State.DRAINING);current.awaitDrain();
+    }
     static void shutdownWork(Runnable work) {
         if(!enabled()){work.run();return;}
         ApocBRPersistence current=get();
-        for(;;) {
+        for(int attempts=1;;attempts++) {
             drain();
             try{work.run();drain();return;}
             catch(RuntimeException failure) {
@@ -73,6 +83,10 @@ final class ApocBRPersistence {
                 for(int depth=0;cause!=null&&depth<8;depth++,cause=cause.getCause())if(cause instanceof SQLException
                     ||cause instanceof IllegalStateException&&cause.getMessage()!=null&&cause.getMessage().startsWith("PostgreSQL ")){databaseFailure=true;break;}
                 if(!databaseFailure)throw failure;
+                if(attempts>=REPLAY_MAX_ATTEMPTS){
+                    log("DRAIN_DATABASE_WORK_DISCARDED; attempts="+attempts+"; issue="+failure.getClass().getName());
+                    return;
+                }
                 current.lastIssue=failure.getClass().getName();current.report("DRAIN_DATABASE_WORK_DEFERRED",null);sleep(250);
             }
         }
@@ -103,21 +117,48 @@ final class ApocBRPersistence {
         background.set(true);long delay=250;
         while(!closed) {
             try {
-                if(state!=State.AVAILABLE||startup||draining)probe();
+                // During shutdown, connection failures belong to the selected operation's
+                // attempt budget, rather than an unbounded probe before it can run.
+                if(!draining&&(state!=State.AVAILABLE||startup))probe();
                 if(!startup&&!draining&&state!=State.AVAILABLE)transition(State.RECOVERING);
                 ApocBRPersistenceJournal.Entry entry=journal.head();
                 if(entry!=null) {
                     inFlight=true;operation.set(entry.id());replayOperation=entry.id();replayKind=entry.operation().kind();
-                    try{ApocBRPersistenceOperations.apply(entry.operation());journal.acknowledge(entry.id());report("REPLAY_PROGRESS",null);}
+                    try{replayEntry(entry);}
                     finally{operation.remove();inFlight=false;}
                 } else {
                     if(!startup&&!draining&&journal.empty())transition(State.AVAILABLE);
-                    sleep(50);
+                    pauseReplay(50);
                 }
                 delay=250;
-            }catch(SQLException error){lastIssue=error.getClass().getName();failed(error);if(state!=State.UNAVAILABLE&&!draining)transition(State.RECOVERING);report("REPLAY_DEFERRED",error.getSQLState());sleep(delay);delay=Math.min(30_000,delay*2);}
-            catch(IOException|RuntimeException|LinkageError error){lastIssue=error.getClass().getName();if(!draining)transition(State.RECOVERING);report("REPLAY_BLOCKED",null);sleep(1000);}
+            }catch(SQLException error){lastIssue=error.getClass().getName();failed(error);if(state!=State.UNAVAILABLE&&!draining)transition(State.RECOVERING);report("REPLAY_DEFERRED",error.getSQLState());pauseReplay(delay);delay=Math.min(30_000,delay*2);}
+            catch(IOException|RuntimeException|LinkageError error){lastIssue=error.getClass().getName();if(!draining)transition(State.RECOVERING);report("REPLAY_BLOCKED",null);pauseReplay(1000);}
         }
+    }
+    private void pauseReplay(long milliseconds) {
+        synchronized(replayPause){try{replayPause.wait(startup||draining?Math.min(milliseconds,250):milliseconds);}catch(InterruptedException ignored){}}
+    }
+    private void replayEntry(ApocBRPersistenceJournal.Entry entry)throws SQLException,IOException {
+        if(!entry.id().equals(retryOperation)){retryOperation=entry.id();replayFailures=0;}
+        // A failed checkpoint must be retried without executing an exhausted operation again.
+        if((startup||draining)&&replayFailures>=REPLAY_MAX_ATTEMPTS){discard(entry);return;}
+        try{ApocBRPersistenceOperations.apply(entry.operation());}
+        catch(SQLException|RuntimeException|LinkageError error){
+            if(!startup&&!draining)throw error;
+            replayFailures++;
+            discardIssue=error.getClass().getName();
+            String sqlState=error instanceof SQLException sql?sql.getSQLState():null;
+            discardSqlState=sqlState!=null&&sqlState.matches("[A-Z0-9]{5}")?sqlState:"LOCAL";
+            if(replayFailures<REPLAY_MAX_ATTEMPTS)throw error;
+            discard(entry);return;
+        }
+        journal.acknowledge(entry.id());report("REPLAY_PROGRESS",null);
+    }
+    private void discard(ApocBRPersistenceJournal.Entry entry)throws IOException {
+        journal.acknowledge(entry.id());
+        // Never rate limit discards: every deliberately lost operation must be identifiable.
+        log("REPLAY_DISCARDED; operation="+entry.id()+"; kind="+entry.operation().kind()
+            +"; attempts="+replayFailures+"; issue="+discardIssue+"; SQLState="+discardSqlState);
     }
     private void probe()throws SQLException {
         try(Connection connection=ApocBRPostgresConnector.borrowPlayerConnection();
@@ -127,12 +168,12 @@ final class ApocBRPersistence {
         }
     }
     private void awaitDrain() {
-        // Also probe with an empty journal: reachable PostgreSQL plus a valid receipt schema
-        // is required before startup/admission or clean shutdown can complete.
+        // Startup still requires a reachable, compatible database. Shutdown can finish
+        // after successful replay or bounded discard, even if the database stays offline.
         boolean interrupted=false;
         for(;;) {
             try {
-                background.set(true);probe();
+                background.set(true);if(!draining)probe();
                 if(journal.empty()&&!inFlight)break;
             }catch(SQLException error){
                 if(startup&&error.getSQLState()!=null&&(error.getSQLState().startsWith("42")||error.getSQLState().startsWith("28")))

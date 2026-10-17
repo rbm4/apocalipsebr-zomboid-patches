@@ -22,9 +22,11 @@ Startup waits for PostgreSQL and replays the journal **before** account bootstra
 role initialization and login admission. Missing receipt schema or invalid
 credentials stop startup with a migration/configuration error. Runtime states are
 `STARTING`, `AVAILABLE`, `UNAVAILABLE`, `RECOVERING`, `DRAINING`, `CLOSED`. Recovery
-probes back off from 250 ms to 30 seconds. SQL/schema/unsupported-capture failures
-retain the offending head and block later replay; they require correction, not
-automatic discard. Login stays closed until recovery work drains. Player
+probes back off from 250 ms to 30 seconds during normal runtime. SQL/schema/unsupported-capture
+failures retain the offending head and block later replay during normal runtime;
+startup and shutdown use the five-attempt discard policy described below. Startup
+still requires a successful database/receipt-schema probe before executing entries;
+failed probes do not count as attempts or discard journal data. Login stays closed until recovery work drains. Player
 profile/creation/connection phases also check that identity/slot for staged
 writes and unsent relational mutations. Routine healthy-server writes do not close
 admission for unrelated identities.
@@ -75,11 +77,19 @@ example, new account/role creation, password verification, role reassignment and
 conversion returns `-1` because its eventual affected-row count is unavailable.
 
 Graceful shutdown queues final player samples, closes admission, waits before
-synchronous role saving (retrying database failures), then drains relational work
-before closing workers and
-the shared pool. It waits indefinitely during an outage, including when the queue
-is empty but PostgreSQL is unreachable. Forced process termination cannot provide
-this drain guarantee. Existing final vehicle Reset still precedes pool closure.
+synchronous role saving, then drains relational work before closing workers and
+the shared pool. During startup replay and `DRAINING`, each journal operation gets at most five failed
+execution attempts total, separated by 250 ms. The fifth failure permanently
+discards the operation using the durable journal checkpoint, logs `REPLAY_DISCARDED`,
+and allows the next entry to run. A success on the fifth attempt is committed normally.
+Normal runtime failures before draining do not consume this budget. Startup only
+opens admission after all entries have committed or been discarded. Synchronous shutdown
+database work also stops after five database failures and logs
+`DRAIN_DATABASE_WORK_DISCARDED`. Empty shutdown drains do not require a reachable
+database. This deliberately permits loss of failed account/player updates so a bad
+entry cannot keep startup or shutdown retrying that operation indefinitely.
+See [startup and shutdown retry details](docs/persistence-shutdown.md) for limits and validation.
+Existing final vehicle Reset still precedes pool closure.
 
 `ApocBRPostgresConnector.persistenceStatus()` exposes state, RAM staging count/bytes,
 durable count/bytes, oldest pending age and in-flight replay. Legacy `mirrorStatus()`

@@ -238,7 +238,8 @@ public final class ApocBRPostgresConnector {
         return instance == null ? new Status(0, 0, 0, 0, 0, "DISABLED_OR_UNCONFIGURED", false) : instance.status();
     }
 
-    /** Active persistence drains without a deadline. The inactive legacy mirror retains its compatibility flush. */
+    /** Active shutdown replay discards after five failed attempts per operation.
+     * The inactive legacy mirror retains its compatibility flush. */
     public static void shutdown() {
         if (ApocBRPersistence.enabled()) ApocBRPersistence.drain();
         if (instance == null) return;

@@ -72,6 +72,7 @@ public class ApocBRResilienceTest {
   volatile boolean offline,loseCommit,blockWrite,permanentFailure,missingReceipt;
   final Set<UUID> receipts=ConcurrentHashMap.newKeySet();
   final List<String> committed=new CopyOnWriteArrayList<>();
+  final Map<String,Integer> writeAttempts=new ConcurrentHashMap<>();
   final CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
   volatile int acquired,networkTimeout,mainAcquired;
   DataSource source(){return (DataSource)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{DataSource.class},(p,m,a)->{
@@ -109,7 +110,11 @@ public class ApocBRResilienceTest {
        if(sql.startsWith("INSERT INTO public.apocbr_persistence_receipt")) {
         UUID id=(UUID)values.get(1);if(receipts.contains(id))return 0;receipt=id;return 1;
        }
-       if(permanentFailure&&"constraint".equals(values.get(1)))throw new SQLException("PRIVATE_ROW","23505");
+       String value=String.valueOf(values.get(1));
+       int attempt=writeAttempts.merge(value,1,Integer::sum);
+       if(permanentFailure&&value.startsWith("constraint"))throw new SQLException("PRIVATE_ROW","23505");
+       if(value.equals("transient-four")&&attempt<=4)throw new SQLException("PRIVATE_TRANSIENT","22000");
+       if(value.equals("runtime-failure"))throw new IllegalStateException("PRIVATE_RUNTIME");
        if(blockWrite){entered.countDown();release.await();}
        writes.add(sql.startsWith("INSERT INTO public.networkplayers")?"native:"+((byte[])values.get(12))[0]:String.valueOf(values.get(1)));return 1;
       }
@@ -214,8 +219,75 @@ public class ApocBRResilienceTest {
   fake.missingReceipt=false;ApocBRPostgresConnector.prepareStartup();ApocBRPostgresConnector.finishStartup();
   check(fake.committed.equals(List.of("waiting-for-migration")),"repairing migration replays retained startup work");ApocBRPersistence.close();
  }
+ static void shutdownBudget(Path root,boolean offline)throws Exception {
+  Fake fake=new Fake();
+  Field singleton=ApocBRPostgresConnector.class.getDeclaredField("instance");singleton.setAccessible(true);singleton.set(null,new ApocBRPostgresConnector(fake.source(),s->{}));
+  Field configured=ApocBRPostgresConnector.class.getDeclaredField("configured");configured.setAccessible(true);configured.setBoolean(null,true);
+  System.setProperty("apocbr.postgres.enabled","true");System.setProperty("apocbr.postgres.journalDirectory",root.toString());
+  ApocBRPostgresConnector.prepareStartup();ApocBRPostgresConnector.finishStartup();
+  fake.blockWrite=true;ApocBRPersistence.submit(write("barrier"));
+  check(fake.entered.await(5,TimeUnit.SECONDS),"barrier holds replay until shutdown starts");
+  UUID bad=ApocBRPersistence.submit(write("constraint-one"));
+  ApocBRPersistence.submit(write("constraint-two"));
+  if(!offline){ApocBRPersistence.submit(write("transient-four"));ApocBRPersistence.submit(write("runtime-failure"));}
+  ApocBRPersistence.submit(write("after-failures"));
+  fake.permanentFailure=true;
+  List<Throwable> failures=new CopyOnWriteArrayList<>();
+  Thread stop=new Thread(()->{try{ApocBRPersistence.drain();}catch(Throwable error){failures.add(error);}});
+  stop.setDaemon(true);stop.start();
+  until(()->ApocBRPersistence.state().equals("DRAINING"),"bounded shutdown enters draining");
+  fake.offline=offline;fake.blockWrite=false;fake.release.countDown();stop.join(15000);
+  check(!stop.isAlive()&&failures.isEmpty(),"drain completes despite permanent failures");
+  check(ApocBRPersistence.status().durable()==0&&ApocBRPersistence.status().staged()==0,"discard advances every failed head");
+  if(!offline){
+   check(fake.writeAttempts.get("constraint-one")==5&&fake.writeAttempts.get("constraint-two")==5,"each SQL failure gets its own five-attempt budget");
+   check(fake.writeAttempts.get("runtime-failure")==5,"runtime failures also exhaust after five attempts");
+   check(fake.writeAttempts.get("transient-four")==5&&fake.committed.contains("transient-four"),"success on fifth attempt commits rather than discards");
+   check(fake.committed.equals(List.of("barrier","transient-four","after-failures")),"later operations commit in FIFO order after discard");
+   check(!fake.receipts.contains(bad),"discard does not forge a database success receipt");
+  }else check(fake.committed.isEmpty(),"offline discard cannot report committed writes");
+  final int[] workAttempts={0};
+  ApocBRPersistence.shutdownWork(()->{workAttempts[0]++;throw new RuntimeException(new SQLException("PRIVATE_SHUTDOWN","08006"));});
+  check(workAttempts[0]==5,"synchronous shutdown database work is bounded too");
+  try{ApocBRPersistence.shutdownWork(()->{throw new IllegalArgumentException("programming error");});throw new AssertionError("non-database failure swallowed");}
+  catch(IllegalArgumentException expected){checks++;}
+  ApocBRPersistence.close();check(ApocBRPersistence.state().equals("CLOSED"),"empty shutdown can close while database remains offline");
+  try(var journal=new ApocBRPersistenceJournal(root,256,s->{})){check(journal.empty(),"discard checkpoint survives journal reopen");}
+ }
+ static void startupBudget(Path root)throws Exception {
+  Fake fake=new Fake();fake.permanentFailure=true;fake.blockWrite=true;
+  Field singleton=ApocBRPostgresConnector.class.getDeclaredField("instance");singleton.setAccessible(true);singleton.set(null,new ApocBRPostgresConnector(fake.source(),s->{}));
+  Field configured=ApocBRPostgresConnector.class.getDeclaredField("configured");configured.setAccessible(true);configured.setBoolean(null,true);
+  System.setProperty("apocbr.postgres.enabled","true");System.setProperty("apocbr.postgres.journalDirectory",root.toString());
+  UUID bad;
+  try(var journal=new ApocBRPersistenceJournal(root,256,s->{})){
+   journal.submit(write("barrier"));bad=journal.submit(write("constraint-one"));
+   journal.submit(write("constraint-two"));journal.submit(write("transient-four"));
+   journal.submit(write("runtime-failure"));journal.submit(write("after-failures"));
+  }
+  List<Throwable> failures=new CopyOnWriteArrayList<>();
+  Thread start=new Thread(()->{try{ApocBRPostgresConnector.prepareStartup();ApocBRPostgresConnector.finishStartup();}catch(Throwable error){failures.add(error);}});
+  start.setDaemon(true);start.start();
+  check(fake.entered.await(5,TimeUnit.SECONDS),"startup replays the previous process journal");
+  check(start.isAlive()&&!ApocBRPostgresConnector.acceptingLogins(),"startup admission stays closed until replay completes");
+  fake.blockWrite=false;fake.release.countDown();start.join(15000);
+  check(!start.isAlive()&&failures.isEmpty(),"startup completes after discarding exhausted entries");
+  check(fake.writeAttempts.get("constraint-one")==5&&fake.writeAttempts.get("constraint-two")==5,"startup SQL entries have independent five-attempt budgets");
+  check(fake.writeAttempts.get("runtime-failure")==5,"startup runtime failures are bounded too");
+  check(fake.writeAttempts.get("transient-four")==5,"startup allows success on fifth attempt");
+  check(fake.committed.equals(List.of("barrier","transient-four","after-failures")),"startup progresses through failed heads in FIFO order");
+  check(!fake.receipts.contains(bad),"startup discard does not fabricate a success receipt");
+  check(ApocBRPersistence.status().durable()==0&&ApocBRPostgresConnector.acceptingLogins(),"startup opens admission after journal exhaustion");
+  ApocBRPersistence.close();
+  try(var journal=new ApocBRPersistenceJournal(root,256,s->{})){check(journal.empty(),"startup discards remain removed after reopen");}
+ }
  public static void main(String[] args)throws Exception {
-  Path root=Path.of(args[0]);if(args.length>1){missingReceipt(root);System.out.println("Missing receipt checks="+checks);return;}
+  Path root=Path.of(args[0]);if(args.length>1){
+   if(args[1].equals("missing"))missingReceipt(root);
+   else if(args[1].equals("startup"))startupBudget(root);
+   else shutdownBudget(root,args[1].equals("offline"));
+   System.out.println(args[1]+" checks="+checks);return;
+  }
   journal(root);deadlines();runtime(root);
   System.out.println("Resilience checks="+checks);
  }
@@ -245,3 +317,10 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
     subprocess.run([str(JDK / 'javac.exe'), '--release', '25', '-cp', cp, '-d', folder, *map(str, files)], check=True)
     subprocess.run([str(JDK / 'java.exe'), '-cp', folder + os.pathsep + cp, 'zombie.savefile.ApocBRResilienceTest', str(target / 'data')], check=True, timeout=90)
     subprocess.run([str(JDK / 'java.exe'), '-cp', folder + os.pathsep + cp, 'zombie.savefile.ApocBRResilienceTest', str(target / 'missing'), 'missing'], check=True, timeout=30)
+    for mode in ('shutdown', 'offline', 'startup'):
+        result = subprocess.run([str(JDK / 'java.exe'), '-cp', folder + os.pathsep + cp, 'zombie.savefile.ApocBRResilienceTest', str(target / mode), mode], check=True, timeout=30, capture_output=True, text=True)
+        print(result.stdout)
+        assert 'PRIVATE_' not in result.stdout, 'discard diagnostics must not expose exception messages or bound values'
+        discards = [line for line in result.stdout.splitlines() if 'REPLAY_DISCARDED;' in line]
+        assert len(discards) == (4 if mode == 'offline' else 3), 'every discarded operation must be logged without rate limiting'
+        assert all('attempts=5;' in line for line in discards), 'discard logs must report the five-attempt budget'
