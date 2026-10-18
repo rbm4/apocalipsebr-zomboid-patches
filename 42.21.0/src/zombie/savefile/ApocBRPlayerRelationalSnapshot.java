@@ -39,6 +39,8 @@ final class ApocBRPlayerRelationalSnapshot {
         private static final long serialVersionUID=1L;
         final String runtimeClass;
         final List<String> types;
+        // Optional for old journal compatibility; contains no live engine reference.
+        UUID persistentItemId;
         private Map<String,Object> fields=new LinkedHashMap<>();
         Node(Object source) {
             runtimeClass=source.getClass().getName();
@@ -334,6 +336,55 @@ final class ApocBRPlayerRelationalSnapshot {
             return List.copyOf(result);
         }catch(ReflectiveOperationException error){throw new IllegalStateException(error);}
     }
+    /** Simulation-thread, player-scoped identity continuity. Weak observations never own items. */
+    private static final java.util.concurrent.atomic.AtomicLong nativeIdChanges=new java.util.concurrent.atomic.AtomicLong();
+    static long nativeIdChanges(){return nativeIdChanges.get();}
+    static final class ItemTracker {
+        private record Seen(java.lang.ref.WeakReference<Object> item,int nativeId,UUID id) {}
+        private List<Seen> previous;
+        ItemTracker(Object player) {
+            previous=ownedItems(player).stream().map(item->new Seen(new java.lang.ref.WeakReference<>(item),number(get(item,"id")),null)).toList();
+        }
+        void identify(Object player,ApocBRPlayerRelationalSnapshot copy,UUID character,Map<Integer,UUID> aliases) {
+            List<Object> owned=ownedItems(player);Set<Object> present=Collections.newSetFromMap(new IdentityHashMap<>());present.addAll(owned);
+            IdentityHashMap<Object,Seen> byObject=new IdentityHashMap<>();Map<Integer,Seen> byNative=new HashMap<>();
+            for(Seen seen:previous) {
+                Object item=seen.item.get();if(item!=null)byObject.put(item,seen);
+                // Native-ID reconstruction is evidence only if the old instance has left.
+                if(item==null||!present.contains(item))byNative.putIfAbsent(seen.nativeId,seen);
+            }
+            List<Seen> next=new ArrayList<>();Set<Seen> used=Collections.newSetFromMap(new IdentityHashMap<>());long changed=0;
+            // Reserve exact-instance matches before considering native-ID reconstruction.
+            for(Object item:owned){Seen seen=byObject.get(item);if(seen!=null)used.add(seen);}
+            for(Object item:owned) {
+                int nativeId=number(get(item,"id"));Seen seen=byObject.get(item);
+                if(seen==null){Seen reconstructed=byNative.get(nativeId);if(reconstructed!=null&&used.add(reconstructed))seen=reconstructed;}
+                UUID id=seen==null?UUID.randomUUID():seen.id!=null?seen.id:aliases.getOrDefault(seen.nativeId,ApocBRPlayerRelationalDatabase.named("item:"+character+":"+seen.nativeId));
+                Node node=(Node)copy.copies.get(item);if(node==null)throw new IllegalStateException("Missing owned snapshot item");
+                copy.charge(64);node.persistentItemId=id;next.add(new Seen(new java.lang.ref.WeakReference<>(item),nativeId,id));
+                if(seen!=null&&seen.nativeId!=nativeId)changed++;
+            }
+            // A successful detached capture ends every absent lifecycle, even if later coalesced.
+            previous=List.copyOf(next);
+            nativeIdChanges.addAndGet(changed);
+        }
+    }
+    /** Inventory ownership only: equipment/mod-data references never add owners. */
+    private static List<Object> ownedItems(Object player) {
+        List<Object> result=new ArrayList<>();Set<Object> seen=Collections.newSetFromMap(new IdentityHashMap<>());
+        Set<Integer> ids=new HashSet<>();Deque<Object> pending=new ArrayDeque<>();
+        for(Object item:list(get(get(player,"inventory"),"items")))pending.addLast(item);
+        while(!pending.isEmpty()) {
+            Object item=pending.removeFirst();if(!seen.add(item)||!ids.add(number(get(item,"id"))))continue;
+            if(result.size()>=10_000)throw new IllegalStateException("LIVE_ITEM_LIMIT");result.add(item);
+            // Match capture's depth-first keep-first order, including duplicate native IDs.
+            List<Object> children=new ArrayList<>();var types=typeNames(item);
+            if(types.contains("InventoryContainer"))children.addAll(list(get(get(item,"container"),"items")));
+            if(types.contains("HandWeapon"))children.addAll(list(get(item,"attachmentList")));
+            for(int i=children.size()-1;i>=0;i--)pending.addFirst(children.get(i));
+        }
+        return result;
+    }
     /** Worker-only identity lookup from the detached inventory, bounded independently of alias history. */
     static List<Integer> nativeItemIds(Snapshot snapshot) {
         Set<Node> seen=Collections.newSetFromMap(new IdentityHashMap<>());Set<Integer> ids=new LinkedHashSet<>();Deque<Node> pending=new ArrayDeque<>();
@@ -348,10 +399,16 @@ final class ApocBRPlayerRelationalSnapshot {
     }
     static Snapshot copy(Object player) {return copy(player,false);}
     static Snapshot copyLive(Object player) {return copy(player,true);}
+    static Snapshot copyLive(Object player,ItemTracker tracker,UUID character,Map<Integer,UUID> aliases) {
+        return capture("snapshot.player","live",player,()->copyPlayer(player,true,tracker,character,aliases));
+    }
     private static Snapshot copy(Object player,boolean live) {
         return capture("snapshot.player",live?"live":"initial",player,()->copyPlayer(player,live));
     }
     private static Snapshot copyPlayer(Object player,boolean live) {
+        return copyPlayer(player,live,null,null,Map.of());
+    }
+    private static Snapshot copyPlayer(Object player,boolean live,ItemTracker tracker,UUID character,Map<Integer,UUID> aliases) {
         var copy=new ApocBRPlayerRelationalSnapshot();copy.live=live;copy.playerSource=player;Instant captured=Instant.now();Node p=copy.begin(player);
         copy.project(p,player,"character_state","inventory_container_id");
         copy.fields(p,player,"extraInfoFlags");
@@ -389,9 +446,10 @@ final class ApocBRPlayerRelationalSnapshot {
         for(String path:new String[]{"wornItems","attachedItems"})copy.put(p,path,copy.sequence(get(player,path),v->{Node n=copy.begin(v);copy.fields(n,v,"location");copy.put(n,"item",copy.item(get(v,"item"),0));return n;}));
         copy.put(p,"table",copy.structured(get(player,"table"),0));
         for(var entry:copy.references.entrySet()) {
-            if(!(copy.copies.get(entry.getKey()) instanceof Node target))throw new IllegalStateException("UNOWNED_STRUCTURED_REFERENCE");
-            entry.getValue().target=target;
+            // External Lua references are valid runtime state, but not player-owned data.
+            Object target=copy.copies.get(entry.getKey());entry.getValue().target=target instanceof Node node?node:null;
         }
+        if(tracker!=null)tracker.identify(player,copy,Objects.requireNonNull(character),aliases);
         for(Object value:copy.copies.values())if(value instanceof Node node)node.fields=Collections.unmodifiableMap(node.fields);
         return new Snapshot(p,captured,copy.bytes);
     }

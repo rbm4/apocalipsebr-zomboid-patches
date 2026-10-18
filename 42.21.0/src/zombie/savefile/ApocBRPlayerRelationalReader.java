@@ -57,6 +57,8 @@ final class ApocBRPlayerRelationalReader {
         for(var table:ApocBRPlayerRelationalSchema.TABLES.entrySet()) {
             if(table.getValue().stream().noneMatch(c->c.name().equals("snapshot_id"))||table.getKey().equals("character_head")||table.getKey().equals("sync_issue"))continue;
             List<String> fields=new ArrayList<>();
+            // Server-only identity seed; ordinal graph references still reconstruct as before.
+            if(table.getKey().equals("item"))fields.add("'persisted_item_id',t.id");
             StringBuilder joins=new StringBuilder();int reference=0;
             for(var column:table.getValue()) {
                 if(column.name().equals("snapshot_id"))continue;

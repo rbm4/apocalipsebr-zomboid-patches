@@ -30,7 +30,7 @@ final class ApocBRPlayerRelationalDatabase {
     private record Cached(UUID head,long revision,Map<ApocBRPlayerRelationalDelta.Key,Map<String,Object>> rows,long bytes) {}
     private final Map<UUID,Cached> cache=new LinkedHashMap<>(16,.75f,true);
     private long cacheBytes,cacheMisses,createdRows,updatedRows,deletedRows,unchangedGraphs;
-    String mutationMetrics(){return sqlMetrics.report(System.nanoTime())+"; deltaCreated="+createdRows+"; deltaUpdated="+updatedRows+"; deltaDeleted="+deletedRows+"; unchangedGraphs="+unchangedGraphs+"; cacheMisses="+cacheMisses+"; cacheBytes="+cacheBytes+"; equipmentRefsSkipped="+ApocBRPlayerRelationalCapture.skippedEquipmentReferences()+"; duplicateItemsSkipped="+ApocBRPlayerRelationalCapture.skippedDuplicateItems();}
+    String mutationMetrics(){return sqlMetrics.report(System.nanoTime())+"; deltaCreated="+createdRows+"; deltaUpdated="+updatedRows+"; deltaDeleted="+deletedRows+"; unchangedGraphs="+unchangedGraphs+"; cacheMisses="+cacheMisses+"; cacheBytes="+cacheBytes+"; equipmentRefsSkipped="+ApocBRPlayerRelationalCapture.skippedEquipmentReferences()+"; duplicateItemsSkipped="+ApocBRPlayerRelationalCapture.skippedDuplicateItems()+"; externalRefsSkipped="+ApocBRPlayerRelationalCapture.skippedExternalReferences()+"; nativeIdChanges="+ApocBRPlayerRelationalSnapshot.nativeIdChanges();}
     private static final long CACHE_LIMIT=Math.max(1,Math.min(512,Long.getLong("apocbr.postgres.playerRelational.mutations.cacheMiB",64L)))*1024*1024;
     ApocBRPlayerRelationalCapture.Graph projectLive(ApocBRPlayerRelationalMutations.Batch batch)throws SQLException {
         Map<Integer,UUID> aliases=new HashMap<>();var ids=ApocBRPlayerRelationalSnapshot.nativeItemIds(batch.snapshot());
@@ -91,7 +91,7 @@ final class ApocBRPlayerRelationalDatabase {
             }
             if(character==null) character=named("character:"+candidate.key()+":1");
             Map<Integer,UUID> aliases=new HashMap<>();
-            if(!complete&&candidate.newLife==null) try(PreparedStatement query=statement(connection,"SELECT native_item_id,object_id FROM player_rel.source_item_alias WHERE source_dataset_id=? AND character_id=? AND retired_at IS NULL LIMIT 10001")) {
+            if(candidate.newLife==null) try(PreparedStatement query=statement(connection,"SELECT native_item_id,object_id FROM player_rel.source_item_alias WHERE source_dataset_id=? AND character_id=? AND retired_at IS NULL LIMIT 10001")) {
                 query.setObject(1,candidate.dataset); query.setObject(2,character);
                 try(ResultSet rows=query.executeQuery()) { while(rows.next()) if(aliases.put(rows.getInt(1),rows.getObject(2,UUID.class))!=null) throw new SQLException("Ambiguous item alias","21000"); }
             }
@@ -298,18 +298,21 @@ final class ApocBRPlayerRelationalDatabase {
             PreparedStatement alias=statement(connection,"INSERT INTO player_rel.source_item_alias(source_dataset_id,character_id,native_item_id,native_generation,object_id,created_at,retired_at) SELECT ?,?,?,COALESCE(MAX(native_generation),0)+1,?,CURRENT_TIMESTAMP,NULL FROM player_rel.source_item_alias WHERE source_dataset_id=? AND character_id=? AND native_item_id=? HAVING COUNT(*) FILTER (WHERE retired_at IS NULL)=0")) {
             int removals=0,additions=0;
             for(var change:changes)if(change.key().table().equals("item")) {
-                if(change.after()==null) {
+                if(change.before()!=null&&(change.after()==null||change.columns().contains("native_id"))) {
                     retire.setObject(1,candidate.dataset());retire.setObject(2,character);retire.setObject(3,change.before().get("native_id"));retire.addBatch();
                     if(++removals==128){checkedBatch(retire,true);retire.clearBatch();removals=0;}
-                } else if(change.before()==null) {
-                    // All removals precede newly keyed rows in diff order; release the tail before additions.
-                    if(removals>0){checkedBatch(retire,true);retire.clearBatch();removals=0;}
+                }
+                if(System.nanoTime()>deadline)throw new SQLException("Live alias time budget","57014");
+            }
+            // Retire every old ID first, including both sides of an ID swap.
+            if(removals>0)checkedBatch(retire,true);
+            for(var change:changes)if(change.key().table().equals("item")) {
+                if(change.after()!=null&&(change.before()==null||change.columns().contains("native_id"))) {
                     alias.setObject(1,candidate.dataset());alias.setObject(2,character);alias.setObject(3,change.after().get("native_id"));alias.setObject(4,change.after().get("id"));alias.setObject(5,candidate.dataset());alias.setObject(6,character);alias.setObject(7,change.after().get("native_id"));alias.addBatch();
                     if(++additions==128){checkedBatch(alias,true);alias.clearBatch();additions=0;}
                 }
                 if(System.nanoTime()>deadline)throw new SQLException("Live alias time budget","57014");
             }
-            if(removals>0)checkedBatch(retire,true);
             if(additions>0)checkedBatch(alias,true);
             if(System.nanoTime()>deadline)throw new SQLException("Live alias time budget","57014");
         }

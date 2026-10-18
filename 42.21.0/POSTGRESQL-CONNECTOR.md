@@ -1,5 +1,19 @@
 # PostgreSQL JDBC dependency for 42.21.0
 
+Recorded-media capture and reconstruction use the vanilla 42.21.0 instance API
+`ZomboidRadio.getInstance().getRecordedMedia()`. Calling `getRecordedMedia` as a
+static method caused `LIVE_GRAPH_CAPTURE_FAILED` for nested items such as VHS
+`ComboItem`s with a nonnegative media index, and also prevented reconstruction of
+saved media IDs. Items without media still bypass lookup. Unknown indices/IDs
+remain explicit failures rather than being silently removed. The mod-data/media
+fixture covers nested item capture, stable media IDs in JDBC, reconstruction,
+and missing-media failures; the native relational fixture checks method modifiers
+against the exact game JAR.
+
+Player-scoped native-ID continuity, lifecycle removal, journal identity metadata,
+and external-reference policy are described in
+[player item lifecycles](docs/persistence-player-items.md).
+
 ## Outage resilience: accounts and players
 
 The connector owns an ordered local journal and two daemon workers: one flushes
@@ -613,11 +627,13 @@ Lua table cycles remain rejected, while an item's table can reference that item
 without recursively serializing its ownership graph.
 
 `UNSUPPORTED_STRUCTURED_VALUE` rejects Java types without a supported codec.
-`UNOWNED_STRUCTURED_REFERENCE` rejects targets absent from the copied/accepted
-ownership tree, including equipment-only objects and rejected duplicate items.
-These are explicit capture failures: values are not silently dropped, assigned
-another item's ID, or added to inventory. Other players and world objects require
-separate reviewed reference codecs. Keys retain the existing scalar-key contract.
+References to items/containers absent from the accepted ownership tree, including
+equipment-only objects and rejected duplicates, project as typed nulls. They do
+not block the player graph, target another item's UUID, or add inventory owners.
+The runtime mod-data table remains unchanged; reload restores these values as
+nil/absent. `LIVE_METRICS.externalRefsSkipped` counts these projections.
+Other unsupported Java types still require reviewed codecs. Keys retain the
+existing scalar-key contract.
 
 Detached reference targets survive the outage journal's serialization/filter and
 are resolved again during replay. Snapshot/schema codec metadata stays at 4/1,

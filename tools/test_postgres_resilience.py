@@ -97,6 +97,20 @@ public class ApocBRResilienceTest {
   try(var files=Files.list(corrupt)){log=files.filter(p->p.toString().endsWith(".log")).findFirst().orElseThrow();}
   try(var file=new RandomAccessFile(log.toFile(),"rw")){file.seek(15);file.write(127);}
   try{new ApocBRPersistenceJournal(corrupt,256,s->{});throw new AssertionError("corrupt complete record discarded");}catch(IOException expected){}
+  // The newest player capture carries identity independently of native-ID aliases and old captures.
+  Path playerJournal=root.resolve("player-identity");P player=new P();Item item=new Item(7);player.inventory.items.add(item);
+  UUID character=UUID.randomUUID(),identity=UUID.randomUUID();var tracker=new ApocBRPlayerRelationalSnapshot.ItemTracker(player);
+  ApocBRPlayerRelationalSnapshot.copyLive(player,tracker,character,Map.of(7,identity));item.id=70;
+  var snapshot=ApocBRPlayerRelationalSnapshot.copyLive(player,tracker,character,Map.of());
+  var candidate=new ApocBRPlayerRelationalDatabase.Candidate(UUID.randomUUID(),"fixture","world","identity",false,0,0,249,null,List.of());
+  var batch=new ApocBRPlayerRelationalMutations.Batch(candidate,UUID.randomUUID(),character,Map.of(),java.time.Instant.now(),snapshot,1);
+  try(var journal=new ApocBRPersistenceJournal(playerJournal,256,s->{})){journal.submit(new ApocBRPersistenceOperations.Live(batch));journal.flush();}
+  try(var journal=new ApocBRPersistenceJournal(playerJournal,256,s->{})) {
+   var replay=(ApocBRPersistenceOperations.Live)journal.head().operation();
+   var graph=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(replay.batch().snapshot(),List.of());
+   check(graph.rows().stream().anyMatch(r->r.table().equals("item")&&identity.equals(r.values().get("id"))&&Integer.valueOf(70).equals(r.values().get("native_id"))),"restart replay retains owned item UUID across a native ID change without runtime tracker or aliases");
+   journal.acknowledgeCommitted(journal.head().id());check(journal.empty(),"replayed identity operation drains normally");
+  }
  }
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static class Fake {

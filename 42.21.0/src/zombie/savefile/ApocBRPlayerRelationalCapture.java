@@ -15,6 +15,8 @@ final class ApocBRPlayerRelationalCapture {
     static long skippedEquipmentReferences(){return equipmentRefsSkipped.get();}
     private static final AtomicLong duplicateItemsSkipped=new AtomicLong(),lastDuplicateWarning=new AtomicLong();
     static long skippedDuplicateItems(){return duplicateItemsSkipped.get();}
+    private static final AtomicLong externalRefsSkipped=new AtomicLong();
+    static long skippedExternalReferences(){return externalRefsSkipped.get();}
     record Row(String table,Map<String,Object> values) {
         Row { values=Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
     }
@@ -149,8 +151,8 @@ final class ApocBRPlayerRelationalCapture {
         for(var reference:references) {
             UUID target=itemIds.get(reference.target());
             if(target==null)target=ownedIds.get(reference.target());
-            if(target==null)throw new IllegalStateException("UNOWNED_STRUCTURED_REFERENCE");
             Row row=rows.get(reference.row());Map<String,Object> values=new LinkedHashMap<>(row.values());
+            if(target==null){values.put("value_kind","null");externalRefsSkipped.incrementAndGet();}
             values.put("reference_object_id",target);rows.set(reference.row(),new Row(row.table(),values));
         }
         check();
@@ -256,7 +258,8 @@ final class ApocBRPlayerRelationalCapture {
                         +"; relation="+(parent==null?"container":"weapon_attachment")+"; position="+position+"; depth="+depth);
             return;
         }
-        UUID id=aliases.getOrDefault(nativeId,ApocBRPlayerRelationalDatabase.named("item:"+character+":"+nativeId)); itemIds.put(item,id); object(id,"item");
+        UUID tracked=item instanceof ApocBRPlayerRelationalSnapshot.Node node?node.persistentItemId:null;
+        UUID id=tracked!=null?tracked:aliases.getOrDefault(nativeId,ApocBRPlayerRelationalDatabase.named("item:"+character+":"+nativeId)); itemIds.put(item,id); object(id,"item");
         row("item_location","item_id",id,"container_id",container,"parent_item_id",parent,"relation",parent==null?"container":"weapon_attachment","position",position,"attachment_slot",parent==null?null:key(get(item,"partType"))); edges++;
         String media=resolvedMedia(item,"recordedMediaIndex");
         project("item",item,"id",id,"runtime_class",item instanceof ApocBRPlayerRelationalSnapshot.Node n?n.runtimeClass:item.getClass().getName(),"recorded_media_id",media,"save_type",-1);
@@ -351,7 +354,8 @@ final class ApocBRPlayerRelationalCapture {
     static String media(Object index) {
         if(number(index)<0) return null;
         try {
-            Object recorded=Class.forName("zombie.radio.ZomboidRadio").getMethod("getRecordedMedia").invoke(null);
+            Object radio=Class.forName("zombie.radio.ZomboidRadio").getMethod("getInstance").invoke(null);
+            Object recorded=call(radio,"getRecordedMedia");
             Object data=call(recorded,"getMediaDataFromIndex",((Number)index).shortValue());
             if(data==null) throw new IllegalStateException("Unresolved recorded media index");
             return get(data,"id").toString();

@@ -1,5 +1,9 @@
 # Runtime replay failure isolation (42.21.0 server)
 
+For native-ID changes and the policy for external mod-data references, see
+[player-scoped item lifecycles](persistence-player-items.md). Vanilla assignment
+paths are documented in the [item identity investigation](item-identity-investigation.md).
+
 A `player-live-v1` entry failing with SQLState `22000` can be an incomplete
 relational capture, not a lost PostgreSQL connection. Retrying the immutable
 capture cannot make its unsupported state complete. Previously that entry held

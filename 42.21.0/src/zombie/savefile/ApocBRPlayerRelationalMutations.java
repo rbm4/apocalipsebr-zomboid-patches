@@ -39,10 +39,11 @@ public final class ApocBRPlayerRelationalMutations {
     private static final class Cursor {
         final ApocBRPlayerRelationalDatabase.Candidate candidate;
         final UUID session=UUID.randomUUID();
+        final ApocBRPlayerRelationalSnapshot.ItemTracker items;
         Map<Field,Object> observed=Map.of();
         long nextSample,nextGraph;
         long lastSeen=System.nanoTime();
-        Cursor(ApocBRPlayerRelationalDatabase.Candidate candidate){this.candidate=candidate;}
+        Cursor(ApocBRPlayerRelationalDatabase.Candidate candidate,IsoPlayer player){this.candidate=candidate;items=new ApocBRPlayerRelationalSnapshot.ItemTracker(player);}
     }
     record Value(long revision,Object value) implements java.io.Serializable {}
     record Batch(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character,Map<Field,Value> fields,Instant capturedAt,
@@ -67,7 +68,7 @@ public final class ApocBRPlayerRelationalMutations {
             Pending(ApocBRPlayerRelationalDatabase.Candidate c,UUID s,long now,long operation){candidate=c;session=s;nextAt=now;enqueuedAt=now;this.operation=operation;}
         }
         private final Map<String,Pending> pending=new LinkedHashMap<>();
-        private record Binding(UUID session,UUID character,long nextAt) {}
+        private record Binding(UUID session,UUID character,long nextAt,Map<Integer,UUID> aliases) {}
         private final Map<String,Binding> bindings=new LinkedHashMap<>();
         private long revision,queuedBytes,nextOperation;
         synchronized boolean canSnapshot(String key,UUID session) {
@@ -88,12 +89,16 @@ public final class ApocBRPlayerRelationalMutations {
             if(!bindings.containsKey(key)&&bindings.size()>=MAX_PLAYERS)return false;
             Pending old=pending.get(key);
             if(old!=null)return old.session.equals(session); // Never replace uncommitted work.
-            bindings.put(key,new Binding(session,null,0));return true;
+            bindings.put(key,new Binding(session,null,0,Map.of()));return true;
         }
         synchronized void bind(String key,UUID session,UUID character) {
-            Binding binding=bindings.get(key);
-            if(binding!=null&&binding.session.equals(session))bindings.put(key,new Binding(session,character,binding.nextAt));
+            Binding binding=bindings.get(key);bind(key,session,character,binding==null?Map.of():binding.aliases);
         }
+        synchronized void bind(String key,UUID session,UUID character,Map<Integer,UUID> aliases) {
+            Binding binding=bindings.get(key);
+            if(binding!=null&&binding.session.equals(session))bindings.put(key,new Binding(session,character,binding.nextAt,Map.copyOf(aliases)));
+        }
+        synchronized Binding binding(String key,UUID session){Binding b=bindings.get(key);return b!=null&&b.session.equals(session)?b:null;}
         synchronized void bindCurrent(String key,UUID character) {
             Binding binding=bindings.get(key);if(binding!=null)bind(key,binding.session,character);
         }
@@ -117,7 +122,7 @@ public final class ApocBRPlayerRelationalMutations {
                 Binding binding=bindings.get(p.candidate.key());
                 if(binding==null||binding.character==null||!binding.session.equals(p.session))continue;
                 p.nextAt=now+CADENCE;p.inFlight=true;p.inFlightSnapshot=p.snapshot;
-                bindings.put(p.candidate.key(),new Binding(binding.session,binding.character,p.nextAt));
+                bindings.put(p.candidate.key(),new Binding(binding.session,binding.character,p.nextAt,binding.aliases));
                 return new Batch(p.candidate,p.session,binding.character,Collections.unmodifiableMap(new LinkedHashMap<>(p.fields)),p.capturedAt,p.snapshot,p.snapshotRevision);
             }
             return null;
@@ -162,12 +167,13 @@ public final class ApocBRPlayerRelationalMutations {
         Cursor old=TRACKED.get(player);if(old!=null)return old.session;
         cleanup(System.nanoTime());
         if(TRACKED.size()>=MAX_PLAYERS){capacityLog();return null;}
-        Cursor cursor=new Cursor(candidate);
+        Cursor cursor=new Cursor(candidate,player);
         if(!DIRTY.register(candidate.key(),cursor.session)){capacityLog();return null;}
         TRACKED.put(player,cursor);active=true;return cursor.session;
     }
     private static void capacityLog(){long now=System.nanoTime();if(now-lastCapacityLog>=30_000_000_000L){lastCapacityLog=now;log("LIVE_TRACK_LIMIT; retryOnNextLoad=true");}}
     static void bind(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character){DIRTY.bind(candidate.key(),session,character);}
+    static void bind(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character,Map<Integer,UUID> aliases){DIRTY.bind(candidate.key(),session,character,aliases);}
     static void bindCurrent(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID character){DIRTY.bindCurrent(candidate.key(),character);}
     /** Scalar samples share one millisecond; at most one additional one-shot graph copy per tick. */
     public static void beginTick() {long now=System.nanoTime();if(now-lastCleanup>=30_000_000_000L)cleanup(now);tickDeadline=System.nanoTime()+1_000_000L;samples=0;
@@ -198,7 +204,9 @@ public final class ApocBRPlayerRelationalMutations {
         if(!DIRTY.canSnapshot(cursor.candidate.key(),cursor.session))return;
         long started=System.nanoTime();
         try {
-            var snapshot=ApocBRPlayerRelationalSnapshot.copyLive(player);
+            var binding=DIRTY.binding(cursor.candidate.key(),cursor.session);
+            if(binding==null||binding.character()==null)return;
+            var snapshot=ApocBRPlayerRelationalSnapshot.copyLive(player,cursor.items,binding.character(),binding.aliases());
             if(DIRTY.snapshot(cursor.candidate,cursor.session,snapshot,now))cursor.nextGraph=now+GRAPH_CADENCE;
         }catch(RuntimeException|LinkageError failure){graphCaptureFailures.incrementAndGet();cursor.nextGraph=now+GRAPH_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_GRAPH_CAPTURE_FAILED; "+writeFailure(failure));}}
         finally {long elapsed=System.nanoTime()-started;graphSamples.incrementAndGet();graphNanos.addAndGet(elapsed);graphMaxNanos.accumulateAndGet(elapsed,Math::max);}

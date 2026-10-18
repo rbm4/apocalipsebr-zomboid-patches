@@ -103,14 +103,25 @@ TESTS = r'''
   rejected(()->ApocBRPlayerRelationalSnapshot.copyLive(unsupported),"UNSUPPORTED_STRUCTURED_VALUE");
   rejected(()->new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(unsupported,List.of()),"UNSUPPORTED_STRUCTURED_VALUE");
   P orphan=new P();orphan.table=table("outside",new zombie.inventory.types.Clothing(20,"outside"));
-  rejected(()->ApocBRPlayerRelationalSnapshot.copyLive(orphan),"UNOWNED_STRUCTURED_REFERENCE");
-  rejected(()->new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(orphan,List.of()),"UNOWNED_STRUCTURED_REFERENCE");
+  var orphanGraph=liveGraph(orphan,character);
+  check(orphanGraph.issues().isEmpty()&&refs(orphanGraph).isEmpty()&&orphanGraph.rows().stream().anyMatch(r->r.table().equals("value_node")&&r.values().get("value_kind").equals("null")),"external item reference becomes a typed null without blocking capture");
+  check(canonical(new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(orphan,List.of())).equals(canonical(orphanGraph)),"direct and detached external reference policy agrees");
   // An equipment-only item is copied but is not an owned persistence target.
   var outside=new zombie.inventory.types.Clothing(21,"worn-only");orphan.wornItems.add(new Worn(outside));orphan.table=table("outside",outside);
   var orphanSnapshot=ApocBRPlayerRelationalSnapshot.copyLive(orphan);
-  rejected(()->new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(orphanSnapshot,List.of()),"UNOWNED_STRUCTURED_REFERENCE");
+  check(refs(new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(orphanSnapshot,List.of())).isEmpty(),"copied equipment-only reference does not become an owned target");
   P duplicates=new P();var kept=new zombie.inventory.types.Clothing(30,"kept");var dropped=new zombie.inventory.types.Clothing(30,"dropped");duplicates.inventory.items.addAll(List.of(kept,dropped));duplicates.table=table("dropped",dropped);
-  rejected(()->liveGraph(duplicates,character),"UNOWNED_STRUCTURED_REFERENCE");
+  var duplicateGraph=liveGraph(duplicates,character);check(duplicateGraph.items()==1&&refs(duplicateGraph).isEmpty(),"reference to rejected duplicate becomes null instead of rebinding to another item");
+  P scoped=new P();var tracked=new zombie.inventory.types.Clothing(42,"tracked");scoped.inventory.items.add(tracked);scoped.table=table("item",tracked);
+  UUID persistent=UUID.randomUUID();var tracker=new ApocBRPlayerRelationalSnapshot.ItemTracker(scoped);
+  var original=ApocBRPlayerRelationalSnapshot.copyLive(scoped,tracker,character,Map.of(42,persistent));tracked.id=43;
+  var renumbered=ApocBRPlayerRelationalSnapshot.copyLive(scoped,tracker,character,Map.of());
+  var renumberedGraph=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(renumbered,List.of());
+  check(refs(renumberedGraph).size()==1&&refs(renumberedGraph).getFirst().values().get("reference_object_id").equals(persistent),"owned modData reference retains UUID through native ID reassignment");
+  scoped.inventory.items.clear();var departed=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(ApocBRPlayerRelationalSnapshot.copyLive(scoped,tracker,character,Map.of()),List.of());
+  check(departed.items()==0&&refs(departed).isEmpty()&&((TestTable)scoped.table).rawget("item")==tracked,"departed target becomes null in persistence while its live modData reference remains untouched");
+  scoped.inventory.items.add(tracked);var returned=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(ApocBRPlayerRelationalSnapshot.copyLive(scoped,tracker,character,Map.of()),List.of());
+  check(refs(returned).size()==1&&!refs(returned).getFirst().values().get("reference_object_id").equals(persistent),"returning owned object starts a new lifecycle and modData binds its new UUID");
   P cyclic=new P();var cycle=table();cycle.rawset("cycle",cycle);cyclic.table=cycle;
   try{liveGraph(cyclic,character);throw new AssertionError("Lua cycle accepted");}catch(IllegalStateException expected){check(expected.getMessage().contains("Cyclic structured"),"table cycles still fail rather than becoming item references");}
   P broken=new P();broken.table=table("PRIVATE_KEY",new BrokenTable());
@@ -125,7 +136,27 @@ TESTS = r'''
   broken.table=null;var recovered=ApocBRPlayerRelationalSnapshot.copyLive(broken);
   check(new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(recovered,List.of()).issues().isEmpty(),"failed capture leaves later valid snapshots usable");
  }
- public static void main(String[] args)throws Exception {referenceTests();System.out.println("ModData reference checks="+checks);}
+ static void recordedMediaTests()throws Exception {
+  check(!java.lang.reflect.Modifier.isStatic(zombie.radio.ZomboidRadio.class.getMethod("getRecordedMedia").getModifiers()),"fixture preserves native instance-method contract");
+  check(ApocBRPlayerRelationalCapture.media((short)-1)==null&&zombie.radio.ZomboidRadio.lookups==0,"items without recorded media do not initialize the radio registry");
+  check(ApocBRPlayerRelationalCapture.media((short)7).equals("fixture-vhs"),"capture resolves recorded media through the radio singleton instance");
+  P player=new P();var bag=new zombie.inventory.types.InventoryContainer(100,"bag");
+  for(int i=0;i<11;i++)player.inventory.items.add(new zombie.inventory.InventoryItem(i+1,"ordinary"));
+  for(int i=0;i<13;i++)bag.container.items.add(new zombie.inventory.InventoryItem(i+20,"ordinary"));
+  var tape=new zombie.inventory.types.ComboItem(101,"VHS");tape.recordedMediaIndex=7;bag.container.items.add(tape);player.inventory.items.add(bag);
+  var snapshot=ApocBRPlayerRelationalSnapshot.copyLive(player);UUID character=UUID.randomUUID();
+  var graph=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(snapshot,List.of());
+  check(graph.issues().isEmpty()&&graph.items()==26&&graph.rows().stream().anyMatch(r->r.table().equals("item")&&Integer.valueOf(101).equals(r.values().get("native_id"))&&"fixture-vhs".equals(r.values().get("recorded_media_id"))),"nested ComboItem with media index captures and projects completely");
+  var direct=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(player,List.of());
+  check(canonical(direct).equals(canonical(graph)),"direct and detached media identity agree");
+  LiveFake fake=new LiveFake();fake.character=character;fake.reason="live_fields";fake.graphRows=liveGraph(new P(),character).rows();
+  check(new ApocBRPlayerRelationalDatabase(fake::open).applyFields(new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),character,Map.of(),java.time.Instant.EPOCH),graph),"recorded media graph reaches normal JDBC commit");
+  check(fake.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.item (")).flatMap(e->e.getValue().stream()).anyMatch(row->row.containsValue("fixture-vhs")),"JDBC writes stable recorded media identity");
+  check(StructuredReader.media(null)==-1&&StructuredReader.media("fixture-vhs")==7,"reconstruction resolves saved media ID through the same instance API");
+  rejected(()->ApocBRPlayerRelationalCapture.media((short)99),"Unresolved recorded media index");
+  rejected(()->StructuredReader.media("missing"),"Missing saved recorded media");
+ }
+ public static void main(String[] args)throws Exception {referenceTests();recordedMediaTests();System.out.println("ModData/media checks="+checks);}
 '''
 
 
@@ -144,18 +175,28 @@ def fixture():
 def reader():
     source = (SRC / "ApocBRPlayerRelationalReconstruction.java").read_text()
     signatures = (
+        "private static short mediaIndex(", "private static Object staticCall(", "private static Class<?> type(",
         "private static int id(", "private static void add(", "private static void put(",
         "private static Object value(Map<String,Object> row,Map<Integer,List<Map<String,Object>>> children,Set<Integer> visited,int depth)",
         "private static Object value(Map<String,Object> row,Map<Integer,List<Map<String,Object>>> children,Set<Integer> visited,int depth,Map<Integer,Object> references)",
     )
-    return """package zombie.savefile;import java.util.*;import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
+    return """package zombie.savefile;import java.util.*;import java.lang.reflect.*;import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 final class StructuredReader {
+static short media(Object id){return mediaIndex(id);}
 static Object read(Map<String,Object> row,Map<Integer,List<Map<String,Object>>> children,Map<Integer,Object> references){return value(row,children,new HashSet<>(),0,references);}
 """ + "\n".join(method(source, signature) for signature in signatures) + "\n}"
 
 
 def main():
     stubs = {**base.STUBS,
+        "zombie/radio/ZomboidRadio.java": '''package zombie.radio;public class ZomboidRadio {
+public static int lookups;private static final ZomboidRadio instance=new ZomboidRadio();
+public static ZomboidRadio getInstance(){lookups++;return instance;}
+public Media getRecordedMedia(){return new Media();}
+public static class Media {public Data getMediaDataFromIndex(short index){return index==7?new Data():null;}public Data getMediaData(String id){return "fixture-vhs".equals(id)?new Data():null;}}
+public static class Data {public String id="fixture-vhs";public short index=7;}
+}''',
+        "zombie/inventory/types/ComboItem.java": '''package zombie.inventory.types;public class ComboItem extends zombie.inventory.InventoryItem {public ComboItem(int id,String name){super(id,name);}}''',
         "zombie/inventory/InventoryItem.java": '''package zombie.inventory;public class InventoryItem extends zombie.savefile.RelationalTest.Item {
 public ItemContainer container;public InventoryItem(int id,String name){super(id);this.name=name;}
 public void save(java.nio.ByteBuffer bytes,boolean net){}

@@ -53,7 +53,7 @@ final class ApocBRPersistenceOperations {
                 // An already complete import needs a receipt as well, including retries after commit loss.
                 try(Connection connection=ApocBRPostgresConnector.borrowPlayerConnection()){ApocBRPersistence.claim(connection);connection.commit();}
             }
-            ApocBRPlayerRelationalMutations.bind(initial.candidate(),initial.session(),character);
+            ApocBRPlayerRelationalMutations.bind(initial.candidate(),initial.session(),character,receipt.aliases());
         } else if(operation instanceof Live live) {
             var batch=live.batch();var graph=batch.snapshot()==null?null:database.projectLive(batch);
             if(!database.applyFields(batch,graph))throw new SQLException("Journaled live capture deferred","40001");

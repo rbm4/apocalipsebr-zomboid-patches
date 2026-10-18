@@ -223,7 +223,7 @@ final class ApocBRPlayerRelationalReconstruction {
     }
     private static short mediaIndex(Object media) {
         if(media==null)return -1;
-        Object recorded=staticCall("zombie.radio.ZomboidRadio","getRecordedMedia");
+        Object recorded=call(staticCall("zombie.radio.ZomboidRadio","getInstance"),"getRecordedMedia");
         Object data=call(recorded,"getMediaData",media);if(data==null)throw new IllegalStateException("Missing saved recorded media");
         return ((Number)get(data,"index")).shortValue();
     }

@@ -45,6 +45,8 @@ public class RelationalTest {
   }return type;
  }
  static void accessors()throws Exception {
+  Class<?> radio=Class.forName("zombie.radio.ZomboidRadio");
+  check(Modifier.isStatic(radio.getMethod("getInstance").getModifiers())&&!Modifier.isStatic(radio.getMethod("getRecordedMedia").getModifiers()),"native 42.21.0 recorded media requires a radio singleton receiver");
   Field f=ApocBRPlayerRelationalCapture.class.getDeclaredField("BINDINGS");f.setAccessible(true);
   @SuppressWarnings("unchecked") var bindings=(Map<String,Map<String,String>>)f.get(null);
   String[][] roots={
@@ -691,7 +693,7 @@ public class RelationalTest {
   UUID dataset=candidate(1).dataset(),character=UUID.randomUUID(),head=UUID.randomUUID(),nextHead;
   String reason="sqlite_load";boolean fail,missing,missingRow,locked=true,stale;int codec=ApocBRPlayerRelationalCapture.CODEC_VERSION;volatile int commits,rollbacks,opened,closed;long revision;
   List<ApocBRPlayerRelationalCapture.Row> graphRows=List.of();List<Object[]> aliasRows=List.of();int graphReads;
-  List<String> queries=new ArrayList<>();List<Map<Integer,Object>> updates=new ArrayList<>();Map<String,List<Map<Integer,Object>>> bound=new LinkedHashMap<>();
+  List<String> queries=new ArrayList<>(),batchOrder=new ArrayList<>();List<Map<Integer,Object>> updates=new ArrayList<>();Map<String,List<Map<Integer,Object>>> bound=new LinkedHashMap<>();
   Connection open(){opened++;return(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{Connection.class},(o,m,a)->{
    switch(m.getName()){
     case "close":closed++;return null;
@@ -704,6 +706,7 @@ public class RelationalTest {
        case "addBatch":batch.add(new HashMap<>(values));return null;
        case "clearBatch":batch.clear();return null;
        case "executeBatch":
+        batchOrder.add(sql);
         if(sql.startsWith("UPDATE player_rel.character_nutrition")&&fail)throw new SQLException("simulated","08006");
         updates.addAll(batch);bound.computeIfAbsent(sql,k->new ArrayList<>()).addAll(batch);int[] results=new int[batch.size()];Arrays.fill(results,missingRow?0:1);return results;
        case "executeQuery":
@@ -996,6 +999,77 @@ public class RelationalTest {
   check(recoveryDb.persist(base,recovered,graph)&&incomplete.headWrites==1,"recovered staged incarnation can publish against guarded predecessor");
  }
 
+ static ApocBRPlayerRelationalCapture.Graph trackedGraph(P player,ApocBRPlayerRelationalSnapshot.ItemTracker tracker,UUID character,Map<Integer,UUID> aliases) {
+  return new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(ApocBRPlayerRelationalSnapshot.copyLive(player,tracker,character,aliases),List.of());
+ }
+ static UUID itemIdentity(ApocBRPlayerRelationalCapture.Graph graph,int nativeId) {
+  return (UUID)graph.rows().stream().filter(r->r.table().equals("item")&&r.values().get("native_id").equals(nativeId)).findFirst().orElseThrow().values().get("id");
+ }
+ static void playerItemLifecycles()throws Exception {
+  P player=new P();InventoryContainer bag=new InventoryContainer(10);Item child=new Item(11),other=new Item(12);
+  bag.container.items.add(child);player.inventory.items.addAll(List.of(bag,other));
+  UUID character=UUID.randomUUID(),bagId=UUID.randomUUID(),childId=UUID.randomUUID(),otherId=UUID.randomUUID();
+  var aliases=Map.of(10,bagId,11,childId,12,otherId);var tracker=new ApocBRPlayerRelationalSnapshot.ItemTracker(player);
+  var before=trackedGraph(player,tracker,character,aliases);
+  check(itemIdentity(before,10).equals(bagId)&&itemIdentity(before,11).equals(childId),"first capture seeds persisted UUIDs for a complete owned tree");
+  bag.id=20;child.id=21;long changed=ApocBRPlayerRelationalSnapshot.nativeIdChanges();
+  var after=trackedGraph(player,tracker,character,Map.of());
+  check(itemIdentity(after,20).equals(bagId)&&itemIdentity(after,21).equals(childId),"same-instance ID changes preserve bag and nested item UUIDs without an alias read");
+  check(ApocBRPlayerRelationalSnapshot.nativeIdChanges()==changed+2,"net native ID changes are measured");
+  var delta=ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(before.rows()),ApocBRPlayerRelationalDelta.index(after.rows()));
+  check(delta.size()==2&&delta.stream().allMatch(d->d.key().table().equals("item")&&d.before()!=null&&d.after()!=null&&d.columns().equals(List.of("native_id"))),"ID changes update item rows without rebuilding child/component/container identities");
+  LiveFake fake=new LiveFake();fake.character=character;fake.reason="live_fields";fake.graphRows=before.rows();
+  var db=new ApocBRPlayerRelationalDatabase(fake::open);
+  var batch=new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),character,Map.of(),java.time.Instant.now());
+  check(db.applyFields(batch,after),"reassigned graph commits through production JDBC adapter");
+  var retired=fake.bound.entrySet().stream().filter(e->e.getKey().startsWith("UPDATE player_rel.source_item_alias")).flatMap(e->e.getValue().stream()).toList();
+  var added=fake.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.source_item_alias")).flatMap(e->e.getValue().stream()).toList();
+  check(retired.size()==2&&retired.stream().map(v->v.get(3)).collect(java.util.stream.Collectors.toSet()).equals(Set.of(10,11)),"all old native aliases retired for UUID-preserving updates");
+  check(added.size()==2&&added.stream().anyMatch(v->v.get(3).equals(20)&&v.get(4).equals(bagId))&&added.stream().anyMatch(v->v.get(3).equals(21)&&v.get(4).equals(childId)),"new aliases retain the existing persistent UUIDs");
+  check(fake.batchOrder.indexOf(retiredSql(fake))<fake.batchOrder.indexOf(addedSql(fake)),"retirement batch executes before additions");
+  // Coalescing can skip intermediate native IDs. The newest detached copy is sufficient.
+  child.id=31;trackedGraph(player,tracker,character,Map.of());child.id=41;
+  var newest=ApocBRPlayerRelationalSnapshot.copyLive(player,tracker,character,Map.of());
+  var queue=new ApocBRPlayerRelationalMutations.DirtyQueue();var c=candidate(1);UUID session=UUID.randomUUID();queue.register(c.key(),session);queue.bind(c.key(),session,character);
+  queue.snapshot(c,session,ApocBRPlayerRelationalSnapshot.copyLive(player,tracker,character,Map.of()),0);queue.snapshot(c,session,newest,1);
+  var queued=queue.poll(1);check(itemIdentity(new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(queued.snapshot(),List.of()),41).equals(childId),"dirty queue coalescing keeps original persistent identity");
+  java.io.ByteArrayOutputStream bytes=new java.io.ByteArrayOutputStream();try(var out=new java.io.ObjectOutputStream(bytes)){out.writeObject(queued.snapshot());}
+  ApocBRPlayerRelationalSnapshot.Snapshot restored;try(var in=new java.io.ObjectInputStream(new java.io.ByteArrayInputStream(bytes.toByteArray()))){restored=(ApocBRPlayerRelationalSnapshot.Snapshot)in.readObject();}
+  var replayed=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(restored,List.of());
+  check(itemIdentity(replayed,41).equals(childId),"serialized detached replay retains reassignment identity");
+  // ID swaps must not exchange object identities or insert before releasing old aliases.
+  other.id=41;child.id=12;var swapped=trackedGraph(player,tracker,character,Map.of());
+  check(itemIdentity(swapped,12).equals(childId)&&itemIdentity(swapped,41).equals(otherId),"exact-instance evidence wins during native ID swaps");
+  LiveFake swapFake=new LiveFake();swapFake.character=character;swapFake.reason="live_fields";swapFake.graphRows=replayed.rows();
+  check(new ApocBRPlayerRelationalDatabase(swapFake::open).applyFields(batch,swapped),"ID swap commits without exchanging UUIDs");
+  check(swapFake.batchOrder.lastIndexOf(retiredSql(swapFake))<swapFake.batchOrder.indexOf(addedSql(swapFake)),"all old swap aliases are released before first new alias batch");
+  // Removing the bag removes its entire tree; a return is a fresh lifecycle.
+  player.inventory.items.remove(bag);var absent=trackedGraph(player,tracker,character,Map.of());
+  var removed=ApocBRPlayerRelationalDelta.diff(ApocBRPlayerRelationalDelta.index(swapped.rows()),ApocBRPlayerRelationalDelta.index(absent.rows()));
+  check(absent.items()==1&&removed.stream().filter(d->d.key().table().equals("item")&&d.after()==null).count()==2,"departure deletes bag and nested item rows from current graph");
+  player.inventory.items.add(bag);var returned=trackedGraph(player,tracker,character,aliases);
+  check(!itemIdentity(returned,20).equals(bagId)&&!itemIdentity(returned,12).equals(childId),"observed departure ends identities even for the same returning Java objects");
+  // A reconstructed instance with the same ID is continuous only while present in the previous tree.
+  Item reconstruction=new Item(41);player.inventory.items.set(0,reconstruction);var rebuilt=trackedGraph(player,tracker,character,Map.of());
+  check(itemIdentity(rebuilt,41).equals(otherId),"same native ID can reconnect a reconstructed continuously present item");
+  player.inventory.items.remove(reconstruction);trackedGraph(player,tracker,character,Map.of());
+  Item incoming=new Item(41);player.inventory.items.add(incoming);var arrived=trackedGraph(player,tracker,character,aliases);
+  check(!itemIdentity(arrived,41).equals(otherId),"incoming reused native ID cannot revive an ended lifecycle");
+  // Same-instance state wins even if another object takes its previous ID.
+  UUID incomingId=itemIdentity(arrived,41);incoming.id=51;Item collision=new Item(41);player.inventory.items.add(0,collision);
+  var reallocated=trackedGraph(player,tracker,character,Map.of());
+  check(itemIdentity(reallocated,51).equals(incomingId)&&!itemIdentity(reallocated,41).equals(incomingId),"new item cannot steal an existing instance's identity by native ID");
+  long skipped=ApocBRPlayerRelationalCapture.skippedExternalReferences();
+  // Use a real engine container for structured reference classification.
+  zombie.inventory.ItemContainer foreign=new zombie.inventory.ItemContainer();
+  player.table=new LinkedHashMap<>(Map.of("outside",foreign,"self",player));
+  var external=trackedGraph(player,tracker,character,Map.of());
+  check(external.issues().isEmpty()&&external.rows().stream().anyMatch(r->r.table().equals("value_node")&&"outside".equals(r.values().get("key_text"))&&r.values().get("value_kind").equals("null")&&r.values().get("reference_object_id")==null),"unowned structured reference persists as null without rejecting graph");
+  check(((Map<?,?>)player.table).get("outside")==foreign&&ApocBRPlayerRelationalCapture.skippedExternalReferences()==skipped+1,"external reference handling never mutates live mod data and is measured");
+  check(external.rows().stream().anyMatch(r->r.table().equals("value_node")&&"self".equals(r.values().get("key_text"))&&r.values().get("value_kind").equals("reference")&&character.equals(r.values().get("reference_object_id"))),"owned structured references remain valid and persist normally");
+ }
+ static String retiredSql(LiveFake fake){return fake.queries.stream().filter(s->s.startsWith("UPDATE player_rel.source_item_alias")).findFirst().orElseThrow();}
+ static String addedSql(LiveFake fake){return fake.queries.stream().filter(s->s.startsWith("INSERT INTO player_rel.source_item_alias")).findFirst().orElseThrow();}
  static void aliasGenerations()throws Exception {
   P player=new P();player.inventory.items.add(new Item(99));var snapshot=ApocBRPlayerRelationalSnapshot.copy(player);LiveFake fake=new LiveFake();UUID old=UUID.randomUUID();
   fake.aliasRows=Collections.singletonList(new Object[]{99,old,4,Timestamp.from(java.time.Instant.EPOCH)});
@@ -1158,10 +1232,12 @@ public class RelationalTest {
   System.setProperty("apocbr.postgres.enabled","true");System.setProperty("apocbr.postgres.players.enabled","false");
   var player=new zombie.characters.IsoPlayer();
   // PostgreSQL-loaded lives must bind without a SQLite receipt or snapshot copy.
-  UUID importedDataset=UUID.randomUUID(),persistedLife=UUID.randomUUID();
+  UUID importedDataset=UUID.randomUUID(),persistedLife=UUID.randomUUID(),persistedItem=UUID.randomUUID();
   var loadedProfile=new ApocBRPlayerRelationalReader.Profile(Map.of("snapshot",List.of(Map.of(
-      "persisted_character_id",persistedLife.toString(),"source_dataset_id",importedDataset.toString(),"source_world_version",249))));
+      "persisted_character_id",persistedLife.toString(),"source_dataset_id",importedDataset.toString(),"source_world_version",249)),
+      "item",List.of(Map.of("native_id",700,"persisted_item_id",persistedItem.toString()))));
   var postgresPlayer=new zombie.characters.IsoPlayer();postgresPlayer.forbidExportReads=true;
+  var loadedItem=new Item(700);postgresPlayer.inventory.items.add(loadedItem);
   System.setProperty("apocbr.postgres.playerRelational.sourceDatasetId",UUID.randomUUID().toString());
   try{ApocBRPlayerRelationalSync.registerPostgresPlayer(postgresPlayer,"world","imported",0,false,loadedProfile);}
   finally{System.clearProperty("apocbr.postgres.playerRelational.sourceDatasetId");}
@@ -1175,6 +1251,15 @@ public class RelationalTest {
   check(loadedCandidate.dataset().equals(importedDataset),"loaded life retains actual snapshot dataset despite unrelated local config/save path");
   check(loadedQueue.canSnapshot(loadedCandidate.key(),loadedSession),"PostgreSQL login enables graph reconciliation immediately without an import receipt");
   check(fake.opened==0,"PostgreSQL registration performs no receipt SQL or initial mirror work");
+  Field bindingsField=loadedQueue.getClass().getDeclaredField("bindings");bindingsField.setAccessible(true);
+  Object binding=((Map<?,?>)bindingsField.get(loadedQueue)).get(loadedCandidate.key());
+  Method getAliases=binding.getClass().getDeclaredMethod("aliases");getAliases.setAccessible(true);
+  @SuppressWarnings("unchecked") Map<Integer,UUID> loadedAliases=(Map<Integer,UUID>)getAliases.invoke(binding);
+  Field itemTrackerField=cursor.getClass().getDeclaredField("items");itemTrackerField.setAccessible(true);
+  loadedItem.id=701;postgresPlayer.forbidExportReads=false;
+  var identitySnapshot=ApocBRPlayerRelationalSnapshot.copyLive(postgresPlayer,(ApocBRPlayerRelationalSnapshot.ItemTracker)itemTrackerField.get(cursor),persistedLife,loadedAliases);
+  var identityGraph=new ApocBRPlayerRelationalCapture(persistedLife,Map.of(),Long.MAX_VALUE).capture(identitySnapshot,List.of());
+  check(loadedAliases.get(700).equals(persistedItem)&&itemIdentity(identityGraph,701).equals(persistedItem),"login profile UUID seeds tracking even when native ID changes before first live capture");
   try{ApocBRPlayerRelationalSync.registerPostgresPlayer(new zombie.characters.IsoPlayer(),"world","broken",0,false,new ApocBRPlayerRelationalReader.Profile(Map.of("snapshot",List.of(Map.of("source_world_version",249)))));throw new AssertionError("missing persisted identity accepted");}catch(RuntimeException expected){checks++;}
   ApocBRPlayerRelationalMutations.shutdown();
   ApocBRPlayerRelationalSync.offerLoadedPlayer(player,1,"world","alice",0,249,new byte[]{1},List.of());
@@ -1224,7 +1309,7 @@ public class RelationalTest {
   check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();orphanEquipment();duplicateNativeItems();graphQueue();liveVehicle();characterLives();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();orphanEquipment();duplicateNativeItems();graphQueue();liveVehicle();characterLives();playerItemLifecycles();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
@@ -1240,7 +1325,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:
 
  # Recompile a separate worker fixture against small engine boundary stubs.
  stubs={
- 'zombie/savefile/ApocBRPlayerRelationalReader.java':'package zombie.savefile; final class ApocBRPlayerRelationalReader {record Profile(java.util.Map<String,java.util.List<java.util.Map<String,Object>>> tables){java.util.Map<String,Object> one(String name){return tables.get(name).getFirst();}}}',
+ 'zombie/savefile/ApocBRPlayerRelationalReader.java':'package zombie.savefile; final class ApocBRPlayerRelationalReader {record Profile(java.util.Map<String,java.util.List<java.util.Map<String,Object>>> tables){java.util.Map<String,Object> one(String name){return tables.get(name).getFirst();}java.util.List<java.util.Map<String,Object>> rows(String name){return tables.getOrDefault(name,java.util.List.of());}}}',
  'zombie/network/GameServer.java':'package zombie.network; public class GameServer {public static boolean server=true,coop;}',
  'zombie/core/Core.java':'package zombie.core; public class Core {}',
  'zombie/core/znet/SteamUtils.java':'package zombie.core.znet; public class SteamUtils {public static boolean isSteamModeEnabled(){return false;}}',

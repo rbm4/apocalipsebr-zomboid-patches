@@ -61,9 +61,11 @@ public final class ApocBRPlayerRelationalSync {
         UUID dataset=UUID.fromString(Objects.requireNonNull(metadata.get("source_dataset_id"),"Missing persisted source dataset").toString());
         var candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,ZomboidFileSystem.instance.getCurrentSaveDir(),world,identity,
                 coop,slot,0,((Number)metadata.get("source_world_version")).intValue(),null,List.of());
+        Map<Integer,UUID> identities=new HashMap<>();
+        for(var item:profile.rows("item"))identities.put(((Number)item.get("native_id")).intValue(),UUID.fromString(Objects.requireNonNull(item.get("persisted_item_id"),"Missing persisted item ID").toString()));
         UUID session=ApocBRPlayerRelationalMutations.register(player,candidate);
         if(session==null)throw new IllegalStateException("Relational tracking capacity exceeded");
-        ApocBRPlayerRelationalMutations.bind(candidate,session,character);
+        ApocBRPlayerRelationalMutations.bind(candidate,session,character,identities);
         start();
         log("LIVE_TRACK_READY; source=PostgreSQL; initialSync=skipped");
     }
@@ -125,7 +127,7 @@ public final class ApocBRPlayerRelationalSync {
                 try {
                     var receipt=DATABASE.inspect(pending.candidate);
                     pending.character=pending.candidate.newLife()==null?receipt.character():pending.candidate.newLife();
-                    ApocBRPlayerRelationalMutations.bind(pending.candidate,pending.session,pending.character);
+                    ApocBRPlayerRelationalMutations.bind(pending.candidate,pending.session,pending.character,receipt.aliases());
                     if(pending.cancelled){forget(pending);continue;}
                     if(receipt.complete()){log("SYNC_SKIPPED; receipt=complete; snapshotMs="+TimeUnit.NANOSECONDS.toMillis(pending.snapshotNanos));forget(pending);continue;}
                     if(pending.candidate.blobHash()==null&&pending.candidate.newLife()==null) {
