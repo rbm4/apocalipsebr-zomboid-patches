@@ -46,8 +46,35 @@ Use the operation UUID to correlate first failure, deferred replay and discard.
 For null pointers, inspect the cause's source frames and `captureContext` to
 identify the owning field/type before changing its codec. For graph rejections,
 inspect `graphIssues` and the corresponding native loader/component save contract.
-`UNCLASSIFIED_CAPTURE_ISSUE` means an issue string was not a bounded uppercase code;
-the original string is intentionally omitted.
+`UNCLASSIFIED_CAPTURE_ISSUE` means an issue string was not a bounded uppercase code
+or a bounded `UNSUPPORTED_COMPONENT_<JavaSimpleName>` identifier; the original
+string is intentionally omitted.
+
+### October 18: component name hidden during runtime quarantine
+
+The `player-live-v1` rejection at 14:19:36 reported `stage=live_fields`, one
+graph issue and `UNCLASSIFIED_CAPTURE_ISSUE`. The previous uppercase-only filter
+incorrectly hid internally generated mixed-case component codes, such as
+`UNSUPPORTED_COMPONENT_Resources`. The formatter now preserves bounded Java
+simple names for this specific prefix, while still rejecting arbitrary text,
+log delimiters and oversized names. The regression uses an actual unsupported
+component copied into a detached snapshot, then rejected by `requireComplete`.
+
+In the current source, all native load-quality codes and the unsupported-item
+code are uppercase. The remaining producer is the unsupported-component branch
+in `ApocBRPlayerRelationalCapture.item`. This makes an unsupported inventory-item
+component the source-supported explanation; these two log lines alone cannot
+identify its class or item. Inspect the preserved detached operation at
+`postgres-journal/quarantine/c2c8d4d1-7ba5-49ed-9368-65a9b92a2c01.record`
+or collect a new rejection with the corrected formatter before adding a codec.
+
+`22000` is constructed locally by `IncompleteGraphException`. `applyFields`
+rejects the graph before its write transaction. Runtime replay classifies SQLState
+class `22` as rejected data and quarantines it on the first attempt. The archive
+and player reload marker are durable before replay advances to the next entry.
+A later successfully committed full player state clears the reload marker and
+keeps the rejected archive. This diagnostic correction does not recover that
+operation or add support for the underlying component.
 
 No configuration, permission, schema, migration or journal-format changes are
 required. Capture errors still prevent snapshot publication, and incomplete graph

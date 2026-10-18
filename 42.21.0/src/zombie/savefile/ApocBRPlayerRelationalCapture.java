@@ -28,7 +28,10 @@ final class ApocBRPlayerRelationalCapture {
         private final int issueCount;
         IncompleteGraphException(Graph graph,String stage){
             super("Incomplete relational graph","22000");this.stage=stage;issueCount=graph.issues().size();
-            issueCodes=graph.issues().stream().map(code->code!=null&&code.matches("[A-Z][A-Z0-9_]{0,99}")?code:"UNCLASSIFIED_CAPTURE_ISSUE")
+            // Component issues include the Java simple name (e.g. Resources).
+            // Keep that bounded identifier without admitting arbitrary issue text.
+            issueCodes=graph.issues().stream().map(code->code!=null&&(code.matches("[A-Z][A-Z0-9_]{0,99}")
+                    ||code.length()<=100&&code.matches("UNSUPPORTED_COMPONENT_[A-Za-z_$][A-Za-z0-9_$]*"))?code:"UNCLASSIFIED_CAPTURE_ISSUE")
                 .distinct().limit(8).reduce((a,b)->a+","+b).orElse("none");
         }
         String diagnostic(){return "stage="+stage+"; graphIssueCount="+issueCount+"; graphIssues="+issueCodes;}

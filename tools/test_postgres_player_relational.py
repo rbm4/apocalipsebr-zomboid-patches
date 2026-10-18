@@ -501,6 +501,10 @@ public class RelationalTest {
   item.components.add(new UnreviewedComponent());item.componentSize=3;
   var unsupported=new ApocBRPlayerRelationalCapture(character,aliases,Long.MAX_VALUE).capture(ApocBRPlayerRelationalSnapshot.copy(player),List.of());
   check(unsupported.issues().contains("UNSUPPORTED_COMPONENT_UnreviewedComponent"),"unreviewed components still prevent complete coverage");
+  try{ApocBRPlayerRelationalCapture.requireComplete(unsupported,"live_fields");throw new AssertionError("unsupported component accepted");}
+  catch(ApocBRPlayerRelationalCapture.IncompleteGraphException expected){
+   check(expected.diagnostic().contains("graphIssues=UNSUPPORTED_COMPONENT_UnreviewedComponent"),"actual detached component rejection preserves mixed-case component name");
+  }
   check(db.persist(candidate,new ApocBRPlayerRelationalDatabase.Receipt(character,null,aliases,false),unsupported)&&fake.headWrites==1&&fake.status.equals("incomplete"),"unknown component graph never publishes a new completion receipt");
   var empty=nativeComponent(zombie.entity.components.attributes.AttributeContainer.class);
   check(((List<?>)ApocBRPlayerRelationalSnapshot.componentState(empty).get("attributes")).isEmpty(),"empty attribute container supported");
@@ -1199,11 +1203,13 @@ public class RelationalTest {
   check(ApocBRPlayerRelationalMutations.writeFailure(new SQLException("private-player-value","23505")).contains("SQLState=23505"),"write diagnostics retain SQLState");
   check(ApocBRPlayerRelationalMutations.writeFailure(new SQLException("private-player-value","secret\n")).contains("SQLState=UNKNOWN"),"invalid SQLState is sanitized");
   check(ApocBRPlayerRelationalMutations.writeFailure(new NoSuchMethodError("private-player-value")).contains("exception=java.lang.NoSuchMethodError"),"write diagnostics identify linkage errors");
-  var badGraph=new ApocBRPlayerRelationalCapture(UUID.randomUUID(),Map.of(),Long.MAX_VALUE).capture(new P(),List.of("UNSUPPORTED_ITEM_SUBTYPE","private-player-value token=secret"));
+  var badGraph=new ApocBRPlayerRelationalCapture(UUID.randomUUID(),Map.of(),Long.MAX_VALUE).capture(new P(),List.of("UNSUPPORTED_ITEM_SUBTYPE","private-player-value token=secret",
+   "UNSUPPORTED_COMPONENT_Resources","UNSUPPORTED_COMPONENT_Resources\nsecret","UNSUPPORTED_COMPONENT_"+"X".repeat(100),"UNSUPPORTED_COMPONENT_Resources;token=secret"));
   try{new ApocBRPlayerRelationalDatabase(new LiveFake()::open).applyFields(new ApocBRPlayerRelationalMutations.Batch(candidate(1),UUID.randomUUID(),badGraph.character(),Map.of(),java.time.Instant.EPOCH),badGraph);throw new AssertionError("incomplete graph accepted");}
   catch(SQLException expected){
    String details=ApocBRPlayerRelationalMutations.writeFailure(expected);
-   check(details.contains("SQLState=22000")&&details.contains("stage=live_fields")&&details.contains("graphIssueCount=2"),"rejected live graph includes SQLState, stage and issue count");
+   check(details.contains("SQLState=22000")&&details.contains("stage=live_fields")&&details.contains("graphIssueCount=6"),"rejected live graph includes SQLState, stage and issue count");
+   check(details.contains("UNSUPPORTED_COMPONENT_Resources")&&!details.contains("X".repeat(100)),"component diagnostics preserve bounded identifiers and reject oversized names");
    check(details.contains("UNSUPPORTED_ITEM_SUBTYPE")&&details.contains("UNCLASSIFIED_CAPTURE_ISSUE"),"graph diagnostics preserve controlled codes and sanitize unknown text");
    check(!details.contains("private-player-value")&&!details.contains("secret"),"graph diagnostics never expose raw load issue strings");
   }
