@@ -1598,7 +1598,7 @@ public class IsoDoor extends IsoObject implements BarricadeAble, Thumpable, IHas
                                 this.playDoorSound(chr.getEmitter(), this.isOpen() ? "Open" : "Close");
                             }
 
-                            if (player.isLocalPlayer()) {
+                            if (player != null && player.isLocalPlayer()) {
                                 player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
                             }
                         }
@@ -1631,7 +1631,7 @@ public class IsoDoor extends IsoObject implements BarricadeAble, Thumpable, IHas
                         PolygonalMap2.instance.squareChanged(this.square);
                         LuaEventManager.triggerEvent("OnContainerUpdate");
                         this.invalidateRenderChunkLevel(256L);
-                        if (player.isLocalPlayer()) {
+                        if (player != null && player.isLocalPlayer()) {
                             player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
                         }
 
@@ -1645,7 +1645,7 @@ public class IsoDoor extends IsoObject implements BarricadeAble, Thumpable, IHas
                     toggleDoubleDoor(this, true);
                     if (wasOpenx != this.isOpen()) {
                         this.playDoorSound(chr.getEmitter(), this.isOpen() ? "Open" : "Close");
-                        if (player.isLocalPlayer()) {
+                        if (player != null && player.isLocalPlayer()) {
                             player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
                         }
                     }
