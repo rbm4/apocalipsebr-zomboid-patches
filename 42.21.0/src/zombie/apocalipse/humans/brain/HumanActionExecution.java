@@ -23,6 +23,9 @@ public final class HumanActionExecution {
                 startedAt = now;
                 status = Status.RUNNING;
                 switch (action) {
+                    case HumanAction.Roam ignored -> {
+                        if (!actuator.startRoaming(now)) { actuator.stopMoving(); settle(false); }
+                    }
                     case HumanAction.FaceVisitor face -> settle(actuator.face(face.visitor()));
                     case HumanAction.Say say -> settle(actuator.say(say.text()));
                     case HumanAction.ReturnHome ignored -> settle(actuator.returnHome());
@@ -37,6 +40,13 @@ public final class HumanActionExecution {
             }
             if (status != Status.RUNNING) return;
             switch (action) {
+                case HumanAction.Roam ignored -> {
+                    HumanActuator.MotionStatus result = actuator.updateRoaming(now);
+                    if (result != HumanActuator.MotionStatus.RUNNING) {
+                        actuator.stopMoving();
+                        settle(result == HumanActuator.MotionStatus.SUCCEEDED);
+                    }
+                }
                 case HumanAction.HoldAttention hold -> {
                     if (!actuator.face(hold.visitor())) settle(false);
                     else if (now - startedAt >= hold.durationNanos()) settle(true);
@@ -53,6 +63,7 @@ public final class HumanActionExecution {
             // A failed port call must not repeat one-shot speech/animation every tick.
             failure = exception.getClass().getSimpleName();
             if (action instanceof HumanAction.Emote) stopSafely(actuator);
+            if (action instanceof HumanAction.Roam) stopMovementSafely(actuator);
             status = Status.FAILED;
         }
     }
@@ -60,11 +71,16 @@ public final class HumanActionExecution {
     public void cancel(HumanActuator actuator) {
         if (terminal()) return;
         if (status == Status.RUNNING && action instanceof HumanAction.Emote) stopSafely(actuator);
+        if (status == Status.RUNNING && action instanceof HumanAction.Roam) stopMovementSafely(actuator);
         status = Status.CANCELLED;
     }
 
     private void stopSafely(HumanActuator actuator) {
         try { actuator.stopEmote(); } catch (RuntimeException ignored) { /* Preserve terminal status. */ }
+    }
+
+    private void stopMovementSafely(HumanActuator actuator) {
+        try { actuator.stopMoving(); } catch (RuntimeException ignored) { /* Preserve terminal status. */ }
     }
 
     private void settle(boolean success) {

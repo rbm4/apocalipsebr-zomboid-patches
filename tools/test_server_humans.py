@@ -16,9 +16,11 @@ public enum IsoDirections { N,NW,W,SW,S,SE,E,NE }
 import java.util.*; import zombie.characters.IsoPlayer;
 public class IsoCell {
  public final List<IsoPlayer> add=new ArrayList<>(),objects=new ArrayList<>();
+ public final Map<String,IsoGridSquare> tiles=new HashMap<>();public boolean strict;
  public List<IsoPlayer> getAddList(){return add;}
  public List<IsoPlayer> getObjectList(){return objects;}
- public Object getGridSquare(int x,int y,int z){return this;}
+ public IsoGridSquare getGridSquare(int x,int y,int z){String k=x+","+y+","+z;
+  return strict?tiles.get(k):tiles.computeIfAbsent(k,key->new IsoGridSquare(x,y,z));}
 }
 """,
     "zombie/iso/IsoWorld.java": """package zombie.iso;
@@ -223,6 +225,30 @@ public class FactoryTest {
 }
 
 FILES.update({
+    "zombie/iso/BuildingDef.java": """package zombie.iso;public class BuildingDef {}
+""",
+    "zombie/iso/IsoGridSquare.java": """package zombie.iso;
+import java.util.*;
+public class IsoGridSquare {
+ public int x,y,z;public BuildingDef building;public boolean free=true,floor=true,stairs,occupied;
+ public Set<String> blockedEdges=new HashSet<>();
+ public IsoGridSquare(int a,int b,int c){x=a;y=b;z=c;}
+ public BuildingDef getBuildingDef(){return building;}
+ public boolean isFree(boolean characters){return free&&(!characters||!occupied);}
+ public boolean TreatAsSolidFloor(){return floor;}public boolean HasStairs(){return stairs;}
+ public boolean testCollideAdjacentAdvanced(int dx,int dy,int dz,boolean doors){return blockedEdges.contains(dx+","+dy);}
+}
+""",
+    "zombie/pathfind/PolygonalMap2.java": """package zombie.pathfind;
+public class PolygonalMap2 {
+ public static final PolygonalMap2 instance=new PolygonalMap2();public boolean blocked;
+ public boolean lineClearCollide(float x,float y,float a,float b,int z,Object ignored,boolean doors,boolean walls){return blocked;}
+}
+""",
+    "zombie/characters/NetworkPlayerVariables.java": """package zombie.characters;
+public class NetworkPlayerVariables {public enum Flags {
+ isSneaking,isOnFire,isAsleep,isRunning,isSprinting,isCharging,isChargingLT,isDoShove,hasDeferredMovement}}
+""",
     "zombie/iso/LosUtil.java": """package zombie.iso;
 public class LosUtil {
  public enum TestResults {Clear,Blocked,ClearThroughClosedDoor}

@@ -2,6 +2,7 @@ package zombie.apocalipse.humans;
 
 import zombie.core.raknet.UdpConnection;
 import zombie.characters.IsoPlayer;
+import zombie.characters.NetworkPlayerVariables;
 import zombie.network.GameServer;
 import zombie.network.PacketTypes;
 import zombie.network.packets.INetworkPacket;
@@ -24,16 +25,24 @@ final class ServerHumanTransport {
         PlayerPacketReliable packet = new PlayerPacketReliable();
         packet.id.set(human.player);
         packet.id.setPlayerIndex((byte)-1);
-        // Match NetworkPlayerAI.setStatic(), without the client-owned AI send timer.
+        // Native short prediction, clipped to a collision-checked straight segment.
         packet.prediction.type = 0;
-        packet.prediction.x = human.definition.x();
-        packet.prediction.y = human.definition.y();
-        packet.prediction.z = (byte)human.definition.z();
+        packet.prediction.x = human.player.getX();
+        packet.prediction.y = human.player.getY();
+        packet.prediction.z = (byte)human.player.getZi();
         packet.prediction.direction = human.player.getDirectionAngleRadians();
+        int predictionUnits = human.roaming.predictionDistanceUnits();
+        if (predictionUnits > 0) {
+            packet.prediction.type = 1;
+            packet.prediction.moveDirection = packet.prediction.direction;
+            packet.prediction.speed = ServerHumanRoaming.SPEED;
+            packet.prediction.distance = (byte)predictionUnits;
+        }
         packet.prediction.position.set(packet.prediction.x, packet.prediction.y, packet.prediction.z);
         packet.hitVehicleId.set(null);
-        // All movement/action flags stay clear. God mode travels in ConnectedPlayer.
-        packet.booleanVariables = 0;
+        // The native movement flag drives client walking; god mode travels in ConnectedPlayer.
+        packet.booleanVariables = human.moving
+            ? (short)(1 << NetworkPlayerVariables.Flags.hasDeferredMovement.ordinal()) : 0;
         packet.disconnected = false;
         packet.variables.set(human.player);
         packet.sendToClient(PacketTypes.PacketType.PlayerUpdateReliable, connection);
@@ -55,8 +64,8 @@ final class ServerHumanTransport {
             for (int slot = 0; slot < 4; slot++) {
                 IsoPlayer listener = connection.getPlayerAt(slot);
                 if (listener == null || listener.isDead() || listener.getZi() != human.definition.z()) continue;
-                double dx = listener.getX() - human.definition.x();
-                double dy = listener.getY() - human.definition.y();
+                double dx = listener.getX() - human.player.getX();
+                double dy = listener.getY() - human.player.getY();
                 if (dx * dx + dy * dy > 30.0 * 30.0) continue;
                 sent |= ChatServer.getInstance().sendHumanSay(listener.getOnlineID(), human.player.getUsername(), text);
                 break;

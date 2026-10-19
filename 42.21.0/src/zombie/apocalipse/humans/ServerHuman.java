@@ -16,6 +16,9 @@ final class ServerHuman {
     final Set<UdpConnection> viewers = Collections.newSetFromMap(new IdentityHashMap<>());
     final GuideBrain brain = new GuideBrain();
     final ServerHumanActuator actuator;
+    final ServerHumanRoaming roaming;
+    boolean moving;
+    float postX, postY;
     String emote;
 
     ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell) {
@@ -52,15 +55,19 @@ final class ServerHuman {
         this.player.realz = (byte)definition.z();
         this.player.setForwardIsoDirection(definition.facing());
         this.player.setVariable("IdleSpeed", 1.0F);
+        this.postX = definition.x();
+        this.postY = definition.y();
+        this.roaming = new ServerHumanRoaming(this);
         this.actuator = new ServerHumanActuator(this);
     }
 
     boolean isRelevant(UdpConnection connection) {
-        return connection.isFullyConnected() && connection.isRelevantTo(definition.x(), definition.y());
+        return connection.isFullyConnected() && connection.isRelevantTo(player.getX(), player.getY());
     }
 
     void dispose() {
         brain.stop(System.nanoTime(), actuator);
+        roaming.stop();
         // Never call normal disconnectPlayer(): this actor has no account/connection/save.
         for (UdpConnection connection : viewers) {
             if (connection.isFullyConnected()) ServerHumanTransport.remove(this, connection);

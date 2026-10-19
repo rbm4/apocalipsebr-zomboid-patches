@@ -19,8 +19,8 @@ final class ServerHumanActuator implements HumanActuator {
         ArrayList<HumanObservation.Visitor> visitors = new ArrayList<>();
         for (IsoPlayer player : GameServer.Players) {
             if (eligible(player)) {
-                double dx = player.getX() - human.definition.x();
-                double dy = player.getY() - human.definition.y();
+                double dx = player.getX() - human.player.getX();
+                double dy = player.getY() - human.player.getY();
                 double distance = dx * dx + dy * dy;
                 if (distance <= VISITOR_RADIUS_SQUARED && visible(player)) {
                     visitors.add(new HumanObservation.Visitor(
@@ -29,7 +29,9 @@ final class ServerHumanActuator implements HumanActuator {
                 }
             }
         }
-        return new HumanObservation(now, visitors);
+        boolean viewed = false;
+        for (UdpConnection viewer : human.viewers) if (human.isRelevant(viewer)) { viewed = true; break; }
+        return new HumanObservation(now, visitors, viewed && human.roaming.available());
     }
 
     private boolean eligible(IsoPlayer player) {
@@ -41,10 +43,10 @@ final class ServerHumanActuator implements HumanActuator {
     }
 
     private boolean visible(IsoPlayer player) {
-        if (human.player.getCell().getGridSquare((int)human.definition.x(), (int)human.definition.y(), human.definition.z()) == null
+        if (human.player.getCell().getGridSquare(human.player.getXi(), human.player.getYi(), human.definition.z()) == null
             || player.getCurrentSquare() == null) return false;
         LosUtil.TestResults result = LosUtil.lineClear(human.player.getCell(),
-            (int)human.definition.x(), (int)human.definition.y(), human.definition.z(),
+            human.player.getXi(), human.player.getYi(), human.definition.z(),
             player.getXi(), player.getYi(), player.getZi(), false);
         return result != LosUtil.TestResults.Blocked && result != LosUtil.TestResults.ClearThroughClosedDoor;
     }
@@ -53,8 +55,8 @@ final class ServerHumanActuator implements HumanActuator {
     public boolean face(HumanObservation.Identity identity) {
         IsoPlayer player = GameServer.IDToPlayerMap.get(identity.onlineId());
         if (!eligible(player) || player.getID() != identity.instanceId()) return false;
-        float dx = player.getX() - human.definition.x();
-        float dy = player.getY() - human.definition.y();
+        float dx = player.getX() - human.player.getX();
+        float dy = player.getY() - human.player.getY();
         if ((double)dx * dx + (double)dy * dy > VISITOR_RADIUS_SQUARED || !visible(player)) return false;
         if (dx != 0 || dy != 0) human.player.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy, dx)));
         return true;
@@ -84,14 +86,23 @@ final class ServerHumanActuator implements HumanActuator {
     public boolean say(String text) { return ServerHumanTransport.say(human, text); }
 
     @Override
+    public boolean startRoaming(long now) { return human.roaming.start(now); }
+
+    @Override
+    public MotionStatus updateRoaming(long now) { return human.roaming.update(now); }
+
+    @Override
+    public void stopMoving() { human.roaming.stop(); }
+
+    @Override
     public boolean returnHome() {
         stopEmote();
-        // This guide never leaves its post. Restore the exact anchor and orientation.
-        human.player.setX(human.definition.x());
-        human.player.setY(human.definition.y());
+        // End the greeting at its last stopping point, without teleporting to spawn.
+        human.player.setX(human.postX);
+        human.player.setY(human.postY);
         human.player.setZ(human.definition.z());
-        human.player.realx = human.definition.x();
-        human.player.realy = human.definition.y();
+        human.player.realx = human.postX;
+        human.player.realy = human.postY;
         human.player.realz = (byte)human.definition.z();
         human.player.setForwardIsoDirection(human.definition.facing());
         return true;

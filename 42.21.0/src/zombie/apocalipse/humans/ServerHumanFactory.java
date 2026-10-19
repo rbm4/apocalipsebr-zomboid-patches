@@ -14,7 +14,7 @@ import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
 
 /**
- * Simulation-thread factory and lifecycle owner for stationary human replicas.
+ * Simulation-thread factory and lifecycle owner for server-owned human replicas.
  * Future subscription workers must hand immutable definitions to the simulation
  * thread; they must never construct characters or send packets themselves.
  */
@@ -79,10 +79,13 @@ public final class ServerHumanFactory {
                 if (!human.viewers.contains(connection)) ServerHumanTransport.announce(human, connection);
             }
             float previousDirection = human.player.getDirectionAngleRadians();
+            float previousX = human.player.getX(), previousY = human.player.getY();
+            boolean wasMoving = human.moving;
             human.brain.update(human.actuator.observe(now), human.actuator);
             // Publish turns at brain cadence; unchanged idle actors retain their heartbeat.
             boolean turned = Float.compare(previousDirection, human.player.getDirectionAngleRadians()) != 0;
-            if (heartbeat || turned) {
+            boolean moved = previousX != human.player.getX() || previousY != human.player.getY();
+            if (heartbeat || turned || moved || wasMoving != human.moving) {
                 for (UdpConnection connection : human.viewers) {
                     if (human.isRelevant(connection)) ServerHumanTransport.idle(human, connection);
                 }

@@ -25,6 +25,12 @@ public class BrainTest {
   public boolean say(String text){says++;history.add("hi");check(text.equals("hi"),"requested literal greeting");if(throwsSpeech)throw new IllegalStateException();return speechOK;}
   public boolean returnHome(){homes++;history.add("home");return homeOK;}
  }
+ static class RoamingPort extends Port {
+  int walks,steps,halts;MotionStatus motion=MotionStatus.RUNNING;
+  public boolean startRoaming(long now){walks++;return true;}
+  public MotionStatus updateRoaming(long now){steps++;return motion;}
+  public void stopMoving(){halts++;}
+ }
  static void cycle(GuideBrain brain,Port port,long from,HumanObservation.Identity... ids){
   for(long now=from;now<from+15*SECOND;now+=SECOND/2)brain.update(seen(now,ids),port);
  }
@@ -44,7 +50,8 @@ public class BrainTest {
   check(p.history.indexOf("wave")<p.history.indexOf("hi")&&p.history.indexOf("hi")<p.history.indexOf("home"),"salutation speech return sequence");
   check(brain.state()==GuideBrain.State.IDLE,"cooldown ends at idle");
   cycle(brain,p,20*SECOND,a);check(p.says==1,"lingering visitor not greeted repeatedly");
-  brain.update(seen(40*SECOND),p);cycle(brain,p,41*SECOND,a);check(p.says==2,"visitor can be greeted after leaving and returning");
+  brain.update(seen(40*SECOND),p);cycle(brain,p,41*SECOND,a);check(p.says==1,"leaving and returning does not bypass visitor cooldown");
+  brain.update(seen(140*SECOND),p);cycle(brain,p,141*SECOND,a);check(p.says==2,"visitor can be greeted again after two-minute cooldown");
   Port tie=new Port();GuideBrain tied=new GuideBrain();tied.update(seen(0,b,a),tie);check(tie.target.equals(a),"equal-distance selection deterministic by online ID");
   Port lost=new Port();GuideBrain interrupted=new GuideBrain();
   for(long now=0;now<=2*SECOND;now+=SECOND/2)interrupted.update(seen(now,a),lost);
@@ -94,6 +101,31 @@ public class BrainTest {
   check(noWave.status()==HumanActionExecution.Status.FAILED&&actions.stops==1,"partial emote start failure cleaned up");
   Port delayed=new Port();GuideBrain delayedBrain=new GuideBrain();cycle(delayedBrain,delayed,0,a);int count=delayed.says;
   delayedBrain.update(seen(1000*SECOND,a),delayed);check(delayed.says==count,"long scheduling gap does not replay completed commands");
+  RoamingPort roaming=new RoamingPort();GuideBrain walker=new GuideBrain();
+  walker.update(new HumanObservation(0,List.of(),true),roaming);
+  walker.update(new HumanObservation(SECOND,List.of(),true),roaming);
+  check(roaming.walks==0,"idle pause before roaming");
+  walker.update(new HumanObservation(3*SECOND,List.of(),true),roaming);
+  check(walker.state()==GuideBrain.State.ROAMING&&roaming.walks==1,"indoor observation starts a roaming action");
+  walker.update(new HumanObservation(31*SECOND/10,List.of(visitor(a,4)),true),roaming);
+  check(roaming.halts==1&&walker.state()==GuideBrain.State.HOLDING_ATTENTION,"visitor interrupts route and begins greeting");
+  for(long now=32*SECOND/10;now<15*SECOND;now+=SECOND/10)walker.update(new HumanObservation(now,List.of(visitor(a,4)),true),roaming);
+  check(roaming.says==1&&roaming.walks>=2,"roaming resumes after greeting without greeting lingering visitor again");
+  int stopsBefore=roaming.halts;walker.update(new HumanObservation(16*SECOND,List.of(),false),roaming);
+  check(walker.state()==GuideBrain.State.IDLE&&roaming.halts==stopsBefore+1,"loss of loaded roaming area cancels movement");
+  RoamingPort completed=new RoamingPort();GuideBrain patrol=new GuideBrain();
+  patrol.update(new HumanObservation(0,List.of(),true),completed);patrol.update(new HumanObservation(3*SECOND,List.of(),true),completed);
+  completed.motion=HumanActuator.MotionStatus.SUCCEEDED;patrol.update(new HumanObservation(4*SECOND,List.of(),true),completed);
+  check(patrol.state()==GuideBrain.State.IDLE&&completed.halts==1,"completed route settles and pauses");
+  completed.motion=HumanActuator.MotionStatus.FAILED;patrol.update(new HumanObservation(7*SECOND,List.of(),true),completed);
+  check(patrol.state()==GuideBrain.State.IDLE&&completed.homes==0,"blocked roaming waits without teleporting home");
+  Port visitorCooldown=new Port();GuideBrain timedGreeter=new GuideBrain();cycle(timedGreeter,visitorCooldown,0,a);
+  cycle(timedGreeter,visitorCooldown,20*SECOND,b);
+  check(visitorCooldown.says==2,"visitor cooldown does not prevent greeting a different visitor");
+  cycle(timedGreeter,visitorCooldown,40*SECOND,a);
+  check(visitorCooldown.says==2,"original visitor remains on cooldown after leaving perception");
+  cycle(timedGreeter,visitorCooldown,140*SECOND,a);
+  check(visitorCooldown.says==3,"original visitor becomes eligible after two minutes");
   System.out.println("Passed "+checks+" brain, transition, cancellation and action assertions.");
  }
 }
