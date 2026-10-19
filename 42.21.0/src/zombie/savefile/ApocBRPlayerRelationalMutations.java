@@ -165,6 +165,11 @@ public final class ApocBRPlayerRelationalMutations {
     static UUID register(IsoPlayer player,ApocBRPlayerRelationalDatabase.Candidate candidate) {
         if(!ENABLED)return null;
         Cursor old=TRACKED.get(player);if(old!=null)return old.session;
+        if(candidate.newLife()!=null) {
+            // The death's detached pending work remains queued, but its live object may never sample again.
+            TRACKED.entrySet().removeIf(entry->{var c=entry.getValue().candidate;return c.world().equals(candidate.world())&&c.identity().equals(candidate.identity())&&c.coop()==candidate.coop()&&c.slot()==candidate.slot();});
+            if(graphPlayer!=null&&!TRACKED.containsKey(graphPlayer)){graphPlayer=null;graphTurn=null;}
+        }
         cleanup(System.nanoTime());
         if(TRACKED.size()>=MAX_PLAYERS){capacityLog();return null;}
         Cursor cursor=new Cursor(candidate,player);
@@ -273,7 +278,8 @@ public final class ApocBRPlayerRelationalMutations {
                 ApocBRPersistence.submit(new ApocBRPersistenceOperations.Live(batch));journaledPatches++;committed=true;
                 return true;
             }
-            var graph=batch.snapshot()==null?null:database.projectLive(batch);
+            var effective=database.creationBatch(batch);
+            var graph=effective.snapshot()==null?null:database.projectLive(effective);
             // Log incompleteness with the same operation context; it must not suppress
             // the exception diagnostic that follows when applyFields rejects the graph.
             if(graph!=null&&!graph.issues().isEmpty()) {
@@ -281,7 +287,7 @@ public final class ApocBRPlayerRelationalMutations {
                 graphIssues=graph.issues().stream().map(issue->issue.matches("[A-Za-z0-9_]{1,100}")?issue:"UNSUPPORTED_STATE").distinct().limit(8).reduce((a,b)->a+","+b).orElse("none");
             }
             else stage="apply_fields";
-            committed=database.applyFields(batch,graph);
+            committed=database.applyFields(effective,graph);
             if(committed)writes++;
             else {deferredPatches++;String context=DIRTY.failureContext(batch,System.nanoTime());if(context!=null)log("LIVE_WRITE_DEFERRED; "+context+"; stage="+stage);}}
         catch(java.sql.SQLException|RuntimeException|LinkageError failure){failedPatches++;String context=DIRTY.failureContext(batch,System.nanoTime());if(context!=null)log("LIVE_WRITE_FAILED; "+context+"; stage="+stage+"; issues="+graphIssues+"; "+writeFailure(failure));}

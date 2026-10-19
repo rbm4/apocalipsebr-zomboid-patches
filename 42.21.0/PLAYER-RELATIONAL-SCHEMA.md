@@ -26,10 +26,35 @@ after deserialization and dead/remote state restoration. Native return values an
 byte saving remain unchanged. No hook is installed in the PostgreSQL byte-load
 branch, profile response packet or constructors. `CreatePlayerPacket` additionally
 offers a detached new-character capture after native creation/save. Publication
-allocates the next slot incarnation and retires the previous life atomically;
+allocates a replacement life and deletes the previous character trees atomically;
 incomplete captures leave the previous active character untouched. A later native
 login resumes a newer staged incarnation rather than skipping to the predecessor. An explicit
 creation event, rather than changed save bytes, identifies a new life.
+
+For creation, the persistence worker obtains the existing slot's source dataset
+from PostgreSQL through the player connector. Local save-path/configuration IDs
+seed only slots without an existing head; they do not override an imported slot's
+dataset. Detached creation and later live batches keep their session/life IDs while
+the worker resolves this dataset, without JDBC on the simulation thread.
+Successful complete creation publishes the replacement head and deletes all other
+lives for that slot in the same transaction: snapshots and their dependent rows,
+aliases, heads and character records. Unreferenced object identities are removed;
+identities still used by other owners remain. No old-life history is retained by
+this replacement flow. A failed capture or transaction leaves the old tree intact.
+
+The creation handoff requires both a successful commit for its exact capture
+session and a cleared per-player persistence guard before sending the response.
+An empty queue after startup/shutdown discard is insufficient. Replacement also
+stops sampling the predecessor player object so a late native save cannot enqueue
+new mutations for the deleted life. Already detached work retains its FIFO order.
+Existing quarantine archives/markers are not automatically repaired by this change.
+
+Regression coverage: `tools/test_postgres_player_relational.py` checks authoritative
+dataset resolution, replacement-table coverage, rollback, and predecessor sampling;
+`tools/test_postgres_created_player_handoff.py` checks the exact-creation commit
+barrier, pending writes, cancellation and timeout; `tools/test_postgres_resilience.py`
+checks journal/replay behavior. Validate death, respawn, shutdown and reconnect on a
+dedicated 42.21.0 server after deployment, including coop and secondary slots.
 
 The load hook copies the export fields into a detached, bounded snapshot and
 nonblockingly enqueues it with immutable provenance inputs. It returns without

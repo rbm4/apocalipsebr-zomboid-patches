@@ -56,6 +56,29 @@ final class ApocBRPlayerRelationalDatabase {
     private static PreparedStatement statement(Connection connection,String sql) throws SQLException {
         PreparedStatement result=connection.prepareStatement(sql); result.setQueryTimeout(2); return result;
     }
+    /** Creation belongs to an existing PostgreSQL slot even when its import came from another host. */
+    Candidate creationCandidate(Candidate candidate) throws SQLException {
+        if(candidate.newLife()==null)return candidate;
+        try(Connection connection=connections.open();PreparedStatement query=statement(connection,"""
+                SELECT s.source_dataset_id FROM player_rel.player_slot p
+                JOIN player_rel.character_head h ON h.character_id=p.active_character_id
+                JOIN player_rel.snapshot s ON s.id=h.snapshot_id AND s.character_id=p.active_character_id
+                WHERE p.world=? AND p.identity_mode=? AND p.identity_key=? AND p.player_index=?
+                """)) {
+            query.setString(1,candidate.world());query.setString(2,candidate.coop()?"steam_coop":"username");query.setString(3,candidate.identity());query.setInt(4,candidate.slot());
+            UUID dataset=candidate.dataset();
+            try(ResultSet rows=query.executeQuery()) {
+                if(rows.next())dataset=rows.getObject(1,UUID.class);
+                if(rows.next())throw new SQLException("Ambiguous creation player slot","21000");
+            }
+            connection.commit();
+            return new Candidate(dataset,candidate.label(),candidate.world(),candidate.identity(),candidate.coop(),candidate.slot(),candidate.nativeId(),candidate.worldVersion(),candidate.blobHash(),candidate.loadIssues(),candidate.newLife());
+        }
+    }
+    ApocBRPlayerRelationalMutations.Batch creationBatch(ApocBRPlayerRelationalMutations.Batch batch)throws SQLException {
+        Candidate candidate=creationCandidate(batch.candidate());
+        return candidate==batch.candidate()?batch:new ApocBRPlayerRelationalMutations.Batch(candidate,batch.session(),batch.character(),batch.fields(),batch.capturedAt(),batch.snapshot(),batch.snapshotRevision());
+    }
     Receipt inspect(Candidate candidate) throws SQLException {
         try(Connection connection=connections.open()) {
             UUID character=null,head=null; boolean complete=false;
@@ -158,9 +181,6 @@ final class ApocBRPlayerRelationalDatabase {
                     update.setString(1,complete?"complete":"incomplete"); update.setObject(2,graph.snapshot()); update.executeUpdate();
                 }
                 if(complete) {
-                    if(!Objects.equals(graph.character(),currentCharacter)&&currentCharacter!=null)try(PreparedStatement retire=statement(connection,"UPDATE player_rel.character SET retired_at=CURRENT_TIMESTAMP,retirement_reason='respawn' WHERE id=? AND retired_at IS NULL")) {
-                        retire.setObject(1,currentCharacter);retire.executeUpdate();
-                    }
                     try(PreparedStatement update=statement(connection,"UPDATE player_rel.player_slot SET active_character_id=? WHERE id=? AND (active_character_id IS NULL OR active_character_id=?)")) {
                         update.setObject(1,graph.character());update.setObject(2,slotId);update.setObject(3,inspected.previousCharacter());
                         if(update.executeUpdate()!=1) throw new SQLException("Character changed during capture","40001");
@@ -169,12 +189,42 @@ final class ApocBRPlayerRelationalDatabase {
                         head.setObject(1,graph.character());head.setObject(2,graph.snapshot());head.setObject(3,inspected.head);
                         if(head.executeUpdate()!=1) throw new SQLException("Stale character head","40001");
                     }
+                    if(candidate.newLife()!=null)deletePreviousLives(connection,slotId,graph.character(),deadline);
                 }
                 connection.commit();sqlMetrics.imported(graph.rows().size());return true;
             } catch(SQLException|RuntimeException error) {
                 try{connection.rollback();}catch(SQLException ignored){}
                 throw error;
             }
+        }
+    }
+    /** V5 foreign keys are deferred. Replace the old tree only inside the publication transaction. */
+    private void deletePreviousLives(Connection connection,UUID slot,UUID keep,long deadline)throws SQLException {
+        String lives="SELECT id FROM player_rel.character WHERE player_slot_id=? AND id<>?";
+        String snapshots="SELECT id FROM player_rel.snapshot WHERE character_id IN ("+lives+")";
+        List<UUID> objects=new ArrayList<>();
+        try(PreparedStatement query=statement(connection,"WITH previous AS ("+lives+") SELECT o.id FROM player_rel.object o JOIN player_rel.snapshot s ON s.id=o.snapshot_id WHERE s.character_id IN (SELECT id FROM previous) UNION SELECT object_id FROM player_rel.source_item_alias WHERE character_id IN (SELECT id FROM previous)")) {
+            query.setObject(1,slot);query.setObject(2,keep);
+            try(ResultSet rows=query.executeQuery()){while(rows.next())objects.add(rows.getObject(1,UUID.class));}
+        }
+        for(var table:ApocBRPlayerRelationalSchema.TABLES.entrySet()) {
+            if(table.getKey().equals("character_head")||table.getValue().stream().noneMatch(c->c.name().equals("snapshot_id")))continue;
+            try(PreparedStatement delete=statement(connection,"DELETE FROM player_rel."+table.getKey()+" WHERE snapshot_id IN ("+snapshots+")")) {
+                delete.setObject(1,slot);delete.setObject(2,keep);delete.executeUpdate();
+            }
+            if(System.nanoTime()>deadline)throw new SQLException("Character replacement time budget","57014");
+        }
+        for(String table:List.of("source_item_alias","character_head","snapshot"))try(PreparedStatement delete=statement(connection,"DELETE FROM player_rel."+table+" WHERE character_id IN ("+lives+")")) {
+            delete.setObject(1,slot);delete.setObject(2,keep);delete.executeUpdate();
+        }
+        try(PreparedStatement delete=statement(connection,"DELETE FROM player_rel.character WHERE player_slot_id=? AND id<>?")) {
+            delete.setObject(1,slot);delete.setObject(2,keep);delete.executeUpdate();
+        }
+        // Identities transferred to another owner must survive deletion of this player's tree.
+        try(PreparedStatement delete=statement(connection,"DELETE FROM player_rel.object_identity i WHERE i.id=? AND NOT EXISTS(SELECT 1 FROM player_rel.object o WHERE o.id=i.id) AND NOT EXISTS(SELECT 1 FROM player_rel.source_item_alias a WHERE a.object_id=i.id)")) {
+            int count=0;
+            for(UUID object:objects){delete.setObject(1,object);delete.addBatch();if(++count==128){checkedBatch(delete,true);delete.clearBatch();count=0;}if(System.nanoTime()>deadline)throw new SQLException("Character identity cleanup time budget","57014");}
+            if(count>0)checkedBatch(delete,true);
         }
     }
     /** Worker-only scalar patch. The initial generation is retained; only live_fields generations mutate. */

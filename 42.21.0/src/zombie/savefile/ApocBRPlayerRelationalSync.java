@@ -21,6 +21,10 @@ public final class ApocBRPlayerRelationalSync {
     private static volatile Thread worker;
     private static volatile boolean stopping;
     private static long lastDeferredLog;
+    private static final Map<UUID,Boolean> CREATIONS=new ConcurrentHashMap<>();
+    static boolean creationIsCommitted(UUID session){return Boolean.TRUE.equals(CREATIONS.get(session));}
+    static void creationCommitted(UUID session){CREATIONS.computeIfPresent(session,(key,value)->true);}
+    static void forgetCreation(UUID session){if(session!=null)CREATIONS.remove(session);}
     private static final ApocBRPlayerRelationalDatabase DATABASE=new ApocBRPlayerRelationalDatabase(ApocBRPostgresConnector::borrowPlayerConnection);
     private static final class Pending {
         ApocBRPlayerRelationalDatabase.Candidate candidate;
@@ -45,14 +49,14 @@ public final class ApocBRPlayerRelationalSync {
     }
     public static void offerLoadedPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,
                                          int worldVersion,byte[] sourceBytes,List<String> loadIssues) {
-        offerPlayer(player,sqlId,world,identity,slot,worldVersion,sourceBytes,loadIssues,null);
+        offerPlayer(player,sqlId,world,identity,slot,worldVersion,sourceBytes,loadIssues,null,false);
     }
     public static void offerCreatedPlayer(IsoPlayer player,String world,String identity,int slot,int worldVersion) {
-        offerPlayer(player,0,world,identity,slot,worldVersion,new byte[0],List.of(),UUID.randomUUID());
+        offerPlayer(player,0,world,identity,slot,worldVersion,new byte[0],List.of(),UUID.randomUUID(),false);
     }
     /** Handoff must fail closed if the complete new-life capture was not accepted. */
-    static boolean offerCreatedPlayerForHandoff(IsoPlayer player,String world,String identity,int slot,int worldVersion) {
-        return offerPlayer(player,0,world,identity,slot,worldVersion,new byte[0],List.of(),UUID.randomUUID());
+    static UUID offerCreatedPlayerForHandoff(IsoPlayer player,String world,String identity,int slot,int worldVersion) {
+        return offerPlayer(player,0,world,identity,slot,worldVersion,new byte[0],List.of(),UUID.randomUUID(),true);
     }
     /** An authoritative relational load is already synced. Bind its actual life/dataset
      * immediately, rather than waiting on an import receipt based on a local SQLite path. */
@@ -73,8 +77,9 @@ public final class ApocBRPlayerRelationalSync {
         start();
         log("LIVE_TRACK_READY; source=PostgreSQL; initialSync=skipped");
     }
-    private static boolean offerPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,int worldVersion,byte[] sourceBytes,List<String> loadIssues,UUID life) {
-        if(!enabled()||stopping)return false;
+    private static UUID offerPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,int worldVersion,byte[] sourceBytes,List<String> loadIssues,UUID life,boolean handoff) {
+        if(!enabled()||stopping)return null;
+        UUID ticket=null;
         try {
             String label=ZomboidFileSystem.instance.getCurrentSaveDir();
             String configured=System.getProperty("apocbr.postgres.playerRelational.sourceDatasetId");
@@ -90,26 +95,27 @@ public final class ApocBRPlayerRelationalSync {
                     candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,label,world,identity,candidate.coop(),slot,sqlId,worldVersion,hash,loadIssues,life);
                 }
                 var snapshot=life==null?ApocBRPlayerRelationalSnapshot.copy(player):ApocBRPlayerRelationalSnapshot.copyLive(player);
+                if(handoff){ticket=session;CREATIONS.put(ticket,false);}
                 ApocBRPersistence.submit(new ApocBRPersistenceOperations.Initial(candidate,session,snapshot));
                 if(life!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,life);
-                start();return true;
+                start();return session;
             }
             synchronized(PENDING) {
                 Pending existing=PENDING.get(candidate.key());
                 if(existing!=null&&life!=null){existing.cancelled=true;QUEUE.remove(existing);forget(existing);existing=null;}
-                if(existing!=null){if(existing.character!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,existing.character);return true;}
-                if(PENDING.size()>=LIMIT){deferred();return false;}
+                if(existing!=null){if(existing.character!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,existing.character);return session;}
+                if(PENDING.size()>=LIMIT){deferred();return null;}
                 // Reserve worst-case input capacity before reading/copying player state.
-                if(sourceBytes.length>ApocBRPlayerRelationalLimits.SOURCE_BYTES){log("OFFER_FAILED; code=SOURCE_SIZE_BUDGET; sourceBytes="+sourceBytes.length+"; byteLimit="+ApocBRPlayerRelationalLimits.SOURCE_BYTES);return false;}
-                if(QUEUED_BYTES.get()>BYTE_LIMIT-ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-sourceBytes.length){deferred();return false;}
+                if(sourceBytes.length>ApocBRPlayerRelationalLimits.SOURCE_BYTES){log("OFFER_FAILED; code=SOURCE_SIZE_BUDGET; sourceBytes="+sourceBytes.length+"; byteLimit="+ApocBRPlayerRelationalLimits.SOURCE_BYTES);return null;}
+                if(QUEUED_BYTES.get()>BYTE_LIMIT-ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-sourceBytes.length){deferred();return null;}
                 long started=System.nanoTime();
                 var snapshot=life==null?ApocBRPlayerRelationalSnapshot.copy(player):ApocBRPlayerRelationalSnapshot.copyLive(player);
                 Pending pending=new Pending(candidate,snapshot,sourceBytes.clone(),System.nanoTime()-started,session);
                 PENDING.put(candidate.key(),pending);QUEUED_BYTES.addAndGet(pending.bytes);
-                if(!QUEUE.offer(pending)){forget(pending);deferred();return false;}
+                if(!QUEUE.offer(pending)){forget(pending);deferred();return null;}
             }
-            start();return true;
-        } catch(Exception|LinkageError error){log("OFFER_FAILED; code="+safeCode(error));return false;}
+            start();return session;
+        } catch(Exception|LinkageError error){forgetCreation(ticket);log("OFFER_FAILED; code="+safeCode(error));return null;}
     }
     private static synchronized void start() {
         if(worker!=null||stopping)return;
@@ -129,7 +135,8 @@ public final class ApocBRPlayerRelationalSync {
                 if(System.nanoTime()<pending.readyAt){QUEUE.offer(pending);if(!ApocBRPlayerRelationalMutations.flushOne(DATABASE))Thread.sleep(10);continue;}
                 String phase="CHECK_FAILURE";
                 try {
-                    var receipt=DATABASE.inspect(pending.candidate);
+                    var effective=DATABASE.creationCandidate(pending.candidate);
+                    var receipt=DATABASE.inspect(effective);
                     pending.character=pending.candidate.newLife()==null?receipt.character():pending.candidate.newLife();
                     ApocBRPlayerRelationalMutations.bind(pending.candidate,pending.session,pending.character,receipt.aliases());
                     if(pending.cancelled){forget(pending);continue;}
@@ -151,7 +158,7 @@ public final class ApocBRPlayerRelationalSync {
                     phase="SQL_FAILURE";
                     long writeStarted=System.nanoTime();
                     if(pending.cancelled){forget(pending);continue;}
-                    if(DATABASE.persist(pending.candidate,receipt,graph)) {
+                    if(DATABASE.persist(pending.candidate.newLife()==null?pending.candidate:effective,receipt,graph)) {
                         log((graph.issues().isEmpty()?"SYNC_COMPLETE":"SYNC_INCOMPLETE")+"; items="+graph.items()+"; rows="+graph.rows().size()+"; issues="+graph.issues().size()+"; writeMs="+TimeUnit.NANOSECONDS.toMillis(System.nanoTime()-writeStarted));
                         forget(pending);
                     } else retry(pending,"STALE_CAPTURE");

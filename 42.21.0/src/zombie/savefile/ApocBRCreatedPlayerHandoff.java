@@ -25,6 +25,7 @@ public final class ApocBRCreatedPlayerHandoff {
         final UUID request=UUID.randomUUID();
         Runnable create,respond;
         IsoPlayer player;
+        UUID creation;
         Phase phase=Phase.OLD_SAVE;
         Entry(UdpConnection connection,int slot,Runnable create,long now) {
             this.connection=connection;this.slot=slot;this.create=create;
@@ -50,7 +51,8 @@ public final class ApocBRCreatedPlayerHandoff {
         Entry entry=find(connection,slot);
         if(entry==null)return false;
         if(entry.phase!=Phase.OLD_SAVE||entry.player!=null)throw new IllegalStateException("Duplicate created player handoff");
-        if(!ApocBRPlayerRelationalSync.offerCreatedPlayerForHandoff(player,entry.world,entry.identity,slot,IsoWorld.getWorldVersion())) {
+        entry.creation=ApocBRPlayerRelationalSync.offerCreatedPlayerForHandoff(player,entry.world,entry.identity,slot,IsoWorld.getWorldVersion());
+        if(entry.creation==null) {
             fail(entry,"CAPTURE_REJECTED");return true;
         }
         // Keep the character outside simulation until its owner finishes connecting.
@@ -77,6 +79,7 @@ public final class ApocBRCreatedPlayerHandoff {
                     Runnable create=entry.create;entry.create=null;create.run();
                     if(find(entry.connection,entry.slot)==entry&&entry.phase==Phase.OLD_SAVE)fail(entry,"CREATE_FAILED");
                 } else {
+                    if(!ApocBRPlayerRelationalSync.creationIsCommitted(entry.creation))continue;
                     // The accepted complete capture has left the per-slot pending guard.
                     // A quarantined/failed operation keeps that guard closed.
                     entry.phase=Phase.RESPONSE_SENT;
@@ -107,6 +110,7 @@ public final class ApocBRCreatedPlayerHandoff {
         Entry[] slots=waiting.get(entry.connection);
         if(slots==null||slots[entry.slot]!=entry)return;
         slots[entry.slot]=null;count--;
+        ApocBRPlayerRelationalSync.forgetCreation(entry.creation);
         if(Arrays.stream(slots).allMatch(Objects::isNull))waiting.remove(entry.connection);
     }
     private static void fail(Entry entry,String reason){remove(entry);log(entry,reason);ApocBRLoginGuard.deny(entry.connection);}

@@ -34,10 +34,12 @@ FILES = {
     'zombie/savefile/ApocBRLoginGuard.java': '''package zombie.savefile;class ApocBRLoginGuard {
  static void deny(zombie.core.raknet.UdpConnection c){c.denied++;}}''',
     'zombie/savefile/ApocBRPlayerRelationalSync.java': '''package zombie.savefile;class ApocBRPlayerRelationalSync {
- static boolean accept=true,enabled=true;static int offers;
+ static boolean accept=true,enabled=true,committed;static int offers;
+ static boolean creationIsCommitted(java.util.UUID session){return committed;}
+ static void forgetCreation(java.util.UUID session){}
  static boolean enabled(){return enabled;}
- static boolean offerCreatedPlayerForHandoff(zombie.characters.IsoPlayer p,String world,String identity,int slot,int version){
- offers++;if(accept)ApocBRPostgresConnector.pending=true;return accept;}}''',
+ static java.util.UUID offerCreatedPlayerForHandoff(zombie.characters.IsoPlayer p,String world,String identity,int slot,int version){
+ offers++;if(accept)ApocBRPostgresConnector.pending=true;return accept?java.util.UUID.randomUUID():null;}}''',
     'zombie/savefile/ApocBRPostgresConnector.java': '''package zombie.savefile;class ApocBRPostgresConnector {
  static boolean pending;static String lastIdentity;static int lastSlot;
  static boolean playerReadable(String world,String identity,int slot,boolean coop){lastIdentity=identity;lastSlot=slot;return !pending;}}''',
@@ -55,6 +57,7 @@ public class HandoffTest {
   GameServer.udpEngine.connections.clear();GameServer.coop=false;zombie.core.znet.SteamUtils.steam=false;
   zombie.core.Core.gameSaveWorld="test";ApocBRPostgresConnector.pending=false;ApocBRPlayerRelationalSync.accept=true;
   ApocBRPersistence.journal=true;created=responses=0;player=null;now=System.nanoTime();
+  ApocBRPlayerRelationalSync.committed=true;
  }
  static UdpConnection connection(){var c=new UdpConnection();GameServer.udpEngine.connections.add(c);return c;}
  static void tick(){now+=50_000_000L;ApocBRCreatedPlayerHandoff.update(now);}
@@ -79,6 +82,13 @@ public class HandoffTest {
   check(ApocBRCreatedPlayerHandoff.take(c,0)==player,"handoff uses exact committed instance even if later unrelated writes are queued");
   check(player.serverPlayerIndex==0&&player.attachedSquare&&player.cell.objects.size()==1,"attachment restores simulation once");
   check(ApocBRCreatedPlayerHandoff.take(c,0)==null,"one-shot handoff cannot reuse life");
+
+  reset();c=connection();ApocBRPlayerRelationalSync.committed=false;request(c,0);tick();
+  ApocBRPostgresConnector.pending=false;tick();
+  check(responses==0,"empty slot queue after discard cannot impersonate a committed creation");
+  ApocBRPlayerRelationalSync.committed=true;ApocBRPostgresConnector.pending=true;tick();
+  check(responses==0,"creation commit still waits for journal checkpoint/pending writes");
+  ApocBRPostgresConnector.pending=false;tick();check(responses==1,"specific creation commit and cleared guard release response");
 
   reset();c=connection();request(c,0);tick();c.disconnected=true;ApocBRPostgresConnector.pending=false;tick();
   check(responses==0&&ApocBRCreatedPlayerHandoff.take(c,0)==null,"disconnect cancels pending response");

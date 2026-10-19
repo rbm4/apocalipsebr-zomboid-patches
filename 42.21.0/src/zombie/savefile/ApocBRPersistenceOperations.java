@@ -43,19 +43,21 @@ final class ApocBRPersistenceOperations {
     static void apply(ApocBRPersistenceJournal.Operation operation)throws SQLException {
         if(operation instanceof Native nativeSave)ApocBRPostgresConnector.writeJournalSnapshot(nativeSave.snapshot());
         else if(operation instanceof Initial initial) {
-            var receipt=database.inspect(initial.candidate());
+            var candidate=database.creationCandidate(initial.candidate());
+            var receipt=database.inspect(candidate);
             UUID character=initial.candidate().newLife()==null?receipt.character():initial.candidate().newLife();
             if(!receipt.complete()||initial.candidate().newLife()!=null&&!Objects.equals(receipt.character(),character)) {
                 var graph=new ApocBRPlayerRelationalCapture(character,receipt.aliases(),Long.MAX_VALUE).capture(initial.snapshot(),initial.candidate().loadIssues());
                 ApocBRPlayerRelationalCapture.requireComplete(graph,"initial_capture");
-                if(!database.persist(initial.candidate(),receipt,graph))throw new SQLException("Journaled initial capture deferred","40001");
+                if(!database.persist(candidate,receipt,graph))throw new SQLException("Journaled initial capture deferred","40001");
             } else {
                 // An already complete import needs a receipt as well, including retries after commit loss.
                 try(Connection connection=ApocBRPostgresConnector.borrowPlayerConnection()){ApocBRPersistence.claim(connection);connection.commit();}
             }
             ApocBRPlayerRelationalMutations.bind(initial.candidate(),initial.session(),character,receipt.aliases());
+            ApocBRPlayerRelationalSync.creationCommitted(initial.session());
         } else if(operation instanceof Live live) {
-            var batch=live.batch();var graph=batch.snapshot()==null?null:database.projectLive(batch);
+            var batch=database.creationBatch(live.batch());var graph=batch.snapshot()==null?null:database.projectLive(batch);
             if(!database.applyFields(batch,graph))throw new SQLException("Journaled live capture deferred","40001");
         } else if(operation instanceof Account account) {
             try(Connection connection=ApocBRPostgresConnector.borrowPlayerConnection()) {

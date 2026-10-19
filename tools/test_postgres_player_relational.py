@@ -992,15 +992,31 @@ public class RelationalTest {
   check(characterInsert.get(1).equals(life)&&characterInsert.get(3).equals(8),"respawn allocates a distinct UUID and next slot incarnation");
   var slotUpdate=f.bound.entrySet().stream().filter(e->e.getKey().startsWith("UPDATE player_rel.player_slot")).findFirst().orElseThrow().getValue().getFirst();
   check(slotUpdate.get(1).equals(life)&&slotUpdate.get(3).equals(f.character),"active character switches only from inspected predecessor");
-  check(f.bound.keySet().stream().anyMatch(sql->sql.startsWith("UPDATE player_rel.character SET retired_at")),"predecessor retirement shares publication transaction");
+  check(f.bound.keySet().stream().anyMatch(sql->sql.startsWith("DELETE FROM player_rel.character WHERE player_slot_id=? AND id<>?")),"predecessor tree deletion shares publication transaction");
+  for(var table:ApocBRPlayerRelationalSchema.TABLES.entrySet())if(!table.getKey().equals("character_head")&&table.getValue().stream().anyMatch(col->col.name().equals("snapshot_id")))
+   check(f.bound.containsKey("DELETE FROM player_rel."+table.getKey()+" WHERE snapshot_id IN (SELECT id FROM player_rel.snapshot WHERE character_id IN (SELECT id FROM player_rel.character WHERE player_slot_id=? AND id<>?))"),"replacement clears snapshot table "+table.getKey());
+  check(f.bound.entrySet().stream().filter(e->e.getKey().startsWith("DELETE FROM")).allMatch(e->e.getValue().stream().allMatch(v->life.equals(v.get(2)))),"cleanup excludes replacement life and stays scoped to slot");
   check(f.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.player_slot")).findFirst().orElseThrow().getValue().getFirst().get(2)==null,"new character never invents a native SQLite row ID");
   check(f.bound.entrySet().stream().filter(e->e.getKey().startsWith("INSERT INTO player_rel.snapshot")).findFirst().orElseThrow().getValue().getFirst().containsValue("new_character"),"creation provenance is distinguished from SQLite loads");
   Fake incomplete=new Fake();incomplete.complete=true;incomplete.dataset=c.dataset();incomplete.character=f.character;incomplete.head=f.head;
   var bad=new ApocBRPlayerRelationalCapture.Graph(graph.snapshot(),life,graph.capturedAt(),graph.rows(),List.of("UNSUPPORTED_COMPONENT_Test"),graph.bytes(),graph.objects(),graph.items(),graph.containers(),graph.edges());
-  check(new ApocBRPlayerRelationalDatabase(incomplete::open).persist(c,receipt,bad)&&incomplete.headWrites==0&&incomplete.bound.keySet().stream().noneMatch(sql->sql.startsWith("UPDATE player_rel.character SET retired_at")),"incomplete creation never retires previous life or publishes new head");
+  check(new ApocBRPlayerRelationalDatabase(incomplete::open).persist(c,receipt,bad)&&incomplete.headWrites==0&&incomplete.bound.keySet().stream().noneMatch(sql->sql.startsWith("DELETE FROM")),"incomplete creation never deletes previous life or publishes new head");
   incomplete.pendingLife=life;var recoveryDb=new ApocBRPlayerRelationalDatabase(incomplete::open);var recovered=recoveryDb.inspect(base);
   check(!recovered.complete()&&recovered.character().equals(life)&&recovered.previousCharacter().equals(f.character),"later native login resumes newer unpublished incarnation rather than skipping to previous complete life");
   check(recoveryDb.persist(base,recovered,graph)&&incomplete.headWrites==1,"recovered staged incarnation can publish against guarded predecessor");
+  Fake foreign=new Fake();foreign.complete=true;foreign.dataset=UUID.randomUUID();foreign.character=f.character;foreign.head=f.head;
+  var authoritative=new ApocBRPlayerRelationalDatabase(foreign::open).creationCandidate(c);
+  check(authoritative.dataset().equals(foreign.dataset)&&authoritative.newLife().equals(life),"respawn obtains authoritative PostgreSQL dataset despite local path/config mismatch");
+  check(new ApocBRPlayerRelationalDatabase(foreign::open).inspect(authoritative).character().equals(life),"resolved creation passes foreign-source guard without weakening it for imports");
+  check(new ApocBRPlayerRelationalDatabase(foreign::open).creationCandidate(base)==base,"SQLite imports retain strict source ownership");
+  Fake empty=new Fake();var first=new ApocBRPlayerRelationalDatabase(empty::open).creationCandidate(c);
+  check(first.dataset().equals(c.dataset()),"brand new slots retain configured dataset seed");
+  var batch=new ApocBRPlayerRelationalMutations.Batch(c,UUID.randomUUID(),life,Map.of(),java.time.Instant.EPOCH);
+  var resolved=new ApocBRPlayerRelationalDatabase(foreign::open).creationBatch(batch);
+  check(resolved.candidate().dataset().equals(foreign.dataset)&&resolved.character().equals(life)&&resolved.session().equals(batch.session()),"later live batches follow creation dataset without changing life/session");
+  Fake cleanupFailure=new Fake();cleanupFailure.complete=true;cleanupFailure.dataset=c.dataset();cleanupFailure.character=f.character;cleanupFailure.head=f.head;cleanupFailure.failCleanup=true;
+  try{new ApocBRPlayerRelationalDatabase(cleanupFailure::open).persist(c,receipt,graph);throw new AssertionError("cleanup failure committed");}
+  catch(SQLException expected){check(cleanupFailure.commits==0&&cleanupFailure.rollbacks==1,"cleanup failure rolls back publication and old-tree deletion together");}
  }
 
  static ApocBRPlayerRelationalCapture.Graph trackedGraph(P player,ApocBRPlayerRelationalSnapshot.ItemTracker tracker,UUID character,Map<Integer,UUID> aliases) {
@@ -1107,7 +1123,7 @@ public class RelationalTest {
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static class Fake {
   UUID pendingLife;
-  int opened,closed,commits,rollbacks,inserts,headWrites,batches,codecVersion=ApocBRPlayerRelationalCapture.CODEC_VERSION;boolean complete,fail,stale;UUID dataset,character,head;String status;
+  int opened,closed,commits,rollbacks,inserts,headWrites,batches,codecVersion=ApocBRPlayerRelationalCapture.CODEC_VERSION;boolean complete,fail,stale,failCleanup;UUID dataset,character,head;String status;
   List<String> queries=new ArrayList<>(),itemNames=new ArrayList<>();Map<String,List<Map<Integer,Object>>> bound=new LinkedHashMap<>();
   Connection open(){opened++;return(Connection)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{Connection.class},(o,m,a)->{
    switch(m.getName()){
@@ -1124,7 +1140,7 @@ public class RelationalTest {
        if(name.equals("getBoolean"))return true;
        if(name.equals("getInt"))return sql.startsWith("SELECT COALESCE(MAX(incarnation)")?8:((int)ra[0])==5?codecVersion:1;
        if(name.equals("getString"))return "complete";
-       if(name.equals("getObject")){int index=(int)ra[0];if(sql.startsWith("SELECT c.id FROM"))return pendingLife;if(sql.startsWith("SELECT id FROM"))return UUID.randomUUID();return index==1?character:index==2?head:dataset;}
+       if(name.equals("getObject")){int index=(int)ra[0];if(sql.startsWith("SELECT s.source_dataset_id"))return dataset;if(sql.startsWith("SELECT c.id FROM"))return pendingLife;if(sql.startsWith("SELECT id FROM"))return UUID.randomUUID();return index==1?character:index==2?head:dataset;}
        return zero(rm.getReturnType());
       });
       case "addBatch":
@@ -1135,7 +1151,7 @@ public class RelationalTest {
        queued[0]++;return null;
       case "clearBatch":queued[0]=0;return null;
       case "executeBatch":if(fail)throw new SQLException("simulated","08006");batches++;int[] result=new int[queued[0]];Arrays.fill(result,1);return result;
-      case "executeUpdate":bound.computeIfAbsent(sql,k->new ArrayList<>()).add(new HashMap<>(values));if(sql.startsWith("INSERT"))inserts++;if(sql.contains("INSERT INTO player_rel.character_head"))headWrites++;if(sql.startsWith("UPDATE player_rel.snapshot"))status=(String)values.get(1);return 1;
+      case "executeUpdate":if(failCleanup&&sql.startsWith("DELETE FROM"))throw new SQLException("cleanup fixture","23503");bound.computeIfAbsent(sql,k->new ArrayList<>()).add(new HashMap<>(values));if(sql.startsWith("INSERT"))inserts++;if(sql.contains("INSERT INTO player_rel.character_head"))headWrites++;if(sql.startsWith("UPDATE player_rel.snapshot"))status=(String)values.get(1);return 1;
       case "execute":return true;
      }return zero(pm.getReturnType());
     });
@@ -1267,6 +1283,12 @@ public class RelationalTest {
   var identityGraph=new ApocBRPlayerRelationalCapture(persistedLife,Map.of(),Long.MAX_VALUE).capture(identitySnapshot,List.of());
   check(loadedAliases.get(700).equals(persistedItem)&&itemIdentity(identityGraph,701).equals(persistedItem),"login profile UUID seeds tracking even when native ID changes before first live capture");
   try{ApocBRPlayerRelationalSync.registerPostgresPlayer(new zombie.characters.IsoPlayer(),"world","broken",0,false,new ApocBRPlayerRelationalReader.Profile(Map.of("snapshot",List.of(Map.of("source_world_version",249)))));throw new AssertionError("missing persisted identity accepted");}catch(RuntimeException expected){checks++;}
+  var replacement=new zombie.characters.IsoPlayer();
+  var respawnCandidate=new ApocBRPlayerRelationalDatabase.Candidate(UUID.randomUUID(),"moved-save","world","imported",false,0,0,249,null,List.of(),UUID.randomUUID());
+  UUID respawnSession=ApocBRPlayerRelationalMutations.register(replacement,respawnCandidate);
+  check(respawnSession!=null&&!((Map<?,?>)trackedField.get(null)).containsKey(postgresPlayer)&&((Map<?,?>)trackedField.get(null)).containsKey(replacement),"respawn stops predecessor live tracking across dataset keys");
+  ApocBRPlayerRelationalMutations.finalSample(postgresPlayer);
+  check(!ApocBRPlayerRelationalMutations.hasPending(),"late save of deceased object cannot queue stale mutations after respawn");
   ApocBRPlayerRelationalMutations.shutdown();
   ApocBRPlayerRelationalSync.offerLoadedPlayer(player,1,"world","alice",0,249,new byte[]{1},List.of());
   long until=System.nanoTime()+2_000_000_000L;
