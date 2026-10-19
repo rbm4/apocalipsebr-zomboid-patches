@@ -1191,6 +1191,7 @@ public class GameServer {
 
                             LoginQueue.update();
                             zombie.savefile.ApocBRCreatedPlayerHandoff.update();
+                            zombie.apocalipse.humans.ServerHumanFactory.update();
                             try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("backup.onPeriod")) {
                                 ZipBackup.onPeriod();
                             }
