@@ -492,6 +492,18 @@ public class ChatServer {
         serverChat.sendMessageToChatMembers(chatMessage);
     }
 
+    /** Server-owned presentation actors have no chat account; the recipient must. */
+    public boolean sendHumanSay(short recipientId, String author, String text) {
+        if (!inited || !players.contains(recipientId) || !ChatUtility.chatStreamEnabled(ChatType.say)) return false;
+        ChatBase say = defaultChats.get(ChatType.say);
+        if (say == null) return false;
+        ChatMessage message = say.createMessage(text);
+        message.setAuthor(author);
+        // Explicit recipient routing avoids RangeBasedChat's real-player author lookup.
+        say.sendMessageToPlayer(recipientId, message);
+        return true;
+    }
+
     public void sendMessageFromDiscordToGeneralChat(String author, String msg) {
         if (author != null && msg != null) {
             logger.write("Got message '" + msg + "' by author '" + author + "' from discord");

@@ -4,6 +4,10 @@ import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.Locale;
+import java.text.Normalizer;
 import zombie.core.raknet.UdpConnection;
 import zombie.debug.DebugLog;
 import zombie.iso.IsoWorld;
@@ -20,13 +24,16 @@ public final class ServerHumanFactory {
     static final int FIRST_ID = 1024;
     static final int LAST_ID = 1087;
     static final long UPDATE_NANOS = 500_000_000L;
+    static final long BRAIN_UPDATE_NANOS = 100_000_000L;
     private static final ServerHumanFactory INSTANCE = new ServerHumanFactory();
     private final Map<String, ServerHuman> humans = new LinkedHashMap<>();
     private final Map<Short, ServerHuman> byId = new HashMap<>();
+    private final Set<String> reservedNames = new HashSet<>();
     private Thread owner;
     private boolean configured;
     private int nextId = FIRST_ID;
     private long nextUpdate;
+    private long nextBrainUpdate;
 
     private ServerHumanFactory() {
     }
@@ -54,25 +61,31 @@ public final class ServerHumanFactory {
                 DebugLog.log("[ApocBR][ServerHumans] Guide startup failed: " + failure);
             }
         }
-        if (now < nextUpdate) return;
-        nextUpdate = now + UPDATE_NANOS;
+        if (now < nextBrainUpdate) return;
+        nextBrainUpdate = now + BRAIN_UPDATE_NANOS;
+        boolean heartbeat = now >= nextUpdate;
+        if (heartbeat) nextUpdate = now + UPDATE_NANOS;
         for (ServerHuman human : humans.values()) {
             // Forget disconnected/replaced connection instances; do not retain them forever.
             Iterator<UdpConnection> iterator = human.viewers.iterator();
             while (iterator.hasNext()) {
                 UdpConnection connection = iterator.next();
-                if (!GameServer.udpEngine.connections.contains(connection) || !human.isRelevant(connection)) {
-                    if (connection.isFullyConnected()
-                        && GameServer.udpEngine.connections.contains(connection)) {
-                        ServerHumanTransport.remove(human, connection);
-                    }
+                if (!GameServer.udpEngine.connections.contains(connection) || !connection.isFullyConnected()) {
                     iterator.remove();
                 }
             }
             for (UdpConnection connection : GameServer.udpEngine.connections) {
                 if (!human.isRelevant(connection)) continue;
                 if (!human.viewers.contains(connection)) ServerHumanTransport.announce(human, connection);
-                ServerHumanTransport.idle(human, connection);
+            }
+            float previousDirection = human.player.getDirectionAngleRadians();
+            human.brain.update(human.actuator.observe(now), human.actuator);
+            // Publish turns at brain cadence; unchanged idle actors retain their heartbeat.
+            boolean turned = Float.compare(previousDirection, human.player.getDirectionAngleRadians()) != 0;
+            if (heartbeat || turned) {
+                for (UdpConnection connection : human.viewers) {
+                    if (human.isRelevant(connection)) ServerHumanTransport.idle(human, connection);
+                }
             }
         }
     }
@@ -81,13 +94,18 @@ public final class ServerHumanFactory {
     public short spawn(ServerHumanDefinition definition) {
         requireOwner();
         if (humans.containsKey(definition.key())) throw new IllegalArgumentException("Duplicate human key: " + definition.key());
-        for (ServerHuman human : humans.values()) {
-            if (human.definition.username().equals(definition.username())) throw new IllegalArgumentException("Duplicate human username");
+        String name = canonicalName(definition.username());
+        if (reservedNames.contains(name)) throw new IllegalArgumentException("Human username already used in this server process");
+        for (zombie.characters.IsoPlayer player : GameServer.IDToPlayerMap.values()) {
+            if (player.getUsername() != null && canonicalName(player.getUsername()).equals(name)) {
+                throw new IllegalArgumentException("Human username conflicts with an online player");
+            }
         }
         short id = allocateId();
         ServerHuman human = new ServerHuman(definition, id, IsoWorld.instance.currentCell);
         humans.put(definition.key(), human);
         byId.put(id, human);
+        reservedNames.add(name);
         DebugLog.log("[ApocBR][ServerHumans] Spawned key=" + definition.key() + " id=" + id
             + " at=" + definition.x() + "," + definition.y() + "," + definition.z());
         return id;
@@ -123,6 +141,10 @@ public final class ServerHumanFactory {
             if (!GameServer.IDToPlayerMap.containsKey(id) && !GameServer.IDToAddressMap.containsKey(id)) return id;
         }
         throw new IllegalStateException("Server-human presentation ID range exhausted; restart required");
+    }
+
+    private static String canonicalName(String name) {
+        return Normalizer.normalize(name.strip(), Normalizer.Form.NFC).toLowerCase(Locale.ROOT);
     }
 
     private void requireOwner() {

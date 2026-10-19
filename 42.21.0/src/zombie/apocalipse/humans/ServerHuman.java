@@ -3,6 +3,7 @@ package zombie.apocalipse.humans;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
+import zombie.apocalipse.humans.brain.GuideBrain;
 import zombie.characters.IsoPlayer;
 import zombie.characters.SurvivorDesc;
 import zombie.core.raknet.UdpConnection;
@@ -13,6 +14,9 @@ final class ServerHuman {
     final ServerHumanDefinition definition;
     final IsoPlayer player;
     final Set<UdpConnection> viewers = Collections.newSetFromMap(new IdentityHashMap<>());
+    final GuideBrain brain = new GuideBrain();
+    final ServerHumanActuator actuator;
+    String emote;
 
     ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell) {
         this.definition = definition;
@@ -34,6 +38,7 @@ final class ServerHuman {
         this.player.remote = true;
         this.player.playerIndex = -1;
         this.player.setOnlineID(onlineId);
+        // The factory reserves names for the process lifetime to protect chat caches.
         this.player.setUsername(definition.username());
         this.player.setDisplayName(definition.displayName());
         this.player.setGodMod(true, true);
@@ -47,6 +52,7 @@ final class ServerHuman {
         this.player.realz = (byte)definition.z();
         this.player.setForwardIsoDirection(definition.facing());
         this.player.setVariable("IdleSpeed", 1.0F);
+        this.actuator = new ServerHumanActuator(this);
     }
 
     boolean isRelevant(UdpConnection connection) {
@@ -54,6 +60,7 @@ final class ServerHuman {
     }
 
     void dispose() {
+        brain.stop(System.nanoTime(), actuator);
         // Never call normal disconnectPlayer(): this actor has no account/connection/save.
         for (UdpConnection connection : viewers) {
             if (connection.isFullyConnected()) ServerHumanTransport.remove(this, connection);

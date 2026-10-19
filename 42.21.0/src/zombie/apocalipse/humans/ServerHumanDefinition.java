@@ -30,12 +30,13 @@ public record ServerHumanDefinition(
     /** Opt-in startup guide at the configured Apocalipse location, with JVM overrides. */
     static ServerHumanDefinition configuredGuide() {
         if (!Boolean.getBoolean("apocbr.guide.enabled")) return null;
+        String name = System.getProperty("apocbr.guide.name", "Apocalipse Guide");
         return new ServerHumanDefinition(
-            "guide", "Ricardão", System.getProperty("apocbr.guide.name", "Apocalipse Guide"),
+            "guide", name, name,
             Float.parseFloat(System.getProperty("apocbr.guide.x", "14294")),
             Float.parseFloat(System.getProperty("apocbr.guide.y", "11862")),
             Integer.parseInt(System.getProperty("apocbr.guide.z", "0")),
-            IsoDirections.valueOf(System.getProperty("apocbr.guide.facing", "SE").trim().toUpperCase(Locale.ROOT)),
+            IsoDirections.valueOf(System.getProperty("apocbr.guide.facing", "E").trim().toUpperCase(Locale.ROOT)),
             Boolean.getBoolean("apocbr.guide.female"),
             System.getProperty("apocbr.guide.outfit", "Tourist")
         );
