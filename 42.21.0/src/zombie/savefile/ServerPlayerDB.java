@@ -69,7 +69,9 @@ public final class ServerPlayerDB {
                 new ApocBRPlayerDatabase().validate();
                 DebugLog.log("[ApocBR][Postgres] player database ready; backend=PostgreSQL");
             } catch (SQLException failure) {
-                throw new IllegalStateException("PostgreSQL player schema unavailable; complete migration/import before startup",failure);
+                String state=failure.getSQLState();
+                String reason="42P01".equals(state)||"42703".equals(state)?"schema incompatible; verify backend migrations":"initialization failed; inspect connection availability and SQLState";
+                throw new IllegalStateException("PostgreSQL player database "+reason,failure);
             }
             return;
         }
@@ -403,35 +405,54 @@ public final class ServerPlayerDB {
      * Packet dispatch invokes this on the server simulation thread. No import or live registration
      * is offered for this temporary player; the subsequent player-connect performs that setup. */
     public ApocBRPlayerDatabase.Profile serverLoadPostgresClientProfile(int slot,String identity,boolean coop,String username) throws SQLException,IOException {
-        if(!ApocBRPostgresConnector.playerReadable(Core.gameSaveWorld,identity,slot,coop))throw new SQLException("Player persistence is pending","55000");
+        try(var trace=ApocBRPlayerReconstructionLog.begin("CLIENT_PROFILE",slot)) {
+        trace.lookup(Core.gameSaveWorld,identity,coop);trace.stage("CHECK_READ_ADMISSION");
+        try {
+        if(!ApocBRPostgresConnector.playerReadable(Core.gameSaveWorld,identity,slot,coop)){
+            trace.event("READ_BLOCKED","; availability="+ApocBRPostgresConnector.availability());throw new SQLException("Player persistence is pending","55000");
+        }
         var profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
-        if(profile==null)return null;
+        if(profile==null){trace.profile(null);return null;}
+        trace.stage("RECONSTRUCT_PLAYER");
         IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
+        trace.stage("ENCODE_CLIENT_PAYLOAD");
         for(int capacity=Math.min(32768,ApocBRPlayerRelationalLimits.SOURCE_BYTES);;) {
             ByteBuffer bytes=ByteBuffer.allocate(capacity);
             try {
                 player.save(bytes);
                 byte[] payload=new byte[bytes.position()];bytes.flip();bytes.get(payload);
+                var destination=ApocBRPayloadProvenance.localEncoding();
+                trace.event("PAYLOAD_READY","; bytes="+payload.length+"; worldVersion="+IsoWorld.getWorldVersion()
+                    +"; destinationServer="+(destination==null?"NONE":destination.serverId())+"; namespace="+(destination==null?"NONE":destination.namespaceId())+"; view="+(destination==null?"NONE":destination.viewId()));
                 String split=profile.one("snapshot").get("split_username") instanceof String saved?saved:username;
                 return new ApocBRPlayerDatabase.Profile(0,player.getX(),player.getY(),player.getZ(),payload,
-                        IsoWorld.getWorldVersion(),player.isDead(),split,ApocBRPayloadProvenance.localEncoding());
+                        IsoWorld.getWorldVersion(),player.isDead(),split,destination);
             }catch(BufferOverflowException full) {
+                trace.event("ENCODE_GROW","; capacity="+capacity);
                 if(capacity>=ApocBRPlayerRelationalLimits.SOURCE_BYTES)throw new IOException("Relational client profile exceeds payload budget");
                 capacity=Math.min(capacity*2,ApocBRPlayerRelationalLimits.SOURCE_BYTES);
             }
+        }
+        }catch(SQLException|IOException|RuntimeException|LinkageError failure){trace.failure(failure);throw failure;}
         }
     }
 
     private IsoPlayer loadPostgresPlayer(int slot,String identity) {
         boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
-        if(!ApocBRPostgresConnector.playerReadable(Core.gameSaveWorld,identity,slot,coop))return null;
+        try(var trace=ApocBRPlayerReconstructionLog.begin("PLAYER_CONNECT",slot)) {
+        trace.lookup(Core.gameSaveWorld,identity,coop);trace.stage("CHECK_READ_ADMISSION");
+        if(!ApocBRPostgresConnector.playerReadable(Core.gameSaveWorld,identity,slot,coop)){trace.event("READ_BLOCKED","; availability="+ApocBRPostgresConnector.availability());return null;}
         try {
             ApocBRPlayerRelationalReader.Profile profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
-            if (profile==null) return null;
+            if (profile==null){trace.profile(null);return null;}
+            trace.stage("RECONSTRUCT_PLAYER");
             IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
+            trace.stage("REGISTER_PLAYER");
             ApocBRPlayerRelationalSync.registerPostgresPlayer(player,Core.gameSaveWorld,identity,slot,coop,profile);
+            trace.event("PLAYER_READY","");
             return player;
-        } catch (Exception failure) { ExceptionLogger.logException(failure); return null; }
+        } catch (Exception failure) { trace.failure(failure);ExceptionLogger.logException(failure); return null; }
+        }
     }
 
     private static final class NetworkCharacterData {

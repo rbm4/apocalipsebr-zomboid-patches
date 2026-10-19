@@ -1,10 +1,13 @@
 package zombie.world;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.io.IOException;
 import java.sql.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.postgresql.PGConnection;
+import zombie.ZomboidFileSystem;
 import zombie.core.Core;
 import zombie.debug.DebugLog;
 import zombie.network.GameServer;
@@ -29,11 +32,34 @@ public final class ApocBRWorldDictionaryMirror {
         // Namespace name is independent of mutable display/server labels; the repository checks ownership.
         var origin=new ApocBRWorldDictionaryDatabase.Origin(namespace,"vanilla:"+namespace,server,save);
         var snapshot=ApocBRWorldDictionarySnapshot.capture(data);
-        local=DATABASE.publish(origin,snapshot);
-        ApocBRWorldDictionaryDecode.install(new ApocBRPayloadProvenance(server,namespace,local.view()),snapshot);
-        ApocBRPayloadProvenance.published(new ApocBRPayloadProvenance(server,namespace,local.view()));
-        log("PUBLISHED; serverId="+server+"; namespace="+namespace+"; view="+local.view()+"; revision="+local.revision()+"; entries="+snapshot.entries().size());
+        local=publish(DATABASE,origin,snapshot,Path.of(ZomboidFileSystem.instance.getFileNameInCurrentSave("ApocBRWorldDictionaryNamespace.txt")));
+        ApocBRWorldDictionaryDecode.install(new ApocBRPayloadProvenance(server,local.namespace(),local.view()),snapshot);
+        ApocBRPayloadProvenance.published(new ApocBRPayloadProvenance(server,local.namespace(),local.view()));
+        log("PUBLISHED; serverId="+server+"; namespace="+local.namespace()+"; view="+local.view()+"; revision="+local.revision()+"; entries="+snapshot.entries().size());
         start(server);
+    }
+    static ApocBRWorldDictionaryDatabase.Published publish(ApocBRWorldDictionaryDatabase database,
+            ApocBRWorldDictionaryDatabase.Origin configured,ApocBRWorldDictionarySnapshot snapshot,Path marker)throws SQLException,IOException {
+        UUID namespace=configured.namespace();
+        if(Files.exists(marker)) {
+            List<String> saved=Files.readAllLines(marker,StandardCharsets.UTF_8);
+            // A changed configured namespace deliberately starts a separate history.
+            if(saved.size()==2&&saved.get(0).equals(configured.namespace().toString()))namespace=UUID.fromString(saved.get(1));
+        }
+        var origin=new ApocBRWorldDictionaryDatabase.Origin(namespace,"vanilla:"+namespace,configured.serverId(),configured.save());
+        try{return database.publish(origin,snapshot);}
+        catch(ApocBRWorldDictionaryDatabase.HistoryChangedException changed) {
+            UUID replacement=UUID.randomUUID();
+            // Persist before publication so a failed DB attempt/restart reuses this incarnation.
+            Path temporary=Files.createTempFile(marker.toAbsolutePath().getParent(),"dictionary-namespace-",".tmp");
+            try {
+                Files.writeString(temporary,configured.namespace()+"\n"+replacement+"\n",StandardCharsets.UTF_8);
+                try{Files.move(temporary,marker,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}
+                catch(AtomicMoveNotSupportedException unsupported){Files.move(temporary,marker,StandardCopyOption.REPLACE_EXISTING);}
+            }finally{Files.deleteIfExists(temporary);}
+            log("HISTORY_REPLACED; serverId="+configured.serverId()+"; previousNamespace="+namespace+"; namespace="+replacement);
+            return database.publish(new ApocBRWorldDictionaryDatabase.Origin(replacement,"vanilla:"+replacement,configured.serverId(),configured.save()),snapshot);
+        }
     }
     private static String key(String key){if(key==null||key.isBlank()||key.length()>128)throw new IllegalArgumentException("Dictionary save key must have 1..128 characters");return key;}
     public static ApocBRWorldDictionaryDatabase.Published localView(){return local;}

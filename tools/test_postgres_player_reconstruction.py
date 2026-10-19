@@ -216,8 +216,8 @@ public class ReconstructionTest {
   rows.add(Map.of("map_name","exeTimer","key","squats","integer_value",1729000000123L));
   tables.put("fitness_value",rows);tables.put("fitness_body_part",List.of(Map.of("position",0,"body_part_key","arms")));
   var profile=new ApocBRPlayerRelationalReader.Profile(tables);
-  var constructor=ApocBRPlayerRelationalReconstruction.class.getDeclaredConstructor(ApocBRPlayerRelationalReader.Profile.class);constructor.setAccessible(true);
-  Object reconstruction=constructor.newInstance(profile);
+  var constructor=ApocBRPlayerRelationalReconstruction.class.getDeclaredConstructor(ApocBRPlayerRelationalReader.Profile.class,ApocBRPlayerReconstructionLog.Attempt.class);constructor.setAccessible(true);
+  Object reconstruction=constructor.newInstance(profile,null);
   var player=(zombie.characters.IsoPlayer)blank(zombie.characters.IsoPlayer.class);
   var restored=new zombie.characters.BodyDamage.Fitness(null);ApocBRPlayerRelationalReconstruction.set(player,"fitness",restored);
   var method=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod("sequences",zombie.characters.IsoPlayer.class);method.setAccessible(true);method.invoke(reconstruction,player);
@@ -229,6 +229,12 @@ public class ReconstructionTest {
   for(String field:List.of("regularityMap","stiffnessIncMap","stiffnessTimerMap","exeTimer","bodypartToIncStiffness"))check(ApocBRPlayerRelationalAccess.get(restored,field).equals(ApocBRPlayerRelationalAccess.get(client,field)),"fitness wire round trip preserves "+field);
  }
  static void itemTypes()throws Exception {
+  var restored=(zombie.inventory.InventoryItem)blank(zombie.inventory.InventoryItem.class);
+  UUID persisted=UUID.randomUUID();var identityRow=new LinkedHashMap<String,Object>();
+  identityRow.put("persisted_item_id",persisted.toString());identityRow.put("native_id",1729);
+  ApocBRPlayerRelationalReconstruction.project("item",restored,identityRow,"");
+  check(restored.getID()==1729,"reader identity metadata does not prevent native item fields from restoring");
+  check(identityRow.get("persisted_item_id").equals(persisted.toString()),"persisted item UUID remains available for sync registration");
   for(Class<?> type:List.of(zombie.inventory.InventoryItem.class,zombie.inventory.types.DrainableComboItem.class,zombie.inventory.types.HandWeapon.class,zombie.inventory.types.Food.class)) {
    var item=(zombie.inventory.InventoryItem)blank(type);
    var row=new HashMap<String,Object>();row.put("runtime_class",type.getName());row.put("save_type",-1);
@@ -261,7 +267,47 @@ public class ReconstructionTest {
   tables.remove("bag_state");
   try{ApocBRPlayerRelationalReconstruction.validateOwnership(new ApocBRPlayerRelationalReader.Profile(tables));throw new AssertionError("unbound bag contents accepted");}catch(IllegalStateException expected){checks++;}
  }
- public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();fitnessPersistence();itemTypes();nativeFields();jdbc();components();ownership();System.out.println("Reconstruction checks="+checks);}
+ static void diagnostics()throws Exception {
+  Field sink=ApocBRPlayerReconstructionLog.class.getDeclaredField("sink");sink.setAccessible(true);Object previous=sink.get(null);
+  List<String> logs=new ArrayList<>();sink.set(null,(java.util.function.Consumer<String>)logs::add);
+  try {
+   Fixture f=new Fixture();var reader=new ApocBRPlayerRelationalReader(f::open);
+   UUID request;
+   try(var attempt=ApocBRPlayerReconstructionLog.begin("CLIENT_PROFILE",0)) {
+    request=attempt.request;reader.load("new-save","PRIVATE_IDENTITY",0,false);
+    check(logs.stream().anyMatch(s->s.contains("NO_PROFILE")),"absent head has an explicit diagnostic");
+    f.rows=List.<Object[]>of(new Object[]{"snapshot","{\"status\":\"incomplete\",\"schema_version\":1,\"codec_version\":4}"});
+    try{reader.load("new-save","PRIVATE_IDENTITY",0,false);throw new AssertionError("incomplete admitted");}catch(SQLException expected){}
+    check(logs.stream().anyMatch(s->s.contains("FAILED")&&s.contains("stage=VALIDATE_HEAD")&&s.contains("reason=Relational login requires a complete compatible head")),"head rejection keeps original reason before sanitizing SQL exception");
+    f.rows=List.<Object[]>of(new Object[]{"snapshot","{\"status\":\"complete\",\"schema_version\":1,\"codec_version\":4,\"expected_object_count\":1}"});
+    try{reader.load("new-save","PRIVATE_IDENTITY",0,false);throw new AssertionError("bad count admitted");}catch(SQLException expected){}
+    check(logs.stream().anyMatch(s->s.contains("COUNT")&&s.contains("table=object; actual=0; expected=1")),"count mismatch has expected and actual values");
+    f.fail=true;
+    try{reader.load("new-save","PRIVATE_IDENTITY",0,false);throw new AssertionError("SQL failure admitted");}catch(SQLException expected){}
+    check(logs.stream().anyMatch(s->s.contains("FAILED")&&s.contains("stage=READ_GRAPH")&&s.contains("SQLState=08006")&&s.contains("frames=")),"read failure has SQLState and source frames");
+    f.fail=false;
+    UUID namespace=UUID.randomUUID(),view=UUID.randomUUID();
+    String metadata=new org.json.JSONObject().put("status","complete").put("schema_version",1).put("codec_version",4).put("expected_object_count",0).put("expected_item_count",0).put("expected_container_count",0).put("expected_edge_count",0).toString();
+    String origin=new org.json.JSONObject().put("source_server_id",2).put("source_dictionary_namespace_id",namespace.toString()).put("source_dictionary_view_id",view.toString()).toString();
+    f.rows=List.<Object[]>of(new Object[]{"snapshot",metadata},new Object[]{"value_node",origin});
+    ApocBRPostgresConnector.dictionaryCheck=()->{};
+    try{reader.load("new-save","PRIVATE_IDENTITY",0,false);throw new AssertionError("missing dictionary admitted");}catch(SQLException expected){}
+    check(logs.stream().anyMatch(s->s.contains("DICTIONARY_PREPARE")&&s.contains("sourceServer=2")&&s.contains(namespace.toString())&&s.contains(view.toString())),"foreign dictionary reference is visible");
+    check(logs.stream().anyMatch(s->s.contains("FAILED")&&s.contains("stage=PREPARE_SOURCE_DICTIONARIES")),"dictionary preparation has its own failure stage");
+    var invalid=new ApocBRPlayerRelationalReader.Profile(Map.of("character_state",List.of(Map.of("inventory_container_id",1))));
+    try{ApocBRPlayerRelationalReconstruction.reconstruct(invalid,0);throw new AssertionError("missing inventory admitted");}catch(IllegalStateException expected){}
+    check(logs.stream().anyMatch(s->s.contains("phase=RESTORE_PLAYER")&&s.contains("stage=VALIDATE_OWNERSHIP")&&s.contains("reason=Missing root inventory")),"engine reconstruction logs before rethrow");
+    attempt.stage("RESTORE_CHARACTER_FIELDS");ApocBRPlayerReconstructionLog.table("character_state",1);
+    try{ApocBRPlayerRelationalReconstruction.set(new Object(),"missingField","PRIVATE_VALUE");throw new AssertionError("missing field admitted");}catch(IllegalStateException expected){attempt.failure(expected);}
+    check(logs.stream().anyMatch(s->s.contains("FAILED")&&s.contains("field=missingField")&&s.contains("table=character_state")),"field restoration failure identifies field and table");
+   }
+   check(logs.stream().allMatch(s->s.contains("request="+request)),"nested read and restoration logs share the outer request ID");
+   String text=String.join("\n",logs);check(!text.contains("PRIVATE_")&&!text.contains("sensitive SQL"),"raw identities, values and driver messages are omitted");
+   try(var next=ApocBRPlayerReconstructionLog.begin("NEXT_ATTEMPT",0)){check(!next.request.equals(request),"failed scope does not leak request context to the next login");}
+   check(ApocBRPlayerReconstructionLog.token("\ud83d\ude00\n").length()<=3,"non-ASCII labels cannot break log formatting");
+  }finally{sink.set(null,previous);}
+ }
+ public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();fitnessPersistence();itemTypes();nativeFields();jdbc();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
 }
 '''.replace('ROOTS',roots)
 with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:
@@ -269,7 +315,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:
     harness=target/'ReconstructionTest.java';harness.write_text(HARNESS,encoding='utf-8')
     connector=target/'ApocBRPostgresConnector.java';connector.write_text('package zombie.savefile; public class ApocBRPostgresConnector { public static int dictionaryPublicationTimeoutSeconds(){return 30;} public static String sqlDiagnostic(Throwable error,boolean playerHints){return "exception="+error.getClass().getSimpleName();}public static Runnable dictionaryCheck=()->{}; public static java.sql.Connection borrowDictionaryConnection() throws java.sql.SQLException {dictionaryCheck.run();throw new java.sql.SQLException();} public static java.sql.Connection borrowPlayerConnection() throws java.sql.SQLException {throw new java.sql.SQLException();}}',encoding='utf-8')
     names=['Limits','Schema','Access','Snapshot','Codecs','Capture','Mutations','Delta','Metrics','Database','Reader','Reconstruction']
-    sources=[SRC/'ApocBRPayloadProvenance.java']+[SRC/('ApocBRPlayerRelational'+n+'.java') for n in names]
+    sources=[SRC/'ApocBRPayloadProvenance.java',SRC/'ApocBRPlayerReconstructionLog.java']+[SRC/('ApocBRPlayerRelational'+n+'.java') for n in names]
     sources += [SRC.parent/path for path in ['world/ApocBRWorldDictionaryDecode.java','world/ApocBRWorldDictionarySnapshot.java','savefile/ApocBRWorldDictionaryDatabase.java']]
     sources += inactive_persistence_stubs(target)
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(connector),str(harness)],check=True)

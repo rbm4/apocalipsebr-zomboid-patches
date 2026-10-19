@@ -36,12 +36,22 @@ public class ServerPlayersVehicles {
 
         @Override
         public void run() {
+            zombie.savefile.ApocBRPostgresConnector.runBackgroundDatabaseWork(this::runDatabaseLoop);
+        }
+
+        private void runDatabaseLoop() {
+            long lastFailureLog=0;boolean failed=false;
             try {
                 while (!this.stop) {
                     try {
                         this.runInner();
+                        if(failed){zombie.debug.DebugLog.log("[ApocBR][Postgres] PLAYER_VEHICLE_WORKER_RECOVERED");failed=false;lastFailureLog=0;}
                     } catch (Throwable var2) {
-                        ExceptionLogger.logException(var2);
+                        failed=true;long now=System.nanoTime();
+                        if(lastFailureLog==0||now-lastFailureLog>=30_000_000_000L){lastFailureLog=now;ExceptionLogger.logException(var2);}
+                    } finally {
+                        // A failed initialization must not bypass the worker's normal pacing.
+                        try{Thread.sleep(500L);}catch(InterruptedException ignored){}
                     }
                 }
             } finally {
@@ -54,10 +64,6 @@ public class ServerPlayersVehicles {
             zombie.savefile.ApocBRPostgresConnector.process();
             VehiclesDB2.instance.updateWorldStreamer();
 
-            try {
-                Thread.sleep(500L);
-            } catch (InterruptedException var2) {
-            }
         }
     }
 }

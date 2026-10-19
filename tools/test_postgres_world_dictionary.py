@@ -177,6 +177,62 @@ public class ApocBRPostgresConnector {
  public static void setDictionaryShutdown(Runnable action){shutdown=action;}
 }
 '''
+ROLLOVER=r'''
+package zombie.savefile;
+import java.nio.file.*;import java.sql.*;import java.util.*;
+import zombie.world.*;
+public class DictionaryRolloverTest {
+ static class Multi extends DictionaryDatabaseTest.Fake {
+  Map<UUID,DictionaryDatabaseTest.Fake> histories=new HashMap<>();UUID active;
+  @Override int write(String sql,List<Object> a)throws Exception {
+   if(sql.startsWith("INSERT INTO player_rel.world_dictionary_namespace")) {
+    active=(UUID)a.getFirst();var state=histories.computeIfAbsent(active,k->new DictionaryDatabaseTest.Fake());
+    registries=state.registries;entries=state.entries;revision=state.revision;
+   }
+   int result=super.write(sql,a);
+   if(sql.startsWith("UPDATE player_rel.world_dictionary_namespace"))histories.get(active).revision=revision;
+   return result;
+  }
+ }
+ static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
+ static ApocBRWorldDictionaryDatabase.Published publish(ApocBRWorldDictionaryDatabase db,ApocBRWorldDictionaryDatabase.Origin origin,ApocBRWorldDictionarySnapshot snapshot,Path marker)throws Exception {
+  var method=ApocBRWorldDictionaryMirror.class.getDeclaredMethod("publish",ApocBRWorldDictionaryDatabase.class,ApocBRWorldDictionaryDatabase.Origin.class,ApocBRWorldDictionarySnapshot.class,Path.class);method.setAccessible(true);
+  try{return (ApocBRWorldDictionaryDatabase.Published)method.invoke(null,db,origin,snapshot,marker);}
+  catch(java.lang.reflect.InvocationTargetException error){throw (Exception)error.getCause();}
+ }
+ public static void main(String[] args)throws Exception {
+  var snapshot=DictionarySnapshotFixture.sample();Multi fake=new Multi();var db=new ApocBRWorldDictionaryDatabase(fake::open);
+  UUID seed=UUID.randomUUID();var origin=new ApocBRWorldDictionaryDatabase.Origin(seed,"vanilla:"+seed,3,"same-save");
+  Path marker=Path.of(args[0],"namespace.txt");
+  var first=publish(db,origin,snapshot,marker);
+  check(first.namespace().equals(seed)&&!Files.exists(marker),"existing compatible namespace needs no marker");
+  fake.histories.get(seed).registries.put("info:",Arrays.asList(seed,"info","",99,null,0L));
+  var reset=publish(db,origin,snapshot,marker);
+  check(!reset.namespace().equals(seed)&&reset.revision()==1&&fake.rollbacks==1,"counter rewind starts fresh history after rollback");
+  check(fake.histories.get(seed).registries.get("info:").get(3).equals(99),"old history is preserved");
+  var restart=publish(db,origin,snapshot,marker);
+  check(restart.namespace().equals(reset.namespace())&&restart.revision()==2,"restart reuses persisted replacement");
+  fake.histories.get(reset.namespace()).entries.put("info::0",Arrays.asList(reset.namespace(),"info","",0,"item","Base.Wrong","Base","Wrong",0L));
+  var remapped=publish(db,origin,snapshot,marker);
+  check(!remapped.namespace().equals(reset.namespace()),"ID remap rolls over too");
+  fake.failNotify=true;int histories=fake.histories.size();String before=Files.readString(marker);
+  try{publish(db,origin,snapshot,marker);throw new AssertionError("DB failure accepted");}
+  catch(SQLException expected){check(!(expected instanceof ApocBRWorldDictionaryDatabase.HistoryChangedException),"transport failure is not a history conflict");}
+  check(histories==fake.histories.size()&&before.equals(Files.readString(marker)),"SQL failures never rotate namespace");fake.failNotify=false;
+  fake.histories.get(remapped.namespace()).registries.put("info:",Arrays.asList(remapped.namespace(),"info","",99,null,0L));
+  fake.failNotify=true;
+  try{publish(db,origin,snapshot,marker);throw new AssertionError("replacement publication failure accepted");}
+  catch(SQLException expected){check(expected.getMessage().contains("stage=NOTIFY"),"replacement SQL failure propagates");}
+  UUID pending=UUID.fromString(Files.readAllLines(marker).get(1));
+  check(!pending.equals(remapped.namespace()),"replacement persisted before failed DB publication");fake.failNotify=false;
+  check(publish(db,origin,snapshot,marker).namespace().equals(pending),"restart after failed replacement reuses marker");
+  UUID explicit=UUID.randomUUID();var configured=new ApocBRWorldDictionaryDatabase.Origin(explicit,"vanilla:"+explicit,3,"same-save");
+  check(publish(db,configured,snapshot,marker).namespace().equals(explicit),"explicit config change ignores old marker");
+  check(fake.opened==fake.closed,"all leases returned");
+  System.out.println("Dictionary rollover: rewind, remap, restart, old history, SQL failure and configuration checks passed.");
+ }
+}
+'''
 LISTENER=r'''
 package zombie.world;
 import java.sql.*;import java.lang.reflect.*;import java.util.*;import java.util.concurrent.*;import java.util.concurrent.atomic.*;
@@ -232,13 +288,15 @@ public class DictionaryListenerTest {
 with tempfile.TemporaryDirectory(prefix='apocbr_dictionary_') as folder:
     target=Path(folder)
     fixtures=[]
-    for name,body in [('DictionarySnapshotFixture.java',SNAPSHOT),('DictionaryDatabaseTest.java',DATABASE)]:
+    for name,body in [('DictionarySnapshotFixture.java',SNAPSHOT),('DictionaryDatabaseTest.java',DATABASE),('DictionaryRolloverTest.java',ROLLOVER)]:
         path=target/name;path.write_text(body,encoding='utf-8');fixtures.append(path)
     sources=[SRC/'world/ApocBRWorldDictionaryDecode.java',SRC/'savefile/ApocBRPayloadProvenance.java',SRC/'world/ApocBRWorldDictionarySnapshot.java',SRC/'savefile/ApocBRWorldDictionaryDatabase.java',SRC/'savefile/ApocBRPostgresConnector.java']
     sources += inactive_persistence_stubs(target, mutations=True)
+    sources += [SRC/'world/ApocBRWorldDictionaryMirror.java']
     cp=os.pathsep.join(map(str,[GAME,LIB/'postgresql-42.7.14.jar',LIB/'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,sources+fixtures)],check=True)
     subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.savefile.DictionaryDatabaseTest'],check=True)
+    subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.savefile.DictionaryRolloverTest',folder],check=True)
     listener_target=target/'listener';listener_target.mkdir()
     stub=listener_target/'ApocBRPostgresConnector.java';stub.write_text(LISTENER_CONNECTOR,encoding='utf-8')
     listener_harness=listener_target/'DictionaryListenerTest.java';listener_harness.write_text(LISTENER,encoding='utf-8')

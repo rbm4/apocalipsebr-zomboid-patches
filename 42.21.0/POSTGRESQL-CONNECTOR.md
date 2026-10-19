@@ -50,12 +50,40 @@ writes and unsent relational mutations. Routine healthy-server writes do not clo
 admission for unrelated identities.
 
 Account/player foreground calls keep their synchronous contracts. Pool acquisition
-uses a maximum 250 ms foreground wait, socket operations use at most 250 ms, and
-login packet phases share a 500 ms workflow deadline across nested calls. The
-first undetected failure can briefly pause a tick; this is not asynchronous login
-or a hard real-time guarantee. Subsequent calls fail before borrowing while the
+uses a maximum 250 ms foreground wait. Ordinary foreground socket operations use
+at most 250 ms; connection packet phases use a separate 3,000 ms socket cap and
+share a 5,000 ms workflow deadline across nested calls. The login socket cap is
+longer than the graph statement's two-second query timeout, avoiding the previous
+250 ms socket abort during otherwise healthy profile reads.
+Set `-Dapocbr.postgres.loginWorkflowTimeoutMillis=<milliseconds>` to tune that total
+budget (clamped to 500..30,000 ms). Set
+`-Dapocbr.postgres.loginNetworkTimeoutMillis=<milliseconds>` to tune the login
+socket cap (clamped to 250..30,000 ms, and always limited by the remaining workflow
+deadline). Pool acquisition retains its 250 ms cap even in login scopes. Nested
+calls inherit the outer scope's deadline and socket cap; neither scope type can
+extend an existing workflow. Other foreground account workflows retain a
+500 ms deadline. A local workflow expiration reports `HYT00` and
+`DeadlineExceededException`; it aborts the request without marking the whole
+connector unavailable. Actual transport failures still close admission for
+recovery. `08006` still indicates a failed connection; it is not ignored or
+reclassified just because a foreground read failed. `FOREGROUND_JDBC_FAILURE`
+adds the configured socket cap and deepest exception type, without driver
+messages, SQL, credentials or player values, so a subsequent socket timeout can
+be distinguished from other connection failures. Account errors include the JDBC
+method and sanitized diagnostic fields.
+Login still runs on the server thread: the larger socket budget permits longer
+individual calls and cumulative tick stalls. This is a scoped tolerance fix, not
+asynchronous login or a hard real-time guarantee. Subsequent calls fail before borrowing while the
 connector is unavailable/recovering. Background writes retain normal pool/socket
 budgets. Vehicle and dictionary leases bypass foreground admission/deadlines.
+
+The `ServerPlayersVehicles` I/O thread also runs in an explicit background scope,
+so lazy player-database validation and persistence work use normal pool/socket
+budgets during recovery. Its 500 ms pacing runs after successful and failed
+iterations. Repeated worker failures are logged at most once per 30 seconds, with
+`PLAYER_VEHICLE_WORKER_RECOVERED` after the next successful iteration. SQLState
+`08001` during initialization reports connection availability rather than claiming
+that a migration is missing; missing-table/column states retain the schema hint.
 
 The default journal location is
 `<Zomboid saves>/Multiplayer/<serverName>/postgres-journal`; override it with

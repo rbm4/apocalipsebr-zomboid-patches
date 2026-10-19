@@ -47,7 +47,7 @@ final class ApocBRPlayerRelationalReader {
                   ) identities
                 )
                 SELECT 'snapshot' AS table_name,jsonb_build_object(
-                  'status',s.status,'schema_version',s.schema_version,'codec_version',s.codec_version,
+                  'snapshot_id',s.snapshot_id,'status',s.status,'schema_version',s.schema_version,'codec_version',s.codec_version,
                   'source_world_version',s.source_world_version,'split_username',s.profile_split_username,
                   'persisted_character_id',s.character_id,'source_dataset_id',s.source_dataset_id,'expected_object_count',s.expected_object_count,
                   'expected_item_count',s.expected_item_count,'expected_container_count',s.expected_container_count,
@@ -79,7 +79,10 @@ final class ApocBRPlayerRelationalReader {
         return sql.toString();
     }
     Profile load(String world,String identity,int slot,boolean coop) throws SQLException {
-        Profile profile=loadGraph(world,identity,slot,coop);
+        try(var trace=ApocBRPlayerReconstructionLog.begin("READ_PROFILE",slot)) {
+        trace.lookup(world,identity,coop);
+        try {
+        Profile profile=loadGraph(world,identity,slot,coop,trace);
         // The graph lease is already returned, including when poolSize=1.
         if(profile!=null) {
             Set<ApocBRPayloadProvenance> origins=new LinkedHashSet<>();
@@ -87,13 +90,24 @@ final class ApocBRPlayerRelationalReader {
                 var origin=ApocBRPayloadProvenance.of(row.get("source_server_id"),row.get("source_dictionary_namespace_id"),row.get("source_dictionary_view_id"));
                 if(origin!=null)origins.add(origin);
             }
-            for(var origin:origins)zombie.world.ApocBRWorldDictionaryDecode.prepare(origin);
+            trace.stage("PREPARE_SOURCE_DICTIONARIES");
+            trace.event("DICTIONARY_COUNT","; views="+origins.size());
+            for(var origin:origins) {
+                trace.event("DICTIONARY_PREPARE","; sourceServer="+origin.serverId()+"; namespace="+origin.namespaceId()+"; view="+origin.viewId());
+                zombie.world.ApocBRWorldDictionaryDecode.prepare(origin);
+                trace.event("DICTIONARY_READY","; sourceServer="+origin.serverId()+"; namespace="+origin.namespaceId()+"; view="+origin.viewId());
+            }
         }
+        trace.event("READ_COMPLETE","");
         return profile;
+        }catch(SQLException|RuntimeException failure){trace.failure(failure);throw failure;}
+        }
     }
-    private Profile loadGraph(String world,String identity,int slot,boolean coop) throws SQLException {
-        if(slot<0||slot>=4)return null;
+    private Profile loadGraph(String world,String identity,int slot,boolean coop,ApocBRPlayerReconstructionLog.Attempt trace) throws SQLException {
+        if(slot<0||slot>=4){trace.event("INVALID_SLOT","");return null;}
+        trace.stage("ACQUIRE_GRAPH_CONNECTION");
         try(Connection connection=connections.open()) {
+            trace.stage("READ_GRAPH");
             try(PreparedStatement query=connection.prepareStatement(SQL)) {
                 query.setQueryTimeout(2);
                 query.setString(1,world);query.setString(2,coop?"steam_coop":"username");query.setString(3,identity);query.setInt(4,slot);
@@ -107,19 +121,25 @@ final class ApocBRPlayerRelationalReader {
                         tables.computeIfAbsent(table,k->new ArrayList<>()).add(new JSONObject(json).toMap());
                     }
                 }
-                if(tables.isEmpty()){connection.commit();return null;}
+                trace.event("ROWS_READ","; rows="+count+"; estimatedBytes="+bytes);
+                if(tables.isEmpty()){trace.profile(null);connection.commit();return null;}
                 Profile profile=new Profile(tables);var metadata=profile.one("snapshot");
+                trace.profile(profile);trace.stage("VALIDATE_HEAD");
                 if(!"complete".equals(metadata.get("status"))||((Number)metadata.get("schema_version")).intValue()!=ApocBRPlayerRelationalCapture.SCHEMA_VERSION
                         ||((Number)metadata.get("codec_version")).intValue()!=ApocBRPlayerRelationalCapture.CODEC_VERSION)
                     throw new SQLException("Relational login requires a complete compatible head","22000");
                 for(String table:List.of("object","item","container")) {
+                    trace.stage("VALIDATE_GRAPH_COUNTS");ApocBRPlayerReconstructionLog.table(table,profile.rows(table).size());
                     String key="expected_"+table+"_count";
+                    trace.event("COUNT","; table="+table+"; actual="+profile.rows(table).size()+"; expected="+ApocBRPlayerReconstructionLog.token(metadata.get(key)));
                     if(profile.rows(table).size()!=((Number)metadata.get(key)).intValue())throw new SQLException("Relational login graph count mismatch","22000");
                 }
                 int edges=profile.rows("item_location").size()+profile.rows("equipment").size();
+                trace.event("COUNT","; table=edges; actual="+edges+"; expected="+ApocBRPlayerReconstructionLog.token(metadata.get("expected_edge_count")));
                 if(edges!=((Number)metadata.get("expected_edge_count")).intValue())throw new SQLException("Relational login edge count mismatch","22000");
-                connection.commit();return profile;
+                trace.stage("COMMIT_GRAPH_READ");connection.commit();return profile;
             } catch(SQLException|RuntimeException failure) {
+                trace.failure(failure);
                 try{connection.rollback();}catch(SQLException ignored){}
                 // Do not expose SQL, row contents or identity through driver diagnostics.
                 throw new SQLException("Relational player read failed",failure instanceof SQLException sql?sql.getSQLState():"22000");

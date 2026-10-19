@@ -216,7 +216,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_players_') as folder:
         path=target/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(body,encoding='utf-8');files.append(path)
     harness=target/'PlayersTest.java';harness.write_text(HARNESS,encoding='utf-8');files.append(harness)
     files += [SRC/'savefile'/name for name in ['ApocBRPayloadProvenance.java','ApocBRPostgresConnector.java','ApocBRPlayerDatabase.java','ServerPlayerDB.java','PlayerDBHelper.java',
-        'ApocBRPlayerLoadQuality.java','ApocBRPlayerRelationalReader.java','ApocBRPlayerRelationalLimits.java','ApocBRPlayerRelationalSchema.java','ApocBRPlayerRelationalAccess.java',
+        'ApocBRPlayerLoadQuality.java','ApocBRPlayerRelationalReader.java','ApocBRPlayerReconstructionLog.java','ApocBRPlayerRelationalLimits.java','ApocBRPlayerRelationalSchema.java','ApocBRPlayerRelationalAccess.java',
         'ApocBRPlayerRelationalSnapshot.java','ApocBRPlayerRelationalCodecs.java','ApocBRPlayerRelationalCapture.java','ApocBRPlayerRelationalMutations.java','ApocBRPlayerRelationalDelta.java','ApocBRPlayerRelationalMetrics.java','ApocBRPlayerRelationalDatabase.java','ApocBRPlayerRelationalSync.java']]
     files += [SRC/path for path in ['world/ApocBRWorldDictionaryDecode.java','world/ApocBRWorldDictionarySnapshot.java','savefile/ApocBRWorldDictionaryDatabase.java']]
     files.append(SRC/'network/packets/connection/LoadPlayerProfilePacket.java')

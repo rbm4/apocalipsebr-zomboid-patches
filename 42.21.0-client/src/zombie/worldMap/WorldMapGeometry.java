@@ -196,7 +196,8 @@ public final class WorldMapGeometry {
 
                     ShortBuffer indexBuffer = this.cell.getIndexBuffer(numIndices);
                     if (this.firstIndex == -1) {
-                        this.firstIndex = (short)indexBuffer.position();
+                        // This is an offset into the whole cell's buffer, not a 16-bit vertex index.
+                        this.firstIndex = indexBuffer.position();
                     }
 
                     this.indexCount += (short)numIndices;

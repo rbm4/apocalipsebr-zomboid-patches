@@ -197,6 +197,11 @@ public final class ApocBRPostgresConnector {
     }
     public static void awaitPersistence(){ApocBRPersistence.drain();}
     public static void runShutdownDatabaseWork(Runnable work){ApocBRPersistence.shutdownWork(work);}
+    /** Dedicated I/O workers use normal pool/socket budgets and may operate during recovery. */
+    public static void runBackgroundDatabaseWork(Runnable work){
+        boolean previous=ApocBRPersistence.background();ApocBRPersistence.background(true);
+        try{work.run();}finally{ApocBRPersistence.background(previous);}
+    }
     public static String availability(){return ApocBRPersistence.state();}
     static void writeJournalSnapshot(Snapshot snapshot)throws SQLException {
         ApocBRPostgresConnector target=current();

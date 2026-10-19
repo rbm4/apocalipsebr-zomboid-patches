@@ -55,7 +55,13 @@ public final class ApocBRWorldDictionaryDecode {
                 var snapshot=new ApocBRWorldDictionaryDatabase().load(origin);complete(created,snapshot);
             }catch(SQLException|RuntimeException failure){if(created.completeExceptionally(failure))views.remove(origin,created);}
         }
-        try{future.join();}catch(CompletionException failure){throw new SQLException("Source dictionary preparation failed","55000");}
+        try{future.join();}catch(CompletionException failure){
+            Throwable cause=failure.getCause();String state=cause instanceof SQLException sql?sql.getSQLState():"NONE";
+            String reason=cause!=null&&Set.of("Dictionary cache entry budget exceeded","Dictionary cache view budget exceeded").contains(cause.getMessage()==null?"":cause.getMessage())?cause.getMessage():"SOURCE_PREPARATION_FAILURE";
+            zombie.debug.DebugLog.log("[ApocBR][Dictionary] PREPARE_FAILED; sourceServer="+origin.serverId()+"; namespace="+origin.namespaceId()+"; view="+origin.viewId()
+                +"; exception="+(cause==null?"NONE":cause.getClass().getName())+"; SQLState="+(state!=null&&state.matches("[A-Z0-9]{5}")?state:"NONE")+"; reason="+reason);
+            throw new SQLException("Source dictionary preparation failed","55000");
+        }
     }
     public static CompletableFuture<Void> prepareAsync(Collection<ApocBRPayloadProvenance> origins,Executor io) {
         return CompletableFuture.runAsync(()->{try{for(var origin:new LinkedHashSet<>(origins))prepare(origin);}catch(SQLException error){throw new CompletionException(error);}},io);
@@ -83,6 +89,12 @@ public final class ApocBRWorldDictionaryDecode {
         if(scope!=null&&scope.origin!=null)ApocBRPayloadProvenance.remember(bytes,new ApocBRPayloadProvenance.Metadata(scope.origin,version));
     }
     static Unavailable fail(String message) {
+        // Every caller supplies application-owned text plus dictionary symbols/IDs, never payload values.
+        String diagnostic=message.replaceAll("[^A-Za-z0-9_.$:/ -]","_");
+        var active=context.get();var origin=active==null?null:active.origin;
+        zombie.debug.DebugLog.log("[ApocBR][Dictionary] DECODE_FAILED; sourceServer="+(origin==null?"NONE":origin.serverId())
+            +"; namespace="+(origin==null?"NONE":origin.namespaceId())+"; view="+(origin==null?"NONE":origin.viewId())
+            +"; diagnostic="+diagnostic.substring(0,Math.min(320,diagnostic.length())));
         var error=new Unavailable(message);
         for(var scope=context.get();scope!=null;scope=scope.previous)scope.failure=error;
         return error;

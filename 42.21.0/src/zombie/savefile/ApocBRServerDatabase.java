@@ -80,7 +80,8 @@ public final class ApocBRServerDatabase {
             try { lease = new Lease(ApocBRPostgresConnector.borrowServerConnection()); }
             catch (SQLException | LinkageError failure) {
                 // No SQLite fallback and no credential-bearing driver exception chain.
-                throw new IllegalStateException("PostgreSQL server database unavailable; login/operation aborted");
+                throw new IllegalStateException("PostgreSQL server database unavailable; login/operation aborted; "
+                    +ApocBRPostgresConnector.sqlDiagnostic(failure,false));
             }
             active.set(lease);
         }
@@ -136,7 +137,8 @@ public final class ApocBRServerDatabase {
             if (failure instanceof SQLException sql) {
                 // Native exception loggers must not print PG row DETAIL/passwords/2FA secrets.
                 throw new SQLException("PostgreSQL server database operation failed; SQLState="
-                        + sql.getSQLState(), sql.getSQLState(), sql.getErrorCode());
+                        + sql.getSQLState()+"; method="+method.getName()+"; "
+                        +ApocBRPostgresConnector.sqlDiagnostic(sql,false), sql.getSQLState(), sql.getErrorCode());
             }
             throw failure;
         }

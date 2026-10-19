@@ -50,6 +50,10 @@ public final class ApocBRPlayerRelationalSync {
     public static void offerCreatedPlayer(IsoPlayer player,String world,String identity,int slot,int worldVersion) {
         offerPlayer(player,0,world,identity,slot,worldVersion,new byte[0],List.of(),UUID.randomUUID());
     }
+    /** Handoff must fail closed if the complete new-life capture was not accepted. */
+    static boolean offerCreatedPlayerForHandoff(IsoPlayer player,String world,String identity,int slot,int worldVersion) {
+        return offerPlayer(player,0,world,identity,slot,worldVersion,new byte[0],List.of(),UUID.randomUUID());
+    }
     /** An authoritative relational load is already synced. Bind its actual life/dataset
      * immediately, rather than waiting on an import receipt based on a local SQLite path. */
     static void registerPostgresPlayer(IsoPlayer player,String world,String identity,int slot,boolean coop,
@@ -69,8 +73,8 @@ public final class ApocBRPlayerRelationalSync {
         start();
         log("LIVE_TRACK_READY; source=PostgreSQL; initialSync=skipped");
     }
-    private static void offerPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,int worldVersion,byte[] sourceBytes,List<String> loadIssues,UUID life) {
-        if(!enabled()||stopping)return;
+    private static boolean offerPlayer(IsoPlayer player,int sqlId,String world,String identity,int slot,int worldVersion,byte[] sourceBytes,List<String> loadIssues,UUID life) {
+        if(!enabled()||stopping)return false;
         try {
             String label=ZomboidFileSystem.instance.getCurrentSaveDir();
             String configured=System.getProperty("apocbr.postgres.playerRelational.sourceDatasetId");
@@ -88,24 +92,24 @@ public final class ApocBRPlayerRelationalSync {
                 var snapshot=life==null?ApocBRPlayerRelationalSnapshot.copy(player):ApocBRPlayerRelationalSnapshot.copyLive(player);
                 ApocBRPersistence.submit(new ApocBRPersistenceOperations.Initial(candidate,session,snapshot));
                 if(life!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,life);
-                start();return;
+                start();return true;
             }
             synchronized(PENDING) {
                 Pending existing=PENDING.get(candidate.key());
                 if(existing!=null&&life!=null){existing.cancelled=true;QUEUE.remove(existing);forget(existing);existing=null;}
-                if(existing!=null){if(existing.character!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,existing.character);return;}
-                if(PENDING.size()>=LIMIT){deferred();return;}
+                if(existing!=null){if(existing.character!=null)ApocBRPlayerRelationalMutations.bind(candidate,session,existing.character);return true;}
+                if(PENDING.size()>=LIMIT){deferred();return false;}
                 // Reserve worst-case input capacity before reading/copying player state.
-                if(sourceBytes.length>ApocBRPlayerRelationalLimits.SOURCE_BYTES){log("OFFER_FAILED; code=SOURCE_SIZE_BUDGET; sourceBytes="+sourceBytes.length+"; byteLimit="+ApocBRPlayerRelationalLimits.SOURCE_BYTES);return;}
-                if(QUEUED_BYTES.get()>BYTE_LIMIT-ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-sourceBytes.length){deferred();return;}
+                if(sourceBytes.length>ApocBRPlayerRelationalLimits.SOURCE_BYTES){log("OFFER_FAILED; code=SOURCE_SIZE_BUDGET; sourceBytes="+sourceBytes.length+"; byteLimit="+ApocBRPlayerRelationalLimits.SOURCE_BYTES);return false;}
+                if(QUEUED_BYTES.get()>BYTE_LIMIT-ApocBRPlayerRelationalLimits.SNAPSHOT_BYTES-sourceBytes.length){deferred();return false;}
                 long started=System.nanoTime();
                 var snapshot=life==null?ApocBRPlayerRelationalSnapshot.copy(player):ApocBRPlayerRelationalSnapshot.copyLive(player);
                 Pending pending=new Pending(candidate,snapshot,sourceBytes.clone(),System.nanoTime()-started,session);
                 PENDING.put(candidate.key(),pending);QUEUED_BYTES.addAndGet(pending.bytes);
-                if(!QUEUE.offer(pending)){forget(pending);deferred();return;}
+                if(!QUEUE.offer(pending)){forget(pending);deferred();return false;}
             }
-            start();
-        } catch(Exception|LinkageError error){log("OFFER_FAILED; code="+safeCode(error));}
+            start();return true;
+        } catch(Exception|LinkageError error){log("OFFER_FAILED; code="+safeCode(error));return false;}
     }
     private static synchronized void start() {
         if(worker!=null||stopping)return;

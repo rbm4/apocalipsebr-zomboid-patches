@@ -40,7 +40,7 @@ public class LoginPacket implements INetworkPacket {
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
         if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
-        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.begin()) {
+        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
             processServerDatabase(packetType,connection);
         }catch(RuntimeException failure) {
             if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;

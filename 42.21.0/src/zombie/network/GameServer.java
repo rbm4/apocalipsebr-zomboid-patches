@@ -1190,6 +1190,7 @@ public class GameServer {
                             }
 
                             LoginQueue.update();
+                            zombie.savefile.ApocBRCreatedPlayerHandoff.update();
                             try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("backup.onPeriod")) {
                                 ZipBackup.onPeriod();
                             }
@@ -2846,7 +2847,7 @@ public class GameServer {
 
     public static void receivePlayerConnect(ByteBufferReader bb, IConnection connection, String username) {
         if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
-        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.begin()) {
+        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
             receivePlayerConnectDatabase(bb,connection,username);
         }catch(RuntimeException failure) {
             if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
@@ -2873,11 +2874,13 @@ public class GameServer {
             if (playerIndex >= 0 && playerIndex < 4 && connection.getPlayerAt(playerIndex) == null) {
                 byte range = (byte)Math.max(12, Math.min(20, bb.getByte()));
                 connection.setRelevantRange((byte)(range / 2 + 2));
-                IsoPlayer player;
-                if (coop && SteamUtils.isSteamModeEnabled()) {
-                    player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getIDStr());
-                } else {
-                    player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getUserName());
+                IsoPlayer player=connection instanceof UdpConnection udp?zombie.savefile.ApocBRCreatedPlayerHandoff.take(udp,playerIndex):null;
+                if (player==null) {
+                    if (coop && SteamUtils.isSteamModeEnabled()) {
+                        player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getIDStr());
+                    } else {
+                        player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getUserName());
+                    }
                 }
 
                 if (player == null) {

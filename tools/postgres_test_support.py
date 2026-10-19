@@ -11,7 +11,7 @@ def inactive_persistence_stubs(target: Path, *, mutations=False):
         'ApocBRPersistence': '''package zombie.savefile; final class ApocBRPersistence {
  static <T>T status(){return null;}
  static boolean enabled(){return false;} static boolean journaling(){return false;}
- static boolean background(){return false;} static boolean reachable(){return true;}
+ static boolean background(){return false;} static void background(boolean value){} static boolean reachable(){return true;}
  static boolean pendingPlayer(String key){return false;}
  static boolean admitting(){return true;} static String state(){return "STARTING";}
  static void failed(java.sql.SQLException e){} static void startup(){} static void finishStartup(){}

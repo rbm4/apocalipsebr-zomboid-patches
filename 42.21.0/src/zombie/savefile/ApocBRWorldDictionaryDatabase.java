@@ -10,6 +10,10 @@ public final class ApocBRWorldDictionaryDatabase {
     @FunctionalInterface public interface Connections {Connection open()throws SQLException;}
     public record Origin(UUID namespace,String name,int serverId,String save) {}
     public record Published(UUID namespace,UUID view,long revision,int serverId,String save) {}
+    /** Only local allocation-history conflicts permit automatic namespace rollover. */
+    public static final class HistoryChangedException extends SQLException {
+        private HistoryChangedException(String message){super(message,"22023");}
+    }
     public static final String CHANNEL="apocbr_dictionary_changed";
     private final Connections connections;
     public ApocBRWorldDictionaryDatabase(){this(ApocBRPostgresConnector::borrowDictionaryConnection);}
@@ -98,7 +102,9 @@ public final class ApocBRWorldDictionaryDatabase {
                 throw failure;
             }
         }catch(SQLException|RuntimeException failure) {
-            throw publicationFailure(stage,origin,view,snapshot,failure,started,stageStarted);
+            SQLException diagnostic=publicationFailure(stage,origin,view,snapshot,failure,started,stageStarted);
+            if(failure instanceof HistoryChangedException)throw new HistoryChangedException(diagnostic.getMessage());
+            throw diagnostic;
         }
     }
     // Only these application-owned messages may be copied verbatim. Driver messages can contain
@@ -164,40 +170,42 @@ public final class ApocBRWorldDictionaryDatabase {
         Set<String> seen=new HashSet<>();
         for(var r:snapshot.registries()) {
             seen.add(r.key());var previous=registries.get(r.key());
-            if(previous!=null&&(r.nextId()<previous.nextId()||!Objects.equals(r.maxLength(),previous.maxLength())))throw new SQLException("Vanilla dictionary history changed; use a new namespace for a new save","22023");
+            if(previous!=null&&(r.nextId()<previous.nextId()||!Objects.equals(r.maxLength(),previous.maxLength())))throw new HistoryChangedException("Vanilla dictionary history changed; use a new namespace for a new save");
         }
-        if(!seen.containsAll(registries.keySet()))throw new SQLException("Vanilla dictionary lost a register","22023");
+        if(!seen.containsAll(registries.keySet()))throw new HistoryChangedException("Vanilla dictionary lost a register");
         seen.clear();
         for(var e:snapshot.entries()) {
             seen.add(e.identity());var old=entries.get(e.identity());
-            if(old!=null&&!old.equals(Arrays.asList(e.kind(),e.key(),e.module(),e.name())))throw new SQLException("Vanilla dictionary ID remapped; use a new namespace","22023");
+            if(old!=null&&!old.equals(Arrays.asList(e.kind(),e.key(),e.module(),e.name())))throw new HistoryChangedException("Vanilla dictionary ID remapped; use a new namespace");
         }
-        if(!seen.containsAll(entries.keySet()))throw new SQLException("Vanilla dictionary lost historical identities","22023");
+        if(!seen.containsAll(entries.keySet()))throw new HistoryChangedException("Vanilla dictionary lost historical identities");
     }
     /** Read one exact immutable publication, never the server's latest view as a substitute. */
     public ApocBRWorldDictionarySnapshot load(ApocBRPayloadProvenance origin)throws SQLException {
+        String stage="ACQUIRE_CONNECTION";long started=System.nanoTime();
         try(Connection connection=connections.open()) {
             try {
+                stage="FIND_READY_SOURCE_VIEW";
                 long revision;
                 try(var query=prepare(connection,"SELECT v.identity_revision FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.id=? AND v.server_id=? AND v.status='ready' AND n.game_build='42.21.0' AND n.world_version=249 AND n.dictionary_format_version=1")) {
                     bind(query,origin.namespaceId(),origin.viewId(),origin.serverId());
                     try(var rows=query.executeQuery()){if(!rows.next())throw new SQLException("Source dictionary view unavailable","55000");revision=rows.getLong(1);}
                 }
-                List<ApocBRWorldDictionarySnapshot.Registry> registers=new ArrayList<>();
+                stage="READ_SOURCE_REGISTRIES";List<ApocBRWorldDictionarySnapshot.Registry> registers=new ArrayList<>();
                 try(var query=prepare(connection,"SELECT s.family,s.register_name,s.next_id,r.string_max_length FROM player_rel.world_dictionary_registry_state s JOIN player_rel.world_dictionary_registry r USING(namespace_id,family,register_name) WHERE s.namespace_id=? AND s.view_id=?")) {
                     bind(query,origin.namespaceId(),origin.viewId());try(var rows=query.executeQuery()){while(rows.next()) {
                         if(registers.size()>=128)throw new SQLException("Dictionary registry budget","54000");
                         registers.add(new ApocBRWorldDictionarySnapshot.Registry(rows.getString(1),rows.getString(2),rows.getInt(3),(Integer)rows.getObject(4)));
                     }}
                 }
-                Map<String,List<String>> overrides=new HashMap<>();int count=0;
+                stage="READ_SOURCE_OVERRIDES";Map<String,List<String>> overrides=new HashMap<>();int count=0;
                 try(var query=prepare(connection,"SELECT family,register_name,native_id,mod_id FROM player_rel.world_dictionary_mod_override WHERE namespace_id=? AND view_id=? ORDER BY family,register_name,native_id,position")) {
                     bind(query,origin.namespaceId(),origin.viewId());try(var rows=query.executeQuery()){while(rows.next()) {
                         if(++count>1_000_000)throw new SQLException("Dictionary override budget","54000");
                         overrides.computeIfAbsent(rows.getString(1)+":"+rows.getString(2)+":"+rows.getInt(3),key->new ArrayList<>()).add(rows.getString(4));
                     }}
                 }
-                List<ApocBRWorldDictionarySnapshot.Entry> entries=new ArrayList<>();
+                stage="READ_SOURCE_ENTRIES";List<ApocBRWorldDictionarySnapshot.Entry> entries=new ArrayList<>();
                 try(var query=prepare(connection,"SELECT e.family,e.register_name,e.native_id,e.kind,e.stable_key,e.module_name,e.local_name,s.is_loaded,s.mod_id,s.exists_as_vanilla,s.is_modded,s.obsolete,s.removed,s.overrides_present,s.script_version FROM player_rel.world_dictionary_entry e LEFT JOIN player_rel.world_dictionary_entry_state s ON s.namespace_id=e.namespace_id AND s.family=e.family AND s.register_name=e.register_name AND s.native_id=e.native_id AND s.view_id=? WHERE e.namespace_id=? AND e.created_revision<=?")) {
                     bind(query,origin.viewId(),origin.namespaceId(),revision);try(var rows=query.executeQuery()){while(rows.next()) {
                         if(entries.size()>=200_000)throw new SQLException("Dictionary entry budget","54000");
@@ -209,7 +217,11 @@ public final class ApocBRWorldDictionaryDatabase {
                 }
                 if(registers.isEmpty())throw new SQLException("Empty source dictionary view","55000");
                 var result=new ApocBRWorldDictionarySnapshot(registers,entries);connection.commit();return result;
-            }catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException ignored){}throw new SQLException("Source dictionary read failed",failure instanceof SQLException sql?sql.getSQLState():"22000");}
+            }catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException ignored){}
+                String reason=Set.of("Source dictionary view unavailable","Incomplete source dictionary view","Empty source dictionary view","Dictionary registry budget","Dictionary entry budget","Dictionary override budget").contains(failure.getMessage()==null?"":failure.getMessage())?failure.getMessage():"SQL_OR_RUNTIME_FAILURE";
+                zombie.debug.DebugLog.log("[ApocBR][Dictionary] SOURCE_READ_FAILED; stage="+stage+"; sourceServer="+origin.serverId()+"; namespace="+origin.namespaceId()+"; view="+origin.viewId()
+                    +"; elapsedMs="+(System.nanoTime()-started)/1_000_000L+"; reason="+reason+"; "+ApocBRPostgresConnector.sqlDiagnostic(failure,false));
+                throw new SQLException("Source dictionary read failed",failure instanceof SQLException sql?sql.getSQLState():"22000");}
         }
     }
     /** Bounded foreign head discovery; the listener prepares each exact view before publishing metadata. */

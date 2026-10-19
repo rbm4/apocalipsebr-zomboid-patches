@@ -17,23 +17,33 @@ final class ApocBRPlayerRelationalReconstruction {
     private final ApocBRPlayerRelationalReader.Profile source;
     private final Map<Integer,Object> objects=new HashMap<>();
     private final Set<String> handled=new HashSet<>();
-    private ApocBRPlayerRelationalReconstruction(ApocBRPlayerRelationalReader.Profile source){this.source=source;}
+    private final ApocBRPlayerReconstructionLog.Attempt trace;
+    private ApocBRPlayerRelationalReconstruction(ApocBRPlayerRelationalReader.Profile source,ApocBRPlayerReconstructionLog.Attempt trace){this.source=source;this.trace=trace;}
     static IsoPlayer reconstruct(ApocBRPlayerRelationalReader.Profile source,int slot) {
-        if(source==null)return null;
-        return new ApocBRPlayerRelationalReconstruction(source).player(slot);
+        try(var trace=ApocBRPlayerReconstructionLog.begin("RESTORE_PLAYER",slot)) {
+            trace.profile(source);if(source==null)return null;
+            try {
+                IsoPlayer result=new ApocBRPlayerRelationalReconstruction(source,trace).player(slot);
+                trace.event("RESTORED","");return result;
+            }catch(RuntimeException|LinkageError failure){trace.failure(failure);throw failure;}
+        }
     }
     private List<Map<String,Object>> rows(String table) {
         handled.add(table);var result=new ArrayList<>(source.rows(table));
+        ApocBRPlayerReconstructionLog.table(table,result.size());
         result.sort(Comparator.comparingInt(r->r.get("position") instanceof Number n?n.intValue():0));return result;
     }
     private static int id(Object id){return ((Number)Objects.requireNonNull(id,"Missing relational reference")).intValue();}
     private Object ref(Object id){return Objects.requireNonNull(objects.get(id(id)),"Unresolved relational reference");}
     private void register(Object id,Object object){if(objects.putIfAbsent(id(id),Objects.requireNonNull(object))!=null)throw new IllegalStateException("Duplicate relational identity");}
     private IsoPlayer player(int slot) {
+        trace.stage("VALIDATE_OWNERSHIP");
         validateOwnership(source);
+        trace.stage("CREATE_PLAYER");
         IsoPlayer player=new IsoPlayer(IsoWorld.instance.currentCell);player.serverPlayerIndex=slot;
         var state=source.one("character_state");register(state.get("character_id"),player);
         var descriptor=new SurvivorDesc(true);set(player,"descriptor",descriptor);
+        trace.stage("RESTORE_CHARACTER_FIELDS");
         apply("character_descriptor",descriptor,"character_id");descriptor.setInstance(player);
         apply("character_state",player,"character_id inventory_container_id is_dead source_offset_x source_offset_y on_fire direction");
         // Native load consumes world coordinates directly; source offsets are provenance, not a second translation.
@@ -44,8 +54,14 @@ final class ApocBRPlayerRelationalReconstruction {
         for(var r:rows("descriptor_extra"))add(get(descriptor,"extra"),r.get("value"));
         for(var r:rows("character_stat"))call(get(player,"stats"),"set",staticCall("zombie.characters.CharacterStat","getById",r.get("stat_key")),((Number)r.get("value")).floatValue());
         for(var r:rows("character_trait"))add(get(player,"characterTraits.knownTraits"),registry("zombie.scripting.objects.CharacterTrait",r.get("trait_key")));
-        perks(player,descriptor);
-        sequences(player);health(player);visuals(player);inventory(player);equipment(player);components();
+        trace.stage("RESTORE_PERKS");perks(player,descriptor);
+        trace.stage("RESTORE_SEQUENCES");sequences(player);
+        trace.stage("RESTORE_HEALTH");health(player);
+        trace.stage("RESTORE_VISUALS");visuals(player);
+        trace.stage("RESTORE_INVENTORY");inventory(player);
+        trace.stage("RESTORE_EQUIPMENT");equipment(player);
+        trace.stage("RESTORE_COMPONENTS");components();
+        trace.stage("FINALIZE_PLAYER");
         for(var r:rows("character_vehicle_return")) {
             for(String name:List.of("x","y","seat","running"))set(player,"savedVehicle"+Character.toUpperCase(name.charAt(0))+name.substring(1),r.get(name));
             player.setZ(0);
@@ -59,7 +75,10 @@ final class ApocBRPlayerRelationalReconstruction {
         if(Boolean.TRUE.equals(state.get("on_fire")))player.SetOnFire();
         player.remote=true;
         handled.addAll(List.of("snapshot","object"));
-        for(String table:source.tables().keySet())if(!handled.contains(table)&&!source.rows(table).isEmpty())throw new IllegalStateException("Unrestored relational table: "+table);
+        trace.stage("VERIFY_TABLE_COVERAGE");
+        for(String table:source.tables().keySet())if(!handled.contains(table)&&!source.rows(table).isEmpty()){
+            ApocBRPlayerReconstructionLog.table(table,source.rows(table).size());throw new IllegalStateException("Unrestored relational table: "+table);
+        }
         return player;
     }
     private void perks(IsoPlayer player,SurvivorDesc descriptor) {
@@ -144,7 +163,10 @@ final class ApocBRPlayerRelationalReconstruction {
         }
         Set<Integer> nativeIds=new HashSet<>();
         for(var r:rows("item")) {
+            ApocBRPlayerReconstructionLog.subject("item",r.get("id"),r.get("full_type"));
             InventoryItem item=InventoryItemFactory.CreateItem((String)r.get("full_type"));
+            // One line only when the saved definition cannot be resolved locally.
+            if(item==null||!item.getClass().getName().equals(r.get("runtime_class")))trace.event("ITEM_TYPE_MISMATCH","; fullType="+ApocBRPlayerReconstructionLog.token(r.get("full_type"))+"; expectedClass="+ApocBRPlayerReconstructionLog.token(r.get("runtime_class"))+"; actualClass="+(item==null?"MISSING":item.getClass().getName()));
             validateItemType(item,r);
             if(!nativeIds.add(id(r.get("native_id"))))throw new IllegalStateException("Invalid saved item type or identity");
             register(r.get("id"),item);
@@ -266,6 +288,7 @@ final class ApocBRPlayerRelationalReconstruction {
         Map<Integer,List<Map<String,Object>>> children=new HashMap<>();Map<Integer,Map<String,Object>> roots=new HashMap<>();
         for(var r:rows("value_node")){if(r.get("parent_id")==null){if(roots.put(id(r.get("component_id")),r)!=null)throw new IllegalStateException("Duplicate component root");}else children.computeIfAbsent(id(r.get("parent_id")),k->new ArrayList<>()).add(r);}
         for(var r:rows("component")) {
+            ApocBRPlayerReconstructionLog.subject("component",r.get("id"),r.get("kind"));
             if(!"complete".equals(r.get("coverage"))||id(r.get("codec_version"))!=ApocBRPlayerRelationalCapture.CODEC_VERSION)throw new IllegalStateException("Incomplete component");
             Object owner=ref(r.get("owner_object_id")),value=value(Objects.requireNonNull(roots.get(id(r.get("id")))),children,new HashSet<>(),0,objects);
             String kind=(String)r.get("kind");
@@ -403,10 +426,15 @@ final class ApocBRPlayerRelationalReconstruction {
     }
     private void apply(String table,Object target,String skip){for(var row:rows(table))project(table,target,row,skip);}
     static void project(String table,Object target,Map<String,Object> row,String skip) {
+        ApocBRPlayerReconstructionLog.table(table,1);
         Set<String> ignored=new HashSet<>(Arrays.asList(skip.split(" ")));ignored.add("snapshot_id");
+        // Reader supplies this server-only identity seed for Sync.registerPostgresPlayer.
+        // Keep it in the profile; InventoryItem has no corresponding native field.
+        if(table.equals("item"))ignored.add("persisted_item_id");
         for(var entry:row.entrySet())if(!ignored.contains(entry.getKey()))set(target,ApocBRPlayerRelationalCapture.path(table,entry.getKey()),entry.getValue());
     }
     static void set(Object object,String path,Object value) {
+        ApocBRPlayerReconstructionLog.field(path);
         int dot=path.lastIndexOf('.');if(dot>=0){object=get(object,path.substring(0,dot));path=path.substring(dot+1);}
         Objects.requireNonNull(object,"Missing reconstruction target: "+path);
         String name=path;

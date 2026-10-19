@@ -119,7 +119,7 @@ public class ApocBRResilienceTest {
   final List<String> committed=new CopyOnWriteArrayList<>();
   final Map<String,Integer> writeAttempts=new ConcurrentHashMap<>();
   final CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
-  volatile int acquired,networkTimeout,mainAcquired;
+  volatile int acquired,networkTimeout,mainAcquired,minQueryMillis;
   DataSource source(){return (DataSource)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{DataSource.class},(p,m,a)->{
    if(!m.getName().equals("getConnection"))return zero(m.getReturnType());
    acquired++;if(Thread.currentThread().getName().equals("main"))mainAcquired++;if(offline)throw new SQLTransientConnectionException("PRIVATE_URL","08001");
@@ -147,6 +147,7 @@ public class ApocBRResilienceTest {
       if(m.getName().startsWith("set")&&a!=null&&a.length>=2&&a[0] instanceof Integer){values.put((int)a[0],a[1]);return null;}
       if(m.getName().equals("executeQuery")) {
        if(offline)throw new SQLException("PRIVATE_QUERY","08006");
+       if(minQueryMillis>0&&networkTimeout<minQueryMillis)throw new SQLException("PRIVATE_NETWORK_BUDGET","08006",new java.net.SocketTimeoutException("PRIVATE_TIMEOUT"));
        if(missingReceipt&&sql.startsWith("SELECT operation_id"))throw new SQLException("PRIVATE_SCHEMA","42P01");
        return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{ResultSet.class},(q,n,b)->zero(n.getReturnType()));
       }
@@ -188,6 +189,21 @@ public class ApocBRResilienceTest {
   fake.offline=false;start.join(15000);check(!start.isAlive(),"startup finishes after database recovery");
   check(fake.committed.equals(List.of("startup"))&&fake.receipts.contains(first),"startup replay precedes admission");
   until(ApocBRPostgresConnector::acceptingLogins,"startup opens admission after replay");
+  try(var budget=ApocBRForegroundDatabase.begin()) {
+   Field deadline=ApocBRForegroundDatabase.class.getDeclaredField("deadline");deadline.setAccessible(true);
+   @SuppressWarnings("unchecked") ThreadLocal<Long> time=(ThreadLocal<Long>)deadline.get(null);time.set(System.nanoTime()-1);
+   try(Connection expired=ApocBRForegroundDatabase.wrap(fake.connection())) {
+    try{expired.prepareStatement("SELECT 1");throw new AssertionError("expired request continued");}
+    catch(SQLTimeoutException expected){check("HYT00".equals(expected.getSQLState()),"request deadline is distinct from connection failure");}
+   }
+   check(ApocBRPostgresConnector.acceptingLogins()&&ApocBRPersistence.state().equals("AVAILABLE"),"expired login does not close admission for everyone");
+   final int[] denied={0};
+   var expiredClient=(zombie.network.IConnection)Proxy.newProxyInstance(ApocBRResilienceTest.class.getClassLoader(),new Class[]{zombie.network.IConnection.class},(p,m,a)->{if(m.getName().equals("forceDisconnect"))denied[0]++;return zero(m.getReturnType());});
+   check(!ApocBRLoginGuard.continueRequest(expiredClient)&&denied[0]==1,"expired request cannot continue after native code catches its SQL error");
+   zombie.network.packets.INetworkPacket.Counter.denials=0;
+  }
+  try(var next=ApocBRServerDatabase.open(null)){next.connection().prepareStatement("SELECT 1").close();}
+  check(ApocBRPostgresConnector.acceptingLogins(),"next independent account request can use the healthy database");
   fake.offline=true;ApocBRPersistence.failed(new SQLException("secret","08006"));
   int before=fake.mainAcquired;
   final int[] disconnected={0};
@@ -257,16 +273,67 @@ public class ApocBRResilienceTest {
  }
  static void deadlines()throws Exception {
   Fake fake=new Fake();
+  check(!ApocBRPersistence.background(),"fixture begins outside a background scope");
+  try{ApocBRPostgresConnector.runBackgroundDatabaseWork(()->{
+   check(ApocBRPersistence.background(),"dedicated database worker bypasses foreground budgets and admission");
+   ApocBRPostgresConnector.runBackgroundDatabaseWork(()->check(ApocBRPersistence.background(),"nested worker retains background context"));
+   check(ApocBRPersistence.background(),"nested scope restores background context");throw new IllegalStateException("fixture failure");
+  });throw new AssertionError("worker failure swallowed");}catch(IllegalStateException expected){}
+  check(!ApocBRPersistence.background(),"worker context is restored after an exception");
+  Field deadline=ApocBRForegroundDatabase.class.getDeclaredField("deadline");deadline.setAccessible(true);
+  @SuppressWarnings("unchecked") ThreadLocal<Long> time=(ThreadLocal<Long>)deadline.get(null);
+  Method connectivity=ApocBRPersistence.class.getDeclaredMethod("connectionFailure",Throwable.class);connectivity.setAccessible(true);
+  try(var login=ApocBRForegroundDatabase.beginLogin()) {
+   long original=time.get();check(original-System.nanoTime()>TimeUnit.SECONDS.toNanos(4),"login has a five-second workflow budget");
+   try(var account=ApocBRForegroundDatabase.begin()){check(time.get().equals(original),"nested account calls inherit login budget");}
+   // Represent 600 ms spent on prior login work without waiting in the fixture.
+   time.set(original-TimeUnit.MILLISECONDS.toNanos(600));
+   try(Connection c=ApocBRForegroundDatabase.wrap(fake.connection())){c.prepareStatement("SELECT 1").close();}
+   check(fake.networkTimeout==3000,"login socket budget permits graph queries beyond 250 ms");
+   check(ApocBRForegroundDatabase.acquisitionMillis()<=250,"login pool acquisition still fails quickly under contention");
+   fake.minQueryMillis=350;
+   try(var nested=ApocBRForegroundDatabase.begin();Connection c=ApocBRForegroundDatabase.wrap(fake.connection());
+       PreparedStatement q=c.prepareStatement("SELECT slow_fixture");ResultSet rows=q.executeQuery()) {
+    rows.next();check(fake.networkTimeout==3000,"statement and result-set wrappers inherit login tolerance through nested account scope");
+   }
+  }
+  check(time.get()==null,"login scope clears its deadline");
+  try(Connection c=ApocBRForegroundDatabase.wrap(fake.connection());PreparedStatement q=c.prepareStatement("SELECT slow_fixture")) {
+   try{q.executeQuery();throw new AssertionError("ordinary foreground budget widened");}
+   catch(SQLException expected){check(expected.getSQLState().equals("08006")&&fake.networkTimeout<=250,"non-login 350 ms query remains outside the short socket budget");}
+  }
+  fake.minQueryMillis=0;
+  System.setProperty("apocbr.postgres.loginWorkflowTimeoutMillis","9000");
+  try(var login=ApocBRForegroundDatabase.beginLogin()){check(time.get()-System.nanoTime()>TimeUnit.SECONDS.toNanos(8),"login workflow budget is configurable");}
+  finally{System.clearProperty("apocbr.postgres.loginWorkflowTimeoutMillis");}
+  System.setProperty("apocbr.postgres.loginNetworkTimeoutMillis","1200");
+  try(var login=ApocBRForegroundDatabase.beginLogin();Connection c=ApocBRForegroundDatabase.wrap(fake.connection())) {
+   c.prepareStatement("SELECT 1").close();check(fake.networkTimeout==1200,"login network cap is independently configurable");
+  }finally{System.clearProperty("apocbr.postgres.loginNetworkTimeoutMillis");}
+  System.setProperty("apocbr.postgres.loginNetworkTimeoutMillis","-1");
+  try(var login=ApocBRForegroundDatabase.beginLogin();Connection c=ApocBRForegroundDatabase.wrap(fake.connection())) {
+   c.prepareStatement("SELECT 1").close();check(fake.networkTimeout==250,"login network cap has a safe lower bound");
+  }finally{System.clearProperty("apocbr.postgres.loginNetworkTimeoutMillis");}
+  System.setProperty("apocbr.postgres.loginNetworkTimeoutMillis","60000");
+  try(var login=ApocBRForegroundDatabase.beginLogin()) {
+   time.set(System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(800));
+   try(Connection c=ApocBRForegroundDatabase.wrap(fake.connection())){
+    c.prepareStatement("SELECT 1").close();check(fake.networkTimeout>0&&fake.networkTimeout<=800,"network wait cannot exceed remaining workflow deadline");
+   }
+  }finally{System.clearProperty("apocbr.postgres.loginNetworkTimeoutMillis");}
   try(var budget=ApocBRForegroundDatabase.begin();Connection c=ApocBRForegroundDatabase.wrap(fake.connection())) {
    c.prepareStatement("SELECT 1").close();check(fake.networkTimeout>0&&fake.networkTimeout<=250,"foreground socket work bounded to remaining budget");
-   Field deadline=ApocBRForegroundDatabase.class.getDeclaredField("deadline");deadline.setAccessible(true);
-   @SuppressWarnings("unchecked") ThreadLocal<Long> time=(ThreadLocal<Long>)deadline.get(null);
+   try(var login=ApocBRForegroundDatabase.beginLogin();Connection nested=ApocBRForegroundDatabase.wrap(fake.connection())){
+    nested.prepareStatement("SELECT 1").close();check(fake.networkTimeout<=250,"nested login cannot enlarge an existing ordinary workflow");
+   }
    time.set(System.nanoTime()-1);
    // A new nested scope retains the expired workflow deadline rather than resetting it.
    try(var nested=ApocBRForegroundDatabase.begin();Connection expired=ApocBRForegroundDatabase.wrap(fake.connection())) {
-    try{expired.prepareStatement("SELECT 2");throw new AssertionError("nested call reset expired budget");}catch(SQLException expected){}
+    try{expired.prepareStatement("SELECT 2");throw new AssertionError("nested call reset expired budget");}
+    catch(SQLTimeoutException expected){check(expected.getSQLState().equals("HYT00")&&!(boolean)connectivity.invoke(null,expected),"local deadline cannot mark PostgreSQL globally unavailable");}
    }
   }
+  check((boolean)connectivity.invoke(null,new SQLException("PRIVATE_SOCKET","08006")),"real transport failure still closes admission");
  }
  static void missingReceipt(Path root)throws Exception {
   Fake fake=new Fake();fake.missingReceipt=true;
@@ -367,7 +434,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
     files = []
     stubs = {
         'zombie/debug/DebugLog.java': 'package zombie.debug; public class DebugLog {public static void log(String text){System.out.println(text);}}',
-        'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static boolean server=true,coop;public static String serverName="fixture";}',
+        'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static boolean server=true,coop;public static String serverName="fixture";public static zombie.core.raknet.UdpEngine udpEngine;public static boolean isDelayedDisconnect(zombie.core.raknet.UdpConnection c){return false;}}',
         'zombie/ZomboidFileSystem.java': 'package zombie; public class ZomboidFileSystem {public static final ZomboidFileSystem instance=new ZomboidFileSystem();public String getSaveDir(){return "unused";}public String getCurrentSaveDir(){return "fixture";}}',
     }
     stubs['zombie/network/PacketTypes.java'] = 'package zombie.network; public class PacketTypes {public enum PacketType {AccessDenied;}}'
