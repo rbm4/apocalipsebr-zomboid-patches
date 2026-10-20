@@ -17,12 +17,13 @@ public class BrainTest {
   List<HumanObservation.Visitor> visitors=new ArrayList<>();for(var id:ids)visitors.add(visitor(id,4));return new HumanObservation(now,visitors);
  }
  static class Port implements HumanActuator {
-  int faces,starts,stops,says,homes;boolean faceOK=true,speechOK=true,emoteOK=true,homeOK=true,throwsSpeech;
+  int faces,starts,stops,says,homes,announcements;boolean faceOK=true,speechOK=true,emoteOK=true,homeOK=true,throwsSpeech;
   HumanObservation.Identity target;List<String> history=new ArrayList<>();
   public boolean face(HumanObservation.Identity id){faces++;target=id;history.add("face");return faceOK;}
   public boolean startEmote(String name){check(name.equals("wavehi"),"native greeting emote");starts++;history.add("wave");return emoteOK;}
   public void stopEmote(){stops++;history.add("stop");}
-  public boolean say(String text){says++;history.add("hi");check(text.equals("Oi!"),"requested literal greeting");if(throwsSpeech)throw new IllegalStateException();return speechOK;}
+  public boolean say(String text){says++;history.add("hi");check(text.equals("Olá!"),"requested literal greeting");if(throwsSpeech)throw new IllegalStateException();return speechOK;}
+  public boolean announceOperation(){announcements++;history.add("announcement");return true;}
   public boolean returnHome(){homes++;history.add("home");return homeOK;}
  }
  static class RoamingPort extends Port {
@@ -47,6 +48,8 @@ public class BrainTest {
   brain.update(seen(2*SECOND,a,b),p);check(p.starts==0,"attention holds for real elapsed duration");
   cycle(brain,p,2*SECOND+SECOND/2,a);
   check(p.starts==1&&p.stops==1&&p.says==1&&p.homes==1,"complete greeting executes each one-shot once");
+  check(p.announcements==1&&p.history.indexOf("hi")<p.history.indexOf("stop")
+    &&p.history.indexOf("stop")<p.history.indexOf("announcement"),"hello during wave, separate announcement after wave");
   check(p.history.indexOf("wave")<p.history.indexOf("hi")&&p.history.indexOf("hi")<p.history.indexOf("home"),"salutation speech return sequence");
   check(brain.state()==GuideBrain.State.IDLE,"cooldown ends at idle");
   cycle(brain,p,20*SECOND,a);check(p.says==1,"lingering visitor not greeted repeatedly");
@@ -57,7 +60,7 @@ public class BrainTest {
   for(long now=0;now<=2*SECOND;now+=SECOND/2)interrupted.update(seen(now,a),lost);
   check(lost.starts==1,"salutation began before cancellation");
   interrupted.update(seen(2*SECOND+SECOND/2),lost);
-  check(lost.stops==1&&lost.says==0&&lost.homes==1,"visitor loss cancels wave and restores post without speech");
+  check(lost.stops==1&&lost.says==1&&lost.announcements==0&&lost.homes==1,"visitor loss cancels wave and suppresses follow-up");
   var replacement=new HumanObservation.Identity(a.onlineId(),999);
   Port replaced=new Port();GuideBrain replaceBrain=new GuideBrain();replaceBrain.update(seen(0,a),replaced);replaceBrain.update(seen(SECOND/2,replacement),replaced);
   check(replaced.homes==1&&replaced.says==0,"reused online ID cannot retain old target incarnation");
@@ -71,7 +74,7 @@ public class BrainTest {
   check(stopped.state()==GuideBrain.State.STOPPED,"failed home restoration stops brain");
   Port remove=new Port();GuideBrain removed=new GuideBrain();for(long now=0;now<=2*SECOND;now+=SECOND/2)removed.update(seen(now,a),remove);
   removed.stop(3*SECOND,remove);cycle(removed,remove,4*SECOND,a);
-  check(removed.state()==GuideBrain.State.STOPPED&&remove.stops==1&&remove.says==0,"actor removal cancels active wave and permanently stops");
+  check(removed.state()==GuideBrain.State.STOPPED&&remove.stops==1&&remove.says==1&&remove.announcements==0,"actor removal cancels active wave and follow-up");
   Port tracking=new Port();GuideBrain trackingBrain=new GuideBrain();
   trackingBrain.update(seen(0,a),tracking);
   trackingBrain.update(seen(SECOND/10,a),tracking);
@@ -90,8 +93,8 @@ public class BrainTest {
   Port lostTracking=new Port();GuideBrain failedTracking=new GuideBrain();
   for(long now=0;now<=2*SECOND;now+=SECOND/2)failedTracking.update(seen(now,a),lostTracking);
   lostTracking.faceOK=false;failedTracking.update(seen(21*SECOND/10,a),lostTracking);
-  check(lostTracking.stops==1&&lostTracking.says==0&&lostTracking.homes==1,"failed tracking during wave cancels interaction");
-  Port actions=new Port();HumanActionExecution once=new HumanActionExecution(new HumanAction.Say("Oi!"));
+  check(lostTracking.stops==1&&lostTracking.says==1&&lostTracking.announcements==0&&lostTracking.homes==1,"failed tracking during wave cancels follow-up");
+  Port actions=new Port();HumanActionExecution once=new HumanActionExecution(new HumanAction.Say("Olá!"));
   check(once.status()==HumanActionExecution.Status.PENDING,"new action pending");once.update(0,actions);once.update(SECOND,actions);
   check(once.status()==HumanActionExecution.Status.SUCCEEDED&&actions.says==1,"terminal action never executes twice");
   HumanActionExecution wait=new HumanActionExecution(new HumanAction.HoldAttention(a,SECOND));wait.update(0,actions);
@@ -136,12 +139,12 @@ def main():
     with tempfile.TemporaryDirectory(prefix="apocbr-brain-tests-") as directory:
         work = Path(directory)
         harness = work / "BrainTest.java"
-        harness.write_text(HARNESS)
+        harness.write_text(HARNESS, encoding="utf-8")
         sources = [harness, *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/brain").glob("*.java"))]
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(path).replace("\\", "/") + '"' for path in sources))
         output = work / "classes"
-        subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-d", str(output), "@" + str(args)], check=True)
+        subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-encoding", "UTF-8", "-d", str(output), "@" + str(args)], check=True)
         subprocess.run([str(ROOT / "jdk/bin/java.exe"), "-cp", str(output), "BrainTest"], check=True)
 
 

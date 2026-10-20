@@ -187,6 +187,19 @@ public class ApocBRResilienceTest {
   List<Integer> ids=new ArrayList<>(List.of(17,23));UUID saleId=UUID.randomUUID();
   var sale=new ApocBRHumanSales.Sale(saleId,1,"world","O'Connor","76561198000000000",2,"guide",123456789L,ids);ids.clear();
   check(sale.itemIds().equals(List.of(17,23)),"sale takes detached immutable offered-money IDs");
+  check(sale.quantity()==2&&sale.bundleItemIds().isEmpty(),"legacy note-only constructor retains its quantity");
+  check(new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"w","u",null,0,"guide",0,List.of(1),null).quantity()==1,"missing old journal bundle component defaults to empty");
+  try{new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"w","u",null,0,"guide",0,List.of(1),List.of(2));throw new AssertionError("foreign bundle ID accepted");}catch(IllegalArgumentException expected){checks++;}
+  try{new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"w","u",null,0,"guide",0,List.of(1),List.of(1,1));throw new AssertionError("duplicate bundle ID accepted");}catch(IllegalArgumentException expected){checks++;}
+  var bundleIds=new ArrayList<>(List.of(17));
+  var mixedSale=new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"world","O'Connor",null,0,"guide",0,List.of(17,23),bundleIds);bundleIds.clear();
+  check(mixedSale.quantity()==101&&mixedSale.bundleItemIds().equals(List.of(17)),"mixed sale freezes bundle IDs and values each at 100");
+  var maximumIds=java.util.stream.IntStream.range(0,500).boxed().toList();
+  check(new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"w","u",null,0,"guide",0,maximumIds,maximumIds).quantity()==50000,"500-item limit supports 500 bundles");
+  try(var journal=new ApocBRPersistenceJournal(root.resolve("bundle-sales"),65536,s->{})) {
+   journal.submitDurable(mixedSale);
+   check(journal.head().operation().equals(mixedSale),"bundle quantities and source IDs survive durable journal serialization");
+  }
   try{new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"w","u",null,0,"guide",0,List.of(1,1));throw new AssertionError("duplicate source items accepted");}catch(IllegalArgumentException expected){checks++;}
   try{new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"w","u",null,0,"guide",0,List.of());throw new AssertionError("empty money sale accepted");}catch(IllegalArgumentException expected){checks++;}
   Path path=root.resolve("human-sales");UUID operation;
@@ -227,6 +240,10 @@ public class ApocBRResilienceTest {
   check(sql.startsWith("INSERT INTO player_rel.apocbr_human_sale"),"durable sale replay writes manager V10 table rather than a public shadow table");
   check(sql.contains("ON CONFLICT (sale_id) DO NOTHING")&&sql.contains("'Base.Money'")&&!sql.contains("O'Connor"),"money type fixed; account text stays in bound parameters");
   check(parameters.get(4).equals("O'Connor")&&parameters.get(9).equals(2)&&parameters.get(10).equals("[17, 23]"),"receipt SQL contains money quantity and JSON item IDs");
+  context.set(UUID.randomUUID());ApocBRPersistence.background(true);
+  try{ApocBRPersistenceOperations.apply(mixedSale);}finally{context.remove();ApocBRPersistence.background(false);}
+  var mixedParameters=fake.sqlParameters.getLast();
+  check(mixedParameters.get(9).equals(101)&&mixedParameters.get(10).equals("[17, 23]")&&mixedParameters.get(11).equals("[17]"),"SQL persists normalized value alongside physical currency and bundle IDs");
  }
  static void runtime(Path root)throws Exception {
   Fake fake=new Fake();fake.offline=true;

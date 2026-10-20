@@ -404,7 +404,8 @@ FILES["zombie/apocalipse/humans/FactoryTest.java"] = FILES["zombie/apocalipse/hu
 # Shared inventory/protocol ports used by the production trading adapter.
 FILES.update({
  "zombie/core/Core.java": "package zombie.core; public class Core { public static String gameSaveWorld=\"test-world\"; }",
- "zombie/apocalipse/events/ApocBREventControl.java": "package zombie.apocalipse.events; public final class ApocBREventControl { public static String guideGreeting(String text){return text;} }",
+ "zombie/apocalipse/events/ApocBREventControl.java": "package zombie.apocalipse.events; public final class ApocBREventControl { public static String guideAnnouncement(){return null;} }",
+ "zombie/core/Translator.java": "package zombie.core; public final class Translator { public static String getText(String key){return key;} }",
  "zombie/core/TradingState.java": "package zombie.core; public enum TradingState { WindowWasClosed,DealWasSealed,DealWasUnsealed,DealWasFinalized }",
  "zombie/core/znet/SteamUtils.java": "package zombie.core.znet; public class SteamUtils { public static boolean isSteamModeEnabled(){return true;} }",
  "zombie/core/network/ByteBufferWriter.java": "package zombie.core.network; public class ByteBufferWriter {}",
@@ -447,11 +448,32 @@ FILES.update({
  "zombie/savefile/ApocBRPayloadProvenance.java": "package zombie.savefile; public class ApocBRPayloadProvenance { public static int configuredServerId(){return 1;} }",
  "zombie/savefile/ApocBRHumanSales.java": """package zombie.savefile;
  public class ApocBRHumanSales {
-  public record Sale(java.util.UUID id,int serverId,String world,String username,String steamId,int playerIndex,String npcKey,long soldAtMillis,java.util.List<Integer> itemIds){}
+  public record Sale(java.util.UUID id,int serverId,String world,String username,String steamId,int playerIndex,String npcKey,long soldAtMillis,java.util.List<Integer> itemIds,java.util.List<Integer> bundleItemIds){
+   public int quantity(){return itemIds.size()+99*bundleItemIds.size();}
+  }
   public static boolean enabled=true,fail;public static final java.util.List<Sale> sales=new java.util.ArrayList<>();
   public static boolean available(){return enabled;}
   public static java.util.UUID enqueue(Sale sale){if(fail)throw new IllegalStateException();sales.add(sale);return sale.id();}
  }""",
+})
+
+
+# Lua VM/network boundaries used by the production dialogue bridge.
+FILES.update({
+ "se/krka/kahlua/vm/KahluaTable.java": """package se.krka.kahlua.vm;
+ public class KahluaTable { public final java.util.Map<Object,Object> values=new java.util.LinkedHashMap<>();
+ public void rawset(Object k,Object v){values.put(k,v);} public Object rawget(Object k){return values.get(k);} }""",
+ "se/krka/kahlua/vm/JavaFunction.java": "package se.krka.kahlua.vm; public interface JavaFunction {int call(LuaCallFrame f,int count);}",
+ "se/krka/kahlua/vm/LuaCallFrame.java": """package se.krka.kahlua.vm;
+ public class LuaCallFrame { public Object[] args; public Object result;
+ public LuaCallFrame(Object... args){this.args=args;} public Object get(int i){return args[i];}
+ public int push(Object value){result=value;return 1;} }""",
+ "zombie/Lua/LuaManager.java": """package zombie.Lua; import se.krka.kahlua.vm.*;
+ public class LuaManager { public static KahluaTable env=new KahluaTable();
+ public static Platform platform=new Platform(); public static class Platform {public KahluaTable newTable(){return new KahluaTable();}} }""",
+ "zombie/Lua/LuaEventManager.java": """package zombie.Lua;
+ public class LuaEventManager { public static final java.util.List<String> events=new java.util.ArrayList<>();
+ public static void AddEvent(String name){} public static void triggerEvent(String name,Object... args){events.add(name);} }""",
 })
 
 

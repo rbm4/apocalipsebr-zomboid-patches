@@ -36,6 +36,7 @@ public class EventControlTest {
   ApocBREventControl.Schedule row=new ApocBREventControl.Schedule(ID,1,"Extraction",start,"scheduled");
   boolean fail,queryFail;int opened,closed,reads,registrations,writes,queries;long reported;
   String reportedId;Thread openingThread;
+  String nextName="Extraction",activeName;long nextStart=start,activeEnd,updatedAt=start-1000;
   @SuppressWarnings("unchecked") <T>T proxy(Class<T> kind,InvocationHandler invocation){return (T)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{kind},invocation);}
   Connection open() throws SQLException {
    if(fail)throw new SQLException("no database","08006");opened++;openingThread=Thread.currentThread();
@@ -64,9 +65,9 @@ public class EventControlTest {
      if(queryFail)throw new SQLException("missing schema","42P01");reads++;int[] cursor={0};
      yield proxy(ResultSet.class,(r,rm,ra)->switch(rm.getName()){
       case "next" -> ++cursor[0]==1;
-      case "getString" -> switch((int)ra[0]){case 1->row.id();case 3->row.name();case 5->row.state();case 6->reportedId;case 8->reportedId==null?null:"release_requested";default->throw new AssertionError();};
+      case "getString" -> switch((int)ra[0]){case 1->row.id();case 3->row.name();case 5->row.state();case 6->reportedId;case 8->reportedId==null?null:"release_requested";case 9->nextName;case 11->activeName;default->throw new AssertionError();};
       case "getLong" -> (int)ra[0]==7?reported:row.revision();
-      case "getTimestamp" -> row.startsAt()==0?null:new Timestamp(row.startsAt());
+      case "getTimestamp" -> {long value=switch((int)ra[0]){case 4->row.startsAt();case 10->nextStart;case 12->activeEnd;case 13->updatedAt;default->throw new AssertionError();};yield value==0?null:new Timestamp(value);}
       case "close" -> null;default -> throw new AssertionError("Unexpected result method "+rm.getName());});
     }
     case "close" -> null;default -> throw new AssertionError("Unexpected statement method "+m.getName());});
@@ -90,8 +91,10 @@ public class EventControlTest {
   ApocBREventControl.update();check(LuaEventManager.calls==0&&ApocBREventControl.getStatus().equals("READY"),"future schedule");
   check(db.openingThread!=Thread.currentThread(),"connection only used on worker");
   int queries=db.queries;
-  String greeting=ApocBREventControl.guideGreeting("Oi!");
-  check(greeting.contains("EventScheduled")&&greeting.contains("19/10/2026 13:00")&&greeting.contains("Extraction"),"real-time guide date in Fortaleza");
+  String greeting=ApocBREventControl.guideAnnouncement();
+  check(greeting.contains("EventCountdown")&&greeting.contains("1s")&&greeting.contains("Extraction"),"relative countdown without greeting");
+  check(ApocBREventControl.remaining(90061001).equals("1d 1h 1min 2s"),"days/hours/minutes/seconds rounded up");
+  check(ApocBREventControl.remaining(1).equals("1s"),"positive subsecond countdown never says zero");
   check(ApocBREventControl.getStartsAtMillis()==start&&ApocBREventControl.getRevision()==1,"cached typed getters");
   check(!ApocBREventControl.isDue(ID,1)&&!ApocBREventControl.acknowledgeRelease(ID,1),"do not activate early");
   check(db.queries==queries,"Lua getters/greetings perform no SQL");
@@ -103,15 +106,20 @@ public class EventControlTest {
   check(!ApocBREventControl.acknowledgeRelease(OTHER,1)&&!ApocBREventControl.acknowledgeRelease(ID,Double.NaN)
     &&!ApocBREventControl.acknowledgeRelease(ID,1.5)&&!ApocBREventControl.acknowledgeRelease(ID,1e20),"reject wrong identities/revisions");
   check(ApocBREventControl.acknowledgeRelease(ID,1),"mod accepts removal intent");
-  check(ApocBREventControl.guideGreeting("Oi!").contains("EventReleased"),"release greeting uses same accepted event");
   db.fail=true;try{poll(c);throw new AssertionError("connection outage accepted");}catch(RuntimeException expected){checks++;}
   check(db.reported==0,"failed receipt write is not a fabricated acknowledgement");db.fail=false;
+  db.activeName="Extraction";db.activeEnd=start+3600000;db.nextName="Next";db.nextStart=start+7200000;
+  poll(c);ApocBREventControl.update();
+  String both=ApocBREventControl.guideAnnouncement();
+  check(both.contains("EventRemaining")&&both.contains("1h 0min 0s")&&both.contains("EventCountdown")&&both.contains("2h 0min 0s"),"confirmed active estimate and next countdown in separate follow-up");
+  db.activeName=null;db.activeEnd=0;db.nextName="Changed";db.nextStart=start+60000;
   poll(c);ApocBREventControl.update();check(db.reported==1&&db.writes==1,"asynchronous scoped receipt");
   clock[1]+=1_000_000_000L;ApocBREventControl.update();check(LuaEventManager.calls==2,"no repeated signal after acceptance");
   db.row=new ApocBREventControl.Schedule(ID,2,"Changed",start+60000,"scheduled");poll(c);ApocBREventControl.update();
   check(!ApocBREventControl.isDue(ID,1)&&ApocBREventControl.guideGreeting("Oi!").contains("Changed"),"reschedule invalidates old activation");
   db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled");poll(c);ApocBREventControl.update();
-  check(!ApocBREventControl.isDue(ID,3)&&ApocBREventControl.guideGreeting("Oi!").equals("Oi!"),"cancel before activation");
+  db.nextName=null;db.nextStart=0;poll(c);ApocBREventControl.update();
+  check(!ApocBREventControl.isDue(ID,3)&&ApocBREventControl.guideAnnouncement().contains("EventNone"),"cancel clears next announcement");
   db.row=new ApocBREventControl.Schedule(ID,1,"Extraction",start,"scheduled");poll(c);ApocBREventControl.update();
   check(ApocBREventControl.getStatus().equals("STALE")&&!ApocBREventControl.isDue(ID,1),"reject revision rollback");
   db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled");poll(c);ApocBREventControl.update();
@@ -138,6 +146,12 @@ public class EventControlTest {
   check(ApocBREventControl.acknowledgeRelease(OTHER,6),"restore receipt across cancellation/world-save gap");
   db.row=new ApocBREventControl.Schedule(null,8,null,0,"idle");c=control(db);poll(c);ApocBREventControl.update();
   check(ApocBREventControl.isReleaseAuthorized(OTHER,6),"clearing desired schedule must not rebuild a released perimeter");
+  db.activeName="Expired";db.activeEnd=clock[0];poll(c);ApocBREventControl.update();
+  check(ApocBREventControl.guideAnnouncement().contains("EventNone"),"expired active estimate omitted");
+  db.updatedAt=clock[0]-60001;poll(c);ApocBREventControl.update();
+  check(ApocBREventControl.getStatus().equals("READY")&&ApocBREventControl.guideAnnouncement().contains("EventUnavailable"),"manager snapshot ages even with healthy engine polling");
+  db.updatedAt=clock[0]+1000;poll(c);ApocBREventControl.update();
+  check(ApocBREventControl.guideAnnouncement().contains("EventUnavailable"),"future manager timestamps fail closed");
   check(db.opened==db.closed,"all JDBC leases closed, including failure");
   invalid(()->new ApocBREventControl.Schedule(ID,0,"Bad",start,"scheduled"));
   invalid(()->new ApocBREventControl.Schedule(ID,1,"Bad\nTitle",start,"scheduled"));

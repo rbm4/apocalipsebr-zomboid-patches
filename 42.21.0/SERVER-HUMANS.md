@@ -6,16 +6,17 @@ to render the appearance, clothing, facing and idle animation. No client Java
 patch or client Lua is required for that presentation.
 
 The startup guide is opt-in. It roams within its spawn building on the same floor,
-pauses to face a nearby visible visitor, holds attention, waves, says `Oi!`, then
-resumes roaming after a cooldown. Seated poses, combat, conversational
-dialogue beyond greetings/trade and cross-server replication are not
-implemented. Native guide trades are supported as described below. Compilation and isolated tests pass; appearance, greeting playback
+pauses to face a nearby visible visitor, holds attention, says `Olá!` while waving, then
+resumes roaming after a cooldown. Seated poses, combat, cross-server replication are not implemented. Optional
+[mod-driven NPC dialogue](NPC-DIALOGUE.md) adds right-click choices, timed-action
+walk-up, exclusive conversations and server-controlled reactions. Native guide trades are supported as described below. Compilation and isolated tests pass; appearance, greeting playback
 and streaming still require a live multiplayer test with an unmodified 42.21.0 client.
 
 ## Enabling the guide
 
-The optional [PostgreSQL event controller](LOBBY-EVENT-CONTROL.md) appends the
-current event's real activation time to the startup guide's normal greeting.
+The optional [PostgreSQL event controller](LOBBY-EVENT-CONTROL.md) sends a separate
+message after the wave with the next operation countdown and, when available,
+the active operation's estimated remaining time. Apply manager runtime V13 first.
 It uses a cached server-thread snapshot and the existing speech transport;
 database polling and lobby activation do not depend on the guide or its visitors.
 Other actor keys keep their original speech. Enable it separately as documented
@@ -295,7 +296,7 @@ Before claiming runtime support, start a test server and verify with two clients
    visible for several minutes without crossing furniture/walls/closed doors.
 3. Leave and re-enter streaming range, reconnect, and join after startup.
 4. Approach during walking with two visitors: verify an immediate stop, facing,
-   wave, exactly one `Oi!`, restored facing at that stopping point, cooldown and
+   wave with exactly one `Olá!`, separate timing follow-up, restored facing, cooldown and
    resumed roaming. The same visitor should not be repeatedly greeted while visible.
 5. Leave during attention/waving, try occlusion and different floors, then return
    after unloading the guide's area. Verify speech still attaches to its body.
@@ -307,7 +308,7 @@ No server deployment or live multiplayer test was performed during implementatio
 
 ## Guide trades and backend credit receipts
 
-All guide speech is in pt-BR, including `Oi!`. With PostgreSQL persistence active,
+All guide speech is in pt-BR, including `Olá!`. With PostgreSQL persistence active,
 trading defaults to enabled; set `-Dapocbr.guide.trade.enabled=false` to retain the
 guide without trading or requiring its table. The manager's game-runtime migration
 `V10__Create_Human_Sale.sql` creates `player_rel.apocbr_human_sale`;
@@ -365,8 +366,16 @@ items, and revalidates every item immediately before consumption. As with the
 native add-item packet, items must be directly in the player's main inventory.
 Place money from bags into that inventory before offering it. An offered bag and
 its contents are destroyed together, but money inside it is **not** separately
-credited: only explicitly offered `Base.Money` instances count. No item price,
+credited: only explicitly offered `Base.Money` and `Base.MoneyBundle` instances
+count. Each note is worth 1 and each bundle is worth 100 in Base.Money units.
+No item price,
 client-supplied quantity, equipped item semantics, or backend balance is trusted.
+
+Before deploying bundle support, migrate the manager app with V58 and game-runtime
+database with V12, then deploy the updated manager credit service and server patch.
+`HUMAN-SALES-SCHEMA.sql` remains the original note-only baseline; apply
+`HUMAN-SALES-MONEY-BUNDLES.sql` afterwards for standalone setup (the same upgrade
+as manager V12). Startup validates the new bundle column before allowing trades.
 
 For offers containing money, a detached `ApocBRHumanSales.Sale` is written and
 fsynced to the connector's local journal **before** any offered item is removed.
@@ -376,13 +385,17 @@ there is no JDBC lease or SQL on the simulation thread. It can briefly stall a t
 and flush earlier staged journal work. Database work uses the existing replay
 worker. All offered items are removed through the authoritative inventory; native
 inventory-removal packets synchronize the owner, and ServerPlayerDB captures the
-post-sale character. An offer with no `Base.Money` still destroys all confirmed
+post-sale character. An offer with neither currency type still destroys all confirmed
 items and saves inventory, but emits **no sales INSERT**.
 
 Each money receipt includes a stable `sale_id`, source server/world, username,
 optional Steam ID, split-screen slot, NPC key, sale timestamp, exact money item
-IDs, and quantity. Quantity is a count of individual `Base.Money` instances, not
-bundles, a valuation, or granted credit. `ON CONFLICT (sale_id) DO NOTHING` and the
+IDs, bundle IDs, and quantity. `native_item_ids` contains all offered currency IDs;
+`bundle_item_ids` is the subset identifying bundles. Quantity is the equivalent
+number of notes: `native_item_ids.size + 99 * bundle_item_ids.size` (up to 50,000
+for 500 bundles). Backend pricing then converts that value to account credit.
+Legacy journal records default to no bundles and retain their note-only value.
+`ON CONFLICT (sale_id) DO NOTHING` and the
 existing operation receipt transaction make SQL replay idempotent. Sale receipts
 that cannot replay are retained in journal quarantine, including startup/shutdown
 retry exhaustion; they are not discarded by the generic five-attempt policy.

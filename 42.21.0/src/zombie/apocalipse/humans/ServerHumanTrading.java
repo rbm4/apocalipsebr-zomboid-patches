@@ -102,7 +102,7 @@ public final class ServerHumanTrading {
         }
         sessions.put(target.getOnlineID(), new Session(human, visitor, connection));
         reply(human, visitor, connection, true);
-        human.actuator.say("Aceito dinheiro e os itens de valor que você encontrou. Só as notas de dinheiro serão registradas para crédito. Os demais itens serão destruídos sem crédito. Coloque os itens na troca, sele a oferta e confirme.");
+        human.actuator.say("Aceito dinheiro e os itens de valor que você encontrou. Notas e maços de dinheiro serão registrados para crédito. Cada maço vale 100 notas. Os demais itens serão destruídos sem crédito. Coloque os itens na troca, sele a oferta e confirme.");
         return true;
     }
 
@@ -190,13 +190,15 @@ public final class ServerHumanTrading {
             finish(session,true); return;
         }
         UUID saleId=UUID.randomUUID();
-        List<Integer> moneyIds=items.stream().filter(item -> "Base.Money".equals(item.getFullType())).map(InventoryItem::getID).toList();
+        List<Integer> moneyIds=items.stream().filter(item -> "Base.Money".equals(item.getFullType())
+            || "Base.MoneyBundle".equals(item.getFullType())).map(InventoryItem::getID).toList();
+        List<Integer> bundleIds=items.stream().filter(item -> "Base.MoneyBundle".equals(item.getFullType())).map(InventoryItem::getID).toList();
         try {
             session.human.brain.recordingSale(System.nanoTime(),session.human.actuator);
             if (!moneyIds.isEmpty()) {
                 var sale=new ApocBRHumanSales.Sale(saleId,ApocBRPayloadProvenance.configuredServerId(),Core.gameSaveWorld,
                     session.visitor.getUsername(),SteamUtils.isSteamModeEnabled() ? Long.toUnsignedString(session.visitor.getSteamID()) : null,
-                    session.connection.getPlayerIndex(session.visitor),session.human.definition.key(),System.currentTimeMillis(),moneyIds);
+                    session.connection.getPlayerIndex(session.visitor),session.human.definition.key(),System.currentTimeMillis(),moneyIds,bundleIds);
                 ApocBRHumanSales.enqueue(sale);
             }
         } catch (RuntimeException failure) {
@@ -212,8 +214,8 @@ public final class ServerHumanTrading {
             ServerPlayerDB.getInstance().serverUpdateNetworkCharacter(session.visitor,session.connection.getPlayerIndex(session.visitor),session.connection);
             sendState(session,TradingState.DealWasFinalized);
             session.human.actuator.say(moneyIds.isEmpty()
-                ? "Itens recebidos e descartados. Como não havia notas de dinheiro, esta entrega não gera crédito."
-                : "Entrega recebida! Registrei somente as notas de dinheiro para processamento do crédito. Os demais itens foram descartados. Obrigado!");
+                ? "Itens recebidos e descartados. Como não havia notas ou maços de dinheiro, esta entrega não gera crédito."
+                : "Entrega recebida! Registrei as notas e os maços de dinheiro para processamento do crédito. Os demais itens foram descartados. Obrigado!");
         } catch (RuntimeException failure) {
             DebugLog.log("[ApocBR][HumanSales] CONSUMPTION_REQUIRES_REVIEW; sale="+saleId+"; money="+!moneyIds.isEmpty()
                 +"; issue="+failure.getClass().getSimpleName());

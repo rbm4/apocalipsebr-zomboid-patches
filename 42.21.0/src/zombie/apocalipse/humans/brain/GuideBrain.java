@@ -6,7 +6,7 @@ import java.util.Map;
 
 /** Deterministic greeting policy. No world queries, threads, sleeps, or packet code. */
 public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
-    public enum State { IDLE, ROAMING, FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, WAITING_TRADE_ACCEPTANCE, RECORDING_SALE, RETURNING_HOME, COOLDOWN, STOPPED }
+    public enum State { IDLE, ROAMING, FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, WAITING_TRADE_ACCEPTANCE, RECORDING_SALE, DIALOGUE, RETURNING_HOME, COOLDOWN, STOPPED }
     public static final long ROAM_PAUSE_NANOS = 3_000_000_000L;
     public static final long ATTENTION_NANOS = 1_000_000_000L;
     public static final long SALUTATION_NANOS = 2_500_000_000L;
@@ -65,8 +65,8 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
                     case FACING_VISITOR -> transition(State.HOLDING_ATTENTION,
                         new HumanAction.HoldAttention(target, ATTENTION_NANOS), "facing_complete", now, actuator);
                     case HOLDING_ATTENTION -> transition(State.SALUTING,
-                        new HumanAction.Emote("wavehi", SALUTATION_NANOS), "attention_complete", now, actuator);
-                    case SALUTING -> transition(State.SPEAKING, new HumanAction.Say("Oi!"), "salutation_complete", now, actuator);
+                        new HumanAction.Emote("wavehi", SALUTATION_NANOS, true), "attention_complete", now, actuator);
+                    case SALUTING -> transition(State.SPEAKING, new HumanAction.AnnounceOperation(), "salutation_complete", now, actuator);
                     case SPEAKING -> {
                         greeted.put(target, now);
                         transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "greeting_complete", now, actuator);
@@ -86,11 +86,27 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
     }
 
     public boolean beginTrade(HumanObservation.Identity visitor, long now, HumanActuator actuator) {
-        if (state() == State.STOPPED || state() == State.WAITING_TRADE_ACCEPTANCE || state() == State.RECORDING_SALE) return false;
+        if (state() == State.STOPPED || state() == State.WAITING_TRADE_ACCEPTANCE || state() == State.RECORDING_SALE || state() == State.DIALOGUE) return false;
         actuator.stopMoving();
         target = visitor;
         transition(State.WAITING_TRADE_ACCEPTANCE, new HumanAction.WaitForTrade(visitor), "trade_opened", now, actuator);
         return true;
+    }
+
+    public boolean beginDialogue(HumanObservation.Identity visitor, long now, HumanActuator actuator) {
+        if (state() == State.STOPPED || state() == State.WAITING_TRADE_ACCEPTANCE
+            || state() == State.RECORDING_SALE || state() == State.DIALOGUE) return false;
+        actuator.stopMoving();
+        target = visitor;
+        transition(State.DIALOGUE, null, "dialogue_reserved", now, actuator);
+        return true;
+    }
+
+    public void finishDialogue(long now, HumanActuator actuator) {
+        if (state() == State.DIALOGUE) {
+            if (target != null && (greeted.containsKey(target) || greeted.size() < MAX_GREETING_HISTORY)) greeted.put(target, now);
+            transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "dialogue_finished", now, actuator);
+        }
     }
 
     public void recordingSale(long now, HumanActuator actuator) {
@@ -124,10 +140,12 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
     @Override
     protected boolean permits(State from, State to) {
         if (to == State.STOPPED) return from != State.STOPPED;
-        if (to == State.WAITING_TRADE_ACCEPTANCE) return from != State.STOPPED && from != State.RECORDING_SALE;
+        if (to == State.DIALOGUE) return from != State.STOPPED && from != State.WAITING_TRADE_ACCEPTANCE
+            && from != State.RECORDING_SALE && from != State.DIALOGUE;
+        if (to == State.WAITING_TRADE_ACCEPTANCE) return from != State.STOPPED && from != State.RECORDING_SALE && from != State.DIALOGUE;
         if (from == State.WAITING_TRADE_ACCEPTANCE && to == State.RECORDING_SALE) return true;
         if (to == State.RETURNING_HOME) return switch (from) {
-            case FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, WAITING_TRADE_ACCEPTANCE, RECORDING_SALE -> true;
+            case FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, WAITING_TRADE_ACCEPTANCE, RECORDING_SALE, DIALOGUE -> true;
             default -> false;
         };
         return switch (from) {

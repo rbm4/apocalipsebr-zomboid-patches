@@ -66,6 +66,7 @@ final class ServerHuman {
     }
 
     void dispose() {
+        ServerHumanDialogue.close(this, "removed");
         ServerHumanTrading.close(this);
         brain.stop(System.nanoTime(), actuator);
         roaming.stop();

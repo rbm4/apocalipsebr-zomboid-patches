@@ -52,6 +52,7 @@ public final class ServerHumanFactory {
     void tick(long now) {
         if (owner == null) owner = Thread.currentThread();
         requireOwner();
+        ServerHumanDialogue.install();
         if (!configured) {
             configured = true;
             try {
@@ -81,6 +82,7 @@ public final class ServerHumanFactory {
             float previousDirection = human.player.getDirectionAngleRadians();
             boolean wasMoving = human.moving;
             ServerHumanTrading.update(human, now);
+            ServerHumanDialogue.update(human, now);
             human.brain.update(human.actuator.observe(now), human.actuator);
             // Simulate at 10 Hz, but publish routine motion only on the 2 Hz heartbeat.
             // Turns and starts/stops must replace stale client prediction immediately.
@@ -144,6 +146,11 @@ public final class ServerHumanFactory {
             if (!GameServer.IDToPlayerMap.containsKey(id) && !GameServer.IDToAddressMap.containsKey(id)) return id;
         }
         throw new IllegalStateException("Server-human presentation ID range exhausted; restart required");
+    }
+
+    static java.util.Collection<ServerHuman> dialogueHumans() {
+        INSTANCE.requireOwner();
+        return java.util.List.copyOf(INSTANCE.humans.values());
     }
 
     static ServerHuman tradingHuman(short id) {

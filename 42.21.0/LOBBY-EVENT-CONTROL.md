@@ -194,21 +194,51 @@ activation removes the entire perimeter, even if six exits were already opened.
 
 ## Guide messages
 
-The startup `guide` actor keeps its normal greeting state machine, cooldown,
-roaming and speech transport. At its actuator speech boundary it appends the
-same accepted event's name/date/time while scheduled, a waiting message when
-due but not yet accepted, or a released message after Lua acceptance. With stale
-data it announces temporary schedule unavailability; disabled/idle/cancelled
-control preserves the original greeting. It does not query the DB or activate
-events. Other actor keys retain their original speech.
+The startup `guide` actor says `Olá!` as its wave begins. After the 2.5-second
+wave finishes, a separate speech message announces the next operation's name
+and real-time countdown. When an operation is active, the same follow-up also
+reports its estimated remaining time. Cooldowns, roaming and visitor tracking
+remain unchanged. Losing the visitor or opening a trade cancels the follow-up.
+Speech failures settle once and stop the wave rather than repeating each tick.
+
+Apply the manager's game-runtime **V13** migration before installing this patch.
+The existing worker now reads five additive `guide_*` columns alongside release
+intent. The manager publishes the earliest future scheduled operation and a
+confirmed `RELEASE_REQUESTED` operation within its expected duration window,
+scoped to the same server/world. Estimated end is scheduled start plus duration;
+it neither establishes an actual game end nor stops gameplay. The snapshot is
+published independently of release revisions and receipts, so the current active
+operation can remain visible after desired intent advances to the next one.
+
+Countdowns use wall-clock time, round positive fractional seconds up, and show
+days/hours/minutes/seconds. Expired active estimates and elapsed future dates are
+omitted. An empty agenda announces that no next operation is scheduled; a due
+unacknowledged release announces that it is pending. An engine-stale snapshot,
+missing manager publication, future publication timestamp or manager snapshot
+older than 60 seconds announces temporary unavailability. With event control
+disabled the guide only greets. Manager sync delays must remain below that
+60-second announcement freshness bound. No speech call queries JDBC or activates
+an event; the release hook retains its existing identity/revision checks.
 
 Strings use `Translator.getText()` with `IGUI_ApocExtractionMapUtils_Event*`
 keys supplied by the extraction mod's shared `Translate/EN/IG_UI.json`.
-The date uses the configured display zone and includes the day. The server's
-translation language determines the sentence; displayZone is not a language
-setting. No client Java patch is needed.
+New guide strings use PT-BR as their fallback text, including `Olá!`, in the
+existing EN category file used by dedicated servers. `displayZone` remains
+accepted for compatibility but relative countdowns do not depend on a timezone.
+No client Java patch is needed.
 
 ## Validation and limits
+
+The countdown update passed `python tools/test_human_brain.py` (72 assertions),
+`python tools/test_lobby_event_control.py` (217 assertions) and
+`python tools/test_server_humans.py` (78 assertions). The 42.21.0
+`patchApocalipseBr.ps1 -DryRun` compiled successfully against the installed game
+JAR without deployment. The extraction mod's `python tests/guide-translations.py`
+validates JSON, UTF-8, exact greeting, placeholders and estimate wording. These
+checks cover cached countdowns, simultaneous active/next announcements, expired
+estimates, stale manager publications, wave/speech ordering, cancellation and
+existing release/restart behavior. Live multiplayer speech timing remains to be
+validated after the coordinated backend migration, manager and game update.
 
 `python tools/test_lobby_event_control.py` compiles/executes the production class
 with fake JDBC and clocks: fixed SQL/scope binding/timeouts/lease cleanup,

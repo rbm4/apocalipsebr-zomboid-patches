@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /** Typed commands form the boundary between decisions and engine execution. */
 public sealed interface HumanAction {
-    enum Type { FACE_VISITOR, HOLD_ATTENTION, EMOTE, SAY, RETURN_HOME, ROAM, WAIT_FOR_TRADE }
+    enum Type { FACE_VISITOR, HOLD_ATTENTION, EMOTE, SAY, ANNOUNCE_OPERATION, RETURN_HOME, ROAM, WAIT_FOR_TRADE }
     Type type();
 
     record WaitForTrade(HumanObservation.Identity visitor) implements HumanAction {
@@ -29,11 +29,16 @@ public sealed interface HumanAction {
         public Type type() { return Type.HOLD_ATTENTION; }
     }
 
-    record Emote(String name, long durationNanos) implements HumanAction {
+    record Emote(String name, long durationNanos, boolean greet) implements HumanAction {
+        public Emote(String name, long durationNanos) { this(name, durationNanos, false); }
         public Emote {
             if (name == null || name.isBlank() || durationNanos <= 0) throw new IllegalArgumentException("Invalid emote");
         }
         public Type type() { return Type.EMOTE; }
+    }
+
+    record AnnounceOperation() implements HumanAction {
+        public Type type() { return Type.ANNOUNCE_OPERATION; }
     }
 
     record Say(String text) implements HumanAction {

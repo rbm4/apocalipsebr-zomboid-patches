@@ -28,9 +28,10 @@ public final class HumanActionExecution {
                     }
                     case HumanAction.FaceVisitor face -> settle(actuator.face(face.visitor()));
                     case HumanAction.Say say -> settle(actuator.say(say.text()));
+                    case HumanAction.AnnounceOperation ignored -> settle(actuator.announceOperation());
                     case HumanAction.ReturnHome ignored -> settle(actuator.returnHome());
                     case HumanAction.Emote emote -> {
-                        if (!actuator.startEmote(emote.name())) {
+                        if (!actuator.startEmote(emote.name()) || emote.greet() && !actuator.greet()) {
                             stopSafely(actuator);
                             settle(false);
                         }

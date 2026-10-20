@@ -5,10 +5,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
-import java.time.Instant;
 import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
@@ -31,7 +28,8 @@ public final class ApocBREventControl {
         """;
     static final String READ = """
         SELECT desired_event_id,desired_revision,desired_name,desired_starts_at,desired_state,
-               reported_event_id,reported_revision,reported_state
+               reported_event_id,reported_revision,reported_state,
+               guide_next_name,guide_next_starts_at,guide_active_name,guide_active_ends_at,guide_updated_at
         FROM player_rel.lobby_event_control WHERE server_key=? AND world=?
         """;
     static final String RECEIPT = """
@@ -53,7 +51,8 @@ public final class ApocBREventControl {
             }
         }
     }
-    record Observed(Schedule schedule, Receipt reported, long nanos) {}
+    record Guide(String nextName, long nextStart, String activeName, long activeEnd, long updatedAt) {}
+    record Observed(Schedule schedule, Receipt reported, long nanos, Guide guide) {}
     record Receipt(String id, long revision) {}
     @FunctionalInterface interface Connections { Connection open() throws SQLException; }
     private static volatile ApocBREventControl instance;
@@ -151,7 +150,9 @@ public final class ApocBREventControl {
                             || !"release_requested".equals(rows.getString(8))) throw new IllegalArgumentException("Invalid release receipt");
                         reported = new Receipt(reportedId, reportedRevision);
                     }
-                    incoming.set(new Observed(schedule, reported, monotonic.getAsLong()));
+                    Guide guide = new Guide(rows.getString(9), millis(rows.getTimestamp(10)),
+                        rows.getString(11), millis(rows.getTimestamp(12)), millis(rows.getTimestamp(13)));
+                    incoming.set(new Observed(schedule, reported, monotonic.getAsLong(), guide));
                 }
             }
         }
@@ -234,24 +235,46 @@ public final class ApocBREventControl {
     }
     private static boolean validRevision(double value) { return Double.isFinite(value) && value > 0 && value <= MAX_REVISION && value == Math.rint(value); }
 
-    /** Called at the existing guide speech boundary, on the simulation thread. */
-    public static String guideGreeting(String greeting) {
+    private static long millis(Timestamp time) { return time == null ? 0 : time.toInstant().toEpochMilli(); }
+
+    /** Separate follow-up after the wave. Reads cached data only, on the simulation thread. */
+    public static String guideAnnouncement() {
         var c = current();
-        if (c == null) return greeting;
-        if (!c.fresh()) return greeting + " " + Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable");
+        if (c == null) return null;
+        if (!c.fresh()) return Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable");
+        Guide guide = c.active.guide;
+        long now = c.wallClock.getAsLong();
+        // Manager polls independently of engine freshness. Never present abandoned agenda data.
+        if (guide.updatedAt <= 0 || now < guide.updatedAt || now - guide.updatedAt > 60000)
+            return Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable");
+        String active = validName(guide.activeName) && guide.activeEnd > now
+            ? Translator.getText("IGUI_ApocExtractionMapUtils_EventRemaining", guide.activeName, remaining(guide.activeEnd - now)) : null;
+        String next = validName(guide.nextName) && guide.nextStart > now
+            ? Translator.getText("IGUI_ApocExtractionMapUtils_EventCountdown", guide.nextName, remaining(guide.nextStart - now)) : null;
+        if (active != null) return next == null ? active : active + " " + next;
+        if (next != null) return next;
         Schedule event = c.active.schedule;
-        if (!"scheduled".equals(event.state)) return greeting;
-        String key;
-        String detail;
-        if (new Receipt(event.id, event.revision).equals(c.applied)) {
-            key = "IGUI_ApocExtractionMapUtils_EventReleased"; detail = "";
-        } else if (c.wallClock.getAsLong() >= event.startsAt) {
-            key = "IGUI_ApocExtractionMapUtils_EventPending"; detail = "";
-        } else {
-            key = "IGUI_ApocExtractionMapUtils_EventScheduled";
-            detail = DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm z", Locale.ROOT).withZone(c.zone).format(Instant.ofEpochMilli(event.startsAt));
-        }
-        return greeting + " " + Translator.getText(key, event.name, detail);
+        if ("scheduled".equals(event.state) && now >= event.startsAt
+                && !new Receipt(event.id, event.revision).equals(c.applied)
+                && !new Receipt(event.id, event.revision).equals(c.active.reported))
+            return Translator.getText("IGUI_ApocExtractionMapUtils_EventPending", event.name);
+        return Translator.getText("IGUI_ApocExtractionMapUtils_EventNone");
+    }
+
+    private static boolean validName(String name) {
+        return name != null && !name.isBlank() && name.length() <= 160 && name.codePoints().noneMatch(Character::isISOControl);
+    }
+    static String remaining(long millis) {
+        long seconds = millis / 1000 + (millis % 1000 == 0 ? 0 : 1);
+        long days = seconds / 86400, hours = seconds / 3600 % 24, minutes = seconds / 60 % 60;
+        return (days > 0 ? days + "d " : "") + (days > 0 || hours > 0 ? hours + "h " : "")
+            + (days > 0 || hours > 0 || minutes > 0 ? minutes + "min " : "") + seconds % 60 + "s";
+    }
+
+    /** Compatibility helper; the guide itself now sends greeting and announcement separately. */
+    public static String guideGreeting(String greeting) {
+        String announcement = guideAnnouncement();
+        return announcement == null ? greeting : greeting + " " + announcement;
     }
 
     public static synchronized void shutdown() {
