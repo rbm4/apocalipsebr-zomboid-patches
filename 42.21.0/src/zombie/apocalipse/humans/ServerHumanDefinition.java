@@ -38,7 +38,7 @@ public record ServerHumanDefinition(
             Integer.parseInt(System.getProperty("apocbr.guide.z", "0")),
             IsoDirections.valueOf(System.getProperty("apocbr.guide.facing", "E").trim().toUpperCase(Locale.ROOT)),
             Boolean.getBoolean("apocbr.guide.female"),
-            System.getProperty("apocbr.guide.outfit", "Tourist")
+            System.getProperty("apocbr.guide.outfit", "CostumeMonster")
         );
     }
 }

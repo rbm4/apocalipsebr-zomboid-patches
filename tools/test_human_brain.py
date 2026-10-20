@@ -22,7 +22,7 @@ public class BrainTest {
   public boolean face(HumanObservation.Identity id){faces++;target=id;history.add("face");return faceOK;}
   public boolean startEmote(String name){check(name.equals("wavehi"),"native greeting emote");starts++;history.add("wave");return emoteOK;}
   public void stopEmote(){stops++;history.add("stop");}
-  public boolean say(String text){says++;history.add("hi");check(text.equals("hi"),"requested literal greeting");if(throwsSpeech)throw new IllegalStateException();return speechOK;}
+  public boolean say(String text){says++;history.add("hi");check(text.equals("Oi!"),"requested literal greeting");if(throwsSpeech)throw new IllegalStateException();return speechOK;}
   public boolean returnHome(){homes++;history.add("home");return homeOK;}
  }
  static class RoamingPort extends Port {
@@ -91,7 +91,7 @@ public class BrainTest {
   for(long now=0;now<=2*SECOND;now+=SECOND/2)failedTracking.update(seen(now,a),lostTracking);
   lostTracking.faceOK=false;failedTracking.update(seen(21*SECOND/10,a),lostTracking);
   check(lostTracking.stops==1&&lostTracking.says==0&&lostTracking.homes==1,"failed tracking during wave cancels interaction");
-  Port actions=new Port();HumanActionExecution once=new HumanActionExecution(new HumanAction.Say("hi"));
+  Port actions=new Port();HumanActionExecution once=new HumanActionExecution(new HumanAction.Say("Oi!"));
   check(once.status()==HumanActionExecution.Status.PENDING,"new action pending");once.update(0,actions);once.update(SECOND,actions);
   check(once.status()==HumanActionExecution.Status.SUCCEEDED&&actions.says==1,"terminal action never executes twice");
   HumanActionExecution wait=new HumanActionExecution(new HumanAction.HoldAttention(a,SECOND));wait.update(0,actions);

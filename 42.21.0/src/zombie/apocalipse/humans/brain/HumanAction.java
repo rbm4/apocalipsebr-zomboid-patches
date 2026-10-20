@@ -4,8 +4,13 @@ import java.util.Objects;
 
 /** Typed commands form the boundary between decisions and engine execution. */
 public sealed interface HumanAction {
-    enum Type { FACE_VISITOR, HOLD_ATTENTION, EMOTE, SAY, RETURN_HOME, ROAM }
+    enum Type { FACE_VISITOR, HOLD_ATTENTION, EMOTE, SAY, RETURN_HOME, ROAM, WAIT_FOR_TRADE }
     Type type();
+
+    record WaitForTrade(HumanObservation.Identity visitor) implements HumanAction {
+        public WaitForTrade { Objects.requireNonNull(visitor); }
+        public Type type() { return Type.WAIT_FOR_TRADE; }
+    }
 
     record Roam() implements HumanAction {
         public Type type() { return Type.ROAM; }

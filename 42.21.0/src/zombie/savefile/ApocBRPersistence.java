@@ -72,6 +72,10 @@ final class ApocBRPersistence {
         try{return get().journal.submit(value);}
         catch(IOException error){throw new IllegalStateException("PostgreSQL journal write failed; operation not acknowledged",error);}
     }
+    static UUID submitDurable(ApocBRPersistenceJournal.Operation value) {
+        try { return get().journal.submitDurable(value); }
+        catch(IOException error) { throw new IllegalStateException("NPC sale journal unavailable", error); }
+    }
     static void startup() {
         if(!enabled())return;
         ApocBRPersistence current=get();
@@ -191,6 +195,11 @@ final class ApocBRPersistence {
         journal.acknowledgeCommitted(entry.id());lastIssue="NONE";report("REPLAY_PROGRESS",null);
     }
     private void discard(ApocBRPersistenceJournal.Entry entry)throws IOException {
+        if (entry.operation() instanceof ApocBRHumanSales.Sale) {
+            journal.quarantine(entry.id());
+            log("SALE_QUARANTINED; operation="+entry.id()+"; inspect retained payload before crediting");
+            return;
+        }
         journal.acknowledge(entry.id());
         // Never rate limit discards: every deliberately lost operation must be identifiable.
         log("REPLAY_DISCARDED; operation="+entry.id()+"; kind="+entry.operation().kind()
@@ -200,6 +209,7 @@ final class ApocBRPersistence {
         try(Connection connection=ApocBRPostgresConnector.borrowPlayerConnection();
             PreparedStatement statement=connection.prepareStatement("SELECT operation_id FROM public.apocbr_persistence_receipt WHERE false")) {
             statement.setQueryTimeout(2);try(ResultSet ignored=statement.executeQuery()){}
+            ApocBRHumanSales.validate(connection);
             connection.rollback();
         }
     }

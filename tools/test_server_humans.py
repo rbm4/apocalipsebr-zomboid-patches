@@ -58,6 +58,9 @@ public class IsoPlayer {
  public void setOnlineID(short v){id=v;} public short getOnlineID(){return id;}
  public void setUsername(String v){username=v;} public void setDisplayName(String v){displayName=v;}
  public String getUsername(){return username;}
+ public long getSteamID(){return 76561198000000000L;}
+ public final zombie.inventory.ItemContainer inventory=new zombie.inventory.ItemContainer();
+ public zombie.inventory.ItemContainer getInventory(){return inventory;}
  public void setGodMod(boolean v,boolean forced){god=v;}
  public void setInvisible(boolean v,boolean forced){invisible=v;}
  public void setGhostMode(boolean v,boolean forced){ghost=v;}
@@ -79,6 +82,9 @@ public class UdpConnection {
  public boolean connected=true,relevant=true; public int announced,removed;
  public final zombie.characters.IsoPlayer[] players=new zombie.characters.IsoPlayer[4];
  public zombie.characters.IsoPlayer getPlayerAt(int slot){return players[slot];}
+ public boolean hasPlayer(short id){for(var p:players)if(p!=null&&p.getOnlineID()==id)return true;return false;}
+ public byte getPlayerIndex(zombie.characters.IsoPlayer p){for(byte i=0;i<4;i++)if(players[i]==p)return i;return -1;}
+ public zombie.core.network.ByteBufferWriter startPacket(){return new zombie.core.network.ByteBufferWriter();}
  public boolean isFullyConnected(){return connected;}
  public boolean isRelevantTo(float x,float y){return relevant;}
 }
@@ -102,13 +108,19 @@ public class GameServer {
 }
 """,
     "zombie/network/PacketTypes.java": """package zombie.network;
-public class PacketTypes {public enum PacketType {PlayerUpdateReliable,PlayerTimeout,State}}
+public class PacketTypes {public enum PacketType {
+ PlayerUpdateReliable,PlayerTimeout,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer;
+ public void doPacket(zombie.core.network.ByteBufferWriter b){} public void send(zombie.core.raknet.UdpConnection c){}
+ }}
 """,
     "zombie/network/packets/INetworkPacket.java": """package zombie.network.packets;
 import zombie.network.PacketTypes;import zombie.core.raknet.UdpConnection;
 public interface INetworkPacket {
+ record Message(UdpConnection connection,PacketTypes.PacketType type,Object[] args){}
+ java.util.List<Message> messages=new java.util.ArrayList<>();
  static void send(UdpConnection c,PacketTypes.PacketType t,Object... args){
-  if(t!=PacketTypes.PacketType.PlayerTimeout)throw new AssertionError();c.removed++;
+  if(t==PacketTypes.PacketType.PlayerTimeout)c.removed++;
+  else messages.add(new Message(c,t,args));
  }
 }
 """,
@@ -386,6 +398,61 @@ FILES["zombie/apocalipse/humans/FactoryTest.java"] = FILES["zombie/apocalipse/hu
   rejects(()->movingFactory.spawn(new ServerHumanDefinition("collision","real player","Other",1,2,0,IsoDirections.N,false,"Tourist")),"online human name conflict rejected");
   GameServer.server=false;rejects"""
 )
+
+
+
+# Shared inventory/protocol ports used by the production trading adapter.
+FILES.update({
+ "zombie/core/Core.java": "package zombie.core; public class Core { public static String gameSaveWorld=\"test-world\"; }",
+ "zombie/apocalipse/events/ApocBREventControl.java": "package zombie.apocalipse.events; public final class ApocBREventControl { public static String guideGreeting(String text){return text;} }",
+ "zombie/core/TradingState.java": "package zombie.core; public enum TradingState { WindowWasClosed,DealWasSealed,DealWasUnsealed,DealWasFinalized }",
+ "zombie/core/znet/SteamUtils.java": "package zombie.core.znet; public class SteamUtils { public static boolean isSteamModeEnabled(){return true;} }",
+ "zombie/core/network/ByteBufferWriter.java": "package zombie.core.network; public class ByteBufferWriter {}",
+ "zombie/inventory/InventoryItem.java": """package zombie.inventory;
+ public class InventoryItem {
+  public int id;public String type;public ItemContainer container;
+  public InventoryItem(int id,String type){this.id=id;this.type=type;}
+  public int getID(){return id;} public String getFullType(){return type;}
+  public ItemContainer getContainer(){return container;}
+ }""",
+ "zombie/inventory/ItemContainer.java": """package zombie.inventory;
+ public class ItemContainer {
+  public final java.util.List<InventoryItem> items=new java.util.ArrayList<>();
+  public InventoryItem getItemWithID(int id){return items.stream().filter(i->i.id==id).findFirst().orElse(null);}
+  public void Remove(InventoryItem item){items.remove(item);item.container=null;}
+  public void AddItem(InventoryItem item){items.add(item);item.container=this;}
+ }""",
+ "zombie/network/fields/character/PlayerID.java": """package zombie.network.fields.character;
+ public class PlayerID {
+  public short id; public byte index=-1;public zombie.characters.IsoPlayer player;
+  public short getID(){return id;} public byte getPlayerIndex(){return index;}
+  public zombie.characters.IsoPlayer getPlayer(){return player;}
+  public void set(zombie.characters.IsoPlayer p){player=p;id=p.getOnlineID();}
+ }""",
+ "zombie/network/packets/RequestTradingPacket.java": """package zombie.network.packets;
+ public class RequestTradingPacket {
+  public record Reply(zombie.characters.IsoPlayer npc,zombie.characters.IsoPlayer visitor,boolean accepted){}
+  public static final java.util.List<Reply> replies=new java.util.ArrayList<>();
+  private Reply reply;
+  public void accept(zombie.characters.IsoPlayer a,zombie.characters.IsoPlayer b){reply=new Reply(a,b,true);}
+  public void reject(zombie.characters.IsoPlayer a,zombie.characters.IsoPlayer b){reply=new Reply(a,b,false);}
+  public void write(zombie.core.network.ByteBufferWriter writer){replies.add(reply);}
+ }""",
+ "zombie/savefile/ServerPlayerDB.java": """package zombie.savefile;
+ public class ServerPlayerDB {
+  public static boolean available=true;public static int saves;public static final ServerPlayerDB instance=new ServerPlayerDB();
+  public static boolean isAvailable(){return available;} public static ServerPlayerDB getInstance(){return instance;}
+  public void serverUpdateNetworkCharacter(zombie.characters.IsoPlayer p,int index,zombie.core.raknet.UdpConnection c){saves++;}
+ }""",
+ "zombie/savefile/ApocBRPayloadProvenance.java": "package zombie.savefile; public class ApocBRPayloadProvenance { public static int configuredServerId(){return 1;} }",
+ "zombie/savefile/ApocBRHumanSales.java": """package zombie.savefile;
+ public class ApocBRHumanSales {
+  public record Sale(java.util.UUID id,int serverId,String world,String username,String steamId,int playerIndex,String npcKey,long soldAtMillis,java.util.List<Integer> itemIds){}
+  public static boolean enabled=true,fail;public static final java.util.List<Sale> sales=new java.util.ArrayList<>();
+  public static boolean available(){return enabled;}
+  public static java.util.UUID enqueue(Sale sale){if(fail)throw new IllegalStateException();sales.add(sale);return sale.id();}
+ }""",
+})
 
 
 def main():

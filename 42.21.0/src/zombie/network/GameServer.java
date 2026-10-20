@@ -1191,6 +1191,7 @@ public class GameServer {
 
                             LoginQueue.update();
                             zombie.savefile.ApocBRCreatedPlayerHandoff.update();
+                            zombie.apocalipse.events.ApocBREventControl.update();
                             zombie.apocalipse.humans.ServerHumanFactory.update();
                             try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("backup.onPeriod")) {
                                 ZipBackup.onPeriod();
@@ -1577,6 +1578,7 @@ public class GameServer {
             }
         }
 
+        zombie.apocalipse.events.ApocBREventControl.start();
         ApocBRBackendBridgeHooks.initialize();
         LuaEventManager.triggerEvent("OnServerStarted");
         if (SteamUtils.isSteamModeEnabled()) {

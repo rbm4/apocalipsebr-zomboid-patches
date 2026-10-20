@@ -86,6 +86,20 @@ final class ApocBRPersistenceJournal implements AutoCloseable {
             staging.removeFirst();stagedBytes-=entry.operation().estimatedBytes();
         }
     }
+    synchronized UUID submitDurable(Operation operation)throws IOException {
+        // If fsync fails, remove this operation from staging so it cannot later sell
+        // an offer that was refused and left in the player's inventory.
+        UUID id = submit(operation);
+        try { flush(); return id; }
+        catch(IOException | RuntimeException failure) {
+            var iterator = staging.iterator();
+            while(iterator.hasNext()) {
+                Entry entry=iterator.next();
+                if(entry.id().equals(id)) { iterator.remove(); stagedBytes-=operation.estimatedBytes(); track(operation,-1); break; }
+            }
+            throw failure;
+        }
+    }
     synchronized Entry head()throws IOException {
         if(acknowledged==written)return null;
         file.seek(acknowledged);if(file.readInt()!=MAGIC)throw new IOException("Invalid record magic");

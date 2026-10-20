@@ -6,13 +6,20 @@ to render the appearance, clothing, facing and idle animation. No client Java
 patch or client Lua is required for that presentation.
 
 The startup guide is opt-in. It roams within its spawn building on the same floor,
-pauses to face a nearby visible visitor, holds attention, waves, says `hi`, then
+pauses to face a nearby visible visitor, holds attention, waves, says `Oi!`, then
 resumes roaming after a cooldown. Seated poses, combat, conversational
-dialogue, trading, database subscriptions and cross-server replication are not
-implemented. Compilation and isolated tests pass; appearance, greeting playback
+dialogue beyond greetings/trade and cross-server replication are not
+implemented. Native guide trades are supported as described below. Compilation and isolated tests pass; appearance, greeting playback
 and streaming still require a live multiplayer test with an unmodified 42.21.0 client.
 
 ## Enabling the guide
+
+The optional [PostgreSQL event controller](LOBBY-EVENT-CONTROL.md) appends the
+current event's real activation time to the startup guide's normal greeting.
+It uses a cached server-thread snapshot and the existing speech transport;
+database polling and lobby activation do not depend on the guide or its visitors.
+Other actor keys keep their original speech. Enable it separately as documented
+in that contract, with the extraction mod and backend migration installed.
 
 Build/deploy using the usual server patch procedure. Add these **JVM arguments**
 to the server launch configuration, before the Java main class:
@@ -29,7 +36,7 @@ to the server launch configuration, before the Java main class:
 ```
 
 The default location is the requested world position `14294, 11862, 0`.
-Only `-Dapocbr.guide.enabled=true` is required to use it; all other arguments
+Only `-Dapocbr.guide.enabled=true` is required for presentation; with PostgreSQL enabled, apply the sales migration below or disable trades; all other arguments
 above are optional overrides. Coordinates are world positions, not cell/chunk
 numbers; adding `.5` would center an actor on a tile, but these defaults preserve
 the exact coordinates supplied. An enabled guide with invalid configuration logs
@@ -49,7 +56,7 @@ continues without a guide. Successful creation logs:
 
 ## Package and lifecycle
 
-All new implementation lives under `src/zombie/apocalipse/humans/`:
+The actor implementation lives under `src/zombie/apocalipse/humans/`; its typed sales persistence adapter is `savefile/ApocBRHumanSales`:
 
 | Class | Responsibility |
 | --- | --- |
@@ -85,16 +92,21 @@ Forced god mode is included in the client's appearance data, and ordinary server
 player lookups cannot resolve a presentation actor as a damage target.
 
 Every 500 ms, relevant fully connected clients receive a reliable player
-heartbeat. Changes in position, facing or moving/stopped state are published at
-the 100 ms brain cadence. Walking carries the native movement flag and short,
-collision-checked native prediction; there are no vehicle-hit or unrelated action
-flags. Straight movement advertises speed/direction and at most 0.25 seconds of
-prediction, quantized down to eighth-tile units. Prediction stops short of the
-next waypoint/corner with a 0.15-tile margin and is disabled if the segment is
+heartbeat, including routine movement updates. Changes in facing or moving/stopped
+state (including blocked movement) are published at the 100 ms brain cadence.
+Position integration and collision checks remain at that cadence. Walking carries
+the native movement flag and collision-checked native prediction; there are no vehicle-hit or unrelated action
+flags. Straight movement advertises speed/direction and at most 0.75 seconds of
+prediction (about 0.729 seconds after quantization at 1.2 tiles/second), covering
+the 500 ms send interval plus jitter allowance. Lookahead crosses connected,
+collinear tile centers, but stops short of the next corner or route endpoint
+with a 0.15-tile margin and is disabled if the segment is
 blocked or too short. Stopping sends static prediction again. Clients advance
 the predicted target each frame through their existing remote-player code.
-Packet cadence is unchanged: at most 10 movement updates/second per relevant
-connection per actor, and a two-per-second idle heartbeat. The prediction fields
+Routine movement and idle heartbeat cadence is two updates/second per relevant
+connection per actor, with immediate turn/start/stop exceptions bounded by the
+10 Hz brain cadence. Clipping can shorten prediction near corners; smoothness
+under latency and packet loss still requires in-game validation. The prediction fields
 already exist in both static and moving packet layouts. A new
 viewer first receives the full appearance. The heartbeat keeps idle characters
 from expiring and lets vanilla packet handling restore them after chunk loads.
@@ -223,8 +235,8 @@ The factory rejects duplicate keys/usernames and calls from other threads. It is
 not exposed to Lua. A future database subscriber should hand immutable snapshots
 to a bounded main-thread queue, then extend this lifecycle/transport with updates.
 Remote identities should be namespaced by source server rather than reusing their
-online IDs. No worker, queue, subscription, database schema, outdoor travel or
-multi-floor traversal is implemented here.
+online IDs. No subscription, outdoor travel or multi-floor traversal is implemented here.
+Guide sales reuse the existing connector journal and replay worker.
 
 ## Compatibility limits and validation
 
@@ -233,7 +245,7 @@ player-oriented interaction menus can appear. The factory does not log a real
 user into chat, Steam, accounts or persistence; this is a presentation scaffold,
 not a complete fake player session. Existing client mods may make stronger
 assumptions about players than vanilla does. Interactions requiring a real server
-player/account are outside this implementation.
+player/account are outside this implementation except for the explicit trading adapter below.
 
 Baselines inspected are `decompiled/zombie/characters/IsoPlayer.java`,
 `IsoGameCharacter.java`, `SurvivorDesc.java`, `NetworkPlayerAI.java`, and the
@@ -249,6 +261,8 @@ Verification:
 python .\tools\test_server_humans.py
 python .\tools\test_human_brain.py
 python .\tools\test_human_roaming.py
+python .\tools\test_human_trading.py
+python .\tools\test_postgres_resilience.py
 .\42.21.0\patchApocalipseBr.ps1 -PZDir "Z:\SteamLibrary\steamapps\common\ProjectZomboid" -DryRun
 ```
 
@@ -281,7 +295,7 @@ Before claiming runtime support, start a test server and verify with two clients
    visible for several minutes without crossing furniture/walls/closed doors.
 3. Leave and re-enter streaming range, reconnect, and join after startup.
 4. Approach during walking with two visitors: verify an immediate stop, facing,
-   wave, exactly one `hi`, restored facing at that stopping point, cooldown and
+   wave, exactly one `Oi!`, restored facing at that stopping point, cooldown and
    resumed roaming. The same visitor should not be repeatedly greeted while visible.
 5. Leave during attention/waving, try occlusion and different floors, then return
    after unloading the guide's area. Verify speech still attaches to its body.
@@ -290,3 +304,114 @@ Before claiming runtime support, start a test server and verify with two clients
    unaffected and no guide remains.
 
 No server deployment or live multiplayer test was performed during implementation.
+
+## Guide trades and backend credit receipts
+
+All guide speech is in pt-BR, including `Oi!`. With PostgreSQL persistence active,
+trading defaults to enabled; set `-Dapocbr.guide.trade.enabled=false` to retain the
+guide without trading or requiring its table. The manager's game-runtime migration
+`V10__Create_Human_Sale.sql` creates `player_rel.apocbr_human_sale`;
+`HUMAN-SALES-SCHEMA.sql` is its engine reference contract. Apply migrations through
+the backend migration role before starting a PostgreSQL server with the startup
+guide and trades enabled. The existing `public.apocbr_persistence_receipt` migration
+(manager V8) is also required; that receipt table remains in `public`. No DDL runs
+on the simulation thread. The connector's startup
+probe validates the sales columns, so missing migrations fail before admission.
+`apocbr.postgres.serverId` must identify this server, as for the existing connector.
+The feature requires the existing journal-backed persistence lifecycle, not the
+legacy in-memory mirror alone. Trades are refused while persistence is unavailable.
+
+If startup reports `42P01` after V10 has been applied, older engine builds still
+queried `public.apocbr_human_sale`. Use the corrected 42.21.0 patch, whose startup
+probe and sale replay both target `player_rel.apocbr_human_sale`. Do not create a
+second sales table in `public` or edit an already-applied Flyway migration. Pending
+typed `human-sale-v1` journal records retain their format and use the corrected
+adapter on replay. A subsequent shutdown `ServerMap.grid` null-pointer exception
+is a separate consequence of aborting before world initialization; the migration
+contract fix does not change that shutdown hook.
+
+Contract verification: all SQL statements in the reference V10/V11 contracts
+match the manager migrations (ignoring comments and the reference transaction
+wrapper). `tools/test_postgres_resilience.py` exercises production startup
+validation with the sales table available only in `player_rel`, missing-table
+rejection, disabled trades, and sale replay/deduplication. That fixture,
+`tools/test_human_trading.py`, `tools/test_lobby_event_control.py`, and the 42.21.0
+patch script's real game-JAR `-DryRun` compilation pass. Live database startup
+still requires validation after deploying the rebuilt patch.
+
+The vanilla client opens its ordinary trading window. The server accepts on the
+guide's behalf and explains: it accepts the visitor's money and valuables, **only
+Base.Money counts toward credit, and every other offered item is destroyed without
+credit**. The visitor adds items, seals the offer, and clicks the normal final
+confirmation button. Editing an offer resets consent. The guide seals its empty
+side only in response to a valid sealed visitor offer. It does not finalize on
+seal alone. Closing the UI cancels without consumption.
+
+`ServerHumanTrading` owns one session per guide and one NPC session per visitor.
+The actor enters `WAITING_TRADE_ACCEPTANCE` with the typed `WaitForTrade` action,
+stops roaming/emoting, and faces the visitor continuously. Confirmation transitions
+to `RECORDING_SALE`, then `RETURNING_HOME` and the usual cooldown/roaming. Distance
+is at most three tiles with native line of sight, on the same floor. Disconnect,
+death, actor removal, loss of visibility/distance, or a three-minute timeout cancels
+the session. The native trade request/add/remove/state packet replacements preserve
+their vanilla bodies after an NPC-only hook. `Trading` and `RequestTradingPacket`
+resolve an NPC only as a remote trade target. No global PlayerID resolution, account
+map, or native TradingManager session is added for the NPC. Ordinary player trades
+continue through the vanilla code.
+
+Ownership is validated against the sending connection and current live player
+instance. The server takes actual inventory instances, caps offers at 500 distinct
+items, and revalidates every item immediately before consumption. As with the
+native add-item packet, items must be directly in the player's main inventory.
+Place money from bags into that inventory before offering it. An offered bag and
+its contents are destroyed together, but money inside it is **not** separately
+credited: only explicitly offered `Base.Money` instances count. No item price,
+client-supplied quantity, equipped item semantics, or backend balance is trusted.
+
+For offers containing money, a detached `ApocBRHumanSales.Sale` is written and
+fsynced to the connector's local journal **before** any offered item is removed.
+A journal failure refuses the whole offer and removes the failed staged sale, so
+it cannot later record a refused offer. This is a synchronous local disk barrier;
+there is no JDBC lease or SQL on the simulation thread. It can briefly stall a tick
+and flush earlier staged journal work. Database work uses the existing replay
+worker. All offered items are removed through the authoritative inventory; native
+inventory-removal packets synchronize the owner, and ServerPlayerDB captures the
+post-sale character. An offer with no `Base.Money` still destroys all confirmed
+items and saves inventory, but emits **no sales INSERT**.
+
+Each money receipt includes a stable `sale_id`, source server/world, username,
+optional Steam ID, split-screen slot, NPC key, sale timestamp, exact money item
+IDs, and quantity. Quantity is a count of individual `Base.Money` instances, not
+bundles, a valuation, or granted credit. `ON CONFLICT (sale_id) DO NOTHING` and the
+existing operation receipt transaction make SQL replay idempotent. Sale receipts
+that cannot replay are retained in journal quarantine, including startup/shutdown
+retry exhaustion; they are not discarded by the generic five-attempt policy.
+They require operational recovery and are not automatically retried from quarantine.
+
+The schema leaves rows `pending`. The backend owns pricing, `credit_amount`,
+`credit_currency`, `credited_at`, and `backend_reference`. It should claim pending
+rows using `FOR UPDATE SKIP LOCKED`, use `sale_id` as the unique ledger idempotency
+key, and update the balance/ledger and receipt status in the same backend database
+transaction. Username is an account identifier within this server; Steam ID is
+optional and split-screen slots must not silently become separate credit accounts.
+No backend worker, wallet update, or price calculation is implemented by this patch.
+
+**Crash-consistency limitation:** the durable sales receipt and the native/relational
+player inventory save are separate operations, not one atomic database transaction.
+A crash after receipt durability but before inventory removal/save can leave a
+receipt for restored items. A crash after consumption can also require inventory
+reconciliation. UUIDs prevent replay of a receipt from crediting twice; they do not
+solve this inventory/receipt boundary or prevent a restored item being resold under
+a new sale UUID. Reconcile receipts against authoritative inventory persistence
+before enabling automatic production credits; use the schema's `review` status for
+uncertain deliveries. `CONSUMPTION_REQUIRES_REVIEW` logs identify runtime consumption
+or capture failures by sale UUID. This patch does not claim exactly-once inventory
+consumption across process/power failure.
+
+Validation adds the production trade-adapter fixture and sale tests in the actual
+journal/coordinator fixture: mixed/trash-only offers, money-only receipts, consent
+invalidation, ownership/range, duplicate acceptance, disconnect/timeout/removal,
+failed queue submission, durable sale round trips/restart, fsync failure cleanup,
+SQL parameterization, and idempotent transaction replay. Still test native UI,
+item destruction, cancel/reconnect behavior and pt-BR chat with an unmodified
+42.21.0 client before live use. No database migration or server deployment was run.

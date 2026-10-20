@@ -76,7 +76,7 @@ public class RoamingTest {
     walked=true;ServerHumanTransport.idle(human,viewer);var packet=PlayerPacketReliable.sent.getLast();
     check(packet.prediction.x==human.player.x&&packet.prediction.y==human.player.y,"movement packets use live position");
     check((packet.booleanVariables&(1<<8))!=0,"native walking flag maintained");
-    check(packet.prediction.distance>=0&&packet.prediction.distance<=2,"prediction horizon bounded in eighth-tile units");
+    check(packet.prediction.distance>=0&&packet.prediction.distance<=7,"750ms prediction horizon bounded in eighth-tile units");
     if(packet.prediction.distance>0){
      sawPrediction=true;
      check(packet.prediction.type==1&&packet.prediction.speed==ServerHumanRoaming.SPEED,"native moving prediction carries speed");
@@ -90,6 +90,25 @@ public class RoamingTest {
   check(walked&&status==HumanActuator.MotionStatus.SUCCEEDED,"route eventually completes");
   check(sawPrediction,"straight movement actually enables native prediction");
   check(!human.moving,"route completion clears movement");
+  // Exercise straight tile-center lookahead and clipping at a real corner.
+  var routeField=ServerHumanRoaming.class.getDeclaredField("route");routeField.setAccessible(true);
+  var waypointField=ServerHumanRoaming.class.getDeclaredField("waypoint");waypointField.setAccessible(true);
+  routeField.set(human.roaming,List.of(new Tile(101,200),new Tile(102,200),new Tile(102,201)));
+  waypointField.setInt(human.roaming,0);human.player.x=101.4f;human.player.y=200.5f;
+  human.player.setDirectionAngle(0);human.moving=true;
+  int straightUnits=human.roaming.predictionDistanceUnits();
+  check(straightUnits==7,"prediction spans straight tile centers and covers heartbeat plus jitter");
+  check(straightUnits/(8.0*ServerHumanRoaming.SPEED)>.5,"quantized horizon exceeds 500ms send interval");
+  cell.getGridSquare(102,200,0).free=false;
+  check(human.roaming.predictionDistanceUnits()==0,"blocked next straight tile prevents prediction across waypoint");
+  cell.getGridSquare(102,200,0).free=true;
+  waypointField.setInt(human.roaming,1);human.player.x=102.0f;
+  int cornerUnits=human.roaming.predictionDistanceUnits();
+  check(cornerUnits==2&&human.player.x+cornerUnits/8.0<=102.35,"prediction clips before corner with safety margin");
+  human.player.x=102.4f;
+  check(human.roaming.predictionDistanceUnits()==0,"prediction cannot continue old heading around corner");
+  human.roaming.stop();
+  check(!human.moving,"explicit stop clears movement");
   ServerHumanTransport.idle(human,viewer);
   check(PlayerPacketReliable.sent.getLast().prediction.distance==0&&PlayerPacketReliable.sent.getLast().prediction.type==0,"stopping clears prediction");
   float postX=human.player.x,postY=human.player.y;
@@ -122,7 +141,22 @@ public class RoamingTest {
   var constructor=ServerHumanFactory.class.getDeclaredConstructor();constructor.setAccessible(true);
   var factory=constructor.newInstance();factory.tick(0);factory.spawn(definition("factory"));
   PlayerPacketReliable.sent.clear();
-  for(long now=STEP;now<=45*STEP;now+=STEP)factory.tick(now);
+  var humansField=ServerHumanFactory.class.getDeclaredField("humans");humansField.setAccessible(true);
+  ServerHuman replica=(ServerHuman)((Map<?,?>)humansField.get(factory)).get("factory");
+  int suppressedMotion=0,transitions=0,heartbeats=0;
+  for(long now=STEP;now<=200*STEP;now+=STEP){
+   float oldDirection=replica.player.getDirectionAngleRadians(),oldX=replica.player.x,oldY=replica.player.y;
+   boolean oldMoving=replica.moving;int before=PlayerPacketReliable.sent.size();
+   factory.tick(now);
+   boolean changed=Float.compare(oldDirection,replica.player.getDirectionAngleRadians())!=0||oldMoving!=replica.moving;
+   boolean heartbeat=now%ServerHumanFactory.UPDATE_NANOS==0;
+   check(PlayerPacketReliable.sent.size()-before==(heartbeat||changed?1:0),"only heartbeat or immediate turn/start/stop sends movement packet");
+   if(changed)transitions++;
+   if(heartbeat)heartbeats++;
+   if(!heartbeat&&!changed&&(oldX!=replica.player.x||oldY!=replica.player.y))suppressedMotion++;
+  }
+  check(suppressedMotion>0,"straight walking advances at 10Hz without sending every step");
+  check(transitions>0&&heartbeats==40,"transition exceptions preserved alongside exactly two routine updates per second");
   boolean sawWalk=false,sawTranslation=false;float previousX=Float.NaN,previousY=Float.NaN;
   for(var packet:PlayerPacketReliable.sent){
    if((packet.booleanVariables&(1<<8))!=0)sawWalk=true;
@@ -130,7 +164,7 @@ public class RoamingTest {
    previousX=packet.prediction.x;previousY=packet.prediction.y;
   }
   check(sawWalk&&sawTranslation,"factory starts roaming and publishes translation even along constant heading");
-  check(PlayerPacketReliable.sent.size()<=45,"network remains bounded to one movement update per 100ms per viewer");
+  check(PlayerPacketReliable.sent.size()<=heartbeats+transitions,"extra movement packets require a transition");
   factory.remove("factory");
   System.out.println("Passed "+checks+" indoor route, motion and replication assertions.");
  }

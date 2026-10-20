@@ -11,7 +11,8 @@ import zombie.pathfind.PolygonalMap2;
 /** Server-owned position integration; no player input, fake connection or client AI. */
 final class ServerHumanRoaming implements IndoorRoutePlanner.Grid {
     static final float SPEED = 1.2F;
-    static final double PREDICTION_SECONDS = 0.25;
+    // Cover the 500 ms heartbeat plus scheduling/network jitter on straight paths.
+    static final double PREDICTION_SECONDS = 0.75;
     private final ServerHuman human;
     private BuildingDef building;
     private List<Tile> route = List.of();
@@ -89,11 +90,22 @@ final class ServerHumanRoaming implements IndoorRoutePlanner.Grid {
         double angle = human.player.getDirectionAngleRadians();
         // Never extrapolate the old heading around an upcoming corner.
         if (distance < 0.001 || (dx * Math.cos(angle) + dy * Math.sin(angle)) / distance < 0.999) return 0;
+        if (!walkable(target)) return 0;
+        double headingX = dx / distance, headingY = dy / distance;
+        // Tile centers on a straight run are not stopping points. Look ahead only
+        // through connected, collinear route edges; never predict through a turn.
+        for (int i = waypoint + 1; i < route.size() && distance < SPEED * PREDICTION_SECONDS + 0.15; i++) {
+            Tile next = route.get(i);
+            int edgeX = next.x() - target.x(), edgeY = next.y() - target.y();
+            if (edgeX * headingX + edgeY * headingY < 0.999 || !connected(target, next)) break;
+            distance += 1.0;
+            target = next;
+        }
         // Leave headroom for the native client's final frame of extrapolation.
         int units = (int)Math.floor(Math.min(distance - 0.15, SPEED * PREDICTION_SECONDS) * 8);
-        if (units <= 0 || !walkable(target)) return 0;
+        if (units <= 0) return 0;
         double projected = units / 8.0;
-        float nx = (float)(x + dx / distance * projected), ny = (float)(y + dy / distance * projected);
+        float nx = (float)(x + headingX * projected), ny = (float)(y + headingY * projected);
         IsoGridSquare destination = square((int)Math.floor(nx), (int)Math.floor(ny));
         if (destination == null || !destination.isFree(true)
             || !walkable(new Tile((int)Math.floor(nx), (int)Math.floor(ny)))

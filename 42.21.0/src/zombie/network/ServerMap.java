@@ -361,6 +361,7 @@ public class ServerMap {
         MapCollisionData.instance.stop();
         AnimalPopulationManager.getInstance().stop();
         ZombiePopulationManager.instance.stop();
+        zombie.apocalipse.events.ApocBREventControl.shutdown();
         ApocBRBackendBridgeHooks.shutdown();
         RCONServer.shutdown();
         ServerMap.ServerCell.chunkLoader.quit();

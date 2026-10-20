@@ -79,13 +79,13 @@ public final class ServerHumanFactory {
                 if (!human.viewers.contains(connection)) ServerHumanTransport.announce(human, connection);
             }
             float previousDirection = human.player.getDirectionAngleRadians();
-            float previousX = human.player.getX(), previousY = human.player.getY();
             boolean wasMoving = human.moving;
+            ServerHumanTrading.update(human, now);
             human.brain.update(human.actuator.observe(now), human.actuator);
-            // Publish turns at brain cadence; unchanged idle actors retain their heartbeat.
+            // Simulate at 10 Hz, but publish routine motion only on the 2 Hz heartbeat.
+            // Turns and starts/stops must replace stale client prediction immediately.
             boolean turned = Float.compare(previousDirection, human.player.getDirectionAngleRadians()) != 0;
-            boolean moved = previousX != human.player.getX() || previousY != human.player.getY();
-            if (heartbeat || turned || moved || wasMoving != human.moving) {
+            if (heartbeat || turned || wasMoving != human.moving) {
                 for (UdpConnection connection : human.viewers) {
                     if (human.isRelevant(connection)) ServerHumanTransport.idle(human, connection);
                 }
@@ -144,6 +144,12 @@ public final class ServerHumanFactory {
             if (!GameServer.IDToPlayerMap.containsKey(id) && !GameServer.IDToAddressMap.containsKey(id)) return id;
         }
         throw new IllegalStateException("Server-human presentation ID range exhausted; restart required");
+    }
+
+    static ServerHuman tradingHuman(short id) {
+        if (!GameServer.server || INSTANCE.owner == null) return null;
+        INSTANCE.requireOwner();
+        return INSTANCE.byId.get(id);
     }
 
     private static String canonicalName(String name) {

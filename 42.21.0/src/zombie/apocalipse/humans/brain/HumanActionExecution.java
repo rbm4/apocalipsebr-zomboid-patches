@@ -36,10 +36,14 @@ public final class HumanActionExecution {
                         }
                     }
                     case HumanAction.HoldAttention ignored -> { }
+                    case HumanAction.WaitForTrade ignored -> { }
                 }
             }
             if (status != Status.RUNNING) return;
             switch (action) {
+                case HumanAction.WaitForTrade wait -> {
+                    if (!actuator.face(wait.visitor())) settle(false);
+                }
                 case HumanAction.Roam ignored -> {
                     HumanActuator.MotionStatus result = actuator.updateRoaming(now);
                     if (result != HumanActuator.MotionStatus.RUNNING) {

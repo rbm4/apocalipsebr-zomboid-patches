@@ -114,11 +114,14 @@ public class ApocBRResilienceTest {
  }
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static class Fake {
-  volatile boolean offline,loseCommit,blockWrite,permanentFailure,missingReceipt;
+  volatile boolean offline,loseCommit,blockWrite,permanentFailure,missingReceipt,missingSales;
   final Set<UUID> receipts=ConcurrentHashMap.newKeySet();
   final List<String> committed=new CopyOnWriteArrayList<>();
   final Map<String,Integer> writeAttempts=new ConcurrentHashMap<>();
   final CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);
+  final List<String> sqlWrites=new CopyOnWriteArrayList<>();
+  final List<String> sqlQueries=new CopyOnWriteArrayList<>();
+  final List<Map<Integer,Object>> sqlParameters=new CopyOnWriteArrayList<>();
   volatile int acquired,networkTimeout,mainAcquired,minQueryMillis;
   DataSource source(){return (DataSource)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{DataSource.class},(p,m,a)->{
    if(!m.getName().equals("getConnection"))return zero(m.getReturnType());
@@ -146,16 +149,20 @@ public class ApocBRResilienceTest {
      return (PreparedStatement)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{PreparedStatement.class},(p,m,a)->{
       if(m.getName().startsWith("set")&&a!=null&&a.length>=2&&a[0] instanceof Integer){values.put((int)a[0],a[1]);return null;}
       if(m.getName().equals("executeQuery")) {
+       sqlQueries.add(sql);
+       if(sql.contains("apocbr_human_sale")&&(missingSales||!sql.contains("FROM player_rel.apocbr_human_sale")))throw new SQLException("PRIVATE_SALES_SCHEMA","42P01");
        if(offline)throw new SQLException("PRIVATE_QUERY","08006");
        if(minQueryMillis>0&&networkTimeout<minQueryMillis)throw new SQLException("PRIVATE_NETWORK_BUDGET","08006",new java.net.SocketTimeoutException("PRIVATE_TIMEOUT"));
        if(missingReceipt&&sql.startsWith("SELECT operation_id"))throw new SQLException("PRIVATE_SCHEMA","42P01");
        return Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{ResultSet.class},(q,n,b)->zero(n.getReturnType()));
       }
       if(m.getName().equals("executeUpdate")) {
+       if(sql.contains("apocbr_human_sale")&&!sql.startsWith("INSERT INTO player_rel.apocbr_human_sale"))throw new SQLException("PRIVATE_SALES_SCHEMA","42P01");
        if(offline)throw new SQLException("PRIVATE_WRITE","08006");
        if(sql.startsWith("INSERT INTO public.apocbr_persistence_receipt")) {
         UUID id=(UUID)values.get(1);if(receipts.contains(id))return 0;receipt=id;return 1;
        }
+       sqlWrites.add(sql);sqlParameters.add(new HashMap<>(values));
        String value=String.valueOf(values.get(1));
        int attempt=writeAttempts.merge(value,1,Integer::sum);
        if(value.equals("incomplete-live"))ApocBRPlayerRelationalCapture.requireComplete(
@@ -175,6 +182,52 @@ public class ApocBRResilienceTest {
   }
  }
  static ApocBRPersistenceOperations.Account write(String value){return new ApocBRPersistenceOperations.Account(List.of(new ApocBRPersistenceOperations.Sql("UPDATE whitelist SET displayname=? WHERE username='fixture'",List.of(value))));}
+
+ static void humanSales(Path root)throws Exception {
+  List<Integer> ids=new ArrayList<>(List.of(17,23));UUID saleId=UUID.randomUUID();
+  var sale=new ApocBRHumanSales.Sale(saleId,1,"world","O'Connor","76561198000000000",2,"guide",123456789L,ids);ids.clear();
+  check(sale.itemIds().equals(List.of(17,23)),"sale takes detached immutable offered-money IDs");
+  try{new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"w","u",null,0,"guide",0,List.of(1,1));throw new AssertionError("duplicate source items accepted");}catch(IllegalArgumentException expected){checks++;}
+  try{new ApocBRHumanSales.Sale(UUID.randomUUID(),1,"w","u",null,0,"guide",0,List.of());throw new AssertionError("empty money sale accepted");}catch(IllegalArgumentException expected){checks++;}
+  Path path=root.resolve("human-sales");UUID operation;
+  try(var journal=new ApocBRPersistenceJournal(path,65536,s->{})) {
+   operation=journal.submitDurable(sale);
+   check(journal.status().staged()==0&&journal.status().durable()==1,"sale fsynced before caller consumes inventory");
+   check(journal.head().operation().equals(sale),"sale record round trips through actual journal filter");
+  }
+  try(var journal=new ApocBRPersistenceJournal(path,65536,s->{})) {
+   check(journal.head().id().equals(operation)&&journal.head().operation().equals(sale),"sale UUID and payload survive restart before SQL");
+   journal.quarantine(operation);check(journal.empty()&&journal.quarantined(operation),"failed sale retained for recovery without blocking worker");
+  }
+  try(var journal=new ApocBRPersistenceJournal(root.resolve("failed-sale-fsync"),65536,s->{})) {
+   Field file=ApocBRPersistenceJournal.class.getDeclaredField("file");file.setAccessible(true);((RandomAccessFile)file.get(journal)).close();
+   try{journal.submitDurable(sale);throw new AssertionError("closed disk accepted sale");}catch(IOException expected){checks++;}
+   check(journal.status().staged()==0&&journal.status().durable()==0,"failed fsync leaves no deferred sale for unchanged inventory");
+  }
+  Fake fake=new Fake();
+  System.setProperty("apocbr.guide.enabled","true");
+  System.setProperty("apocbr.guide.trade.enabled","false");
+  ApocBRHumanSales.validate(fake.connection());
+  check(fake.sqlQueries.isEmpty(),"disabled guide trades do not require V10");
+  System.setProperty("apocbr.guide.trade.enabled","true");
+  ApocBRHumanSales.validate(fake.connection());
+  check(fake.sqlQueries.size()==1&&fake.sqlQueries.getFirst().contains("FROM player_rel.apocbr_human_sale WHERE false"),"startup validates the manager V10 table in player_rel without reading sales");
+  fake.missingSales=true;
+  try{ApocBRHumanSales.validate(fake.connection());throw new AssertionError("missing V10 accepted");}
+  catch(SQLException expected){check("42P01".equals(expected.getSQLState()),"missing V10 still fails startup validation");}
+  fake.missingSales=false;
+  Field singleton=ApocBRPostgresConnector.class.getDeclaredField("instance");singleton.setAccessible(true);singleton.set(null,new ApocBRPostgresConnector(fake.source(),s->{}));
+  Field configured=ApocBRPostgresConnector.class.getDeclaredField("configured");configured.setAccessible(true);configured.setBoolean(null,true);
+  Field field=ApocBRPersistence.class.getDeclaredField("operation");field.setAccessible(true);
+  @SuppressWarnings("unchecked") ThreadLocal<UUID> context=(ThreadLocal<UUID>)field.get(null);
+  context.set(operation);ApocBRPersistence.background(true);
+  try{ApocBRPersistenceOperations.apply(sale);ApocBRPersistenceOperations.apply(sale);}finally{context.remove();ApocBRPersistence.background(false);}
+  check(fake.committed.equals(List.of(saleId.toString()))&&fake.receipts.contains(operation),"sale INSERT and replay receipt share transaction; retry does not execute twice");
+  String sql=fake.sqlWrites.getFirst();var parameters=fake.sqlParameters.getFirst();
+  check(sql.startsWith("INSERT INTO player_rel.apocbr_human_sale"),"durable sale replay writes manager V10 table rather than a public shadow table");
+  check(sql.contains("ON CONFLICT (sale_id) DO NOTHING")&&sql.contains("'Base.Money'")&&!sql.contains("O'Connor"),"money type fixed; account text stays in bound parameters");
+  check(parameters.get(4).equals("O'Connor")&&parameters.get(9).equals(2)&&parameters.get(10).equals("[17, 23]"),"receipt SQL contains money quantity and JSON item IDs");
+ }
  static void runtime(Path root)throws Exception {
   Fake fake=new Fake();fake.offline=true;
   Field singleton=ApocBRPostgresConnector.class.getDeclaredField("instance");singleton.setAccessible(true);singleton.set(null,new ApocBRPostgresConnector(fake.source(),s->{}));
@@ -188,6 +241,7 @@ public class ApocBRResilienceTest {
   check(start.isAlive()&&!ApocBRPostgresConnector.acceptingLogins(),"startup outage keeps admission closed");
   fake.offline=false;start.join(15000);check(!start.isAlive(),"startup finishes after database recovery");
   check(fake.committed.equals(List.of("startup"))&&fake.receipts.contains(first),"startup replay precedes admission");
+  check(fake.sqlQueries.stream().anyMatch(sql->sql.contains("FROM player_rel.apocbr_human_sale WHERE false")),"full startup admits guide with V10 table available only in player_rel");
   until(ApocBRPostgresConnector::acceptingLogins,"startup opens admission after replay");
   try(var budget=ApocBRForegroundDatabase.begin()) {
    Field deadline=ApocBRForegroundDatabase.class.getDeclaredField("deadline");deadline.setAccessible(true);
@@ -417,7 +471,7 @@ public class ApocBRResilienceTest {
    else shutdownBudget(root,args[1].equals("offline"));
    System.out.println(args[1]+" checks="+checks);return;
   }
-  journal(root);quarantine(root);deadlines();runtime(root);
+  journal(root);quarantine(root);deadlines();humanSales(root);runtime(root);
   System.out.println("Resilience checks="+checks);
  }
 }

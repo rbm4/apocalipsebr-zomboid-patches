@@ -25,7 +25,7 @@ final class ServerHumanTransport {
         PlayerPacketReliable packet = new PlayerPacketReliable();
         packet.id.set(human.player);
         packet.id.setPlayerIndex((byte)-1);
-        // Native short prediction, clipped to a collision-checked straight segment.
+        // Native prediction, clipped to a collision-checked straight segment.
         packet.prediction.type = 0;
         packet.prediction.x = human.player.getX();
         packet.prediction.y = human.player.getY();

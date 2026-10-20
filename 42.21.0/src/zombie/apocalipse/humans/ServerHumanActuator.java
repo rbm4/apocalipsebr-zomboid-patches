@@ -83,7 +83,10 @@ final class ServerHumanActuator implements HumanActuator {
     }
 
     @Override
-    public boolean say(String text) { return ServerHumanTransport.say(human, text); }
+    public boolean say(String text) {
+        return ServerHumanTransport.say(human, "guide".equals(human.definition.key())
+            ? zombie.apocalipse.events.ApocBREventControl.guideGreeting(text) : text);
+    }
 
     @Override
     public boolean startRoaming(long now) { return human.roaming.start(now); }

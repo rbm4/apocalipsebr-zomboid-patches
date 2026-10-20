@@ -66,6 +66,7 @@ final class ServerHuman {
     }
 
     void dispose() {
+        ServerHumanTrading.close(this);
         brain.stop(System.nanoTime(), actuator);
         roaming.stop();
         // Never call normal disconnectPlayer(): this actor has no account/connection/save.
