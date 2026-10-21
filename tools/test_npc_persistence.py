@@ -31,7 +31,7 @@ final class ApocBRPersistence {
 }
 """,
 'zombie/savefile/NpcStoreTest.java':r'''package zombie.savefile;
-import java.util.*;import java.sql.*;import java.nio.file.*;
+import java.util.*;import java.sql.*;import java.nio.file.*;import zombie.apocalipse.humans.state.*;
 import zombie.apocalipse.humans.*;import zombie.apocalipse.humans.profiles.*;import zombie.iso.IsoDirections;
 public class NpcStoreTest {
  static int checks;
@@ -41,12 +41,16 @@ public class NpcStoreTest {
  static void apply(Connection c,List<ApocBRPersistenceOperations.Sql> list)throws Exception {
   for(var sql:list)try(var s=ApocBRNpcStore.statement(c,sql.sql(),sql.parameters().toArray())){s.executeUpdate();}c.commit();
  }
- static ApocBRNpcStore.State state(ServerHumanDefinition d,long revision,float x,HumanLifecycle.State lifecycle,boolean retired){return new ApocBRNpcStore.State(d,lifecycle,1,1,x,200,0,revision,retired);}
+ static ApocBRNpcStore.State state(ServerHumanDefinition d,long revision,float x,HumanLifecycle.State lifecycle,boolean retired){var physical=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Damage(revision==5?.4f:.25f,-.5f,.2f,.01f));
+ physical=HumanStateReducer.reduce(physical,new HumanMutation.Adjust(HumanState.Stat.HUNGER,.3f));
+ if(lifecycle==HumanLifecycle.State.DEAD)physical=HumanStateReducer.reduce(physical,new HumanMutation.Kill());
+ return new ApocBRNpcStore.State(d,lifecycle,1,1,x,200,0,revision,retired,physical);}
  public static void main(String[] args)throws Exception {
   String url=args[0];
   try(var admin=DriverManager.getConnection(url,"postgres","");var s=admin.createStatement()){
    s.execute("CREATE ROLE apocalipsebr LOGIN;CREATE ROLE pz_server_01 LOGIN;GRANT CREATE ON DATABASE postgres TO apocalipsebr;SET ROLE apocalipsebr");
    s.execute(Files.readString(Path.of(args[1])));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V20__Persist_Npc_Physical_State.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
@@ -68,8 +72,14 @@ public class NpcStoreTest {
    var d=new ServerHumanDefinition("guide","Ricardao","Ricardão",100,200,0,IsoDirections.E,false,"CostumeMonster","lobby-guide");
    apply(c,ApocBRNpcStore.statements("test","world",1,state(d,2,110,HumanLifecycle.State.ACTIVE,false)));
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==110,"engine role writes snapshot independently of player graph");
+   check(number(c,"SELECT round(body_health::numeric*100) FROM npc_engine.runtime_state")==75,"physical health checkpoint written atomically");
+   check(number(c,"SELECT round(need_hunger::numeric*100) FROM npc_engine.runtime_state")==30,"needs use relational normalized columns");
+   invalid(c,"UPDATE npc_engine.runtime_state SET body_endurance='NaN'::real");
+   invalid(c,"UPDATE npc_engine.runtime_state SET injury_leg=2");
+   invalid(c,"UPDATE npc_engine.runtime_state SET state_revision=-1");
    apply(c,ApocBRNpcStore.statements("test","world",1,state(d,1,100,HumanLifecycle.State.DORMANT,false)));
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==110,"out of order snapshot rejected");
+   check(number(c,"SELECT round(body_health::numeric*100) FROM npc_engine.runtime_state")==75,"stale checkpoint cannot overwrite physical state");
    apply(c,ApocBRNpcStore.statements("test","world",1,state(d,2,120,HumanLifecycle.State.ACTIVE,false)));
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==110,"duplicate mutation cannot overwrite committed state");
    // An old in-flight writer holds a shared scope lock until its transaction ends.
@@ -138,6 +148,7 @@ public class NpcStoreTest {
    long deadline=System.nanoTime()+10000000000L;
    while(loaded==null&&System.nanoTime()<deadline){Thread.sleep(20);loaded=store.takeLoaded();}
    check(loaded!=null&&loaded.instances().size()==1,"worker hydrates logical instances");
+   check(loaded.instances().getFirst().state().physiology().vitals().hunger()>.29f,"worker hydrates physical state from PostgreSQL");
    check(zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current().profiles().containsKey("lobby-guide"),"dialogue cache is hot before NPC startup snapshot becomes visible");
    check(zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current().labels().containsKey("IGUI_ApocExtractionMapUtils_GuideHello"),"labels and graphs publish together before actor activation");
    var account=new ApocBRNpcStore.DialogueIdentity("guide","guide","steam","123");
@@ -167,6 +178,7 @@ public class NpcStoreTest {
    while(!ApocBRPersistence.queue.isEmpty())apply(c,ApocBRPersistence.queue.remove().statements());
    check(number(c,"SELECT count(*) FROM npc_engine.dialogue_flag WHERE player_identity='123'")==2,"earned facts persist through shared worker/journal using engine role");
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==150,"coalescing retains newest mutation");
+   check(number(c,"SELECT round(body_health::numeric*100) FROM npc_engine.runtime_state")==60,"worker and journal retain newest physical checkpoint");
    apply(c,ApocBRNpcStore.statements("test","world",3,state(d,6,150,HumanLifecycle.State.DEAD,true)));
    check(number(c,"SELECT count(*) FROM npc_engine.runtime_state WHERE retired AND lifecycle='DEAD'")==1,"terminal and administrative state persisted");
    try(var s=c.createStatement()){s.execute("CREATE TABLE npc_engine.permission_probe(id bigserial PRIMARY KEY)");c.commit();}
@@ -192,6 +204,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     for name,content in FILES.items():
         p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content,encoding='utf-8');sources.append(p)
     sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'savefile/ApocBRNpcDialogues.java',SRC/'apocalipse/humans/dialogue/HumanDialogueCatalog.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java']
+    sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java'))
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
     run([JDK/'javac.exe','--release','25','-encoding','UTF-8','-cp',cp,'-d',work/'classes','@'+str(argfile)])
@@ -203,6 +216,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
         if '--manager-test' in sys.argv:
             manager=ROOT.parent/'apocalipsebr-manager/manager'
             env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
-            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dmaven.main.skip=true','-Dtest=NpcTradePolicyMigrationTest','test'],cwd=manager,env=env)
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dmaven.main.skip=true','-Dtest=NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest','test'],cwd=manager,env=env)
     finally:
         run([BIN/'pg_ctl.exe','-D',work/'data','-m','immediate','-w','stop'],stdout=subprocess.DEVNULL)

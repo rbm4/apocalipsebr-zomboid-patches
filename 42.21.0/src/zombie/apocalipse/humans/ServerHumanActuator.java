@@ -18,7 +18,7 @@ final class ServerHumanActuator implements HumanActuator {
     ServerHumanActuator(ServerHuman human) { this.human = human; }
 
     HumanObservation observe(long now) {
-        if(cached!=null&&now<nextPerception)return new HumanObservation(now,cached.visitors(),cached.canRoam());
+        if(cached!=null&&now<nextPerception)return new HumanObservation(now,cached.visitors(),cached.canRoam(),human.state.snapshot());
         nextPerception=now+human.profile.perceptionIntervalMs()*1000000L;
         ArrayList<HumanObservation.Visitor> visitors = new ArrayList<>();
         for (IsoPlayer player : GameServer.Players) {
@@ -36,7 +36,7 @@ final class ServerHumanActuator implements HumanActuator {
         boolean viewed = false;
         for (UdpConnection viewer : human.viewers) if (human.isRelevant(viewer)) { viewed = true; break; }
         visitors.sort(java.util.Comparator.comparingDouble(HumanObservation.Visitor::distanceSquared));
-        cached=new HumanObservation(now,visitors.subList(0,Math.min(128,visitors.size())),viewed&&human.roaming.available());
+        cached=new HumanObservation(now,visitors.subList(0,Math.min(128,visitors.size())),viewed&&human.roaming.available(),human.state.snapshot());
         return cached;
     }
 

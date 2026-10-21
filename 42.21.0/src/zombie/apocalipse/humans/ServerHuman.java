@@ -15,16 +15,25 @@ final class ServerHuman {
     final ServerHumanDefinition definition;
     final IsoPlayer player;
     final Set<UdpConnection> viewers = Collections.newSetFromMap(new IdentityHashMap<>());
+    final java.util.Map<UdpConnection, zombie.apocalipse.humans.movement.MovementModifiers.Animation> movementPresentation = new IdentityHashMap<>();
     final HumanActivityController activity;
     final HumanProfile profile;
     final ServerHumanActuator actuator;
     final ServerHumanMovement movement;
     final ServerHumanRoaming roaming;
+    final zombie.apocalipse.humans.state.HumanStateStore state;
+    final ServerHumanPhysiology physiology;
     float postX, postY;
     String emote;
     private boolean disposed;
 
     ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell) {
+        this(definition,onlineId,cell,new zombie.apocalipse.humans.state.HumanStateStore(
+            zombie.apocalipse.humans.state.HumanState.INITIAL,HumanLog.mutations(definition.key())));
+    }
+
+    ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell, zombie.apocalipse.humans.state.HumanStateStore state) {
+        this.state=state;
         this.definition = definition;
         this.profile = ServerHumanProfiles.registry().require(definition.profileId());
         this.activity = new HumanActivityController(ServerHumanProfiles.registry().create(profile),profile.dialogue(),profile.trading());
@@ -65,6 +74,7 @@ final class ServerHuman {
         this.movement = new ServerHumanMovement(this);
         this.roaming = new ServerHumanRoaming(this);
         this.actuator = new ServerHumanActuator(this);
+        this.physiology = new ServerHumanPhysiology(this);
     }
 
     boolean isRelevant(UdpConnection connection) {
@@ -83,6 +93,7 @@ final class ServerHuman {
             if (connection.isFullyConnected()) ServerHumanTransport.remove(this, connection);
         }
         viewers.clear();
+        movementPresentation.clear();
         player.getDescriptor().setInstance(null);
         player.getCell().getAddList().remove(player);
         player.getCell().getObjectList().remove(player);

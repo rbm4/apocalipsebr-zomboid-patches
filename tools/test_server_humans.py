@@ -12,7 +12,9 @@ FILES = {
     "zombie/savefile/ApocBRNpcStore.java": """package zombie.savefile;
 import java.util.*;import zombie.apocalipse.humans.*;import zombie.apocalipse.humans.profiles.*;
 public final class ApocBRNpcStore {
- public record State(ServerHumanDefinition definition,HumanLifecycle.State lifecycle,int activations,int profileRevision,float x,float y,int z,long revision,boolean retired){}
+ public record State(ServerHumanDefinition definition,HumanLifecycle.State lifecycle,int activations,int profileRevision,float x,float y,int z,long revision,boolean retired,zombie.apocalipse.humans.state.HumanState physiology){
+ public State(ServerHumanDefinition d,HumanLifecycle.State l,int a,int p,float x,float y,int z,long r,boolean t){this(d,l,a,p,x,y,z,r,t,zombie.apocalipse.humans.state.HumanState.INITIAL);}}
+
  public record Restored(State state,boolean activate){}
  public record Loaded(List<HumanProfile> profiles,List<Restored> instances){}
  public static boolean enabled(){return false;}
@@ -61,8 +63,16 @@ public class SurvivorDesc {
     "zombie/characters/IsoPlayer.java": """package zombie.characters;
 import zombie.iso.*;
 public class IsoPlayer {
- public boolean remote,god,invisible,ghost,detached,dead; public int playerIndex;
+ public boolean remote,god,invisible,ghost,detached,dead,running,sprinting,sneaking; public int playerIndex;
+ private final java.util.Map<String,Float> variables=new java.util.HashMap<>();
+ private final NetworkPlayerAI networkAi=new NetworkPlayerAI();
+ public NetworkPlayerAI getNetworkCharacterAI(){return networkAi;}
+ public void setRunning(boolean v){running=v;}public void setSprinting(boolean v){sprinting=v;}public void setSneaking(boolean v){sneaking=v;}
  public int instanceId; public float angle;
+ private float health=1;private final Stats stats=new Stats();private final zombie.characters.BodyDamage.BodyDamage body=new zombie.characters.BodyDamage.BodyDamage();
+ public float getHealth(){return health;}public void setHealth(float v){health=v;}
+ public Stats getStats(){return stats;}public zombie.characters.BodyDamage.BodyDamage getBodyDamage(){return body;}
+
  public short id; public float realx,realy,x,y,z,idleSpeed; public byte realz;
  public String username,displayName; public IsoDirections facing;
  private final IsoCell cell; private final SurvivorDesc descriptor;
@@ -88,7 +98,8 @@ public class IsoPlayer {
  public int getXi(){return (int)x;} public int getYi(){return (int)y;} public int getZi(){return (int)z;}
  public boolean isDead(){return dead;} public boolean isInvisible(){return invisible;}
  public int getID(){return instanceId;} public Object getCurrentSquare(){return detached?null:cell;}
- public void setVariable(String k,float v){idleSpeed=v;}
+ public void setVariable(String k,float v){variables.put(k,v);if(k.equals("IdleSpeed"))idleSpeed=v;}
+ public float getVariableFloat(String k,float fallback){return variables.getOrDefault(k,fallback);}
  public SurvivorDesc getDescriptor(){return descriptor;} public Emitter getEmitter(){return emitter;}
  public static class Emitter {public boolean stopped; public void stopAll(){stopped=true;}}
 }
@@ -126,7 +137,7 @@ public class GameServer {
 """,
     "zombie/network/PacketTypes.java": """package zombie.network;
 public class PacketTypes {public enum PacketType {
- PlayerUpdateReliable,PlayerTimeout,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer;
+ PlayerUpdateReliable,PlayerTimeout,PlayerInjuries,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer;
  public void doPacket(zombie.core.network.ByteBufferWriter b){} public void send(zombie.core.raknet.UdpConnection c){}
  }}
 """,
@@ -273,6 +284,20 @@ public class PolygonalMap2 {
  public static final PolygonalMap2 instance=new PolygonalMap2();public boolean blocked;
  public boolean lineClearCollide(float x,float y,float a,float b,int z,Object ignored,boolean doors,boolean walls){return blocked;}
 }
+""",
+    "zombie/characters/CharacterStat.java": """package zombie.characters;
+public enum CharacterStat {ENDURANCE,HUNGER,THIRST,FATIGUE,PAIN,PANIC,SICKNESS,ZOMBIE_INFECTION}
+""",
+    "zombie/characters/Stats.java": """package zombie.characters;
+public class Stats {private final java.util.Map<CharacterStat,Float> values=new java.util.HashMap<>();
+ public float get(CharacterStat k){return values.getOrDefault(k,k==CharacterStat.ENDURANCE?1f:0f);}
+ public boolean set(CharacterStat k,float v){values.put(k,v);return true;}}
+""",
+    "zombie/characters/BodyDamage/BodyDamage.java": """package zombie.characters.BodyDamage;
+public class BodyDamage {private float health=100;public float getOverallBodyHealth(){return health;}public void setOverallBodyHealth(float v){health=v;}}
+""",
+    "zombie/characters/NetworkPlayerAI.java": """package zombie.characters;
+public class NetworkPlayerAI {public float walkSpeed=1,runSpeed=1;}
 """,
     "zombie/characters/NetworkPlayerVariables.java": """package zombie.characters;
 public class NetworkPlayerVariables {public enum Flags {

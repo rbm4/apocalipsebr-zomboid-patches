@@ -18,10 +18,14 @@ public final class HumanActivityController {
     public Mode mode() { return mode; }
     public HumanBehavior behavior() { return behavior; }
     public void update(long now, java.util.function.LongFunction<HumanObservation> perceive, HumanActuator actuator) {
+        update(now,perceive,actuator,zombie.apocalipse.humans.state.HumanState.INITIAL);
+    }
+    public void update(long now,java.util.function.LongFunction<HumanObservation> perceive,HumanActuator actuator,
+                       zombie.apocalipse.humans.state.HumanState state) {
         if (mode == Mode.STOPPED || blocked) return;
         try {
             update(mode == Mode.AUTONOMOUS && behavior.needsPerception() ? perceive.apply(now)
-                : new HumanObservation(now,java.util.List.of()), actuator);
+                : new HumanObservation(now,java.util.List.of(),false,state), actuator);
         } catch (RuntimeException problem) { fail(problem,now,actuator); }
     }
     public void update(HumanObservation observation, HumanActuator actuator) {

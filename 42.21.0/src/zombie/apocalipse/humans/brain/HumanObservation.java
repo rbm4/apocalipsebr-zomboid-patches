@@ -3,9 +3,12 @@ package zombie.apocalipse.humans.brain;
 import java.util.List;
 
 /** Values only: never pass live engine objects into a brain. Time is monotonic. */
-public record HumanObservation(long nowNanos, List<Visitor> visitors, boolean canRoam) {
+public record HumanObservation(long nowNanos, List<Visitor> visitors, boolean canRoam,
+                               zombie.apocalipse.humans.state.HumanState state) {
+    public HumanObservation(long nowNanos,List<Visitor> visitors,boolean canRoam){this(nowNanos,visitors,canRoam,zombie.apocalipse.humans.state.HumanState.INITIAL);}
     public HumanObservation(long nowNanos, List<Visitor> visitors) { this(nowNanos, visitors, false); }
     public HumanObservation {
+        java.util.Objects.requireNonNull(state);
         visitors = List.copyOf(visitors);
     }
 

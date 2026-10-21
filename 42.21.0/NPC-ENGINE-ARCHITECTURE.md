@@ -23,6 +23,8 @@ and ability is not the intended hierarchy.
 | Execution lifecycle | `HumanActionExecution` and its child executions | Pending/running/terminal state, monotonic timing, ordered execution and cleanup. |
 | Engine capabilities | `HumanActuator`, `ServerHumanActuator` | Execute world operations for the owning NPC on the simulation thread. |
 | Physical movement | `ServerHumanMovement`, `MovementGrid` | Follow caller-selected routes, enforce traversal, integrate position and resolve motion presentation; roaming selects routes separately. |
+| Movement conditions | `MovementModifiers` | Validate immutable physical/context/effect inputs and resolve permitted pace, speed and animation without sampling the world or simulating health. |
+| Physical state | `HumanStateStore`, `HumanStateReducer`, `HumanMutation` | Single-writer logical state and pure mutations; native adapters, decisions and workers consume immutable snapshots. |
 | Transport and feature services | `ServerHumanTransport`, dialogue/trade controllers | Delivery, authenticated requests, exclusive leases and feature-specific authoritative rules. |
 
 Brains depend on ports and action data, not on concrete event controllers,
@@ -155,3 +157,13 @@ worker and shared journal own JDBC, durability and retries. Never persist native
 IDs, Java references, connections or monotonic deadlines. New semantic memory
 requires versioned codecs and explicit restart/cancellation rules. See
 [NPC-PERSISTENCE.md](NPC-PERSISTENCE.md) for the implemented schema and ownership fence.
+
+## Centralized physical state
+
+Physical/needs fields are owned by the logical NPC's single-writer reducer store.
+Validated commands and native observations become typed `HumanMutation` values.
+Capabilities read projections; behavior reads `HumanObservation.state()`. Neither
+may keep a competing mutable health/endurance copy. Native body/stats are an
+observation/projection boundary, and workers receive detached checkpoints only.
+See [NPC-STATE.md](NPC-STATE.md) for CAS/activation validation, inbox bounds,
+condition projection, V20 persistence, failure semantics and validation.

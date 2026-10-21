@@ -3,8 +3,10 @@
 Implementation follow-up: the walking mechanics described in the original
 investigation below have now been extracted from roaming into
 `ServerHumanMovement`. See [implemented movement boundaries](../NPC-MOVEMENT.md).
-Running and combat remain proposed extensions; the source table below records
-the pre-extraction implementation inspected for this report.
+Movement now also implements typed running/sprinting/injury/modifier contracts;
+central physical-state reduction/persistence is implemented in [NPC-STATE.md](../NPC-STATE.md).
+Detailed wound, threat and combat producers remain future extensions. The source
+table below records the pre-extraction implementation inspected for this report.
 
 Investigation date: 2026-10-21. Target: server patch 42.21.0 and unmodified
 42.21.0 clients. This is a source-backed design report, not an implementation,

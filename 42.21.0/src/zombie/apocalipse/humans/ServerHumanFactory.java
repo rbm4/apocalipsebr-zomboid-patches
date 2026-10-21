@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.Locale;
 import java.text.Normalizer;
+import zombie.apocalipse.humans.state.*;
 import zombie.core.raknet.UdpConnection;
 import zombie.debug.DebugLog;
 import zombie.iso.IsoWorld;
@@ -41,6 +42,10 @@ public final class ServerHumanFactory {
     private int nextId = FIRST_ID;
     private long nextUpdate;
     private long nextBrainUpdate;
+    private record PendingMutation(String key,int activation,long revision,HumanMutation mutation,
+                                   java.util.concurrent.CompletableFuture<HumanStateStore.Result> result) { }
+    private final java.util.concurrent.ArrayBlockingQueue<PendingMutation> mutations=new java.util.concurrent.ArrayBlockingQueue<>(1024);
+    private volatile boolean acceptMutations;
 
     private ServerHumanFactory() {
     }
@@ -91,6 +96,7 @@ public final class ServerHumanFactory {
                     var state=restored.state();if(state.retired()){retiredKeys.add(state.definition().key());reservedNames.add(canonicalName(state.definition().username()));continue;}
                     registerDormant(state.definition());
                     instances.get(state.definition().key()).restore(state.lifecycle(),state.activations(),state.profileRevision());
+                    instances.get(state.definition().key()).physiology().restore(state.physiology());
                     checkpoints.put(state.definition().key(),state);
                     if(restored.activate()&&state.lifecycle()!=HumanLifecycle.State.DEAD)try{activate(state.definition().key());}
                         catch(RuntimeException failure){DebugLog.log("[ApocBR][ServerHumans] NPC activation deferred key="+state.definition().key()+" issue="+failure.getClass().getSimpleName());}
@@ -107,6 +113,8 @@ public final class ServerHumanFactory {
             if(profiles!=null)try{ServerHumanProfiles.registry().install(profiles,false);}
                 catch(RuntimeException failure){DebugLog.log("[ApocBR][ServerHumans] Rejected database profile batch: "+failure.getClass().getSimpleName());}
             if(!store.healthy()) {
+                acceptMutations=false;
+                rejectPending(HumanStateStore.Status.UNAVAILABLE);
                 if(!persistencePaused)for(var human:humans.values()) {
                     ServerHumanDialogue.close(human,"persistence_unavailable");ServerHumanTrading.close(human);
                     human.activity.setBlocked(true,now,human.actuator);
@@ -119,11 +127,21 @@ public final class ServerHumanFactory {
         }
         if (now < nextBrainUpdate) return;
         nextBrainUpdate = now + BRAIN_UPDATE_NANOS;
+        acceptMutations=true;
+        for(int count=0;count<128;count++){
+            var command=mutations.poll();if(command==null)break;
+            command.result().complete(mutate(command.key(),command.activation(),command.revision(),command.mutation()));
+        }
         boolean heartbeat = now >= nextUpdate;
         if (heartbeat) nextUpdate = now + UPDATE_NANOS;
         java.util.List<String> dead = null;
         for (ServerHuman human : humans.values()) {
-            if (human.player.isDead()) {
+            ServerHumanMovement.Presentation previousMotion = human.movement.presentation();
+            if(human.player.isDead())human.state.dispatch(new HumanMutation.Kill());
+            human.physiology.update(now);
+            var inputs=human.movement.inputs();
+            human.movement.derivedConditions(HumanConditionCalculator.movement(human.state.snapshot(),inputs.context(),inputs.effects()));
+            if (human.state.snapshot().dead()) {
                 if (dead == null) dead = new java.util.ArrayList<>();
                 dead.add(human.definition.key());
                 continue;
@@ -134,6 +152,7 @@ public final class ServerHumanFactory {
                 UdpConnection connection = iterator.next();
                 if (!GameServer.udpEngine.connections.contains(connection) || !connection.isFullyConnected()) {
                     iterator.remove();
+                    human.movementPresentation.remove(connection);
                 }
             }
             for (UdpConnection connection : GameServer.udpEngine.connections) {
@@ -141,14 +160,14 @@ public final class ServerHumanFactory {
                 if (!human.viewers.contains(connection)) ServerHumanTransport.announce(human, connection);
             }
             float previousDirection = human.player.getDirectionAngleRadians();
-            boolean wasMoving = human.movement.moving();
             ServerHumanTrading.update(human, now);
             ServerHumanDialogue.update(human, now);
-            human.activity.update(now, human.actuator::observe, human.actuator);
+            human.activity.update(now, human.actuator::observe, human.actuator,human.state.snapshot());
+            human.movement.refresh(now);
             // Simulate at 10 Hz, but publish routine motion only on the 2 Hz heartbeat.
-            // Turns and starts/stops must replace stale client prediction immediately.
+            // Turns and gait/speed/animation changes replace stale client prediction immediately.
             boolean turned = Float.compare(previousDirection, human.player.getDirectionAngleRadians()) != 0;
-            if (heartbeat || turned || wasMoving != human.movement.moving()) {
+            if (heartbeat || turned || !previousMotion.equals(human.movement.presentation())) {
                 for (UdpConnection connection : human.viewers) {
                     if (human.isRelevant(connection)) ServerHumanTransport.idle(human, connection);
                 }
@@ -188,7 +207,8 @@ public final class ServerHumanFactory {
         instance.spawning();
         try {
             short id = allocateId();
-            ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell);
+            if(instance.physiology().snapshot().dead())throw new IllegalStateException("Dead NPC physical state cannot activate");
+            ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell,instance.physiology());
             var restored=checkpoints.get(key);
             if(restored!=null){human.player.setX(restored.x());human.player.setY(restored.y());human.player.setZ(restored.z());human.player.realx=restored.x();human.player.realy=restored.y();human.player.realz=(byte)restored.z();human.postX=restored.x();human.postY=restored.y();}
             humans.put(key,human); byId.put(id,human); instance.active(human.profile.revision());
@@ -224,7 +244,8 @@ public final class ServerHumanFactory {
         ServerHuman human = humans.remove(key);
         if (human == null) return false;
         byId.remove(human.player.getOnlineID());
-        if (death) instances.get(key).dead(); else instances.get(key).dormant();
+        if (death) {instances.get(key).physiology().dispatch(new HumanMutation.Kill());instances.get(key).dead();}
+        else instances.get(key).dormant();
         checkpoint(key,false,human);
         human.dispose();
         ServerHumanDialogue.rosterChanged();
@@ -249,9 +270,9 @@ public final class ServerHumanFactory {
         float y=human!=null?human.player.getY():old!=null?old.y():d.y();
         int z=human!=null?human.player.getZi():old!=null?old.z():d.z();
         long revision=old==null?1:old.revision();
-        var state=new zombie.savefile.ApocBRNpcStore.State(d,logical.state(),logical.activations(),logical.snapshot().profileRevision(),x,y,z,revision,retired);
+        var state=new zombie.savefile.ApocBRNpcStore.State(d,logical.state(),logical.activations(),logical.snapshot().profileRevision(),x,y,z,revision,retired,logical.physiology().snapshot());
         if(old!=null&&old.equals(state))return;
-        state=new zombie.savefile.ApocBRNpcStore.State(d,state.lifecycle(),state.activations(),state.profileRevision(),x,y,z,revision+1,retired);
+        state=new zombie.savefile.ApocBRNpcStore.State(d,state.lifecycle(),state.activations(),state.profileRevision(),x,y,z,revision+1,retired,state.physiology());
         store.offer(state);checkpoints.put(key,state);
     }
 
@@ -282,6 +303,32 @@ public final class ServerHumanFactory {
         INSTANCE.requireOwner();
         return java.util.List.copyOf(INSTANCE.humans.values());
     }
+
+    /** Trusted simulation-thread entry point. Network adapters must validate sender/target before calling. */
+    public HumanStateStore.Result mutate(String key,int activation,long expectedRevision,HumanMutation mutation){
+        requireOwner();java.util.Objects.requireNonNull(mutation);
+        var logical=instances.get(key);
+        if(logical==null||logical.state()!=HumanLifecycle.State.ACTIVE)return new HumanStateStore.Result(HumanStateStore.Status.INACTIVE,null);
+        var state=logical.physiology().snapshot();
+        if(!acceptMutations)return new HumanStateStore.Result(HumanStateStore.Status.UNAVAILABLE,state);
+        if(logical.snapshot().activations()!=activation)return new HumanStateStore.Result(HumanStateStore.Status.STALE_ACTIVATION,state);
+        return logical.physiology().dispatch(expectedRevision,mutation);
+    }
+
+    /** Bounded inbox for trusted off-thread producers; acknowledgement is in-memory, not crash durability. */
+    public java.util.concurrent.CompletableFuture<HumanStateStore.Result> submitMutation(String key,int activation,long revision,HumanMutation mutation){
+        java.util.Objects.requireNonNull(mutation);
+        if(key==null||key.isBlank()||key.length()>128)throw new IllegalArgumentException("Invalid NPC key");
+        var result=new java.util.concurrent.CompletableFuture<HumanStateStore.Result>();
+        if(!acceptMutations)result.complete(new HumanStateStore.Result(HumanStateStore.Status.UNAVAILABLE,null));
+        else if(!mutations.offer(new PendingMutation(key,activation,revision,mutation,result)))
+            result.complete(new HumanStateStore.Result(HumanStateStore.Status.QUEUE_FULL,null));
+        return result;
+    }
+    private void rejectPending(HumanStateStore.Status status){
+        for(int i=0;i<1024;i++){var command=mutations.poll();if(command==null)break;command.result().complete(new HumanStateStore.Result(status,null));}
+    }
+    public HumanState state(String key){requireOwner();var logical=instances.get(key);return logical==null?null:logical.physiology().snapshot();}
 
     static ServerHuman tradingHuman(short id) {
         if (!GameServer.server || INSTANCE.owner == null) return null;

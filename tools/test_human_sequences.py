@@ -106,6 +106,8 @@ def main():
         harness = work / "SequenceTest.java"
         harness.write_text(HARNESS, encoding="utf-8")
         sources = [harness, *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/brain").glob("*.java")), *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/profiles").glob("*.java"))]
+        sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/state").glob("*.java")))
+        sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/movement").glob("*.java")))
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(p).replace("\\", "/") + '"' for p in sources), encoding="utf-8")
         output = work / "classes"

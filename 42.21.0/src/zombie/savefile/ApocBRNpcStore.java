@@ -6,15 +6,20 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicReference;
 import zombie.apocalipse.humans.*;
 import zombie.apocalipse.humans.profiles.*;
+import zombie.apocalipse.humans.state.HumanState;
 import zombie.iso.IsoDirections;
 import zombie.debug.DebugLog;
 
 /** Detached NPC persistence boundary. The worker never reads/mutates a live game object. */
 public final class ApocBRNpcStore {
     public record State(ServerHumanDefinition definition,HumanLifecycle.State lifecycle,int activations,
-                        int profileRevision,float x,float y,int z,long revision,boolean retired) {
+                        int profileRevision,float x,float y,int z,long revision,boolean retired,HumanState physiology) {
+        public State(ServerHumanDefinition d,HumanLifecycle.State life,int activations,int profile,float x,float y,int z,long revision,boolean retired){
+            this(d,life,activations,profile,x,y,z,revision,retired,life==HumanLifecycle.State.DEAD
+                ?zombie.apocalipse.humans.state.HumanStateReducer.reduce(HumanState.INITIAL,new zombie.apocalipse.humans.state.HumanMutation.Kill()):HumanState.INITIAL);
+        }
         public State {
-            Objects.requireNonNull(definition);Objects.requireNonNull(lifecycle);
+            Objects.requireNonNull(definition);Objects.requireNonNull(lifecycle);Objects.requireNonNull(physiology);
             if(activations<0||profileRevision<0||revision<1||!Float.isFinite(x)||!Float.isFinite(y)||x<0||y<0||x>=Integer.MAX_VALUE||y>=Integer.MAX_VALUE||z< -32||z>31)
                 throw new IllegalArgumentException("Invalid NPC snapshot");
         }
@@ -182,14 +187,35 @@ public final class ApocBRNpcStore {
             SELECT ?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM npc_engine.scope WHERE server_key=? AND world=? AND epoch=? FOR SHARE)
             ON CONFLICT(server_key,world,npc_key) DO NOTHING
             """,List.of(server,world,d.key(),d.username(),d.displayName(),d.profileId(),d.x(),d.y(),d.z(),d.facing().name(),d.female(),d.outfit(),state.lifecycle()==HumanLifecycle.State.ACTIVE,server,world,epoch));
+        var p=state.physiology();var v=p.vitals();var i=p.injuries();
         var snapshot=new ApocBRPersistenceOperations.Sql("""
-            INSERT INTO npc_engine.runtime_state(server_key,world,npc_key,epoch,mutation_revision,lifecycle,activations,profile_revision,x,y,z,retired)
-            SELECT ?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM npc_engine.scope WHERE server_key=? AND world=? AND epoch=? FOR SHARE)
+            INSERT INTO npc_engine.runtime_state(server_key,world,npc_key,epoch,mutation_revision,lifecycle,activations,profile_revision,x,y,z,retired,
+                physical_version,state_revision,body_health,body_endurance,need_hunger,need_thirst,need_fatigue,need_pain,need_cold,need_fear,need_sickness,need_dirtiness,need_infection,injury_leg,injury_arms,bleeding_per_second,body_immobile,body_downed)
+            SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM npc_engine.scope WHERE server_key=? AND world=? AND epoch=? FOR SHARE)
             ON CONFLICT(server_key,world,npc_key) DO UPDATE SET epoch=EXCLUDED.epoch,mutation_revision=EXCLUDED.mutation_revision,
                 lifecycle=EXCLUDED.lifecycle,activations=EXCLUDED.activations,profile_revision=EXCLUDED.profile_revision,
-                x=EXCLUDED.x,y=EXCLUDED.y,z=EXCLUDED.z,retired=EXCLUDED.retired,updated_at=now()
+                x=EXCLUDED.x,y=EXCLUDED.y,z=EXCLUDED.z,retired=EXCLUDED.retired,updated_at=now(),
+                physical_version=EXCLUDED.physical_version,
+                state_revision=EXCLUDED.state_revision,
+                body_health=EXCLUDED.body_health,
+                body_endurance=EXCLUDED.body_endurance,
+                need_hunger=EXCLUDED.need_hunger,
+                need_thirst=EXCLUDED.need_thirst,
+                need_fatigue=EXCLUDED.need_fatigue,
+                need_pain=EXCLUDED.need_pain,
+                need_cold=EXCLUDED.need_cold,
+                need_fear=EXCLUDED.need_fear,
+                need_sickness=EXCLUDED.need_sickness,
+                need_dirtiness=EXCLUDED.need_dirtiness,
+                need_infection=EXCLUDED.need_infection,
+                injury_leg=EXCLUDED.injury_leg,
+                injury_arms=EXCLUDED.injury_arms,
+                bleeding_per_second=EXCLUDED.bleeding_per_second,
+                body_immobile=EXCLUDED.body_immobile,
+                body_downed=EXCLUDED.body_downed
             WHERE npc_engine.runtime_state.epoch<EXCLUDED.epoch OR (npc_engine.runtime_state.epoch=EXCLUDED.epoch AND npc_engine.runtime_state.mutation_revision<EXCLUDED.mutation_revision)
-            """,List.of(server,world,d.key(),epoch,state.revision(),state.lifecycle().name(),state.activations(),state.profileRevision(),state.x(),state.y(),state.z(),state.retired(),server,world,epoch));
+            """,List.of(server,world,d.key(),epoch,state.revision(),state.lifecycle().name(),state.activations(),state.profileRevision(),state.x(),state.y(),state.z(),state.retired(),
+                HumanState.VERSION,p.revision(),v.health(),v.endurance(),v.hunger(),v.thirst(),v.fatigue(),v.pain(),v.cold(),v.fear(),v.sickness(),v.dirtiness(),v.infection(),i.leg(),i.arms(),i.bleedingPerSecond(),i.immobile(),i.downed(),server,world,epoch));
         return List.of(definition,snapshot);
     }
     private static void insertDefinition(Connection c,String server,String world,ServerHumanDefinition d,boolean active)throws SQLException {
@@ -202,7 +228,8 @@ public final class ApocBRNpcStore {
         var result=new ArrayList<Restored>();
         try(var s=statement(connection,"""
             SELECT i.npc_key,i.username,i.display_name,i.home_x,i.home_y,i.home_z,i.facing,i.female,i.outfit,i.profile_id,i.desired_active,
-                r.lifecycle,r.activations,r.profile_revision,r.x,r.y,r.z,r.mutation_revision,r.retired
+                r.lifecycle,r.activations,r.profile_revision,r.x,r.y,r.z,r.mutation_revision,r.retired,
+                r.physical_version,r.state_revision,r.body_health,r.body_endurance,r.need_hunger,r.need_thirst,r.need_fatigue,r.need_pain,r.need_cold,r.need_fear,r.need_sickness,r.need_dirtiness,r.need_infection,r.injury_leg,r.injury_arms,r.bleeding_per_second,r.body_immobile,r.body_downed
             FROM npc_engine.instance i LEFT JOIN npc_engine.runtime_state r USING(server_key,world,npc_key)
             WHERE i.server_key=? AND i.world=? ORDER BY i.npc_key LIMIT 257
             """,server,world);var r=s.executeQuery()) {
@@ -210,7 +237,11 @@ public final class ApocBRNpcStore {
                 if(result.size()>=256)throw new SQLException("NPC instance limit exceeded","22023");
                 var d=new ServerHumanDefinition(r.getString(1),r.getString(2),r.getString(3),r.getFloat(4),r.getFloat(5),r.getInt(6),IsoDirections.valueOf(r.getString(7)),r.getBoolean(8),r.getString(9),r.getString(10));
                 String life=r.getString(12);boolean fresh=life==null;
-                var state=new State(d,fresh?HumanLifecycle.State.DORMANT:HumanLifecycle.State.valueOf(life),r.getInt(13),r.getInt(14),fresh?d.x():r.getFloat(15),fresh?d.y():r.getFloat(16),fresh?d.z():r.getInt(17),Math.max(1,r.getLong(18)),r.getBoolean(19));
+                if(!fresh&&r.getInt(20)!=HumanState.VERSION)throw new SQLException("Unsupported NPC physical state version","22023");
+                var physical=fresh?HumanState.INITIAL:new HumanState(r.getLong(21),
+                    new HumanState.Vitals(r.getFloat(22),r.getFloat(23),r.getFloat(24),r.getFloat(25),r.getFloat(26),r.getFloat(27),r.getFloat(28),r.getFloat(29),r.getFloat(30),r.getFloat(31),r.getFloat(32)),
+                    new HumanState.Injuries(r.getFloat(33),r.getFloat(34),r.getFloat(35),r.getBoolean(36),r.getBoolean(37)));
+                var state=new State(d,fresh?HumanLifecycle.State.DORMANT:HumanLifecycle.State.valueOf(life),r.getInt(13),r.getInt(14),fresh?d.x():r.getFloat(15),fresh?d.y():r.getFloat(16),fresh?d.z():r.getInt(17),Math.max(1,r.getLong(18)),r.getBoolean(19),physical);
                 result.add(new Restored(state,r.getBoolean(11)&&(fresh||state.lifecycle()==HumanLifecycle.State.ACTIVE||state.lifecycle()==HumanLifecycle.State.SPAWNING)));
             }
         }

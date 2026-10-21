@@ -2,6 +2,8 @@ package zombie.apocalipse.humans;
 
 /** Logical NPC state survives presentation removal. Persistence never contains the presentation actor. */
 public final class HumanLifecycle {
+    private final zombie.apocalipse.humans.state.HumanStateStore physiology;
+    public zombie.apocalipse.humans.state.HumanStateStore physiology(){return physiology;}
     public enum State { DORMANT, SPAWNING, ACTIVE, DEAD }
     public record Snapshot(ServerHumanDefinition definition, State state, int activations, int profileRevision) { }
     public Snapshot snapshot() { return new Snapshot(definition,state,activations,profileRevision); }
@@ -9,7 +11,11 @@ public final class HumanLifecycle {
     private State state = State.DORMANT;
     private int activations;
     private int profileRevision;
-    HumanLifecycle(ServerHumanDefinition definition) { this.definition = definition; }
+    HumanLifecycle(ServerHumanDefinition definition) {
+        this.definition = definition;
+        this.physiology = new zombie.apocalipse.humans.state.HumanStateStore(
+            zombie.apocalipse.humans.state.HumanState.INITIAL,HumanLog.mutations(definition.key()));
+    }
     void restore(State persisted,int count,int revision) {
         if(state!=State.DORMANT||activations!=0)throw new IllegalStateException("Already initialized");
         state=persisted==State.DEAD?State.DEAD:State.DORMANT;activations=count;profileRevision=revision;
