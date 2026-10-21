@@ -26,6 +26,8 @@ and ability is not the intended hierarchy.
 | Movement conditions | `MovementModifiers` | Validate immutable physical/context/effect inputs and resolve permitted pace, speed and animation without sampling the world or simulating health. |
 | Physical state | `HumanStateStore`, `HumanStateReducer`, `HumanMutation` | Single-writer logical state and pure mutations; native adapters, decisions and workers consume immutable snapshots. |
 | Perception | `ServerHumanPerception`, `HumanContactMemory`, `HumanSenses` | Bounded native discovery/visibility and transient immutable contact memory, independent of threat selection and combat decisions. See [NPC-PERCEPTION.md](NPC-PERCEPTION.md). |
+| Engagement and combat boundary | `HumanEngagement`, `EngageZombiesModule`, `HumanCombat`, `ServerHumanCombat` | Pure engagement/target selection, selected-module execution ownership and validated combat handoff. See [NPC-ENGAGEMENT.md](NPC-ENGAGEMENT.md). |
+| Weapon execution | `HumanWeaponCombat`, `HumanCombatInventory`, native inventory/approach/network adapters | Per-execution phases and one-shot commits, fixed test inventory, native equip/aim/hit replication and local consequence processing. See [NPC-COMBAT.md](NPC-COMBAT.md). |
 | Transport and feature services | `ServerHumanTransport`, dialogue/trade controllers | Delivery, authenticated requests, exclusive leases and feature-specific authoritative rules. |
 
 Brains depend on ports and action data, not on concrete event controllers,

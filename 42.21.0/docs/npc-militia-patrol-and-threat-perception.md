@@ -6,6 +6,10 @@ short-term contact retention are now implemented in
 the investigation before that extraction. Militia policy and combat remain
 subsequent implementation steps.
 
+The decision/target-selection-to-combat handoff is now scaffolded in
+[NPC-ENGAGEMENT.md](../NPC-ENGAGEMENT.md); the deeper weapon/path/phase investigation
+is in [the combat implementation map](npc-alife-combat-implementation-map.md).
+
 Investigated 2026-10-21 for our server-owned IsoPlayer engine on Build 42.21.0.
 This is a design report; no militia actor, combat implementation or live database
 configuration is created by this document.

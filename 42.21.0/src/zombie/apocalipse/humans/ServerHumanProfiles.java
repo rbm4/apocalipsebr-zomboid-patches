@@ -29,6 +29,8 @@ public final class ServerHumanProfiles {
             (p,b)->new GuideBrain(GuidePolicy.from(b.parameters()),()->p.greetingKey().isEmpty()?null:HumanLanguage.text(p.greetingKey()),announcements(p)).greetingOnly());
         modules.register("roam",(p,b)->{if(b.parameters().keySet().stream().anyMatch(k->!k.equals("roamPauseMs")))throw new IllegalArgumentException("Unknown roam parameter");},
             (p,b)->new zombie.apocalipse.humans.brain.RoamModule(b.parameters().getOrDefault("roamPauseMs",3000L)*1000000L));
+        modules.register("engage-zombies",(p,b)->HumanEngagement.Settings.fromMilliseconds(b.parameters()),
+            (p,b)->new EngageZombiesModule(HumanEngagement.Settings.fromMilliseconds(b.parameters())));
         registry.registerBehavior("modules",p->{announcements(p);modules.validate(p);},modules::create);
         registry.registerBehavior("guide", p -> { GuidePolicy.from(p.parameters()); announcements(p); },
             p -> new GuideBrain(GuidePolicy.from(p.parameters()),
@@ -40,6 +42,9 @@ public final class ServerHumanProfiles {
         registry.register(modular("lobby-guide","operations",true));
         registry.register(modular("roaming-greeter","none",true));
         registry.register(new HumanProfile("stationary",1,"idle",Map.of(),"","none",true,false));
+        registry.register(new HumanProfile("militia-patrol",1,"modules",Map.of(),"","none",false,false,
+            java.util.List.of(new HumanModuleBinding("engage-zombies",100,100,Map.of()),
+                new HumanModuleBinding("roam",1000,100,Map.of())),8,100,true));
         return registry;
     }
 }

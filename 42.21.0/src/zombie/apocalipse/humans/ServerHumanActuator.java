@@ -12,6 +12,7 @@ final class ServerHumanActuator implements HumanActuator {
     private final ServerHuman human;
 
     ServerHumanActuator(ServerHuman human) { this.human = human; }
+    @Override public zombie.apocalipse.humans.brain.HumanCombat.Port combat(){return human.combat;}
 
     HumanObservation observe(long now) {
         return human.perception.observe(now);

@@ -22,6 +22,11 @@ final class ServerHuman {
     final ServerHumanMovement movement;
     final ServerHumanRoaming roaming;
     final ServerHumanPerception perception;
+    final ServerHumanTerritory territory;
+    final ServerHumanCombat combat;
+    final ServerHumanInventory inventory;
+    boolean aiming;
+    final java.util.Map<UdpConnection,ServerHumanTransport.Equipment> equipmentPresentation=new IdentityHashMap<>();
     final zombie.apocalipse.humans.state.HumanStateStore state;
     final ServerHumanPhysiology physiology;
     float postX, postY;
@@ -73,7 +78,10 @@ final class ServerHuman {
         this.postY = definition.y();
         this.movement = new ServerHumanMovement(this);
         this.roaming = new ServerHumanRoaming(this);
+        this.territory = new ServerHumanTerritory(this);
         this.perception = new ServerHumanPerception(this);
+        this.inventory = new ServerHumanInventory(this);
+        this.combat = new ServerHumanCombat(this);
         this.actuator = new ServerHumanActuator(this);
         this.physiology = new ServerHumanPhysiology(this);
     }
@@ -86,6 +94,7 @@ final class ServerHuman {
         if (disposed) return;
         disposed = true;
         activity.stop(System.nanoTime(), actuator);
+        combat.stop();
         ServerHumanDialogue.close(this, "removed");
         ServerHumanTrading.close(this);
         movement.stop();
@@ -96,6 +105,7 @@ final class ServerHuman {
         }
         viewers.clear();
         movementPresentation.clear();
+        equipmentPresentation.clear();
         player.getDescriptor().setInstance(null);
         player.getCell().getAddList().remove(player);
         player.getCell().getObjectList().remove(player);

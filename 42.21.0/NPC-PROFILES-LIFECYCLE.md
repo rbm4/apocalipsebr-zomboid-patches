@@ -30,6 +30,11 @@ content adapters are registered in code separately from this data.
 | `lobby-guide` | Shared greet + roam modules | `operations` | Yes | Yes |
 | `roaming-greeter` | Shared greet + roam modules | `none` | Yes | Yes |
 | `stationary` | Independent `IdleBehavior` | `none` | Yes | No |
+| `militia-patrol` | Territory-zombie engagement scaffold + roam | `none` | No | No |
+
+`militia-patrol` requires V21 for database configuration; V22 updates its backend
+catalogue metadata. See [engagement ownership](NPC-ENGAGEMENT.md) and the
+[initial fixed-inventory combat backend](NPC-COMBAT.md).
 
 `ServerHumanProfiles` is the production composition root. `HumanProfileRegistry`
 separates behavior-factory registration from profile-data registration. Duplicate

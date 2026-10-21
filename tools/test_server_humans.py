@@ -63,6 +63,19 @@ public class SurvivorDesc {
     "zombie/characters/IsoPlayer.java": """package zombie.characters;
 import zombie.iso.*;
 public class IsoPlayer extends IsoGameCharacter {
+ public float useChargeDelta;public boolean aiming;
+ private zombie.inventory.InventoryItem primary,secondary;
+ private final zombie.network.fields.hit.AttackVars attackVars=new zombie.network.fields.hit.AttackVars();
+ private final java.util.List<zombie.network.fields.hit.HitInfo> hitInfo=new java.util.ArrayList<>();
+ public zombie.inventory.InventoryItem getPrimaryHandItem(){return primary;}public zombie.inventory.InventoryItem getSecondaryHandItem(){return secondary;}
+ public void setPrimaryHandItem(zombie.inventory.InventoryItem item){primary=item;}public void setSecondaryHandItem(zombie.inventory.InventoryItem item){secondary=item;}
+ public void setUseHandWeapon(zombie.inventory.types.HandWeapon weapon){}public void setIsAiming(boolean value){aiming=value;}
+ public void setAttackTargetSquare(IsoGridSquare square){}
+ public void setDoShove(boolean value){}public void setCriticalHit(boolean value){}public void setAimAtFloor(boolean value){}
+ public void setAttackType(zombie.AttackType value){}public void setVariable(String key,String value){}
+ public zombie.network.fields.hit.AttackVars getAttackVars(){return attackVars;}
+ public java.util.List<zombie.network.fields.hit.HitInfo> getHitInfoList(){return hitInfo;}
+ public int noises;public void addWorldSoundUnlessInvisible(int radius,int volume,boolean stress){noises++;}
  public boolean remote,god,invisible,ghost,detached,dead,running,sprinting,sneaking; public int playerIndex;
  private final java.util.Map<String,Float> variables=new java.util.HashMap<>();
  private final NetworkPlayerAI networkAi=new NetworkPlayerAI();
@@ -137,7 +150,7 @@ public class GameServer {
 """,
     "zombie/network/PacketTypes.java": """package zombie.network;
 public class PacketTypes {public enum PacketType {
- PlayerUpdateReliable,PlayerTimeout,PlayerInjuries,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer;
+ PlayerUpdateReliable,PlayerTimeout,PlayerInjuries,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer,Equip,PlayerHitZombie,PlayerHitSquare,RangedWeaponSound;
  public void doPacket(zombie.core.network.ByteBufferWriter b){} public void send(zombie.core.raknet.UdpConnection c){}
  }}
 """,
@@ -299,7 +312,7 @@ public class Stats {private final java.util.Map<CharacterStat,Float> values=new 
 public class BodyDamage {private float health=100;public float getOverallBodyHealth(){return health;}public void setOverallBodyHealth(float v){health=v;}}
 """,
     "zombie/characters/NetworkPlayerAI.java": """package zombie.characters;
-public class NetworkPlayerAI {public float walkSpeed=1,runSpeed=1;}
+public class NetworkPlayerAI {public float walkSpeed=1,runSpeed=1;private byte shot;public byte getShotID(){return shot;}public void setShotID(byte value){shot=value;}}
 """,
     "zombie/characters/NetworkPlayerVariables.java": """package zombie.characters;
 public class NetworkPlayerVariables {public enum Flags {
@@ -456,6 +469,9 @@ FILES.update({
  "zombie/core/network/ByteBufferWriter.java": "package zombie.core.network; public class ByteBufferWriter {}",
  "zombie/inventory/InventoryItem.java": """package zombie.inventory;
  public class InventoryItem {
+  public int condition=10,ammo,count=1;
+  public int getCondition(){return condition;}public int getCurrentAmmoCount(){return ammo;}public void setCurrentAmmoCount(int value){ammo=value;}
+  public int getCount(){return count;}public void setCount(int value){count=value;}
   public int id;public String type;public ItemContainer container;
   public InventoryItem(int id,String type){this.id=id;this.type=type;}
   public int getID(){return id;} public String getFullType(){return type;}
@@ -533,6 +549,11 @@ FILES.update({
  public abstract class IsoGameCharacter extends zombie.iso.IsoMovingObject {}""",
  "zombie/characters/IsoZombie.java": """package zombie.characters;
  public class IsoZombie extends IsoGameCharacter {
+  public int nativeHits;public String reaction;
+  public boolean isOnFloor(){return false;}public float getHitForce(){return .5f;}
+  public void setHitReaction(String value){reaction=value;}
+  public float processHitDamage(zombie.inventory.types.HandWeapon weapon,IsoPlayer owner,float damage,boolean ignore,float range){return damage;}
+  public void Hit(float damage){nativeHits++;health-=damage;if(health<=0)dead=true;}
   public float x,y,z,health=1;public short online;public int instanceId;public boolean dead,grapple;
   public zombie.iso.IsoGridSquare square;
   public float getX(){return x;}public float getY(){return y;}public float getZ(){return z;}
@@ -546,6 +567,64 @@ FILES.update({
   public Object member(zombie.iso.IsoMovingObject body){return tokens.get(body);}
   public boolean add(zombie.iso.IsoMovingObject body){if(!super.add(body))return false;tokens.put(body,new Object());return true;}
   public boolean remove(Object body){tokens.remove(body);return super.remove(body);}
+ }""",
+})
+
+FILES.update({
+ "zombie/AttackType.java":"package zombie;public enum AttackType {SHOT,MELEE_TO_FLOOR,MELEE_SWING}",
+ "zombie/core/random/Rand.java":"package zombie.core.random;public class Rand {public static int roll;public static int Next(int max){return roll;}public static float Next(float min,float max){return min;}}",
+ "zombie/inventory/types/HandWeapon.java":r"""package zombie.inventory.types;
+ public class HandWeapon extends zombie.inventory.InventoryItem {
+  public boolean chambered,clip,jammed;public HandWeapon(int id,String type){super(id,type);}
+  public boolean isRanged(){return type.equals("Base.Pistol");}public boolean isTwoHandWeapon(){return !isRanged();}
+  public int getMaxAmmo(){return 15;}public float getMaxRange(zombie.characters.IsoPlayer owner){return isRanged()?15:1.2f;}
+  public boolean isJammed(){return jammed;}public void setJammed(boolean value){jammed=value;}
+  public boolean isRoundChambered(){return chambered;}public void setRoundChambered(boolean value){chambered=value;}
+  public void setContainsClip(boolean value){clip=value;}public void setSpentRoundChambered(boolean value){}
+  public float getMinDamage(){return .6f;}public float getMaxDamage(){return 1;}
+  public int getHitChance(){return 50;}public int getSoundRadius(){return 100;}public int getSoundVolume(){return 30;}public String getSwingSound(){return "test-shot";}
+ }""",
+ "zombie/inventory/InventoryItemFactory.java":r"""package zombie.inventory;
+ public class InventoryItemFactory {private static int next=10000;public static boolean fail;
+  public static InventoryItem CreateItem(String type){if(fail)return null;return type.equals("Base.Crowbar")||type.equals("Base.Pistol")?
+   new zombie.inventory.types.HandWeapon(next++,type):new InventoryItem(next++,type);}
+ }""",
+ "zombie/ai/states/PlayerAimState.java":"package zombie.ai.states;public class PlayerAimState {private static final PlayerAimState INSTANCE=new PlayerAimState();public static PlayerAimState instance(){return INSTANCE;}}",
+ "zombie/CombatManager.java":r"""package zombie;
+ public class CombatManager {private static final CombatManager INSTANCE=new CombatManager();public static CombatManager getInstance(){return INSTANCE;}
+  public void processWeaponEndurance(zombie.characters.IsoPlayer owner,zombie.inventory.types.HandWeapon weapon){
+   owner.getStats().set(zombie.characters.CharacterStat.ENDURANCE,owner.getStats().get(zombie.characters.CharacterStat.ENDURANCE)-.01f);}
+ }""",
+ "zombie/network/fields/hit/AttackVars.java":r"""package zombie.network.fields.hit;
+ public class AttackVars {
+  public boolean aimAtFloor;public float useChargeDelta,targetDistance;public Moving targetOnGround=new Moving(),targetStanding=new Moving();
+  public void clear(){}public void setWeapon(zombie.inventory.types.HandWeapon weapon){}
+  public static class Moving{public void set(Object target){}}
+ }""",
+ "zombie/network/fields/hit/HitInfo.java":r"""package zombie.network.fields.hit;
+ public class HitInfo {public HitInfo init(Object target,float dot,float distance,float x,float y,float z){return this;}}""",
+ "zombie/network/fields/hit/WeaponHit.java":r"""package zombie.network.fields.hit;
+ public class WeaponHit {public float damage;public void set(float damage,float range,float force,float dx,float dy,boolean head,boolean legs,boolean remove,boolean ignore){this.damage=damage;}}""",
+ "zombie/network/packets/hit/PlayerHitZombiePacket.java":r"""package zombie.network.packets.hit;
+ import java.util.*;import zombie.network.fields.hit.*;import zombie.characters.*;import zombie.inventory.types.HandWeapon;
+ public class PlayerHitZombiePacket implements HitCharacter {
+  protected final Fall fall=new Fall();public IsoZombie target;public List<WeaponHit> hits;public IsoPlayer actor;public HandWeapon weapon;
+  public static final List<PlayerHitZombiePacket> sent=new ArrayList<>();public static int localProcesses,serverAttackCallbacks;
+  public void set(IsoPlayer actor,HandWeapon weapon,boolean critical,List<?> tracers,List<WeaponHit> hits,IsoZombie target,boolean helmet){this.actor=actor;this.weapon=weapon;this.target=target;this.hits=List.copyOf(hits);}
+  public void sendToClient(zombie.network.PacketTypes.PacketType type,zombie.core.raknet.UdpConnection connection){sent.add(this);}
+  public void processClient(Object connection){localProcesses++;for(var hit:hits)target.Hit(hit.damage);attack();}
+  public void attack(){serverAttackCallbacks++;}
+  public static class Fall {public void set(float x,float y,byte z,float angle){}}
+ }""",
+ "zombie/network/packets/hit/HitCharacter.java":r"""package zombie.network.packets.hit;
+ public interface HitCharacter {void sendToClient(zombie.network.PacketTypes.PacketType type,zombie.core.raknet.UdpConnection connection);void processClient(Object connection);}""",
+ "zombie/network/packets/hit/PlayerHitSquarePacket.java":r"""package zombie.network.packets.hit;
+ public class PlayerHitSquarePacket implements HitCharacter {
+  public void set(zombie.characters.IsoPlayer actor,zombie.inventory.types.HandWeapon weapon,boolean critical,int hits,java.util.List<?> tracers){}
+  public void attack(){PlayerHitZombiePacket.serverAttackCallbacks++;}
+  public void processClient(Object connection){PlayerHitZombiePacket.localProcesses++;attack();}
+  public void sendToClient(zombie.network.PacketTypes.PacketType type,zombie.core.raknet.UdpConnection connection){
+   zombie.network.packets.INetworkPacket.messages.add(new zombie.network.packets.INetworkPacket.Message(connection,type,new Object[0]));}
  }""",
 })
 

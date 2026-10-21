@@ -29,6 +29,7 @@ final class ServerHumanPerception {
     private long generation,nextSample;
     private boolean sampled;
     private Frame frame=Frame.EMPTY;
+    private HumanTerritory territory=HumanTerritory.UNAVAILABLE;
 
     ServerHumanPerception(ServerHuman human){
         this.human=human;
@@ -48,7 +49,7 @@ final class ServerHumanPerception {
             .sorted(Comparator.comparingDouble(HumanObservation.Visitor::distanceSquared)).toList();
         boolean viewed=false;
         for(var viewer:human.viewers)if(human.isRelevant(viewer)){viewed=true;break;}
-        return new HumanObservation(now,visitors,viewed&&human.roaming.available(),human.state.snapshot(),frame);
+        return new HumanObservation(now,visitors,viewed&&human.roaming.available(),human.state.snapshot(),frame,territory);
     }
 
     void update(long suppliedNow){
@@ -89,6 +90,7 @@ final class ServerHumanPerception {
             new Work(checked,close.tiles()+outer.tiles(),close.bodies()+outer.bodies(),zombies.size(),playerChecks+zombieChecks));
         var kept=new HashSet<Identity>();for(var c:frame.contacts())kept.add(c.identity());
         bindings.values().removeIf(b->!kept.contains(b.identity()));
+        territory=human.territory.observe(frame);
         transitions(previous,frame);
     }
 
@@ -183,5 +185,12 @@ final class ServerHumanPerception {
         }
         for(var id:old.keySet())HumanLog.log(HumanLog.Level.DEBUG,()->"perception key="+human.definition.key()+"; contact="+id+"; state=FORGOTTEN");
     }
-    void clear(){memory.clear();bindings.clear();frame=Frame.EMPTY;sampled=false;near.tile=near.body=far.body=0;far.tile=9;}
+    /** Revalidate a sensor-local handle against current native membership before combat uses it. */
+    IsoZombie resolveZombie(Identity identity){
+        if(identity.kind()!=Kind.ZOMBIE||frame.contacts().stream().noneMatch(c->c.identity().equals(identity)&&c.visible()))return null;
+        for(var binding:bindings.values())if(binding.identity().equals(identity)&&valid(binding)
+            &&binding.body() instanceof IsoZombie zombie&&distance(zombie)<=radiusSquared()&&visible(zombie))return zombie;
+        return null;
+    }
+    void clear(){memory.clear();bindings.clear();frame=Frame.EMPTY;territory=HumanTerritory.UNAVAILABLE;sampled=false;near.tile=near.body=far.body=0;far.tile=9;}
 }

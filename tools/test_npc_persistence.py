@@ -51,10 +51,15 @@ public class NpcStoreTest {
    s.execute("CREATE ROLE apocalipsebr LOGIN;CREATE ROLE pz_server_01 LOGIN;GRANT CREATE ON DATABASE postgres TO apocalipsebr;SET ROLE apocalipsebr");
    s.execute(Files.readString(Path.of(args[1])));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V20__Persist_Npc_Physical_State.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V21__Seed_Militia_Engagement_Profile.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V22__Describe_Npc_Weapon_Backend.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
-   var profiles=ApocBRNpcStore.readProfiles(c);check(profiles.size()==3,"seed profiles");
+   var profiles=ApocBRNpcStore.readProfiles(c);check(profiles.size()==4,"seed profiles including militia scaffold");
+   var militia=profiles.stream().filter(p->p.id().equals("militia-patrol")).findFirst().orElseThrow();
+   check(!militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("engage-zombies"),"database militia profile orders engagement before roaming");
+   check(militia.modules().getFirst().parameters().get("retryMs")==2000L,"engagement timing hydrated through existing typed millisecond fields");
    var guide=profiles.stream().filter(p->p.id().equals("lobby-guide")).findFirst().orElseThrow();
    check(guide.modules().size()==2&&guide.announcementId().equals("operations")&&guide.dialogue()&&guide.trading(),"guide seed matches current baseline");
    check(guide.modules().getFirst().moduleId().equals("greet")&&guide.modules().getLast().moduleId().equals("roam"),"module priority ordering");
@@ -216,6 +221,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
         if '--manager-test' in sys.argv:
             manager=ROOT.parent/'apocalipsebr-manager/manager'
             env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
-            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dmaven.main.skip=true','-Dtest=NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest','test'],cwd=manager,env=env)
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dmaven.main.skip=true','-Dtest=NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest','test'],cwd=manager,env=env)
     finally:
         run([BIN/'pg_ctl.exe','-D',work/'data','-m','immediate','-w','stop'],stdout=subprocess.DEVNULL)

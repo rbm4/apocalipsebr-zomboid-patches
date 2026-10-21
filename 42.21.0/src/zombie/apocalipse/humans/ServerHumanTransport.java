@@ -11,12 +11,16 @@ import zombie.network.chat.ChatServer;
 
 /** Only vanilla 42.21.0 packets cross the wire; clients need no new Java classes. */
 final class ServerHumanTransport {
+    record Equipment(int primary,int secondary,int condition,int ammo,boolean chambered,boolean jammed) { }
     private ServerHumanTransport() {
     }
 
     static void announce(ServerHuman human, UdpConnection connection) {
         GameServer.sendPlayerConnected(human.player, connection);
         human.viewers.add(connection);
+        human.equipmentPresentation.remove(connection);
+        equipment(human,connection);
+        if(human.aiming)new ServerHumanAimPacket(human,true).sendToClient(PacketTypes.PacketType.State,connection);
         human.movementPresentation.remove(connection);
         movementPresentation(human, connection, human.movement.snapshot());
         // Also clear a previously interrupted emote when a known client reloads.
@@ -71,6 +75,23 @@ final class ServerHumanTransport {
 
     static void emote(ServerHuman human, UdpConnection connection, boolean playing) {
         new ServerHumanEmotePacket(human, playing).sendToClient(PacketTypes.PacketType.State, connection);
+    }
+    static void equipment(ServerHuman human){for(var viewer:human.viewers)if(human.isRelevant(viewer))equipment(human,viewer);}
+    private static void equipment(ServerHuman human,UdpConnection connection){
+        var primary=human.player.getPrimaryHandItem();var secondary=human.player.getSecondaryHandItem();
+        var weapon=primary instanceof zombie.inventory.types.HandWeapon w?w:null;
+        var snapshot=new Equipment(primary==null?-1:primary.getID(),secondary==null?-1:secondary.getID(),
+            primary==null?0:primary.getCondition(),primary==null?0:primary.getCurrentAmmoCount(),
+            weapon!=null&&weapon.isRoundChambered(),weapon!=null&&weapon.isJammed());
+        var previous=human.equipmentPresentation.get(connection);
+        if(snapshot.equals(previous)||primary==null&&previous==null)return;
+        INetworkPacket.send(connection,PacketTypes.PacketType.Equip,human.player);
+        human.equipmentPresentation.put(connection,snapshot);
+    }
+    static void aim(ServerHuman human,boolean enabled){
+        if(human.aiming==enabled)return;
+        human.aiming=enabled;human.player.setIsAiming(enabled);
+        for(var viewer:human.viewers)if(human.isRelevant(viewer))new ServerHumanAimPacket(human,enabled).sendToClient(PacketTypes.PacketType.State,viewer);
     }
 
     static boolean say(ServerHuman human, String text) {

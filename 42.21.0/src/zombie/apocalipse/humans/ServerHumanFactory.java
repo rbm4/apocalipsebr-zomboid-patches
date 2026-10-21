@@ -156,6 +156,7 @@ public final class ServerHumanFactory {
                 if (!GameServer.udpEngine.connections.contains(connection) || !connection.isFullyConnected()) {
                     iterator.remove();
                     human.movementPresentation.remove(connection);
+                    human.equipmentPresentation.remove(connection);
                 }
             }
             for (UdpConnection connection : GameServer.udpEngine.connections) {
