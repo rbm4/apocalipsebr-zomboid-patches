@@ -2,6 +2,9 @@
 
 Implementation follow-up: an initial inventory-backed approach/equip/aim and
 melee/ranged backend is now implemented in [NPC-COMBAT.md](../NPC-COMBAT.md).
+Its local tactics follow-up adds distinct spacing bands, reaction delays,
+cooldown-limited retreats and bounded attack timing variance; see
+[combat tactics and exposure windows](../NPC-COMBAT.md#local-combat-tactics-and-exposure-windows).
 The investigation/roadmap below records the source analysis preceding that work.
 
 Investigated 2026-10-21. This supplements the

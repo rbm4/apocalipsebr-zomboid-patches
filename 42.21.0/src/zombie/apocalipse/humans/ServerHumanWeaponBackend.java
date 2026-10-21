@@ -19,6 +19,12 @@ final class ServerHumanWeaponBackend implements ServerHumanCombat.Backend {
                 ServerHumanTransport.aim(human,false);
                 return approach.update(weapon,at);
             }
+            public boolean reposition(HumanCombatInventory.Weapon weapon,long at,boolean recovering){
+                boolean moving=approach.update(weapon,at,false,recovering)==HumanActuator.MotionStatus.RUNNING;
+                ServerHumanTransport.aim(human,!moving);
+                if(!moving)face();
+                return moving;
+            }
             public boolean clearAttackLine(HumanCombatInventory.Weapon weapon){return approach.clear(actor.getX(),actor.getY())&&ServerHumanCombatNetwork.clearBodies(human,target);}
             public void face(){
                 float dx=target.getX()-actor.getX(),dy=target.getY()-actor.getY();

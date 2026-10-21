@@ -1,6 +1,8 @@
 package zombie.apocalipse.humans.brain;
 
 import java.util.Objects;
+import java.util.function.DoubleSupplier;
+import java.util.concurrent.ThreadLocalRandom;
 import static zombie.apocalipse.humans.brain.HumanCombat.*;
 
 /** Per-engagement phase engine. Only ports access items, movement, packets and native hits. */
@@ -16,17 +18,24 @@ public final class HumanWeaponCombat implements Execution {
         void stop();
         void aim(boolean enabled);
         boolean commit(HumanCombatInventory.Weapon weapon,long attackId,long now);
+        /** Defensive footwork only: never closes distance during windup/recovery. */
+        default boolean reposition(HumanCombatInventory.Weapon weapon,long now,boolean recovering){return false;}
     }
     private final HumanCombatInventory inventory;
     private final Operations operations;
     private final Mode mode;
+    private final DoubleSupplier random;
     private Phase phase=Phase.SELECT;
     private HumanCombatInventory.Weapon weapon;
-    private long deadline,attackId;
+    private long deadline,attackId,movementUnlock;
     private Result result=new Result(Status.RUNNING,Reason.NONE);
     public HumanWeaponCombat(HumanCombatInventory inventory,Operations operations,Mode mode){
-        this.inventory=Objects.requireNonNull(inventory);this.operations=Objects.requireNonNull(operations);this.mode=Objects.requireNonNull(mode);
+        this(inventory,operations,mode,()->ThreadLocalRandom.current().nextDouble());
     }
+    public HumanWeaponCombat(HumanCombatInventory inventory,Operations operations,Mode mode,DoubleSupplier random){
+        this.inventory=Objects.requireNonNull(inventory);this.operations=Objects.requireNonNull(operations);this.mode=Objects.requireNonNull(mode);this.random=Objects.requireNonNull(random);
+    }
+    private long varied(long base){return Math.max(100_000_000L,(long)(base*(.8+.4*Math.clamp(random.getAsDouble(),0,1))));}
     public Phase phase(){return phase;}
     private HumanCombatInventory.Weapon select(){
         var available=inventory.weapons().stream().filter(HumanCombatInventory.Weapon::usable).toList();
@@ -46,7 +55,13 @@ public final class HumanWeaponCombat implements Execution {
         if(current==null){operations.stop();operations.aim(false);phase=Phase.SELECT;return result;}
         weapon=current;
         if(phase==Phase.EQUIP){if(now<deadline)return result;phase=Phase.APPROACH;}
-        if(phase==Phase.RECOVER){if(now<deadline)return result;phase=Phase.APPROACH;}
+        if(phase==Phase.RECOVER){
+            if(now<deadline){
+                if(now>=movementUnlock)operations.reposition(weapon,now,true);
+                return result;
+            }
+            phase=Phase.APPROACH;
+        }
         if(phase==Phase.RELOAD){
             if(now<deadline)return result;
             // Commit once; cancellation before this point changes no ammunition.
@@ -62,14 +77,15 @@ public final class HumanWeaponCombat implements Execution {
             var status=operations.approach(weapon,now);
             if(status==HumanActuator.MotionStatus.FAILED)return finish(Status.FAILED,Reason.UNREACHABLE);
             if(status==HumanActuator.MotionStatus.RUNNING)return result;
-            operations.stop();operations.face();operations.aim(true);phase=Phase.WINDUP;deadline=now+weapon.windupNanos();return result;
+            operations.stop();operations.face();operations.aim(true);phase=Phase.WINDUP;deadline=now+varied(weapon.windupNanos());return result;
         }
         if(phase==Phase.WINDUP){
+            if(operations.reposition(weapon,now,false)){phase=Phase.APPROACH;return result;}
             operations.face();
             if(operations.distance()>weapon.reach()||!operations.clearAttackLine(weapon)){phase=Phase.APPROACH;return result;}
             if(now<deadline)return result;
             // Enter recovery BEFORE side effects. Polling/cancellation cannot replay a committed strike.
-            phase=Phase.RECOVER;deadline=now+weapon.recoveryNanos();long strike=++attackId;
+            phase=Phase.RECOVER;deadline=now+varied(weapon.recoveryNanos());movementUnlock=now+350_000_000L;long strike=++attackId;
             if(weapon.ranged()&&!inventory.spendRound(weapon.itemId())){phase=Phase.APPROACH;return result;}
             if(!operations.commit(weapon,strike,now))return finish(Status.FAILED,Reason.BACKEND_FAILURE);
             if(operations.defeated())return finish(Status.COMPLETED,Reason.NONE);
