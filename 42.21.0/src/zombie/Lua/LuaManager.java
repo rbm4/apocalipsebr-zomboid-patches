@@ -2710,6 +2710,7 @@ public final class LuaManager {
             if (GameServer.server) {
                 this.setExposed(zombie.apocalipse.events.ApocBREventControl.class);
                 this.setExposed(zombie.network.ApocBRRadioBridge.class);
+                this.setExposed(zombie.savefile.ApocBRPlayerLogin.class);
             }
 
             for (Class<?> clazz : this.exposed) {

@@ -12,6 +12,7 @@ GAME=Path(os.environ.get('APOCBR_TEST_GAME_JAR',r'Z:\SteamLibrary\steamapps\comm
 LIB=ROOT/'42.21.0/lib'
 JDK=ROOT/'jdk/bin'
 STUBS={
+'zombie/savefile/ApocBRPlayerLogin.java': 'package zombie.savefile; public class ApocBRPlayerLogin {static void loaded(zombie.characters.IsoPlayer player){}}',
 'zombie/savefile/ApocBRPlayerRelationalReconstruction.java': '''package zombie.savefile;
 final class ApocBRPlayerRelationalReconstruction {
  static zombie.characters.IsoPlayer reconstruct(ApocBRPlayerRelationalReader.Profile profile,int slot) {

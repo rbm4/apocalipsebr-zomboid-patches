@@ -20,6 +20,14 @@ public final class ApocBRNpcStore {
         }
     }
     public record Restored(State state,boolean activate) { }
+    public record DialogueIdentity(String npc,String dialogue,String kind,String account) {
+        public DialogueIdentity {
+            if(npc==null||npc.isBlank()||npc.length()>128||dialogue==null||!dialogue.matches("[A-Za-z0-9_.-]{1,128}")
+                ||!("steam".equals(kind)||"username".equals(kind))||account==null||account.isBlank()||account.length()>128)
+                throw new IllegalArgumentException("Invalid dialogue identity");
+        }
+    }
+    private record EarnedFlag(DialogueIdentity identity,String flag) { }
     public record Loaded(List<HumanProfile> profiles,List<Restored> instances) {
         public Loaded {profiles=List.copyOf(profiles);instances=List.copyOf(instances);}
     }
@@ -27,6 +35,9 @@ public final class ApocBRNpcStore {
     private final String server,world;
     private final ServerHumanDefinition bootstrap;
     private final ConcurrentHashMap<String,State> pending=new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<DialogueIdentity,Set<String>> dialogueFlags=new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<EarnedFlag,Boolean> pendingFlags=new ConcurrentHashMap<>();
+    private int flagCount;
     private final AtomicReference<Loaded> loaded=new AtomicReference<>();
     private final AtomicReference<List<HumanProfile>> profiles=new AtomicReference<>();
     private final Thread worker;
@@ -35,9 +46,20 @@ public final class ApocBRNpcStore {
     private Connection connection;
     private boolean locked;
     private long epoch;
-    private boolean initialized;
+    private volatile boolean initialized;
     private String lastIssue="";
     public static boolean enabled(){return Boolean.getBoolean("apocbr.npc.persistence.enabled");}
+    public static ApocBRNpcStore current(){return instance;}
+    public Set<String> dialogueFlags(DialogueIdentity identity){return dialogueFlags.getOrDefault(identity,Set.of());}
+    /** Capture detached facts only; JDBC and journal writes remain on the worker. */
+    public synchronized boolean remember(DialogueIdentity identity,String flag) {
+        if(!initialized||!healthy||stopping||flag==null||!flag.matches("[A-Za-z0-9_]{1,48}"))return false;
+        var previous=dialogueFlags(identity);if(previous.contains(flag))return true;
+        if(previous.size()>=128||flagCount>=100000)return false;
+        var next=new HashSet<>(previous);next.add(flag);
+        pendingFlags.put(new EarnedFlag(identity,flag),true);
+        dialogueFlags.put(identity,Set.copyOf(next));flagCount++;return true;
+    }
     public static synchronized ApocBRNpcStore start(String server,String world,ServerHumanDefinition bootstrap) {
         if(!enabled()||!ApocBRPersistence.enabled())throw new IllegalStateException("NPC persistence requires the PostgreSQL journal");
         if(instance!=null&&(!instance.server.equals(server)||!instance.world.equals(world)))throw new IllegalStateException("NPC store already owns a different scope");
@@ -66,7 +88,10 @@ public final class ApocBRNpcStore {
                     if(connection==null)connect();
                     if(!initialized) {
                         var definitions=readInstances();var configuration=readProfiles(connection);
-                        connection.commit();loaded.set(new Loaded(configuration,definitions));initialized=true;nextProfiles=System.nanoTime()+30000000000L;
+                        var dialogues=ApocBRNpcDialogues.read(connection);
+                        readDialogueFlags();
+                        connection.commit();zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(dialogues);
+                        loaded.set(new Loaded(configuration,definitions));initialized=true;nextProfiles=System.nanoTime()+30000000000L;
                     }
                     // Session lock + epoch fence prevent two processes writing the same NPC scope.
                     try(var ping=statement(connection,"SELECT epoch FROM npc_engine.scope WHERE server_key=? AND world=?",server,world);var rows=ping.executeQuery()) {
@@ -74,7 +99,11 @@ public final class ApocBRNpcStore {
                     }
                     connection.commit();healthy=true;
                     flush();
-                    if(System.nanoTime()>=nextProfiles){var configuration=readProfiles(connection);connection.commit();profiles.set(configuration);nextProfiles=System.nanoTime()+30000000000L;}
+                    if(System.nanoTime()>=nextProfiles){
+                        var configuration=readProfiles(connection);var dialogues=ApocBRNpcDialogues.read(connection);
+                        connection.commit();zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(dialogues);
+                        profiles.set(configuration);nextProfiles=System.nanoTime()+30000000000L;
+                    }
                     lastIssue="";Thread.sleep(1000);
                 } catch(InterruptedException interrupted){if(!stopping)Thread.currentThread().interrupt();break;}
                 catch(SQLException|RuntimeException failure) {
@@ -116,11 +145,33 @@ public final class ApocBRNpcStore {
         try{connection.close();}catch(SQLException ignored){}connection=null;locked=false;
     }
     private void flush() {
+        for(var flag:pendingFlags.keySet()) {
+            var id=flag.identity();
+            var sql=new ApocBRPersistenceOperations.Sql("""
+                INSERT INTO npc_engine.dialogue_flag(server_key,world,npc_key,dialogue_id,identity_kind,player_identity,flag)
+                SELECT ?,?,?,?,?,?,? WHERE EXISTS(SELECT 1 FROM npc_engine.scope WHERE server_key=? AND world=? AND epoch=? FOR SHARE)
+                ON CONFLICT DO NOTHING
+                """,List.of(server,world,id.npc(),id.dialogue(),id.kind(),id.account(),flag.flag(),server,world,epoch));
+            ApocBRPersistence.submit(new ApocBRPersistenceOperations.Account(List.of(sql)));
+            pendingFlags.remove(flag);
+        }
         for(var entry:pending.entrySet()) {
             State state=entry.getValue();
             ApocBRPersistence.submit(new ApocBRPersistenceOperations.Account(statements(server,world,epoch,state)));
             pending.remove(entry.getKey(),state);
         }
+    }
+    private void readDialogueFlags()throws SQLException {
+        Map<DialogueIdentity,Set<String>> loadedFlags=new HashMap<>();int count=0;
+        try(var s=statement(connection,"SELECT npc_key,dialogue_id,identity_kind,player_identity,flag FROM npc_engine.dialogue_flag WHERE server_key=? AND world=? LIMIT 100001",server,world);var r=s.executeQuery()) {
+            while(r.next()) {
+                if(++count>100000)throw new SQLException("Dialogue flag cache capacity exceeded","22023");
+                var id=new DialogueIdentity(r.getString(1),r.getString(2),r.getString(3),r.getString(4));
+                var flags=loadedFlags.computeIfAbsent(id,key->new HashSet<>());flags.add(r.getString(5));
+                if(flags.size()>128)throw new SQLException("Account dialogue flag capacity exceeded","22023");
+            }
+        }
+        dialogueFlags.clear();loadedFlags.forEach((id,flags)->dialogueFlags.put(id,Set.copyOf(flags)));flagCount=count;
     }
     static List<ApocBRPersistenceOperations.Sql> statements(String server,String world,long epoch,State state) {
         var d=state.definition();

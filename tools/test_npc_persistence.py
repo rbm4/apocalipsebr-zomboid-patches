@@ -2,7 +2,7 @@
 Set APOCBR_TEST_POSTGRES_BIN to a directory containing initdb, pg_ctl and postgres.
 """
 from pathlib import Path
-import os, socket, subprocess, tempfile
+import os, socket, subprocess, tempfile, sys
 ROOT=Path(__file__).resolve().parents[1]
 SRC=ROOT/'42.21.0/src/zombie'
 SQL=ROOT.parent/'apocalipsebr-manager/manager/src/main/resources/db/game-runtime-migration/V15__Create_Npc_Engine.sql'
@@ -89,12 +89,57 @@ public class NpcStoreTest {
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==110,"old engine epoch fenced");
    apply(c,ApocBRNpcStore.statements("test","world",2,state(d,3,130,HumanLifecycle.State.ACTIVE,false)));
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==130,"new engine epoch accepted");
+   // Publish the real dialogue migration as the backend owner, then read as engine.
+   try(var owner=DriverManager.getConnection(url,"apocalipsebr","")) {
+    owner.setAutoCommit(false);
+    for(String file:List.of("V16__Create_Npc_Trade_Policies.sql","V17__Create_Npc_Dialogue_Graphs.sql")) {
+     try(var s=owner.createStatement()){s.execute(Files.readString(Path.of(args[1]).resolveSibling(file)));}owner.commit();
+    }
+   }
+   var content=ApocBRNpcDialogues.read(c);c.commit();
+   var graph=(Map<?,?>)content.get("lobby-guide");
+   check(graph!=null&&graph.get("entryNode").equals("root")&&graph.get("revision").equals(1),"published graph loaded with engine permissions");
+   var root=(Map<?,?>)((Map<?,?>)graph.get("nodes")).get("root");
+   var options=(List<?>)root.get("options");
+   check(options.size()==3,"all original dialogue options preserved");
+   var hello=(Map<?,?>)options.getFirst();var helloTexts=(Map<?,?>)hello.get("texts");
+   check(hello.get("id").equals("hello")&&hello.get("nextNode").equals("root")&&hello.get("emote").equals("wavehi"),"guide ordering/emotes/self loops preserved");
+   check(((Map<?,?>)helloTexts.get("EN")).get("title").equals("Hello! How are you?"),"English title loaded from database");
+   check(((Map<?,?>)helloTexts.get("PTBR")).get("speech").equals("Olá, sobrevivente! Que bom ver você por aqui."),"Portuguese speech loaded without translation tags");
+   invalid(c,"UPDATE npc_engine.dialogue_choice_text SET title='changed' WHERE dialogue_id='guide'");
+   invalid(c,"DELETE FROM npc_engine.dialogue_choice WHERE dialogue_id='guide'");
+   invalid(c,"UPDATE npc_engine.dialogue SET current_revision=NULL WHERE dialogue_id='guide'");
+   invalid(c,"INSERT INTO npc_engine.dialogue VALUES('bypass','Bad',1)");
+   try(var s=c.createStatement()) {
+    s.execute("INSERT INTO npc_engine.dialogue VALUES('draft','Draft',NULL)");
+    s.execute("INSERT INTO npc_engine.dialogue_revision(dialogue_id,revision,entry_node) VALUES('draft',1,'root')");
+    s.execute("INSERT INTO npc_engine.dialogue_node VALUES('draft',1,'root')");c.commit();
+   }
+   invalid(c,"UPDATE npc_engine.dialogue SET current_revision=1 WHERE dialogue_id='draft'");
+   invalid(c,"INSERT INTO npc_engine.profile_dialogue VALUES('stationary','draft')");
+   try(var s=c.createStatement()) {
+    s.execute("INSERT INTO npc_engine.dialogue_node_text VALUES('draft',1,'root','EN','Title','Description')");
+    s.execute("INSERT INTO npc_engine.dialogue_choice(dialogue_id,revision,choice_id,node_id,next_node,sort_order,required_flag,set_flag) VALUES('draft',1,'secret','root','root',1,'met_guide','knows_secret')");
+    s.execute("INSERT INTO npc_engine.dialogue_choice_text VALUES('draft',1,'secret','EN','Ask','Detail','Answer','Speech')");
+    s.execute("UPDATE npc_engine.dialogue SET current_revision=1 WHERE dialogue_id='draft'");
+    s.execute("INSERT INTO npc_engine.profile_dialogue VALUES('stationary','draft')");c.commit();
+   }
+   var draft=(Map<?,?>)ApocBRNpcDialogues.read(c).get("stationary");
+   var secret=(Map<?,?>)((List<?>)((Map<?,?>)((Map<?,?>)draft.get("nodes")).get("root")).get("options")).getFirst();
+   check(secret.get("requiredFlag").equals("met_guide")&&secret.get("setFlag").equals("knows_secret"),"graph gate/effect data survives JDBC mapping");c.commit();
+   try(var s=c.createStatement()) {
+    s.execute("INSERT INTO npc_engine.dialogue_flag(server_key,world,npc_key,dialogue_id,identity_kind,player_identity,flag) VALUES('test','world','guide','guide','steam','123','met_guide')");c.commit();
+   }
    // Start actual worker: adopts existing actor, never overwrites maintained identity/config.
    ApocBRPostgresConnector.url=url;System.setProperty("apocbr.npc.persistence.enabled","true");
    var store=ApocBRNpcStore.start("test","world",d);ApocBRNpcStore.Loaded loaded=null;
    long deadline=System.nanoTime()+10000000000L;
    while(loaded==null&&System.nanoTime()<deadline){Thread.sleep(20);loaded=store.takeLoaded();}
    check(loaded!=null&&loaded.instances().size()==1,"worker hydrates logical instances");
+   check(zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current().profiles().containsKey("lobby-guide"),"dialogue cache is hot before NPC startup snapshot becomes visible");
+   var account=new ApocBRNpcStore.DialogueIdentity("guide","guide","steam","123");
+   check(store.dialogueFlags(account).contains("met_guide"),"account dialogue facts hydrate with NPC startup");
+   check(store.dialogueFlags(new ApocBRNpcStore.DialogueIdentity("guide","guide","steam","456")).isEmpty(),"facts isolated between accounts");
    var restored=loaded.instances().getFirst();check(restored.activate()&&restored.state().x()==130&&restored.state().activations()==1,"restart recovers lifecycle and last position");
    check(number(c,"SELECT epoch FROM npc_engine.scope")==3,"worker obtains new fenced epoch");c.commit();
    try(var other=DriverManager.getConnection(url,"pz_server_01","");var s=ApocBRNpcStore.statement(other,"SELECT pg_try_advisory_lock(hashtext(?),hashtext(?))","npc-engine:test","world");var r=s.executeQuery()){r.next();check(!r.getBoolean(1),"second owner rejected");}
@@ -109,12 +154,15 @@ public class NpcStoreTest {
    check(recovered,"worker reconnects after losing its PostgreSQL session");
    check(number(c,"SELECT epoch FROM npc_engine.scope")==3,"reconnect preserves ownership epoch");c.commit();
    store.offer(state(d,5,150,HumanLifecycle.State.ACTIVE,false));store.offer(state(d,4,140,HumanLifecycle.State.ACTIVE,false));
+   check(store.remember(account,"knows_secret"),"trusted selection stages earned fact without SQL on request thread");
+   check(store.remember(account,"knows_secret")&&store.dialogueFlags(account).size()==2,"repeated earned flag is idempotent");
    ApocBRNpcStore.shutdown();check(!ApocBRPersistence.queue.isEmpty(),"shutdown stages final detached checkpoint");
    try(var other=DriverManager.getConnection(url,"pz_server_01","");var s=ApocBRNpcStore.statement(other,"SELECT pg_try_advisory_lock(hashtext(?),hashtext(?))","npc-engine:test","world");var r=s.executeQuery()){
     r.next();check(r.getBoolean(1),"shutdown releases advisory ownership before returning pooled connection");
     try(var unlock=ApocBRNpcStore.statement(other,"SELECT pg_advisory_unlock(hashtext(?),hashtext(?))","npc-engine:test","world")){unlock.execute();}
    }
    while(!ApocBRPersistence.queue.isEmpty())apply(c,ApocBRPersistence.queue.remove().statements());
+   check(number(c,"SELECT count(*) FROM npc_engine.dialogue_flag WHERE player_identity='123'")==2,"earned facts persist through shared worker/journal using engine role");
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==150,"coalescing retains newest mutation");
    apply(c,ApocBRNpcStore.statements("test","world",3,state(d,6,150,HumanLifecycle.State.DEAD,true)));
    check(number(c,"SELECT count(*) FROM npc_engine.runtime_state WHERE retired AND lifecycle='DEAD'")==1,"terminal and administrative state persisted");
@@ -140,7 +188,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     work=Path(folder);sources=[]
     for name,content in FILES.items():
         p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content,encoding='utf-8');sources.append(p)
-    sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java']
+    sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'savefile/ApocBRNpcDialogues.java',SRC/'apocalipse/humans/dialogue/HumanDialogueCatalog.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java']
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
     run([JDK/'javac.exe','--release','25','-encoding','UTF-8','-cp',cp,'-d',work/'classes','@'+str(argfile)])
@@ -149,5 +197,9 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     try:
         run([BIN/'pg_ctl.exe','-D',work/'data','-l',work/'postgres.log','-o',f'-h 127.0.0.1 -p {port}','-w','start'],stdout=subprocess.DEVNULL)
         run([JDK/'java.exe','-cp',str(work/'classes')+os.pathsep+cp,'zombie.savefile.NpcStoreTest',f'jdbc:postgresql://127.0.0.1:{port}/postgres',SQL])
+        if '--manager-test' in sys.argv:
+            manager=ROOT.parent/'apocalipsebr-manager/manager'
+            env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dmaven.main.skip=true','-Dtest=NpcTradePolicyMigrationTest','test'],cwd=manager,env=env)
     finally:
         run([BIN/'pg_ctl.exe','-D',work/'data','-m','immediate','-w','stop'],stdout=subprocess.DEVNULL)

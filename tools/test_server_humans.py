@@ -16,6 +16,10 @@ public final class ApocBRNpcStore {
  public record Restored(State state,boolean activate){}
  public record Loaded(List<HumanProfile> profiles,List<Restored> instances){}
  public static boolean enabled(){return false;}
+ public record DialogueIdentity(String npc,String dialogue,String kind,String account){}
+ public static ApocBRNpcStore current(){return null;}
+ public Set<String> dialogueFlags(DialogueIdentity id){return Set.of();}
+ public boolean remember(DialogueIdentity id,String flag){return false;}
  public static ApocBRNpcStore start(String s,String w,ServerHumanDefinition d){throw new AssertionError("Unexpected database initialization");}
  public Loaded takeLoaded(){return null;}public List<HumanProfile> takeProfiles(){return null;}public boolean healthy(){return true;}public void offer(State s){}
 }

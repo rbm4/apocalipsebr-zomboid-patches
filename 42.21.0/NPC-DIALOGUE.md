@@ -1,5 +1,11 @@
 # Server-owned NPC dialogue ? 42.21.0
 
+Current extension: [cached PostgreSQL dialogue graphs](docs/npc-dialogue-graphs.md).
+Bridge v3 adds memory-backed content/account-fact getters. ExtractionMapUtils
+initiates discovery from Lua login hooks; database-backed graphs replace
+the flat starter registration when NPC persistence is enabled. Earlier v2
+transport/lease details below remain the compatibility foundation.
+
 Implemented server-side; awaiting dedicated-server/client validation. The matching
 ExtractionMapUtils Lua mod supplies context menus, timed actions and dialogue UI.
 No client Java replacement or network packet format change is required.

@@ -70,3 +70,8 @@ cached request handler's fields. No live multiplayer/PostgreSQL login or runtime
 latency comparison was performed. Runtime trials must include Steam owner bans,
 first/second-factor authentication, concurrent logins, disconnect during each
 phase, outage/timeouts, immediate reconnect, new-character handoff and coop slots.
+
+## Login server origin
+
+See [character login origin](PLAYER-LOGIN-ORIGIN.md) for the server-only Lua API,
+last persisted connection marker, native lobby teleport and rollout limits.

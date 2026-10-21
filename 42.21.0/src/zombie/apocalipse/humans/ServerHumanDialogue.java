@@ -12,13 +12,14 @@ import zombie.characters.IsoPlayer;
 import zombie.core.raknet.UdpConnection;
 import zombie.network.GameServer;
 
-/** Simulation-thread dialogue leases. Lua owns dialogue content, never actor authority. */
+/** Simulation-thread leases and cached-content facade. Lua owns graph routing, never actor authority. */
 public final class ServerHumanDialogue {
     private static final long APPROACH_NANOS = 30_000_000_000L;
     private static final long TALK_NANOS = 60_000_000_000L;
     private static final Map<Short, Session> sessions = new HashMap<>();
     private static KahluaTable environment;
     private static int sequence;
+    private static long contentGeneration;
     private static final class Session {
         final ServerHuman human;
         final IsoPlayer visitor;
@@ -36,6 +37,10 @@ public final class ServerHumanDialogue {
 
     /** Install Lua functions without replacing the game's enormous LuaManager class. */
     static void install() {
+        var content=zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current();
+        if(environment!=null && content!=null && contentGeneration!=content.generation()) {
+            contentGeneration=content.generation();rosterChanged();
+        }
         if (LuaManager.env == null || environment == LuaManager.env) return;
         environment = LuaManager.env;
         LuaEventManager.AddEvent("OnApocBRHumanDialogueReserved");
@@ -45,16 +50,61 @@ public final class ServerHumanDialogue {
         KahluaTable api = LuaManager.platform.newTable();
         bind(api, "list", 1, f -> list(player(f)));
         bind(api, "roster", 0, f -> roster());
+        bind(api, "dialogues", 0, f -> dialogues());
+        bind(api, "dialogueFlags", 3, f -> dialogueFlags(player(f),id(f),f.get(2)));
+        bind(api, "remember", 5, f -> remember(player(f),id(f),token(f),f.get(3),f.get(4)));
         bind(api, "begin", 2, f -> begin(player(f), id(f), System.nanoTime()));
         bind(api, "arrive", 3, f -> arrive(player(f), id(f), token(f), System.nanoTime()));
         bind(api, "finish", 3, f -> finish(player(f), id(f), token(f)));
         bind(api, "react", 5, f -> react(player(f), id(f), token(f),
             f.get(3) instanceof String text ? text : null,
             f.get(4) instanceof String emote ? emote : null, System.nanoTime()));
-        api.rawset("version", 2.0);
+        api.rawset("version", 3.0);
         environment.rawset("ApocBRHumanAPI", api);
     }
     private interface Call { Object run(LuaCallFrame frame); }
+    private static zombie.savefile.ApocBRNpcStore.DialogueIdentity identity(IsoPlayer p,ServerHuman h,String dialogue) {
+        long steam=p.getSteamID();
+        return new zombie.savefile.ApocBRNpcStore.DialogueIdentity(h.definition.key(),dialogue,
+            steam==0?"username":"steam",steam==0?p.getUsername():Long.toUnsignedString(steam));
+    }
+    private static KahluaTable dialogueFlags(IsoPlayer p,int id,Object dialogue) {
+        var result=LuaManager.platform.newTable();var store=zombie.savefile.ApocBRNpcStore.current();
+        var h=human(id);
+        if(store==null||!owned(p)||h==null||!(dialogue instanceof String key))return result;
+        for(String flag:store.dialogueFlags(identity(p,h,key)))result.rawset(flag,true);
+        return result;
+    }
+    private static boolean remember(IsoPlayer p,int id,int token,Object dialogue,Object flag) {
+        var session=session(p,id,token,System.nanoTime());
+        var store=zombie.savefile.ApocBRNpcStore.current();
+        if(store==null||session==null||!session.arrived||!near(session.human,p,2.5)
+            ||!(dialogue instanceof String key)||!(flag instanceof String fact))return false;
+        return store.remember(identity(p,session.human,key),fact);
+    }
+    private static KahluaTable dialogues() {
+        var snapshot=zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current();
+        var result=LuaManager.platform.newTable();
+        boolean database=Boolean.getBoolean("apocbr.npc.persistence.enabled");
+        result.rawset("database",database);
+        result.rawset("ready",!database || snapshot!=null);
+        if(database && snapshot!=null) {
+            result.rawset("generation",(double)snapshot.generation());
+            result.rawset("profiles",luaValue(snapshot.profiles()));
+        }
+        return result;
+    }
+    private static Object luaValue(Object value) {
+        if(value instanceof Map<?,?> map) {
+            var table=LuaManager.platform.newTable();
+            map.forEach((key,item)->table.rawset(key,luaValue(item)));return table;
+        }
+        if(value instanceof java.util.List<?> list) {
+            var table=LuaManager.platform.newTable();int i=0;
+            for(Object item:list)table.rawset((double)++i,luaValue(item));return table;
+        }
+        return value instanceof Number n ? n.doubleValue() : value;
+    }
     private static void bind(KahluaTable api, String name, int arguments, Call call) {
         api.rawset(name, (JavaFunction)(frame, count) -> {
             Object result = count == arguments ? call.run(frame) : null;
@@ -88,6 +138,7 @@ public final class ServerHumanDialogue {
         KahluaTable t = LuaManager.platform.newTable();
         t.rawset("id", (double)h.player.getOnlineID()); t.rawset("key", h.definition.key());
         t.rawset("name", h.definition.displayName());
+        t.rawset("profileId", h.profile.id());
         t.rawset("x", (double)h.player.getX()); t.rawset("y", (double)h.player.getY()); t.rawset("z", (double)h.player.getZi());
         return t;
     }
@@ -113,6 +164,7 @@ public final class ServerHumanDialogue {
             actor.rawset("id", (double)h.player.getOnlineID());
             actor.rawset("key", h.definition.key());
             actor.rawset("name", h.definition.displayName());
+            actor.rawset("profileId", h.profile.id());
             result.rawset((double)++i, actor);
         }
         return result;

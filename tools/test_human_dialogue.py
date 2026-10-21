@@ -33,7 +33,7 @@ public class DialogueTest {
   long now=System.nanoTime();
   var api=(KahluaTable)LuaManager.env.rawget("ApocBRHumanAPI");
   check(api!=null,"bridge installed on simulation thread");
-  check(Double.valueOf(2).equals(api.rawget("version")),"roster bridge advertises v2");
+  check(Double.valueOf(3).equals(api.rawget("version")),"dialogue content bridge advertises v3");
   check(LuaEventManager.events.contains("OnApocBRHumanRosterChanged"),"spawn emits roster change");
   int changes=java.util.Collections.frequency(LuaEventManager.events,"OnApocBRHumanRosterChanged");
   check(!factory.remove("missing")&&java.util.Collections.frequency(LuaEventManager.events,"OnApocBRHumanRosterChanged")==changes,"missing removal does not emit changes");
