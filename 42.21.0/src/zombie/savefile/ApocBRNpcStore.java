@@ -142,6 +142,7 @@ public final class ApocBRNpcStore {
             }
         } else {
             try(var s=statement(connection,"INSERT INTO npc_engine.scope(server_key,world,epoch) VALUES(?,?,1) ON CONFLICT(server_key,world) DO UPDATE SET epoch=npc_engine.scope.epoch+1 RETURNING epoch",server,world);var r=s.executeQuery()){r.next();epoch=r.getLong(1);}
+            materializeServerSpawns(connection,server,world);
             if(bootstrap!=null)insertDefinition(connection,server,world,bootstrap,true);
         }
         connection.commit();
@@ -267,10 +268,36 @@ public final class ApocBRNpcStore {
                         bindings.add(new HumanModuleBinding(module,mr.getInt(2),mr.getInt(3),parameters));
                     }
                 }
-                result.add(new HumanProfile(id,revision,"modules",Map.of(),rows.getString(5),rows.getString(6),rows.getBoolean(3),rows.getBoolean(4),bindings,rows.getDouble(7),rows.getInt(8),rows.getBoolean(9)));
+                result.add(new HumanProfile(id,revision,"modules",Map.of(),rows.getString(5),rows.getString(6),rows.getBoolean(3),rows.getBoolean(4),bindings,rows.getDouble(7),rows.getInt(8),rows.getBoolean(9),readWalkingPatterns(connection,id,revision)));
             }
         }
         return List.copyOf(result);
+    }
+    static java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> readWalkingPatterns(Connection connection,String profile,int revision)throws SQLException {
+        var result=new java.util.ArrayList<zombie.apocalipse.humans.walking.WalkingPatternSpec>();
+        try(var s=statement(connection,"SELECT slot_id,pattern_id,radius_tiles,x1,y1,x2,y2 FROM npc_engine.profile_movement_pattern WHERE profile_id=? AND revision=? ORDER BY slot_id LIMIT 9",profile,revision);var rows=s.executeQuery()) {
+            while(rows.next()) {
+                if(result.size()>=8)throw new SQLException("Too many walking pattern slots","22023");
+                String slot=rows.getString(1);var points=new java.util.ArrayList<zombie.apocalipse.humans.walking.WalkingPatternSpec.Point>();
+                try(var p=statement(connection,"SELECT point_index,x,y,z FROM npc_engine.profile_movement_point WHERE profile_id=? AND revision=? AND slot_id=? ORDER BY point_index LIMIT 33",profile,revision,slot);var pr=p.executeQuery()) {
+                    while(pr.next()) {
+                        if(points.size()>=32||pr.getInt(1)!=points.size())throw new SQLException("Invalid walking waypoints","22023");
+                        points.add(new zombie.apocalipse.humans.walking.WalkingPatternSpec.Point(pr.getInt(2),pr.getInt(3),pr.getInt(4)));
+                    }
+                }
+                var area=rows.getObject(4)==null?null:new zombie.apocalipse.humans.walking.WalkingPatternSpec.Area(rows.getInt(4),rows.getInt(5),rows.getInt(6),rows.getInt(7));
+                result.add(new zombie.apocalipse.humans.walking.WalkingPatternSpec(slot,rows.getString(2),rows.getInt(3),points,area));
+            }
+        }
+        return List.copyOf(result);
+    }
+    static void materializeServerSpawns(Connection connection,String server,String world)throws SQLException {
+        try(var s=statement(connection,"""
+            INSERT INTO npc_engine.instance(server_key,world,npc_key,username,display_name,profile_id,home_x,home_y,home_z,facing,female,outfit,desired_active)
+            SELECT server_key,?,npc_key,username,display_name,profile_id,home_x,home_y,home_z,facing,female,outfit,desired_active
+            FROM npc_engine.server_spawn WHERE server_key=?
+            ON CONFLICT(server_key,world,npc_key) DO NOTHING
+            """,world,server)) { s.executeUpdate(); }
     }
     static PreparedStatement statement(Connection c,String sql,Object...values)throws SQLException {
         var s=c.prepareStatement(sql);try{s.setQueryTimeout(2);for(int i=0;i<values.length;i++)s.setObject(i+1,values[i]);return s;}catch(SQLException failure){s.close();throw failure;}

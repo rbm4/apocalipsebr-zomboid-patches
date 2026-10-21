@@ -6,12 +6,21 @@ import java.util.Objects;
 /** Persistence-ready configuration data; contains no Java objects, timers or world references. */
 public record HumanProfile(String id, int revision, String behaviorId, Map<String, Long> parameters,
                            String greetingKey, String announcementId, boolean dialogue, boolean trading, java.util.List<HumanModuleBinding> modules,
-                           double perceptionRadius, int perceptionIntervalMs, boolean requireLos) {
+                           double perceptionRadius, int perceptionIntervalMs, boolean requireLos,
+                           java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> walkingPatterns) {
+    public HumanProfile(String id,int revision,String behaviorId,Map<String,Long> parameters,String greetingKey,String announcementId,boolean dialogue,boolean trading,
+                        java.util.List<HumanModuleBinding> modules,double perceptionRadius,int perceptionIntervalMs,boolean requireLos) {
+        this(id,revision,behaviorId,parameters,greetingKey,announcementId,dialogue,trading,modules,perceptionRadius,perceptionIntervalMs,requireLos,
+            java.util.List.of(zombie.apocalipse.humans.walking.WalkingPatternSpec.indoor()));
+    }
     public HumanProfile(String id,int revision,String behaviorId,Map<String,Long> parameters,String greetingKey,String announcementId,boolean dialogue,boolean trading) {
         this(id,revision,behaviorId,parameters,greetingKey,announcementId,dialogue,trading,java.util.List.of(),8,100,true);
     }
     public HumanProfile {
         identifier(id); identifier(behaviorId); identifier(announcementId);
+        walkingPatterns=java.util.List.copyOf(walkingPatterns);
+        if(walkingPatterns.size()>8||walkingPatterns.stream().map(zombie.apocalipse.humans.walking.WalkingPatternSpec::slot).distinct().count()!=walkingPatterns.size())
+            throw new IllegalArgumentException("Invalid movement pattern slots");
         modules=java.util.List.copyOf(modules);
         if(modules.size()>16||modules.stream().map(HumanModuleBinding::moduleId).distinct().count()!=modules.size())throw new IllegalArgumentException("Invalid module count/duplicates");
         if(!Double.isFinite(perceptionRadius)||perceptionRadius<1||perceptionRadius>32||perceptionIntervalMs<100||perceptionIntervalMs>60000)throw new IllegalArgumentException("Invalid perception");

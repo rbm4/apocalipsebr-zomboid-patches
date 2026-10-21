@@ -3,7 +3,7 @@ package zombie.apocalipse.humans.brain;
 /** Engine port. Its production implementation may only run on the simulation thread. */
 public interface HumanActuator {
     enum MotionStatus { RUNNING, SUCCEEDED, FAILED }
-    default boolean startRoaming(long now) { return false; }
+    default boolean startMovement(zombie.apocalipse.humans.walking.MovementRequest request, long now) { return false; }
     /** Advance the owned physical route, independently of the pattern that selected it. */
     default MotionStatus updateMovement(long now) { return MotionStatus.FAILED; }
     default void stopMoving() { }

@@ -22,7 +22,9 @@ and ability is not the intended hierarchy.
 | Action definitions | `HumanAction` records, including `Sequence`, `Wait`, `Say` | Immutable descriptions of intended actions and their parameters. |
 | Execution lifecycle | `HumanActionExecution` and its child executions | Pending/running/terminal state, monotonic timing, ordered execution and cleanup. |
 | Engine capabilities | `HumanActuator`, `ServerHumanActuator` | Execute world operations for the owning NPC on the simulation thread. |
-| Physical movement | `ServerHumanMovement`, `MovementGrid` | Follow caller-selected routes, enforce traversal, integrate position and resolve motion presentation; roaming selects routes separately. |
+| Walking patterns and navigation | `WalkingPatternRegistry`, `WalkingPattern`, `ServerHumanWalking`, `DestinationRoutePlanner` | Profile-bound destination policies, scope, per-actor progression and bounded navigation; modules issue immutable movement requests. |
+| Physical movement | `ServerHumanMovement`, `MovementGrid` | Follow supplied routes, enforce traversal, integrate position and resolve motion presentation independently of pattern/objective. |
+| Obstacle traversal | `humans.traversal` | Edge classification, factory-shared crossing/landing leases, native interactions, per-actor authoritative commitment and State packet presentation. See [NPC-TRAVERSAL.md](NPC-TRAVERSAL.md). |
 | Movement conditions | `MovementModifiers` | Validate immutable physical/context/effect inputs and resolve permitted pace, speed and animation without sampling the world or simulating health. |
 | Physical state | `HumanStateStore`, `HumanStateReducer`, `HumanMutation` | Single-writer logical state and pure mutations; native adapters, decisions and workers consume immutable snapshots. |
 | Perception | `ServerHumanPerception`, `HumanContactMemory`, `HumanSenses` | Bounded native discovery/visibility and transient immutable contact memory, independent of threat selection and combat decisions. See [NPC-PERCEPTION.md](NPC-PERCEPTION.md). |
@@ -57,7 +59,7 @@ unrelated role flags inside `GuideBrain` or put gameplay policy into transport.
 ## Generic action composition
 
 Movement follows this pattern: behavioral modules decide when to roam,
-`ServerHumanRoaming` selects a route and building constraint, and
+the profile-selected `WalkingPattern` supplies destinations and scope through `ServerHumanWalking`, and
 `ServerHumanMovement` executes it. Transport consumes the movement engine's
 snapshot, never a pattern's private state. Future capability services should
 similarly own mechanics while modules/patterns supply intent. Do not move

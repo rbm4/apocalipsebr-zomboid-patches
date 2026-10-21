@@ -65,9 +65,9 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> implem
                 greeted.put(target, now);
                 transition(State.FACING_VISITOR, new HumanAction.FaceVisitor(target), "visitor_selected", now, actuator);
             } else if (state() == State.IDLE) {
-                if (!roamingEnabled || !observation.canRoam() || now - enteredAt < policy.roamPause()) return;
-                transition(State.ROAMING, new HumanAction.Roam(), "idle_roam_due", now, actuator);
-            } else if (!observation.canRoam()) {
+                if (!roamingEnabled || !observation.movementAvailable() || now - enteredAt < policy.roamPause()) return;
+                transition(State.ROAMING, new HumanAction.Move(new zombie.apocalipse.humans.walking.MovementRequest.Pattern("background")), "idle_roam_due", now, actuator);
+            } else if (!observation.movementAvailable()) {
                 transition(State.IDLE, null, "roaming_unavailable", now, actuator);
             }
         }

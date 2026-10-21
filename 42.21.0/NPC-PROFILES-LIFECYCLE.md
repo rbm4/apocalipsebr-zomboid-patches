@@ -27,10 +27,16 @@ content adapters are registered in code separately from this data.
 
 | Built-in profile | Behavior | Announcement source | Dialogue | Trading |
 | --- | --- | --- | --- | --- |
-| `lobby-guide` | Shared greet + roam modules | `operations` | Yes | Yes |
-| `roaming-greeter` | Shared greet + roam modules | `none` | Yes | Yes |
+| `lobby-guide` | Shared greet + walk modules, indoor-wander pattern | `operations` | Yes | Yes |
+| `roaming-greeter` | Shared greet + walk modules, indoor-wander pattern | `none` | Yes | Yes |
 | `stationary` | Independent `IdleBehavior` | `none` | Yes | No |
-| `militia-patrol` | Territory-zombie engagement scaffold + roam | `none` | No | No |
+| `militia-patrol` | Territory-zombie engagement + walk, indoor-wander pattern | `none` | No | No |
+
+V23 migrates current database profiles to explicit revisioned walking slots.
+V24 adds `leon-militia` and the `apoc-extraction` server startup definition.
+See [movement ownership and seed semantics](NPC-MOVEMENT.md). Registered profile
+data includes immutable walking specifications; runtime pattern cursors remain
+per-activation and are not persisted. The `roam` module is historical only.
 
 `militia-patrol` requires V21 for database configuration; V22 updates its backend
 catalogue metadata. See [engagement ownership](NPC-ENGAGEMENT.md) and the

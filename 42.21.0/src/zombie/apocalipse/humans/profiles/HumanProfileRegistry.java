@@ -9,6 +9,9 @@ import zombie.apocalipse.humans.brain.HumanBehavior;
 
 /** Data profiles select allowlisted behavior factories, never executable database code. */
 public final class HumanProfileRegistry {
+    private final zombie.apocalipse.humans.walking.WalkingPatternRegistry walkingPatterns;
+    public HumanProfileRegistry() { this(zombie.apocalipse.humans.walking.WalkingPatternRegistry.builtins()); }
+    public HumanProfileRegistry(zombie.apocalipse.humans.walking.WalkingPatternRegistry walkingPatterns) { this.walkingPatterns=Objects.requireNonNull(walkingPatterns); }
     private record Factory(Consumer<HumanProfile> validate, Function<HumanProfile, HumanBehavior> create) { }
     private final Map<String, Factory> factories = new HashMap<>();
     private final Map<String, HumanProfile> profiles = new HashMap<>();
@@ -19,6 +22,7 @@ public final class HumanProfileRegistry {
     }
     private void validate(HumanProfile profile) {
         Objects.requireNonNull(profile);
+        for(var pattern:profile.walkingPatterns()) walkingPatterns.validate(pattern);
         if(!profile.behaviorId().equals("modules")&&!profile.modules().isEmpty())throw new IllegalArgumentException("Legacy behavior does not accept module bindings");
         Factory factory = factories.get(profile.behaviorId());
         if (factory == null) throw new IllegalArgumentException("Unknown behavior: " + profile.behaviorId());

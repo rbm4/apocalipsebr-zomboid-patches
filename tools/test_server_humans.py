@@ -628,6 +628,64 @@ FILES.update({
  }""",
 })
 
+# Native traversal dependencies. These model engine inputs; production traversal owns classification and execution.
+FILES.update({
+ "zombie/iso/SpriteDetails/IsoFlagType.java": "package zombie.iso.SpriteDetails;public enum IsoFlagType {water}",
+ "zombie/iso/sprite/IsoSprite.java": "package zombie.iso.sprite;public class IsoSprite {public String name=\"fence\";public String getName(){return name;}}",
+ "zombie/iso/IsoObject.java": """package zombie.iso;
+ public class IsoObject {public boolean tall;public IsoGridSquare square;public int objectIndex;public IsoGridSquare getSquare(){return square;}public int getObjectIndex(){return objectIndex;}public zombie.iso.sprite.IsoSprite sprite=new zombie.iso.sprite.IsoSprite();
+ public boolean isTallHoppable(){return tall;}public zombie.iso.sprite.IsoSprite getSprite(){return sprite;}}""",
+ "zombie/iso/objects/IsoDoor.java": """package zombie.iso.objects;
+ public class IsoDoor extends zombie.iso.IsoObject {
+ public boolean open,locked,barricaded,obstructed,refuse;public int toggles;
+ public boolean IsOpen(){return open;}public boolean isBarricaded(){return barricaded;}public boolean isObstructed(){return obstructed;}
+ public boolean couldBeOpen(zombie.characters.IsoPlayer p){if(p.getCurrentSquare()==null)throw new AssertionError("missing source context");return !locked&&!barricaded&&!obstructed;}
+ public void ToggleDoor(zombie.characters.IsoPlayer p){toggles++;if(!refuse)open=!open;}}""",
+ "zombie/iso/objects/IsoThumpable.java": """package zombie.iso.objects;
+ public class IsoThumpable extends IsoDoor {public boolean door=true,window;public boolean isDoor(){return door;}
+ public boolean canClimbThrough(zombie.characters.IsoPlayer p){return window&&!barricaded;}}""",
+ "zombie/iso/objects/IsoWindow.java": """package zombie.iso.objects;
+ public class IsoWindow extends zombie.iso.IsoObject {
+ public boolean open,locked,perma,barricaded,invincible,smashed,glassRemoved;public int toggles;
+ public boolean IsOpen(){return open;}public boolean isInvincible(){return invincible;}public boolean isBarricaded(){return barricaded;}
+ public boolean isSmashed(){return smashed;}public boolean isGlassRemoved(){return glassRemoved;}
+ public boolean isLocked(){return locked;}public boolean isPermaLocked(){return perma;}
+ public boolean canClimbThrough(zombie.characters.IsoPlayer p){return !barricaded&&!invincible&&(open||smashed);}
+ public void ToggleWindow(zombie.characters.IsoPlayer p){toggles++;if(!locked&&!perma)open=!open;}}""",
+ "zombie/iso/objects/IsoWindowFrame.java": """package zombie.iso.objects;
+ public class IsoWindowFrame extends zombie.iso.IsoObject {public boolean blocked;public boolean canClimbThrough(zombie.characters.IsoPlayer p){return !blocked;}}""",
+ "zombie/ai/states/ClimbThroughWindowPositioningParams.java": """package zombie.ai.states;
+ public class ClimbThroughWindowPositioningParams {
+ public boolean canClimb,scratch,isCounter,isSheetRope,isFloor;public zombie.iso.IsoDirections climbDir;
+ public zombie.characters.IsoPlayer climbingCharacter;public zombie.iso.IsoObject windowObject;
+ public int startX,startY,z,endX,endY,oppositeX,oppositeY;}""",
+ "zombie/ai/states/ClimbThroughWindowState.java": """package zombie.ai.states;
+ public class ClimbThroughWindowState {private static final ClimbThroughWindowState INSTANCE=new ClimbThroughWindowState();
+ public static ClimbThroughWindowState instance(){return INSTANCE;}
+ public static final Object PARAMS=new Object();}""",
+ "zombie/ai/states/ClimbOverFenceState.java": "package zombie.ai.states;public class ClimbOverFenceState {private static final ClimbOverFenceState INSTANCE=new ClimbOverFenceState();public static ClimbOverFenceState instance(){return INSTANCE;}}",
+ "zombie/ai/states/IdleState.java": "package zombie.ai.states;public class IdleState {private static final IdleState INSTANCE=new IdleState();public static IdleState instance(){return INSTANCE;}}",
+})
+FILES["zombie/characters/IsoPlayer.java"] = FILES["zombie/characters/IsoPlayer.java"].replace(
+ "public IsoGridSquare getCurrentSquare(){return detached?null:cell.getGridSquare(getXi(),getYi(),getZi());}",
+ "public IsoGridSquare current;public void setCurrent(IsoGridSquare s){current=s;} public IsoGridSquare getCurrentSquare(){return current!=null?current:detached?null:cell.getGridSquare(getXi(),getYi(),getZi());}"
+ "private final zombie.ai.states.ClimbThroughWindowPositioningParams climb=new zombie.ai.states.ClimbThroughWindowPositioningParams();"
+ "public zombie.ai.states.ClimbThroughWindowPositioningParams get(Object param){return climb;}")
+FILES["zombie/pathfind/PolygonalMap2.java"] = FILES["zombie/pathfind/PolygonalMap2.java"].replace(
+ "public boolean lineClearCollide", "public boolean standBlocked;public boolean canStandAt(float x,float y,int z,Object ignored,boolean doors,boolean walls){return !standBlocked;}public boolean lineClearCollide")
+FILES["zombie/iso/IsoGridSquare.java"] = FILES["zombie/iso/IsoGridSquare.java"].replace(
+ "public Set<String> blockedEdges", """public boolean water,hopBlocked;
+ public boolean has(zombie.iso.SpriteDetails.IsoFlagType flag){return water;}
+ public final Map<String,IsoObject> edges=new HashMap<>();
+ public IsoObject edge(IsoGridSquare b){return edges.get(b.x+","+b.y);}
+ public IsoObject getDoorTo(IsoGridSquare b){return edge(b) instanceof zombie.iso.objects.IsoDoor d&&(!(d instanceof zombie.iso.objects.IsoThumpable t)||t.door)?d:null;}
+ public zombie.iso.objects.IsoWindow getWindowTo(IsoGridSquare b){return edge(b) instanceof zombie.iso.objects.IsoWindow w?w:null;}
+ public zombie.iso.objects.IsoWindowFrame getWindowFrameTo(IsoGridSquare b){return edge(b) instanceof zombie.iso.objects.IsoWindowFrame w?w:null;}
+ public zombie.iso.objects.IsoThumpable getWindowThumpableTo(IsoGridSquare b){return edge(b) instanceof zombie.iso.objects.IsoThumpable w&&w.window?w:null;}
+ public IsoObject getHoppableTo(IsoGridSquare b){IsoObject e=edge(b);return e!=null&&e.getClass()==IsoObject.class?e:null;}
+ public boolean isPlayerAbleToHopWallTo(IsoDirections d,IsoGridSquare b){return !hopBlocked;}
+ public Set<String> blockedEdges""")
+
 def main():
     # Preserve the entire vanilla request handler after the one intentional fallback.
     relative = Path("zombie/network/packets/character/PlayerDataRequestPacket.java")

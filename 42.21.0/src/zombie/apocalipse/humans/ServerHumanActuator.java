@@ -64,13 +64,13 @@ final class ServerHumanActuator implements HumanActuator {
     }
 
     @Override
-    public boolean startRoaming(long now) { return human.roaming.start(now); }
+    public boolean startMovement(zombie.apocalipse.humans.walking.MovementRequest request, long now) { return human.walking.start(request, now); }
 
     @Override
-    public MotionStatus updateMovement(long now) { return human.movement.update(now); }
+    public MotionStatus updateMovement(long now) { return human.walking.update(now); }
 
     @Override
-    public void stopMoving() { human.movement.stop(); }
+    public void stopMoving() { human.walking.stop(); }
 
     @Override
     public boolean returnHome() {

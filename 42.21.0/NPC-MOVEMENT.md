@@ -1,4 +1,4 @@
-# NPC movement engine and roaming patterns
+# NPC movement engine, navigation and walking patterns
 
 Implemented for server Build 42.21.0. Movement mechanics and condition resolution
 are separate from roaming; live player animation and dedicated-server playback still require
@@ -8,8 +8,10 @@ validation. It introduces no database migration or deployment.
 
 | Component | Responsibility |
 | --- | --- |
-| `RoamModule` / legacy `GuideBrain` | Decide when to request roaming and how long to pause; cancel when preempted. |
-| `ServerHumanRoaming` | Choose a route through `IndoorRoutePlanner`, seed route variety, bind the home building and restrict roaming to it. |
+| `WalkingModule` / objective modules | Decide when to request a configured pattern or destination; cancel when preempted. |
+| `WalkingPatternRegistry` / `WalkingPattern` | Allowlisted pattern factories, destination progression and navigation scope. Each actor receives fresh pattern instances. |
+| `ServerHumanWalking` | Resolve immutable requests, plan a route, own pattern completion/cancellation and provide live-world navigation facts. |
+| `DestinationRoutePlanner` | Bounded same-floor A* to a requested destination; no destination policy or native actuation. |
 | `ServerHumanMovement` | Per-NPC physical movement engine: follow a supplied route, integrate position/facing, enforce traversal/collision/occupancy, apply resolved gait/speed/animation, and clip prediction. |
 | `MovementModifiers` | Immutable intent, settings and condition contracts; pure resolution of pace, physical speed, animation modifiers and decision reason. |
 | `MovementGrid` | Shared tile and traversal-policy contract used by both planners and the movement engine. |
@@ -17,7 +19,7 @@ validation. It introduces no database migration or deployment.
 | `ServerHumanTransport` | Encode the engine's resolved movement snapshot in the existing vanilla player packet. |
 | `ServerHumanFactory` | Schedule simulation/heartbeat and publish immediate direction or moving-state changes. |
 
-Roaming no longer owns the waypoint cursor, position integration, speed,
+Patterns do not own the physical waypoint cursor, position integration, speed,
 prediction, occupancy or native collision calls. Transport no longer reads
 roaming internals. There is one moving-state owner, the movement engine.
 
@@ -32,8 +34,8 @@ live engine objects and workers do not access them.
 traversal alone. `movement.start(route, policy, now)` additionally restricts that
 route through a `MovementGrid`. The policy is a transient simulation-thread
 reference held only until completion, stop or failure; it is never persisted.
-The policy cannot override physical safety checks. Roaming passes itself as the
-policy to retain its existing home-building and home-square availability rules.
+The policy cannot override physical safety checks. The selected walking pattern
+supplies its scope to preserve its building/area rules.
 A different future pattern may supply another constraint or just physical traversal.
 
 Routes are immutable copies with at most 256 waypoints. They contain cardinally
@@ -42,12 +44,107 @@ its current tile. Empty, oversized, diagonal and skipped-tile routes are refused
 An invalid replacement stops the prior route. Physical checks are repeated during
 execution because a valid planned edge can become blocked or unloaded.
 
-This is a bounded same-floor walking executor, not a general pathfinder. It
-does not select destinations, open doors, climb stairs or cross floors. Path
-planning stays separate; `IndoorRoutePlanner` retains its 256-visited/12-edge
+This is a bounded same-floor route executor. It opens passable doors and delegates
+windows and low fences to the separate [traversal subsystem](NPC-TRAVERSAL.md).
+It does not select destinations, climb stairs or cross floors. Path
+planning stays separate; `IndoorRoutePlanner` retains its 256-node/12-edge
 roaming search limits. The engine does not depend on that planner or its limits.
 No direct call may bypass existing activity ownership: new autonomous patterns
 must still run through the behavior/action/controller contracts.
+
+## Generic requests and profile selection
+
+`HumanAction.Move(MovementRequest)` replaces the proof-of-concept `Roam` action.
+`HumanActuator.startMovement(request, now)` enters the navigation adapter;
+`updateMovement` advances it, and `stopMoving` cancels it. Combat retains its
+own destination policy and supplies routes to the same physical movement engine.
+There is no generic `startRoaming` capability or native `ServerHumanRoaming` service.
+
+An objective can request `MovementRequest.To(Point)` or
+`MovementRequest.Pattern(slot)`. Profiles bind up to eight semantic slots to
+immutable `WalkingPatternSpec` values. The `walk` module schedules `background`
+using its `pauseMs` parameter; pattern factories are registered in code, never
+loaded as classes/scripts from database data. Navigation to an objective respects
+the profile background scope. Requests are bounded to the actor floor, 256
+discovered nodes and 64 steps for objective navigation. Failure returns to the
+owning objective/module; no implicit teleport or unlimited repath loop is added.
+
+Initial patterns:
+
+- `indoor-wander`: choose reachable destinations in the home building. Optional
+  inclusive rectangle restricts that building further. This preserves the lobby.
+- `area-wander`: choose reachable destinations within `radiusTiles` of home and
+  an optional inclusive rectangle, without requiring a building.
+- `waypoint-circuit`: navigate to ordered same-floor points. Advance the cursor
+  only after successful arrival; failure/cancellation retries the same point.
+
+The radius is used by area wandering; indoor wandering uses building membership.
+Circuit points must lie inside any assigned rectangle. A new pattern implements
+`WalkingPattern` and registers its validator/factory without changing physical
+movement, traversal, transport or generic action execution. A merchant objective
+can issue destination requests or select another profile slot through this same port.
+
+`HumanObservation.movementAvailable` reports physical loaded-space availability.
+It no longer consults indoor wandering or requires a viewer. Patterns separately
+validate their own domains. Background movement can advance in loaded space even
+without current viewers, but never pins chunks. Perception and territory use
+the configured scope; building confinement is not a global combat assumption.
+
+## Revisioned configuration and Leon
+
+Manager migration V23 creates the pattern catalog, revisioned profile pattern
+bindings and ordered points. It publishes new heads for legacy `roam` profiles,
+mapping that module to `walk`, `roamPauseMs` to `pauseMs`, and explicitly selecting
+`indoor-wander`. Existing published history, current settings, module priorities,
+disabled state and pinned trade/speech bindings are preserved, including when
+unpublished drafts have higher revision numbers.
+
+V24 seeds server-scoped startup defaults for Leon: server `apoc-extraction`, key
+`leon`, username `NPC_Leon`, spawn `(268,14412,0)`, profile `leon-militia`.
+His background pattern is indoor wandering intersected with inclusive bounds
+`x=239..314`, `y=14403..14426`; combat pursuit uses the same domain. Dialogue and
+trading are disabled. Initial appearance defaults are male, `CostumeBeastMom` outfit,
+facing south. No new weapon loadout is introduced by this refactor.
+
+The worker materializes `server_spawn` into its actual world on startup, before
+reading instances. It selects the exact server key and inserts absent instances
+only: existing coordinates, desired activity, retirement, death and runtime
+history remain authoritative. No world name is guessed and no live spawn is
+performed by the migration. Install V23/V24 before starting this engine build.
+
+## Walking ownership verification
+
+`tools/test_human_walking.py` exercises production pattern selection, bounded
+objective A*, outdoor scope, building confinement, rectangle enforcement,
+independent circuit cursors, cancellation and generic action integration.
+`tools/test_npc_persistence.py` runs the production JDBC reader/worker and actual
+new migrations in a disposable PostgreSQL cluster using separate manager and
+engine roles. It checks server/world targeting and nonoverwriting seed behavior.
+Its `--manager-test` option also runs the new Flyway migration and aggregate
+publication integration fixtures. Existing movement, brain/action, lifecycle,
+perception, combat, dialogue/trade and module-runtime fixtures remain required.
+Real-JAR `-DryRun` verifies signatures; live path/animation behavior remains an
+in-game check. No deployment or production database write is part of these tests.
+
+This refactor passed the following checks:
+
+| Command / fixture under `tools/` | Result |
+| --- | --- |
+| `test_human_walking.py` | 32 pattern/objective ownership assertions. |
+| `test_npc_persistence.py --manager-test` | 61 production JDBC/worker assertions and 35 manager unit, controller, template, Flyway and PostgreSQL integration tests. |
+| `test_human_roaming.py`, `test_human_traversal.py` | 571 and 93 assertions. |
+| `test_human_brain.py`, `test_human_sequences.py`, `test_npc_runtime.py` | 72, 31 and 33 assertions. |
+| `test_human_profiles.py`, `test_server_humans.py` | 56 and 80 assertions. |
+| `test_human_perception.py`, `test_human_engagement.py`, `test_human_weapon_combat.py` | 145, 46 and 67 assertions. |
+| `test_human_dialogue.py`, `test_human_trading.py` | 52 plus EN/PTBR catalogue checks, and 538 assertions. |
+| `test_human_movement_modifiers.py`, `test_human_state.py` | 111 modifier and 116 state assertions, plus checkpoint logging variants. |
+| Manager `node --test src/test/js/npc-editor.test.cjs` | Three editor tests passed. |
+| `42.21.0/patchApocalipseBr.ps1 -DryRun` | 234 source files compiled against the real game JAR; no deployment. |
+
+For rollout, stop the old NPC runtime before publishing V23/V24, then start the
+updated engine and manager. The previous engine does not recognize the `walk`
+module. Validate Leon's actual home-building footprint, bounds, combat interruption
+and obstacle presentation in game after rollout.
 
 ## Motion and presentation
 
@@ -160,6 +257,8 @@ coherently rather than reproducing shell-specific animation exceptions.
 `updateMovement` returns RUNNING until the route completes, SUCCEEDED on reaching
 the final center, and FAILED when no route exists or a live physical/policy check
 fails. A temporary immobility condition keeps the action RUNNING without moving.
+An active obstacle crossing instead cancels safely on immobility; see the
+traversal contract for commitment, reservations and native state packets.
 Completion and failure stop motion, clear the route/policy/prediction and
 capture the physical stopping point for existing greeting recovery. Stop resets
 requested pace to WALK and clears native run/sprint flags. Physical conditions

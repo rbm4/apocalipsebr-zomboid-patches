@@ -26,8 +26,8 @@ public final class HumanActionExecution {
                 startedAt = now;
                 status = Status.RUNNING;
                 switch (action) {
-                    case HumanAction.Roam ignored -> {
-                        if (!actuator.startRoaming(now)) { actuator.stopMoving(); settle(false); }
+                    case HumanAction.Move move -> {
+                        if (!actuator.startMovement(move.request(),now)) { actuator.stopMoving(); settle(false); }
                     }
                     case HumanAction.FaceVisitor face -> settle(actuator.face(face.visitor()));
                     case HumanAction.Say say -> settle(actuator.say(say.text()));
@@ -61,7 +61,7 @@ public final class HumanActionExecution {
                     }
                     if (complete) settle(true);
                 }
-                case HumanAction.Roam ignored -> {
+                case HumanAction.Move move -> {
                     HumanActuator.MotionStatus result = actuator.updateMovement(now);
                     if (result != HumanActuator.MotionStatus.RUNNING) {
                         actuator.stopMoving();
@@ -84,7 +84,7 @@ public final class HumanActionExecution {
             // A failed port call must not repeat one-shot speech/animation every tick.
             failure = exception.getClass().getSimpleName();
             if (action instanceof HumanAction.Emote) stopSafely(actuator);
-            if (action instanceof HumanAction.Roam) stopMovementSafely(actuator);
+            if (action instanceof HumanAction.Move) stopMovementSafely(actuator);
             if (child != null) child.cancel(actuator);
             cancelParallel(actuator);
             status = Status.FAILED;
@@ -94,7 +94,7 @@ public final class HumanActionExecution {
     public void cancel(HumanActuator actuator) {
         if (terminal()) return;
         if (status == Status.RUNNING && action instanceof HumanAction.Emote) stopSafely(actuator);
-        if (status == Status.RUNNING && action instanceof HumanAction.Roam) stopMovementSafely(actuator);
+        if (status == Status.RUNNING && action instanceof HumanAction.Move) stopMovementSafely(actuator);
         if (child != null) child.cancel(actuator);
         cancelParallel(actuator);
         status = Status.CANCELLED;

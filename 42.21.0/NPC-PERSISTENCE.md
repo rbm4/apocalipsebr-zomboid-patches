@@ -4,6 +4,16 @@ Implemented foundation; compile and isolated tests pass. Dedicated-server valida
 
 Physical/needs state additionally requires `V20__Persist_Npc_Physical_State.sql`. See [NPC-STATE.md](NPC-STATE.md) for the single-writer reducer, native bridge and condition projection.
 
+The current engine also requires V23/V24: revisioned profile walking patterns,
+ordered destinations and server-scoped startup defaults. The worker reads these
+as immutable configuration and copies exact-server defaults into its actual
+world only when the logical instance is absent. Existing definitions, dead or
+retired history and desired activity are never overwritten. See
+[walking ownership and Leon's configuration](NPC-MOVEMENT.md). Apply migrations
+before starting the updated engine; missing schema remains a fail-closed startup
+error. Pattern cursors, navigation executions and traversal leases are ephemeral
+per-activation state, not durable semantic memory.
+
 ## Ownership and flow
 
 ```text
@@ -28,7 +38,8 @@ Current registered modules:
 | Module | Default priority | Responsibility | Configuration |
 | --- | --- | --- | --- |
 | `greet` | 100 | Select a visitor, face, hold attention, wave, say greeting, announce ordered phrases, return and cool down | attentionMs, salutationMs, cooldownMs, visitorCooldownMs, announcementPauseMs |
-| `roam` | 1000 | Safe indoor route while no higher priority module owns control | roamPauseMs |
+| `walk` | 1000 | Schedule the profile-selected background walking pattern while no higher priority module owns control | pauseMs |
+| `engage-zombies` | 100 | Retain an observed target within the profile navigation domain and invoke shared combat | maxSampleAgeMs, lostGraceMs, retryMs |
 
 The existing tested `GuideBrain` supplies the greeting cycle through `greetingOnly()`; it no longer owns roaming in modular profiles. Its legacy combined behavior ID remains available for source compatibility. Lobby guide and roaming greeter built-ins now use the shared module pipeline. Database stationary profiles have no modules; the legacy Java stationary built-in remains IdleBehavior. Per-visitor greeting history and action execution are independent for each NPC.
 

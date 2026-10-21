@@ -6,4 +6,6 @@ public interface MovementGrid {
     default boolean available() { return true; }
     boolean walkable(Tile tile);
     boolean connected(Tile from, Tile to);
+    /** Positive relative effort for a usable edge; zero means blocked. Queries never open objects. */
+    default int traversalCost(Tile from, Tile to) { return connected(from, to) ? 1 : 0; }
 }

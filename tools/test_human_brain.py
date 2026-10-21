@@ -27,7 +27,7 @@ public class BrainTest {
  }
  static class RoamingPort extends Port {
   int walks,steps,halts;MotionStatus motion=MotionStatus.RUNNING;
-  public boolean startRoaming(long now){walks++;return true;}
+  public boolean startMovement(zombie.apocalipse.humans.walking.MovementRequest request,long now){walks++;return true;}
   public MotionStatus updateMovement(long now){steps++;return motion;}
   public void stopMoving(){halts++;}
  }
@@ -142,6 +142,7 @@ def main():
         sources = [harness, *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/brain").glob("*.java")), *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/profiles").glob("*.java"))]
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/state").glob("*.java")))
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/movement").glob("*.java")))
+        sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/walking").glob("*.java")))
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(path).replace("\\", "/") + '"' for path in sources))
         output = work / "classes"

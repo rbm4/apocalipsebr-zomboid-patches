@@ -9,6 +9,7 @@ import zombie.apocalipse.humans.movement.MovementModifiers;
 import zombie.apocalipse.humans.movement.MovementModifiers.*;
 import zombie.iso.IsoGridSquare;
 import zombie.pathfind.PolygonalMap2;
+import zombie.apocalipse.humans.traversal.*;
 
 /** Per-actor movement engine. Executes supplied routes without choosing a destination. */
 final class ServerHumanMovement implements MovementGrid {
@@ -24,6 +25,7 @@ final class ServerHumanMovement implements MovementGrid {
     record Presentation(Gait gait, float speed, Animation animation) { }
 
     private final ServerHuman human;
+    private final HumanTraversal traversal;
     private MovementGrid policy;
     private boolean moving;
     private List<Tile> route = List.of();
@@ -37,7 +39,23 @@ final class ServerHumanMovement implements MovementGrid {
     private Settings settings = Settings.DEFAULT;
     private Resolved resolved = MovementModifiers.resolve(Pace.WALK, Conditions.NORMAL, Settings.DEFAULT, 0, 0);
 
-    ServerHumanMovement(ServerHuman human) { this.human = human; }
+    ServerHumanMovement(ServerHuman human, TraversalWorld world) {
+        this.human = human;
+        traversal = new HumanTraversal(human.player, human.definition.z(), world,
+            (from, to) -> policy != null && (policy == this || policy.walkable(from) && policy.walkable(to) && policy.connected(from, to)),
+            entering -> {
+                for (var viewer : human.viewers) if (human.isRelevant(viewer)) {
+                    ServerHumanTransport.idle(human, viewer);
+                    sendTraversal(viewer, entering);
+                }
+            }, () -> {
+                for (var viewer : human.viewers) if (human.isRelevant(viewer)) ServerHumanTransport.idle(human, viewer);
+            });
+    }
+    private void sendTraversal(zombie.core.raknet.UdpConnection viewer, boolean entering) { traversal.send(viewer, entering); }
+    void announceTraversal(zombie.core.raknet.UdpConnection viewer) { traversal.announce(viewer); }
+    boolean traversing() { return traversal.active(); }
+    void close() { try { stop(); } finally { traversal.close(); } }
 
     @Override
     public boolean available() { return walkable(new Tile(human.player.getXi(), human.player.getYi())); }
@@ -86,6 +104,7 @@ final class ServerHumanMovement implements MovementGrid {
     /** Also called while idle/interacting so expired effects and condition presentation cannot stick. */
     void refresh(long now) {
         lastResolution = Math.max(lastResolution, now);
+        traversal.clock(lastResolution);
         resolved = MovementModifiers.resolve(requestedPace, conditions, settings, lastResolution, rhythmOrigin);
         if (resolved.speed() == 0 && moving) {
             moving = false;
@@ -127,6 +146,13 @@ final class ServerHumanMovement implements MovementGrid {
         lastStep = Math.max(lastStep, now);
         refresh(now);
         if (!available() || !policy.available()) return fail();
+        if (traversal.active()) {
+            if (resolved.speed() == 0) return fail();
+            var result = traversal.update(now);
+            if (result == TraversalExecution.Result.FAILED) return fail();
+            // A completed climb lands at the target; the normal loop consumes that waypoint next tick.
+            return HumanActuator.MotionStatus.RUNNING;
+        }
         if (resolved.speed() == 0) return HumanActuator.MotionStatus.RUNNING;
         double remaining = resolved.speed() * elapsed;
         // Consume the full distance budget, including across tile centers. Previously
@@ -139,8 +165,24 @@ final class ServerHumanMovement implements MovementGrid {
             Tile target = route.get(waypoint);
             float tx = target.x() + 0.5F, ty = target.y() + 0.5F;
             float x = human.player.getX(), y = human.player.getY();
+            Tile source = new Tile((int)Math.floor(x), (int)Math.floor(y));
+            boolean centering = false;
+            if (!source.equals(target)) {
+                TraversalEdge edge = traversal.inspect(source, target);
+                if (!edge.usable() || !edgeAllowed(source, target)) return fail();
+                if (edge.kind() != TraversalEdge.Kind.WALK) {
+                    float cx = source.x()+.5F, cy = source.y()+.5F;
+                    if (Math.hypot(cx-x, cy-y) > .001) { tx = cx; ty = cy; centering = true; }
+                    else {
+                        moving = false; applyPresentation();
+                        traversal.start(edge, now);
+                        if (traversal.update(now) == TraversalExecution.Result.FAILED) return fail();
+                        return HumanActuator.MotionStatus.RUNNING;
+                    }
+                }
+            }
             double dx = tx - x, dy = ty - y, distance = Math.hypot(dx, dy);
-            if (distance < 0.001) { waypoint++; continue; }
+            if (distance < 0.001) { if (!centering) waypoint++; continue; }
             if (remaining <= 0) return HumanActuator.MotionStatus.RUNNING;
             double step = Math.min(distance, remaining);
             float nx = step == distance ? tx : (float)(x + dx / distance * step);
@@ -159,14 +201,14 @@ final class ServerHumanMovement implements MovementGrid {
             moving = true;
             applyPresentation();
             remaining -= step;
-            if (step == distance) waypoint++;
+            if (step == distance && !centering) waypoint++;
         }
         return fail();
     }
 
     /** Native prediction distance is quantized in eighths of a tile. */
     int predictionDistanceUnits() {
-        if (!moving || waypoint >= route.size()) return 0;
+        if (traversal.active() || !moving || waypoint >= route.size()) return 0;
         Tile target = route.get(waypoint);
         float x = human.player.getX(), y = human.player.getY();
         double dx = target.x() + 0.5 - x, dy = target.y() + 0.5 - y;
@@ -175,13 +217,15 @@ final class ServerHumanMovement implements MovementGrid {
         // Never extrapolate the old heading around an upcoming corner.
         if (distance < 0.001 || (dx * Math.cos(angle) + dy * Math.sin(angle)) / distance < 0.999) return 0;
         if (!allowed(target)) return 0;
+        Tile current = new Tile((int)Math.floor(x), (int)Math.floor(y));
+        if (!current.equals(target) && !walkingConnected(current, target)) return 0;
         double headingX = dx / distance, headingY = dy / distance;
         // Tile centers on a straight run are not stopping points. Look ahead only
         // through connected, collinear route edges; never predict through a turn.
         for (int i = waypoint + 1; i < route.size() && distance < resolved.speed() * PREDICTION_SECONDS + 0.15; i++) {
             Tile next = route.get(i);
             int edgeX = next.x() - target.x(), edgeY = next.y() - target.y();
-            if (edgeX * headingX + edgeY * headingY < 0.999 || !edgeAllowed(target, next)) break;
+            if (edgeX * headingX + edgeY * headingY < 0.999 || !walkingConnected(target, next)) break;
             distance += 1.0;
             target = next;
         }
@@ -198,6 +242,7 @@ final class ServerHumanMovement implements MovementGrid {
     }
 
     void stop() {
+        traversal.cancel();
         route = List.of();
         policy = null;
         waypoint = 0;
@@ -216,17 +261,17 @@ final class ServerHumanMovement implements MovementGrid {
 
     @Override
     public boolean walkable(Tile tile) {
-        IsoGridSquare square = square(tile.x(), tile.y());
-        return square != null && square.isFree(false) && square.TreatAsSolidFloor() && !square.HasStairs();
+        return traversal.walkable(tile);
     }
 
     @Override
     public boolean connected(Tile from, Tile to) {
-        if (Math.abs((long)from.x() - to.x()) + Math.abs((long)from.y() - to.y()) != 1) return false;
-        IsoGridSquare square = square(from.x(), from.y());
-        return square != null && walkable(from) && walkable(to)
-            && !square.testCollideAdjacentAdvanced(to.x() - from.x(), to.y() - from.y(), 0, false)
-            && !blocked(from.x() + 0.5F, from.y() + 0.5F, to.x() + 0.5F, to.y() + 0.5F);
+        return traversal.inspect(from, to).usable();
+    }
+
+    @Override public int traversalCost(Tile from, Tile to) { return traversal.inspect(from, to).kind().cost(); }
+    private boolean walkingConnected(Tile from, Tile to) {
+        return traversal.inspect(from, to).kind() == TraversalEdge.Kind.WALK && edgeAllowed(from, to);
     }
 
     private boolean allowed(Tile tile) {

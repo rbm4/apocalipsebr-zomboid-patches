@@ -32,6 +32,7 @@ public final class ServerHumanFactory {
     private final Map<String, HumanLifecycle> instances = new LinkedHashMap<>();
     private final Map<String, ServerHuman> humans = new LinkedHashMap<>();
     private final Map<Short, ServerHuman> byId = new HashMap<>();
+    private final zombie.apocalipse.humans.traversal.TraversalWorld traversalWorld = new zombie.apocalipse.humans.traversal.TraversalWorld();
     private final Set<String> reservedNames = new HashSet<>();
     private Thread owner;
     private boolean configured;
@@ -212,7 +213,7 @@ public final class ServerHumanFactory {
         try {
             short id = allocateId();
             if(instance.physiology().snapshot().dead())throw new IllegalStateException("Dead NPC physical state cannot activate");
-            ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell,instance.physiology());
+            ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell,instance.physiology(),traversalWorld);
             var restored=checkpoints.get(key);
             if(restored!=null){human.player.setX(restored.x());human.player.setY(restored.y());human.player.setZ(restored.z());human.player.realx=restored.x();human.player.realy=restored.y();human.player.realz=(byte)restored.z();human.postX=restored.x();human.postY=restored.y();}
             humans.put(key,human); byId.put(id,human); instance.active(human.profile.revision());

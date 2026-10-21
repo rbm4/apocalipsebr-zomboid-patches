@@ -30,6 +30,12 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
         return update(weapon,now,true,false);
     }
     HumanActuator.MotionStatus update(HumanCombatInventory.Weapon weapon,long now,boolean allowClose,boolean recovering){
+        // Crossing owns movement until it settles; target motion/tactics must not restart it every repath interval.
+        if(human.movement.traversing()){
+            var result=human.movement.update(now);
+            if(result==HumanActuator.MotionStatus.FAILED){failures++;routeActive=false;}
+            return failures>=3?HumanActuator.MotionStatus.FAILED:HumanActuator.MotionStatus.RUNNING;
+        }
         boolean lane=clear(human.player.getX(),human.player.getY());
         var order=tactics.update(weapon,distance(),lane,recovering,now);
         if(retreating){
@@ -90,5 +96,6 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
         return true;
     }
     public boolean connected(Tile from,Tile to){return walkable(from)&&walkable(to)&&human.movement.connected(from,to);}
+    @Override public int traversalCost(Tile from,Tile to){return connected(from,to)?human.movement.traversalCost(from,to):0;}
     public boolean clearAttack(Tile from){return clear(from.x()+.5F,from.y()+.5F);}
 }

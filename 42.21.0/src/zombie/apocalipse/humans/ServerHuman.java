@@ -20,7 +20,7 @@ final class ServerHuman {
     final HumanProfile profile;
     final ServerHumanActuator actuator;
     final ServerHumanMovement movement;
-    final ServerHumanRoaming roaming;
+    final ServerHumanWalking walking;
     final ServerHumanPerception perception;
     final ServerHumanTerritory territory;
     final ServerHumanCombat combat;
@@ -38,6 +38,11 @@ final class ServerHuman {
     }
 
     ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell, zombie.apocalipse.humans.state.HumanStateStore state) {
+        this(definition, onlineId, cell, state, new zombie.apocalipse.humans.traversal.TraversalWorld());
+    }
+
+    ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell, zombie.apocalipse.humans.state.HumanStateStore state,
+                zombie.apocalipse.humans.traversal.TraversalWorld traversalWorld) {
         this.state=state;
         this.definition = definition;
         this.profile = ServerHumanProfiles.registry().require(definition.profileId());
@@ -76,8 +81,8 @@ final class ServerHuman {
         this.player.setVariable("IdleSpeed", 1.0F);
         this.postX = definition.x();
         this.postY = definition.y();
-        this.movement = new ServerHumanMovement(this);
-        this.roaming = new ServerHumanRoaming(this);
+        this.movement = new ServerHumanMovement(this, traversalWorld);
+        this.walking = new ServerHumanWalking(this);
         this.territory = new ServerHumanTerritory(this);
         this.perception = new ServerHumanPerception(this);
         this.inventory = new ServerHumanInventory(this);
@@ -97,7 +102,7 @@ final class ServerHuman {
         combat.stop();
         ServerHumanDialogue.close(this, "removed");
         ServerHumanTrading.close(this);
-        movement.stop();
+        movement.close();
         perception.clear();
         // Never call normal disconnectPlayer(): this actor has no account/connection/save.
         for (UdpConnection connection : viewers) {

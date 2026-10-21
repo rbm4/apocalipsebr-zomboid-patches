@@ -50,28 +50,47 @@ public class NpcStoreTest {
   try(var admin=DriverManager.getConnection(url,"postgres","");var s=admin.createStatement()){
    s.execute("CREATE ROLE apocalipsebr LOGIN;CREATE ROLE pz_server_01 LOGIN;GRANT CREATE ON DATABASE postgres TO apocalipsebr;SET ROLE apocalipsebr");
    s.execute(Files.readString(Path.of(args[1])));
+   for(String file:List.of("V16__Create_Npc_Trade_Policies.sql","V17__Create_Npc_Dialogue_Graphs.sql","V18__Npc_Server_Language.sql"))s.execute(Files.readString(Path.of(args[1]).resolveSibling(file)));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V20__Persist_Npc_Physical_State.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V21__Seed_Militia_Engagement_Profile.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V22__Describe_Npc_Weapon_Backend.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V23__Separate_Npc_Walking_Patterns.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V24__Seed_Leon_Extraction_Militia.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
-   var profiles=ApocBRNpcStore.readProfiles(c);check(profiles.size()==4,"seed profiles including militia scaffold");
+   var profiles=ApocBRNpcStore.readProfiles(c);check(profiles.size()==5,"seed profiles including militia scaffold");
    var militia=profiles.stream().filter(p->p.id().equals("militia-patrol")).findFirst().orElseThrow();
    check(!militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("engage-zombies"),"database militia profile orders engagement before roaming");
    check(militia.modules().getFirst().parameters().get("retryMs")==2000L,"engagement timing hydrated through existing typed millisecond fields");
    var guide=profiles.stream().filter(p->p.id().equals("lobby-guide")).findFirst().orElseThrow();
+   check(guide.walkingPatterns().size()==1&&guide.walkingPatterns().getFirst().patternId().equals("indoor-wander"),"published guide has explicit immutable movement binding");
+   var leon=profiles.stream().filter(p->p.id().equals("leon-militia")).findFirst().orElseThrow();
+   var area=leon.walkingPatterns().getFirst().area();
+   check(area.x1()==239&&area.y1()==14403&&area.x2()==314&&area.y2()==14426,"Leon movement area hydrated exactly");
+   check(number(c,"SELECT count(*) FROM npc_engine.profile_trade_policy p JOIN npc_engine.profile h ON p.profile_id=h.profile_id AND p.revision=h.current_revision WHERE h.profile_id='lobby-guide'")==1,"movement publication preserves pinned trade binding");
+   c.commit();
+   ApocBRNpcStore.materializeServerSpawns(c,"unrelated","world");
+   check(number(c,"SELECT count(*) FROM npc_engine.instance")==0,"server seed never leaks to other servers");
+   try(var s=c.createStatement()){s.execute("INSERT INTO npc_engine.scope VALUES('apoc-extraction','actual-world',0)");}
+   ApocBRNpcStore.materializeServerSpawns(c,"apoc-extraction","actual-world");
+   check(number(c,"SELECT count(*) FROM npc_engine.instance WHERE server_key='apoc-extraction' AND world='actual-world' AND npc_key='leon' AND home_x=268 AND home_y=14412 AND desired_active")==1,"server seed resolves actual world and exact spawn");
+   try(var s=c.createStatement()){s.execute("UPDATE npc_engine.instance SET desired_active=false,display_name='Customized' WHERE npc_key='leon'");}
+   ApocBRNpcStore.materializeServerSpawns(c,"apoc-extraction","actual-world");
+   check(number(c,"SELECT count(*) FROM npc_engine.instance WHERE npc_key='leon' AND NOT desired_active AND display_name='Customized'")==1,"restart seed preserves existing instance edits");
+   c.rollback();
    check(guide.modules().size()==2&&guide.announcementId().equals("operations")&&guide.dialogue()&&guide.trading(),"guide seed matches current baseline");
-   check(guide.modules().getFirst().moduleId().equals("greet")&&guide.modules().getLast().moduleId().equals("roam"),"module priority ordering");
+   check(guide.modules().getFirst().moduleId().equals("greet")&&guide.modules().getLast().moduleId().equals("walk"),"module priority ordering");
    c.commit();invalid(c,"UPDATE npc_engine.profile_module SET priority=50 WHERE profile_id='lobby-guide'");
    invalid(c,"UPDATE npc_engine.profile_revision SET perception_radius=9 WHERE profile_id='lobby-guide'");
    invalid(c,"INSERT INTO npc_engine.profile_module VALUES('lobby-guide',1,'missing',true,10,100)");
+   int nextProfileRevision=guide.revision()+1;
    try(var s=c.createStatement()){
-    s.execute("INSERT INTO npc_engine.profile_revision SELECT profile_id,2,dialogue_enabled,trading_enabled,greeting_key,announcement_provider,12,500,require_los,now() FROM npc_engine.profile_revision WHERE profile_id='lobby-guide' AND revision=1");
-    s.execute("INSERT INTO npc_engine.profile_module VALUES('lobby-guide',2,'greet',true,10,100)");
-    s.execute("UPDATE npc_engine.profile SET current_revision=2 WHERE profile_id='lobby-guide'");c.commit();
+    s.execute("INSERT INTO npc_engine.profile_revision SELECT profile_id,"+nextProfileRevision+",dialogue_enabled,trading_enabled,greeting_key,announcement_provider,12,500,require_los,now() FROM npc_engine.profile_revision WHERE profile_id='lobby-guide' AND revision=1");
+    s.execute("INSERT INTO npc_engine.profile_module VALUES('lobby-guide',"+nextProfileRevision+",'greet',true,10,100)");
+    s.execute("UPDATE npc_engine.profile SET current_revision="+nextProfileRevision+" WHERE profile_id='lobby-guide'");c.commit();
    }
-   check(ApocBRNpcStore.readProfiles(c).stream().anyMatch(p->p.id().equals("lobby-guide")&&p.revision()==2&&p.perceptionRadius()==12&&p.modules().size()==1),"maintenance publishes new profile revision");c.commit();
+   check(ApocBRNpcStore.readProfiles(c).stream().anyMatch(p->p.id().equals("lobby-guide")&&p.revision()==nextProfileRevision&&p.perceptionRadius()==12&&p.modules().size()==1),"maintenance publishes new profile revision");c.commit();
    invalid(c,"UPDATE npc_engine.profile SET current_revision=1 WHERE profile_id='lobby-guide'");
    try(var s=c.createStatement()){s.execute("INSERT INTO npc_engine.scope VALUES('test','world',1)");c.commit();}
    var d=new ServerHumanDefinition("guide","Ricardao","Ricardão",100,200,0,IsoDirections.E,false,"CostumeMonster","lobby-guide");
@@ -104,13 +123,7 @@ public class NpcStoreTest {
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==110,"old engine epoch fenced");
    apply(c,ApocBRNpcStore.statements("test","world",2,state(d,3,130,HumanLifecycle.State.ACTIVE,false)));
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==130,"new engine epoch accepted");
-   // Publish the real dialogue migration as the backend owner, then read as engine.
-   try(var owner=DriverManager.getConnection(url,"apocalipsebr","")) {
-    owner.setAutoCommit(false);
-    for(String file:List.of("V16__Create_Npc_Trade_Policies.sql","V17__Create_Npc_Dialogue_Graphs.sql","V18__Npc_Server_Language.sql")) {
-     try(var s=owner.createStatement()){s.execute(Files.readString(Path.of(args[1]).resolveSibling(file)));}owner.commit();
-    }
-   }
+   // Read published dialogue using engine permissions.
    var content=ApocBRNpcDialogues.read(c);c.commit();
    var labels=ApocBRNpcDialogues.labels(c);c.commit();
    check(((Map<?,?>)labels.get("IGUI_ApocExtractionMapUtils_GuideHello").get("PTBR")).get("text").equals("Olá!"),"engine role reads default Portuguese labels from V18");
@@ -209,7 +222,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     for name,content in FILES.items():
         p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content,encoding='utf-8');sources.append(p)
     sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'savefile/ApocBRNpcDialogues.java',SRC/'apocalipse/humans/dialogue/HumanDialogueCatalog.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java']
-    sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java'))
+    sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java')) + list((SRC/'apocalipse/humans/walking').glob('*.java'))
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
     run([JDK/'javac.exe','--release','25','-encoding','UTF-8','-cp',cp,'-d',work/'classes','@'+str(argfile)])
@@ -221,6 +234,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
         if '--manager-test' in sys.argv:
             manager=ROOT.parent/'apocalipsebr-manager/manager'
             env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
-            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dmaven.main.skip=true','-Dtest=NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest','test'],cwd=manager,env=env)
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
     finally:
         run([BIN/'pg_ctl.exe','-D',work/'data','-m','immediate','-w','stop'],stdout=subprocess.DEVNULL)

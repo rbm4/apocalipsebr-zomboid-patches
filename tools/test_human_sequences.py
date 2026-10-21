@@ -19,7 +19,7 @@ public class SequenceTest {
   public void stopEmote(){stops++;}
   public boolean say(String s){text.add(s);times.add(now);if(throwSpeech)throw new IllegalStateException();return !fail;}
   public boolean returnHome(){homes++;return true;}
-  public boolean startRoaming(long now){return true;}
+  public boolean startMovement(zombie.apocalipse.humans.walking.MovementRequest request,long now){return true;}
   public MotionStatus updateMovement(long now){return MotionStatus.RUNNING;}
   public void stopMoving(){halts++;}
  }
@@ -59,7 +59,7 @@ public class SequenceTest {
   Port waving=new Port();var nested=new HumanActionExecution(new HumanAction.Sequence(List.of(new HumanAction.Sequence(List.of(new HumanAction.Emote("wavehi",S))),new HumanAction.Say("later"))));
   nested.update(0,waving);nested.cancel(waving);nested.cancel(waving);nested.update(2*S,waving);
   check(waving.starts==1&&waving.stops==1&&waving.text.isEmpty(),"nested cancellation cleans active animation once");
-  Port moving=new Port();var route=new HumanActionExecution(new HumanAction.Sequence(List.of(new HumanAction.Roam(),new HumanAction.Say("later"))));
+  Port moving=new Port();var route=new HumanActionExecution(new HumanAction.Sequence(List.of(new HumanAction.Move(new zombie.apocalipse.humans.walking.MovementRequest.Pattern("background")),new HumanAction.Say("later"))));
   route.update(0,moving);route.cancel(moving);
   check(moving.halts==1&&moving.text.isEmpty(),"composite cancellation cleans active movement without starting siblings");
   Port late=new Port();var three=new HumanActionExecution(HumanAction.Sequence.speech(List.of("one","two","three"),4*S));
@@ -108,6 +108,7 @@ def main():
         sources = [harness, *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/brain").glob("*.java")), *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/profiles").glob("*.java"))]
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/state").glob("*.java")))
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/movement").glob("*.java")))
+        sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/walking").glob("*.java")))
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(p).replace("\\", "/") + '"' for p in sources), encoding="utf-8")
         output = work / "classes"

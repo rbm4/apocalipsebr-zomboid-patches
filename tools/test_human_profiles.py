@@ -86,7 +86,7 @@ public class ProfilesTest {
   var parallel=new HumanActionExecution(new HumanAction.Parallel(List.of(new HumanAction.Emote("wavehi",100),new HumanAction.Say("hello"))));
   port.fail=true;parallel.update(0,port);int says=port.says;parallel.update(1000,port);
   check(parallel.status()==HumanActionExecution.Status.FAILED&&port.says==says,"concurrent speech failure cancels animation without replay");
-  invalid(()->new HumanAction.Parallel(List.of(new HumanAction.Roam())));
+  invalid(()->new HumanAction.Parallel(List.of(new HumanAction.Move(new zombie.apocalipse.humans.walking.MovementRequest.Pattern("background")))));
   invalid(()->new HumanAction.Parallel(List.of(new HumanAction.Say("a"),new HumanAction.Say("b"))));
   var f=ServerHumanFactory.getInstance();f.tick(0);
   invalid(()->f.spawn(definition("unknown","missing")));
