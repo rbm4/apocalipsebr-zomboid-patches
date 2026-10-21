@@ -33,10 +33,10 @@ public enum IsoDirections { N,NW,W,SW,S,SE,E,NE }
     "zombie/iso/IsoCell.java": """package zombie.iso;
 import java.util.*; import zombie.characters.IsoPlayer;
 public class IsoCell {
- public final List<IsoPlayer> add=new ArrayList<>(),objects=new ArrayList<>();
+ public final List<IsoPlayer> add=new ArrayList<>();public final zombie.ServerMovingObjectSet objects=new zombie.ServerMovingObjectSet();
  public final Map<String,IsoGridSquare> tiles=new HashMap<>();public boolean strict;
  public List<IsoPlayer> getAddList(){return add;}
- public List<IsoPlayer> getObjectList(){return objects;}
+ public java.util.Set<IsoMovingObject> getObjectList(){return objects;}
  public IsoGridSquare getGridSquare(int x,int y,int z){String k=x+","+y+","+z;
   return strict?tiles.get(k):tiles.computeIfAbsent(k,key->new IsoGridSquare(x,y,z));}
 }
@@ -62,7 +62,7 @@ public class SurvivorDesc {
 """,
     "zombie/characters/IsoPlayer.java": """package zombie.characters;
 import zombie.iso.*;
-public class IsoPlayer {
+public class IsoPlayer extends IsoGameCharacter {
  public boolean remote,god,invisible,ghost,detached,dead,running,sprinting,sneaking; public int playerIndex;
  private final java.util.Map<String,Float> variables=new java.util.HashMap<>();
  private final NetworkPlayerAI networkAi=new NetworkPlayerAI();
@@ -97,7 +97,7 @@ public class IsoPlayer {
  public float getX(){return x;} public float getY(){return y;} public float getZ(){return z;}
  public int getXi(){return (int)x;} public int getYi(){return (int)y;} public int getZi(){return (int)z;}
  public boolean isDead(){return dead;} public boolean isInvisible(){return invisible;}
- public int getID(){return instanceId;} public Object getCurrentSquare(){return detached?null:cell;}
+ public int getID(){return instanceId;} public IsoGridSquare getCurrentSquare(){return detached?null:cell.getGridSquare(getXi(),getYi(),getZi());}
  public void setVariable(String k,float v){variables.put(k,v);if(k.equals("IdleSpeed"))idleSpeed=v;}
  public float getVariableFloat(String k,float fallback){return variables.getOrDefault(k,fallback);}
  public SurvivorDesc getDescriptor(){return descriptor;} public Emitter getEmitter(){return emitter;}
@@ -270,6 +270,8 @@ FILES.update({
     "zombie/iso/IsoGridSquare.java": """package zombie.iso;
 import java.util.*;
 public class IsoGridSquare {
+ public final java.util.ArrayList<IsoMovingObject> moving=new java.util.ArrayList<>();
+ public java.util.ArrayList<IsoMovingObject> getMovingObjects(){return moving;}
  public int x,y,z;public BuildingDef building;public boolean free=true,floor=true,stairs,occupied;
  public Set<String> blockedEdges=new HashSet<>();
  public IsoGridSquare(int a,int b,int c){x=a;y=b;z=c;}
@@ -519,6 +521,33 @@ FILES.update({
  public static void AddEvent(String name){} public static void triggerEvent(String name,Object... args){events.add(name);} }""",
 })
 
+
+FILES.update({
+ "zombie/iso/IsoMovingObject.java": """package zombie.iso;
+ public abstract class IsoMovingObject {
+  public abstract float getX();public abstract float getY();public abstract float getZ();
+  public int getXi(){return (int)Math.floor(getX());}public int getYi(){return (int)Math.floor(getY());}public int getZi(){return (int)Math.floor(getZ());}
+  public abstract int getID();public abstract IsoGridSquare getCurrentSquare();
+ }""",
+ "zombie/characters/IsoGameCharacter.java": """package zombie.characters;
+ public abstract class IsoGameCharacter extends zombie.iso.IsoMovingObject {}""",
+ "zombie/characters/IsoZombie.java": """package zombie.characters;
+ public class IsoZombie extends IsoGameCharacter {
+  public float x,y,z,health=1;public short online;public int instanceId;public boolean dead,grapple;
+  public zombie.iso.IsoGridSquare square;
+  public float getX(){return x;}public float getY(){return y;}public float getZ(){return z;}
+  public int getID(){return instanceId;}public short getOnlineID(){return online;}
+  public float getHealth(){return health;}public boolean isDead(){return dead;}
+  public boolean isReanimatedForGrappleOnly(){return grapple;}public zombie.iso.IsoGridSquare getCurrentSquare(){return square;}
+ }""",
+ "zombie/ServerMovingObjectSet.java": """package zombie;
+ public class ServerMovingObjectSet extends java.util.HashSet<zombie.iso.IsoMovingObject> {
+  private final java.util.IdentityHashMap<zombie.iso.IsoMovingObject,Object> tokens=new java.util.IdentityHashMap<>();
+  public Object member(zombie.iso.IsoMovingObject body){return tokens.get(body);}
+  public boolean add(zombie.iso.IsoMovingObject body){if(!super.add(body))return false;tokens.put(body,new Object());return true;}
+  public boolean remove(Object body){tokens.remove(body);return super.remove(body);}
+ }""",
+})
 
 def main():
     # Preserve the entire vanilla request handler after the one intentional fallback.

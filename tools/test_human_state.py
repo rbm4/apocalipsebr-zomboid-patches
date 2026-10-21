@@ -109,7 +109,38 @@ public class HumanStateTest {
   apply(factory,"bot",new HumanMutation.Kill());factory.tick(15*STEP);
   check(factory.lifecycle("bot").state()==HumanLifecycle.State.DEAD&&factory.state("bot").dead(),"physical death drives terminal logical transition");
   check(factory.mutate("bot",activation,factory.state("bot").revision(),new HumanMutation.Heal(1)).status()==HumanStateStore.Status.INACTIVE,"dead NPC cannot accept ordinary healing");
-  System.out.println("Passed "+checks+" centralized state, reducer, conditions, native bridge and command-inbox assertions.");
+  // Observe production checkpoint offers without starting JDBC or changing simulation cadence.
+  var cadenced=ctor.newInstance();cadenced.tick(0);
+  var sink=new zombie.savefile.ApocBRNpcStore();
+  var storeField=ServerHumanFactory.class.getDeclaredField("store");storeField.setAccessible(true);storeField.set(cadenced,sink);
+  cadenced.tick(STEP);
+  cadenced.spawn(new ServerHumanDefinition("cadence","cadence","cadence",100.5f,200.5f,0,IsoDirections.E,false,"Tourist","state-test"));
+  check(ServerHumanFactory.CHECKPOINT_NANOS==30_000_000_000L,"routine persistence defaults to thirty seconds");
+  check(sink.offered.size()==1,"activation checkpoints immediately");
+  long checkpointLogs=zombie.debug.DebugLog.messages.stream().filter(s->s.contains("checkpoint queued key=cadence;")).count();
+  check(checkpointLogs==(HumanLog.enabled(HumanLog.Level.DEBUG)?1:0),"activation logging follows checkpoint offer");
+  for(int n=1;n<30;n++){
+   apply(cadenced,"cadence",new HumanMutation.Adjust(HumanState.Stat.HUNGER,.001f));
+   cadenced.tick(STEP+n*1_000_000_000L);
+  }
+  check(sink.offered.size()==1,"frequent in-memory mutations do not produce per-second persistence offers");
+  check(zombie.debug.DebugLog.messages.stream().filter(s->s.contains("checkpoint queued key=cadence;")).count()==checkpointLogs,"individual mutations do not log between checkpoints");
+  cadenced.tick(STEP+30_000_000_000L);
+  check(sink.offered.size()==2&&sink.offered.getLast().physiology().equals(cadenced.state("cadence")),"thirty-second checkpoint captures newest state once");
+  cadenced.tick(STEP+60_000_000_000L);
+  check(sink.offered.size()==2,"unchanged checkpoint skipped");
+  apply(cadenced,"cadence",new HumanMutation.Adjust(HumanState.Stat.THIRST,.1f));
+  cadenced.deactivate("cadence");
+  check(sink.offered.size()==3&&sink.offered.getLast().lifecycle()==HumanLifecycle.State.DORMANT
+    &&sink.offered.getLast().physiology().equals(cadenced.state("cadence")),"dormancy captures latest mutations before routine deadline");
+  cadenced.activate("cadence");
+  check(sink.offered.size()==4,"reactivation remains immediate");
+  cadenced.markDead("cadence");
+  check(sink.offered.size()==5&&sink.offered.getLast().physiology().dead(),"death checkpoints immediately");
+  cadenced.remove("cadence");
+  check(sink.offered.size()==6&&sink.offered.getLast().retired(),"permanent removal checkpoints immediately");
+  check(zombie.debug.DebugLog.messages.stream().filter(s->s.contains("checkpoint queued key=cadence;")).count()==(HumanLog.enabled(HumanLog.Level.DEBUG)?6:0),"exactly one debug line per offered checkpoint, unchanged checkpoint silent");
+  System.out.println("Passed "+checks+" centralized state, reducer, conditions, native bridge, checkpoint cadence and command-inbox assertions.");
  }
 }
 """
@@ -126,32 +157,34 @@ public class HumanMutationLogTest {
   var state=new HumanLifecycle(definition).physiology();
   state.dispatch(new HumanMutation.Advance(.1f,-.25f/140,0,0,0));
   var lines=zombie.debug.DebugLog.messages;
-  check(lines.size()==(debug?1:0),"only DEBUG emits actual state mutations");
-  if(debug){
-   String line=lines.getFirst();
-   check(line.contains("[ApocBR][NPC][DEBUG] mutation key=log-bot; type=Advance; revision=0 -> 1; endurance=1.0 -> 0.999"),"walking drain has key, command, revisions and precise before/after values: "+line);
-   check(!line.contains("health="),"unchanged properties excluded");
-  }
-  int count=lines.size();
-  state.dispatch(new HumanMutation.Heal(.1f));
-  state.dispatch(0,new HumanMutation.Damage(.1f,0,0,0));
-  check(lines.size()==count,"no-op and stale commands do not emit mutation lines");
+  check(lines.isEmpty(),"individual mutations stay silent even at DEBUG");
+  var previous=new zombie.savefile.ApocBRNpcStore.State(definition,HumanLifecycle.State.ACTIVE,1,1,0,0,0,1,false,HumanState.INITIAL);
   state.dispatch(new HumanMutation.Damage(.1f,-.5f,.25f,.01f));
   state.dispatch(new HumanMutation.Mobility(true,true));
-  if(debug){
-   check(lines.get(count).contains("health=1.0 -> 0.9")&&lines.get(count).contains("pain=")
-     &&lines.get(count).contains("leg=0.0 -> -0.5")&&lines.get(count).contains("arms=0.0 -> 0.25")
-     &&lines.get(count).contains("bleedingPerSecond=0.0 -> 0.01"),"damage reports all changed fields atomically");
-   check(lines.get(count+1).contains("immobile=false -> true")&&lines.get(count+1).contains("downed=false -> true"),"mobility flags included");
-  }
   for(var stat:HumanState.Stat.values())state.dispatch(new HumanMutation.Adjust(stat,stat==HumanState.Stat.ENDURANCE?-.1f:.1f));
-  if(debug)for(var stat:HumanState.Stat.values())check(lines.stream().anyMatch(s->s.contains(stat.name().toLowerCase(java.util.Locale.ROOT)+"=")),"tracked stat logged: "+stat);
-  count=lines.size();
+  check(lines.isEmpty(),"multiple mutations are aggregated until checkpoint");
+  var next=new zombie.savefile.ApocBRNpcStore.State(definition,HumanLifecycle.State.DORMANT,1,1,2,0,0,2,false,state.snapshot());
+  HumanLog.checkpoint(previous,next);
+  check(lines.size()==(debug?1:0),"only DEBUG emits checkpoint diagnostics");
+  if(debug){
+   String line=lines.getFirst();
+   check(line.contains("[ApocBR][NPC][DEBUG] checkpoint queued key=log-bot; checkpointRevision=1 -> 2; stateRevision=0 -> "),"checkpoint key and both revisions included: "+line);
+   check(line.contains("health=1.0 -> 0.9")&&line.contains("endurance=1.0 -> ")
+     &&line.contains("leg=0.0 -> -0.5")&&line.contains("arms=0.0 -> 0.25")
+     &&line.contains("bleedingPerSecond=0.0 -> 0.01"),"checkpoint aggregates changed physical properties");
+   check(line.contains("immobile=false -> true")&&line.contains("downed=false -> true"),"mobility flags included");
+   check(line.contains("x=0.0 -> 2.0")&&line.contains("lifecycle=ACTIVE -> DORMANT")&&!line.contains("; y="),"checkpoint position and lifecycle changes included, unchanged fields omitted");
+   for(var stat:HumanState.Stat.values())check(line.contains(stat.name().toLowerCase(java.util.Locale.ROOT)+"="),"tracked stat logged: "+stat);
+  }
+  HumanLog.checkpoint(null,next);
+  check(lines.size()==(debug?2:0),"initial checkpoint handled without previous snapshot");
+  if(debug)check(lines.getLast().contains("initial=true; lifecycle=DORMANT; state="),"initial snapshot identified");
+  int count=lines.size();
   HumanLog.log(HumanLog.Level.OFF,()->{throw new AssertionError("disabled message supplier evaluated");});
   if(!debug)HumanLog.log(HumanLog.Level.INFO,()->{throw new AssertionError("disabled message supplier evaluated");});
   HumanLog.log(HumanLog.Level.ERROR,()->"test error");
   check(lines.size()==count+(off?0:1),"ERROR enabled by default, OFF suppresses everything");
-  System.out.println("Passed mutation logging configuration: "+args[0]);
+  System.out.println("Passed checkpoint logging configuration: "+args[0]);
  }
 }
 """
@@ -160,6 +193,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="apocbr-human-state-") as folder:
         work=Path(folder);fixture=dict(FILES);fixture['zombie/apocalipse/humans/HumanStateTest.java']=HARNESS;sources=[]
         fixture['zombie/apocalipse/humans/HumanMutationLogTest.java']=LOG_HARNESS
+        fixture['zombie/savefile/ApocBRNpcStore.java']=fixture['zombie/savefile/ApocBRNpcStore.java'].replace(
+            'public void offer(State s){}',
+            'public final java.util.List<State> offered=new java.util.ArrayList<>();public void offer(State s){offered.add(s);}')
         fixture['zombie/debug/DebugLog.java']='''package zombie.debug;
 public class DebugLog {
  public static final java.util.List<String> messages=new java.util.ArrayList<>();
@@ -171,6 +207,7 @@ public class DebugLog {
         args=work/'sources.txt';args.write_text('\n'.join('"'+str(p).replace('\\','/')+'"' for p in sources))
         subprocess.run([str(ROOT/'jdk/bin/javac.exe'),'--release','25','-d',str(work/'classes'),'@'+str(args)],check=True)
         subprocess.run([str(ROOT/'jdk/bin/java.exe'),'-cp',str(work/'classes'),'zombie.apocalipse.humans.HumanStateTest'],check=True)
+        subprocess.run([str(ROOT/'jdk/bin/java.exe'),'-Dapocbr.npc.logLevel=DEBUG','-cp',str(work/'classes'),'zombie.apocalipse.humans.HumanStateTest'],check=True)
         for setting,expected in [(None,'ERROR'),('invalid','ERROR'),('OFF','OFF'),(' dEbUg ','DEBUG')]:
             options=[] if setting is None else ['-Dapocbr.npc.logLevel='+setting]
             subprocess.run([str(ROOT/'jdk/bin/java.exe'),*options,'-cp',str(work/'classes'),

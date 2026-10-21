@@ -4,19 +4,12 @@ import java.util.Objects;
 
 /** Single writer, immutable snapshots. Lifetime belongs to logical identity, not IsoPlayer. */
 public final class HumanStateStore {
-    @FunctionalInterface public interface Observer {
-        void applied(HumanState previous, HumanMutation mutation, HumanState next);
-    }
     public enum Status { APPLIED, NO_CHANGE, STALE_REVISION, STALE_ACTIVATION, INACTIVE, UNAVAILABLE, QUEUE_FULL }
     public record Result(Status status, HumanState state) { }
     private final Thread owner=Thread.currentThread();
     private volatile HumanState state;
-    private final Observer observer;
     private boolean initialized;
-    public HumanStateStore(HumanState initial){this(initial,(previous,mutation,next)->{});}
-    public HumanStateStore(HumanState initial,Observer observer){
-        state=Objects.requireNonNull(initial);this.observer=Objects.requireNonNull(observer);
-    }
+    public HumanStateStore(HumanState initial){state=Objects.requireNonNull(initial);}
     public HumanState snapshot(){return state;}
     public Result dispatch(long expectedRevision,HumanMutation mutation){
         requireOwner();Objects.requireNonNull(mutation);
@@ -25,7 +18,6 @@ public final class HumanStateStore {
         var previous=state;
         var next=HumanStateReducer.reduce(previous,mutation);
         Status status=next==previous?Status.NO_CHANGE:Status.APPLIED;state=next;
-        if(status==Status.APPLIED)observer.applied(previous,mutation,next);
         return new Result(status,state);
     }
     public Result dispatch(HumanMutation mutation){requireOwner();return dispatch(state.revision(),mutation);}

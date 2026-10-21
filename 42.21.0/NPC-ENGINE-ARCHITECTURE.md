@@ -25,6 +25,7 @@ and ability is not the intended hierarchy.
 | Physical movement | `ServerHumanMovement`, `MovementGrid` | Follow caller-selected routes, enforce traversal, integrate position and resolve motion presentation; roaming selects routes separately. |
 | Movement conditions | `MovementModifiers` | Validate immutable physical/context/effect inputs and resolve permitted pace, speed and animation without sampling the world or simulating health. |
 | Physical state | `HumanStateStore`, `HumanStateReducer`, `HumanMutation` | Single-writer logical state and pure mutations; native adapters, decisions and workers consume immutable snapshots. |
+| Perception | `ServerHumanPerception`, `HumanContactMemory`, `HumanSenses` | Bounded native discovery/visibility and transient immutable contact memory, independent of threat selection and combat decisions. See [NPC-PERCEPTION.md](NPC-PERCEPTION.md). |
 | Transport and feature services | `ServerHumanTransport`, dialogue/trade controllers | Delivery, authenticated requests, exclusive leases and feature-specific authoritative rules. |
 
 Brains depend on ports and action data, not on concrete event controllers,

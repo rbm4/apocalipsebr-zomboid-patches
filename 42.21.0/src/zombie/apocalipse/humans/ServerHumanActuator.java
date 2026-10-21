@@ -1,62 +1,29 @@
 package zombie.apocalipse.humans;
 
-import java.util.ArrayList;
 import zombie.apocalipse.humans.brain.HumanActuator;
 import zombie.apocalipse.humans.brain.HumanObservation;
 import zombie.characters.IsoPlayer;
 import zombie.core.raknet.UdpConnection;
-import zombie.iso.LosUtil;
 import zombie.network.GameServer;
 
 /** All live-world reads and writes stay on the factory's simulation thread. */
 final class ServerHumanActuator implements HumanActuator {
     static final double VISITOR_RADIUS_SQUARED = 8.0 * 8.0;
     private final ServerHuman human;
-    private long nextPerception;
-    private HumanObservation cached;
 
     ServerHumanActuator(ServerHuman human) { this.human = human; }
 
     HumanObservation observe(long now) {
-        if(cached!=null&&now<nextPerception)return new HumanObservation(now,cached.visitors(),cached.canRoam(),human.state.snapshot());
-        nextPerception=now+human.profile.perceptionIntervalMs()*1000000L;
-        ArrayList<HumanObservation.Visitor> visitors = new ArrayList<>();
-        for (IsoPlayer player : GameServer.Players) {
-            if (eligible(player)) {
-                double dx = player.getX() - human.player.getX();
-                double dy = player.getY() - human.player.getY();
-                double distance = dx * dx + dy * dy;
-                if (distance <= radiusSquared() && visible(player)) {
-                    visitors.add(new HumanObservation.Visitor(
-                        new HumanObservation.Identity(player.getOnlineID(), player.getID()),
-                        player.getX(), player.getY(), player.getZ(), distance));
-                }
-            }
-        }
-        boolean viewed = false;
-        for (UdpConnection viewer : human.viewers) if (human.isRelevant(viewer)) { viewed = true; break; }
-        visitors.sort(java.util.Comparator.comparingDouble(HumanObservation.Visitor::distanceSquared));
-        cached=new HumanObservation(now,visitors.subList(0,Math.min(128,visitors.size())),viewed&&human.roaming.available(),human.state.snapshot());
-        return cached;
+        return human.perception.observe(now);
     }
 
     private boolean eligible(IsoPlayer player) {
-        if (player == null || player.isDead() || player.isInvisible()
-            || player.getZi() != human.definition.z()
-            || GameServer.IDToPlayerMap.get(player.getOnlineID()) != player) return false;
-        UdpConnection connection = GameServer.getConnectionFromPlayer(player);
-        return connection != null && connection.isFullyConnected() && !GameServer.isDelayedDisconnect(player);
+        return human.perception.eligible(player);
     }
 
     private double radiusSquared(){return human.profile.perceptionRadius()*human.profile.perceptionRadius();}
     private boolean visible(IsoPlayer player) {
-        if(!human.profile.requireLos())return true;
-        if (human.player.getCell().getGridSquare(human.player.getXi(), human.player.getYi(), human.definition.z()) == null
-            || player.getCurrentSquare() == null) return false;
-        LosUtil.TestResults result = LosUtil.lineClear(human.player.getCell(),
-            human.player.getXi(), human.player.getYi(), human.definition.z(),
-            player.getXi(), player.getYi(), player.getZi(), false);
-        return result != LosUtil.TestResults.Blocked && result != LosUtil.TestResults.ClearThroughClosedDoor;
+        return human.perception.visible(player);
     }
 
     @Override

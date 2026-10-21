@@ -71,27 +71,34 @@ For local testing, add this JVM argument before the server main class:
 -Dapocbr.npc.logLevel=DEBUG
 ```
 
-The logical lifecycle injects a post-commit observer into `HumanStateStore`.
-The store/reducer package has no native logging dependency. Each applied mutation
-logs the logical NPC key, command type, previous/new revision and **only changed
-properties**, with their old and new normalized values. Direct presentation actor
-construction uses the same observer. Dormancy/reactivation retains the logical
-store and its observer. Hydration, rejected commands and no-op commands do not
-emit mutation lines. The observer owns no queue, timer or gameplay state, and
-cannot cancel a mutation. Messages go through the existing native `DebugLog.log`
-server log destination; they are diagnostics, not a durable audit trail.
+`ServerHumanFactory` logs once after each changed checkpoint is successfully
+queued for persistence. Individual reducer mutations never emit diagnostic
+lines. The comparison uses the previous captured checkpoint, aggregating the
+net changes to health, needs, injuries, mobility, position and lifecycle over
+that interval. Values that change and return to their previous value before
+capture do not appear as property differences. Both checkpoint and physical
+state revisions identify the captured snapshots. Initial checkpoints show the
+initial physical snapshot; unchanged checkpoints stay silent.
 
 ```text
-[ApocBR][NPC][DEBUG] mutation key=guide; type=Advance; revision=10 -> 11; endurance=1.0 -> 0.9998214
+[ApocBR][NPC][DEBUG] checkpoint queued key=guide; checkpointRevision=10 -> 11; stateRevision=130 -> 165; endurance=1.0 -> 0.99120605
 ```
 
-At `DEBUG`, progression can log every simulation step (normally 100ms) while a
-value changes. At the default `ERROR`, mutation diagnostics are disabled before
-diff/message construction. Walking drains `.25/140` normalized endurance per
-simulated second (about 0.18 percentage points); idle recovers `9/140`, so roaming
-pauses can quickly restore full endurance. No extra progression is introduced by
-logging. Coverage in `tools/test_human_state.py` checks the actual lifecycle/store
-observer, changed-field output, no-op/stale suppression and startup configuration.
+These lines confirm capture/queueing, not journal durability or a PostgreSQL
+commit. Routine checkpoints run every **30 seconds** by default through
+`apocbr.npc.persistence.checkpointMs` (1000..60000ms). Lifecycle transitions still
+checkpoint immediately. With persistence disabled there are no checkpoint
+logs. Physical simulation and in-memory state mutations retain their existing
+cadence. At the default `ERROR`, diagnostics are disabled before diff/message
+construction. Messages use the existing native `DebugLog.log` server log
+destination. They are diagnostics, not a durable audit trail.
+
+Walking drains `.25/140` normalized endurance per simulated second (about 0.18
+percentage points); idle recovers `9/140`, so roaming pauses can quickly restore
+full endurance. Logging introduces no extra progression.
+`tools/test_human_state.py` checks silence between checkpoints, one line per
+queued checkpoint, unchanged checkpoint suppression, aggregated property output
+and startup configuration. See [persistence and recovery limits](NPC-PERSISTENCE.md).
 
 ## Initial tracked state
 

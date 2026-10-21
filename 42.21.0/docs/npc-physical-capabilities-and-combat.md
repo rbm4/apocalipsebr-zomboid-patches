@@ -1,5 +1,9 @@
 # NPC physical capabilities, combat and relationships
 
+For the next profile, shared zombie observations, module scheduling and the
+inspected A-life combat pipeline, see the
+[militia patrol and threat-perception design](npc-militia-patrol-and-threat-perception.md).
+
 Implementation follow-up: the walking mechanics described in the original
 investigation below have now been extracted from roaming into
 `ServerHumanMovement`. See [implemented movement boundaries](../NPC-MOVEMENT.md).

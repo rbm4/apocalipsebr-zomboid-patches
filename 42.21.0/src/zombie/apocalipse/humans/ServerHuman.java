@@ -21,6 +21,7 @@ final class ServerHuman {
     final ServerHumanActuator actuator;
     final ServerHumanMovement movement;
     final ServerHumanRoaming roaming;
+    final ServerHumanPerception perception;
     final zombie.apocalipse.humans.state.HumanStateStore state;
     final ServerHumanPhysiology physiology;
     float postX, postY;
@@ -28,8 +29,7 @@ final class ServerHuman {
     private boolean disposed;
 
     ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell) {
-        this(definition,onlineId,cell,new zombie.apocalipse.humans.state.HumanStateStore(
-            zombie.apocalipse.humans.state.HumanState.INITIAL,HumanLog.mutations(definition.key())));
+        this(definition,onlineId,cell,new zombie.apocalipse.humans.state.HumanStateStore(zombie.apocalipse.humans.state.HumanState.INITIAL));
     }
 
     ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell, zombie.apocalipse.humans.state.HumanStateStore state) {
@@ -73,6 +73,7 @@ final class ServerHuman {
         this.postY = definition.y();
         this.movement = new ServerHumanMovement(this);
         this.roaming = new ServerHumanRoaming(this);
+        this.perception = new ServerHumanPerception(this);
         this.actuator = new ServerHumanActuator(this);
         this.physiology = new ServerHumanPhysiology(this);
     }
@@ -88,6 +89,7 @@ final class ServerHuman {
         ServerHumanDialogue.close(this, "removed");
         ServerHumanTrading.close(this);
         movement.stop();
+        perception.clear();
         // Never call normal disconnectPlayer(): this actor has no account/connection/save.
         for (UdpConnection connection : viewers) {
             if (connection.isFullyConnected()) ServerHumanTransport.remove(this, connection);

@@ -73,7 +73,8 @@ public class NpcRuntimeTest {
   var human=ServerHumanFactory.dialogueHumans().iterator().next();check(human.player.getX()==110&&human.player.getY()==210,"presentation restored from logical position");
   check(human.player.getOnlineID()>=1024,"fresh presentation ID independent of saved logical identity");
   int writes=ApocBRNpcStore.offers.size();factory.tick(1000000000L);check(ApocBRNpcStore.offers.size()==writes,"unchanged state does not enqueue another checkpoint");
-  human.player.setX(115);factory.tick(2000000000L);var saved=ApocBRNpcStore.offers.getLast();check(saved.x()==115&&saved.revision()>20,"position mutation produces detached checkpoint");
+  human.player.setX(115);factory.tick(2000000000L);check(ApocBRNpcStore.offers.size()==writes,"position mutation waits for configured routine checkpoint deadline");
+  factory.tick(ServerHumanFactory.CHECKPOINT_NANOS);var saved=ApocBRNpcStore.offers.getLast();check(saved.x()==115&&saved.revision()>20,"position mutation produces detached checkpoint");
   human.player.setX(120);check(saved.x()==115,"queued snapshots do not retain live actors");
   factory.markDead("active");check(ApocBRNpcStore.offers.getLast().lifecycle()==HumanLifecycle.State.DEAD,"death mutation checkpointed immediately");
   factory.remove("active");check(ApocBRNpcStore.offers.getLast().retired(),"administrative removal creates durable tombstone");

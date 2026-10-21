@@ -26,6 +26,8 @@ public final class ServerHumanFactory {
     static final int LAST_ID = 1087;
     static final long UPDATE_NANOS = 500_000_000L;
     static final long BRAIN_UPDATE_NANOS = 100_000_000L;
+    static final long CHECKPOINT_NANOS = Math.max(1000,Math.min(60000,
+        Long.getLong("apocbr.npc.persistence.checkpointMs",30000L)))*1_000_000L;
     private static final ServerHumanFactory INSTANCE = new ServerHumanFactory();
     private final Map<String, HumanLifecycle> instances = new LinkedHashMap<>();
     private final Map<String, ServerHuman> humans = new LinkedHashMap<>();
@@ -146,6 +148,7 @@ public final class ServerHumanFactory {
                 dead.add(human.definition.key());
                 continue;
             }
+            human.perception.update(now);
             // Forget disconnected/replaced connection instances; do not retain them forever.
             Iterator<UdpConnection> iterator = human.viewers.iterator();
             while (iterator.hasNext()) {
@@ -174,7 +177,7 @@ public final class ServerHumanFactory {
             }
         }
         if (dead != null) for (String key : dead) markDead(key);
-        if(store!=null&&now>=nextCheckpoint){nextCheckpoint=now+1000000000L;for(String key:instances.keySet())checkpoint(key,false);}
+        if(store!=null&&now>=nextCheckpoint){nextCheckpoint=now+CHECKPOINT_NANOS;for(String key:instances.keySet())checkpoint(key,false);}
     }
 
     /** Register logical state independently of a live presentation. Simulation thread only. */
@@ -274,6 +277,7 @@ public final class ServerHumanFactory {
         if(old!=null&&old.equals(state))return;
         state=new zombie.savefile.ApocBRNpcStore.State(d,state.lifecycle(),state.activations(),state.profileRevision(),x,y,z,revision+1,retired,state.physiology());
         store.offer(state);checkpoints.put(key,state);
+        HumanLog.checkpoint(old,state);
     }
 
     /** Fallback for vanilla clients discovering/reloading an unknown remote-player ID. */
@@ -329,6 +333,10 @@ public final class ServerHumanFactory {
         for(int i=0;i<1024;i++){var command=mutations.poll();if(command==null)break;command.result().complete(new HumanStateStore.Result(status,null));}
     }
     public HumanState state(String key){requireOwner();var logical=instances.get(key);return logical==null?null:logical.physiology().snapshot();}
+    /** Latest immutable sensor sample; reading does not scan or change contact memory. */
+    public zombie.apocalipse.humans.brain.HumanSenses.Frame perception(String key){
+        requireOwner();var human=humans.get(key);return human==null?null:human.perception.snapshot();
+    }
 
     static ServerHuman tradingHuman(short id) {
         if (!GameServer.server || INSTANCE.owner == null) return null;

@@ -4,11 +4,13 @@ import java.util.List;
 
 /** Values only: never pass live engine objects into a brain. Time is monotonic. */
 public record HumanObservation(long nowNanos, List<Visitor> visitors, boolean canRoam,
-                               zombie.apocalipse.humans.state.HumanState state) {
+                               zombie.apocalipse.humans.state.HumanState state, HumanSenses.Frame senses) {
+    public HumanObservation(long nowNanos,List<Visitor> visitors,boolean canRoam,zombie.apocalipse.humans.state.HumanState state){this(nowNanos,visitors,canRoam,state,HumanSenses.Frame.EMPTY);}
     public HumanObservation(long nowNanos,List<Visitor> visitors,boolean canRoam){this(nowNanos,visitors,canRoam,zombie.apocalipse.humans.state.HumanState.INITIAL);}
     public HumanObservation(long nowNanos, List<Visitor> visitors) { this(nowNanos, visitors, false); }
     public HumanObservation {
         java.util.Objects.requireNonNull(state);
+        java.util.Objects.requireNonNull(senses);
         visitors = List.copyOf(visitors);
     }
 
