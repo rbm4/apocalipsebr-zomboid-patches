@@ -52,14 +52,21 @@ public final class ApocBRWorldDictionaryDatabase {
                 try(PreparedStatement owner=preparePublication(connection,"SELECT 1 FROM player_rel.world_dictionary_runtime_view WHERE namespace_id=? AND (server_id IS DISTINCT FROM ? OR save_key<>?) LIMIT 1")) {
                     bind(owner,origin.namespace(),origin.serverId(),origin.save());try(ResultSet rows=owner.executeQuery()){if(rows.next())throw new SQLException("Mirror namespace belongs to another server/save","22023");}
                 }
-                stage="PROVISION_INITIAL_REVISION";stageStarted=System.nanoTime();
-                update(connection,"INSERT INTO player_rel.world_dictionary_revision(namespace_id,revision,reason) VALUES(?,0,'initial') ON CONFLICT DO NOTHING",origin.namespace());
-                stage="CREATE_REVISION";stageStarted=System.nanoTime();
-                update(connection,"INSERT INTO player_rel.world_dictionary_revision(namespace_id,revision,reason) VALUES(?,?,'vanilla_rebuild')",origin.namespace(),revision);
                 stage="READ_HISTORY";stageStarted=System.nanoTime();
                 var registries=registries(connection,origin.namespace());var entries=entries(connection,origin.namespace());
                 stage="VALIDATE_HISTORY";stageStarted=System.nanoTime();
                 validateHistory(snapshot,registries,entries);
+                stage="COMPARE_READY_VIEW";stageStarted=System.nanoTime();
+                Published unchanged=unchangedView(connection,origin,snapshot,revision-1,registries,entries);
+                if(unchanged!=null) {
+                    stage="COMMIT_REUSE";stageStarted=System.nanoTime();connection.commit();
+                    zombie.debug.DebugLog.log("[ApocBR][Dictionary] REUSED; serverId="+origin.serverId()+"; namespace="+origin.namespace()+"; view="+unchanged.view()+"; revision="+unchanged.revision());
+                    stage="RETURN_CONNECTION";stageStarted=System.nanoTime();return unchanged;
+                }
+                stage="PROVISION_INITIAL_REVISION";stageStarted=System.nanoTime();
+                update(connection,"INSERT INTO player_rel.world_dictionary_revision(namespace_id,revision,reason) VALUES(?,0,'initial') ON CONFLICT DO NOTHING",origin.namespace());
+                stage="CREATE_REVISION";stageStarted=System.nanoTime();
+                update(connection,"INSERT INTO player_rel.world_dictionary_revision(namespace_id,revision,reason) VALUES(?,?,'vanilla_rebuild')",origin.namespace(),revision);
                 stage="WRITE_REGISTRIES";stageStarted=System.nanoTime();
                 try(Batch registry=new Batch(connection,"INSERT INTO player_rel.world_dictionary_registry(namespace_id,family,register_name,next_id,string_max_length,created_revision) VALUES(?,?,?,?,?,?) ON CONFLICT(namespace_id,family,register_name) DO UPDATE SET next_id=EXCLUDED.next_id")) {
                     for(var r:snapshot.registries())registry.add(origin.namespace(),r.family(),r.name(),r.nextId(),r.maxLength(),revision);
@@ -147,6 +154,51 @@ public final class ApocBRWorldDictionaryDatabase {
             +"; serverId="+origin.serverId()+"; namespace="+origin.namespace()+"; view="+view
             +"; registers="+snapshot.registries().size()+"; entries="+snapshot.entries().size()
             +"; "+diagnostic+"; dictionaryHint="+hint,state);
+    }
+    /** Compare the complete persisted snapshot under the namespace lock, including ordered overrides.
+     * No process cache or hash is used: identical startups also reuse views after a process restart. */
+    private static Published unchangedView(Connection connection,Origin origin,ApocBRWorldDictionarySnapshot snapshot,long revision,
+            Map<String,ApocBRWorldDictionarySnapshot.Registry> registries,Map<String,List<Object>> entries)throws SQLException {
+        if(entries.size()!=snapshot.entries().size()||registries.size()!=snapshot.registries().size())return null;
+        for(var r:snapshot.registries())if(!r.equals(registries.get(r.key())))return null;
+        UUID view;
+        try(var query=preparePublication(connection,"SELECT v.id FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.server_id=? AND v.save_key=? AND v.identity_revision=? AND v.status='ready' AND n.game_build='42.21.0' AND n.world_version=249 AND n.dictionary_format_version=1 ORDER BY v.published_at DESC,v.id DESC LIMIT 1")) {
+            bind(query,origin.namespace(),origin.serverId(),origin.save(),revision);
+            try(var rows=query.executeQuery()){if(!rows.next())return null;view=rows.getObject(1,UUID.class);}
+        }
+        Map<String,ApocBRWorldDictionarySnapshot.Registry> counters=new HashMap<>(registries);
+        try(var query=preparePublication(connection,"SELECT family,register_name,next_id FROM player_rel.world_dictionary_registry_state WHERE namespace_id=? AND view_id=?")) {
+            bind(query,origin.namespace(),view);try(var rows=query.executeQuery()){while(rows.next()) {
+                var expected=counters.remove(rows.getString(1)+":"+rows.getString(2));
+                if(expected==null||expected.nextId()!=rows.getInt(3))return null;
+            }}
+        }
+        if(!counters.isEmpty())return null;
+        Map<String,List<Object>> states=new HashMap<>();Map<String,List<String>> overrides=new HashMap<>();
+        for(var e:snapshot.entries()) {
+            if(!e.family().equals("object")&&!e.family().equals("sprite"))states.put(e.identity(),Arrays.asList(e.kind(),e.loaded(),e.mod(),e.vanilla(),e.modded(),e.obsolete(),e.removed(),e.overridesPresent(),e.version()));
+            if(!e.overrides().isEmpty())overrides.put(e.identity(),e.overrides());
+        }
+        try(var query=preparePublication(connection,"SELECT family,register_name,native_id,kind,is_loaded,mod_id,exists_as_vanilla,is_modded,obsolete,removed,overrides_present,script_version FROM player_rel.world_dictionary_entry_state WHERE namespace_id=? AND view_id=?")) {
+            bind(query,origin.namespace(),view);try(var rows=query.executeQuery()){while(rows.next()) {
+                String key=rows.getString(1)+":"+rows.getString(2)+":"+rows.getInt(3);
+                var expected=states.remove(key);
+                if(expected==null||!expected.equals(Arrays.asList(rows.getString(4),rows.getObject(5),rows.getString(6),rows.getObject(7),rows.getObject(8),rows.getObject(9),rows.getObject(10),rows.getObject(11),rows.getObject(12))))return null;
+            }}
+        }
+        if(!states.isEmpty())return null;
+        // Consume expected overrides in SQL position order without depending on entry iteration order.
+        Map<String,Integer> positions=new HashMap<>();
+        try(var query=preparePublication(connection,"SELECT family,register_name,native_id,mod_id FROM player_rel.world_dictionary_mod_override WHERE namespace_id=? AND view_id=? ORDER BY family,register_name,native_id,position")) {
+            bind(query,origin.namespace(),view);try(var rows=query.executeQuery()){while(rows.next()) {
+                String key=rows.getString(1)+":"+rows.getString(2)+":"+rows.getInt(3);var expected=overrides.get(key);
+                int position=positions.getOrDefault(key,0);
+                if(expected==null||position>=expected.size()||!expected.get(position).equals(rows.getString(4)))return null;
+                positions.put(key,position+1);
+            }}
+        }
+        for(var e:overrides.entrySet())if(positions.getOrDefault(e.getKey(),0)!=e.getValue().size())return null;
+        return new Published(origin.namespace(),view,revision,origin.serverId(),origin.save());
     }
     private static Map<String,ApocBRWorldDictionarySnapshot.Registry> registries(Connection connection,UUID namespace)throws SQLException {
         Map<String,ApocBRWorldDictionarySnapshot.Registry> result=new HashMap<>();

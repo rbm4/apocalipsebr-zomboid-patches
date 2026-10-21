@@ -74,10 +74,15 @@ public class DictionaryDatabaseTest {
   int opened,closed,commits,rollbacks,notifications;boolean failNotify,failBatch;long revision;String name;
   List<String> order=new ArrayList<>();Map<String,List<Object>> registries=new LinkedHashMap<>(),entries=new LinkedHashMap<>();
   List<Object[]> foreign=List.of();List<Object> viewValues;String event;String failPrefix;SQLException injected;
+  List<List<Object>> states=new ArrayList<>(),overrides=new ArrayList<>(),registryStates=new ArrayList<>();
   ResultSet rows(List<Object[]> values){int[] index={-1};return (ResultSet)proxy(ResultSet.class,(p,m,a)->switch(m.getName()){
    case "next"->++index[0]<values.size();case "getString","getObject"->values.get(index[0])[(int)a[0]-1];case "getInt"->((Number)values.get(index[0])[(int)a[0]-1]).intValue();case "getLong"->((Number)values.get(index[0])[(int)a[0]-1]).longValue();default->zero(m.getReturnType());});}
   List<Object[]> select(String sql,Map<Integer,Object> a)throws Exception {
    if(sql.startsWith("SELECT current_revision"))return List.<Object[]>of(new Object[]{revision,name});
+   if(sql.startsWith("SELECT v.id"))return viewValues!=null&&viewValues.get(0).equals(a.get(1))&&viewValues.get(3).equals(a.get(2))&&viewValues.get(4).equals(a.get(3))&&viewValues.get(2).equals(a.get(4))?List.<Object[]>of(new Object[]{viewValues.get(1)}):List.of();
+   if(sql.contains("FROM player_rel.world_dictionary_registry_state WHERE"))return registryStates.stream().map(v->v.subList(2,5).toArray()).toList();
+   if(sql.contains("FROM player_rel.world_dictionary_entry_state WHERE"))return states.stream().map(v->v.subList(2,14).toArray()).toList();
+   if(sql.contains("FROM player_rel.world_dictionary_mod_override WHERE"))return overrides.stream().sorted(Comparator.comparing((List<Object> v)->v.get(2)+":"+v.get(3)+":"+v.get(4)).thenComparingInt(v->(Integer)v.get(6))).map(v->new Object[]{v.get(2),v.get(3),v.get(4),v.get(7)}).toList();
    if(sql.startsWith("SELECT 1 FROM"))return List.of();
    if(sql.startsWith("SELECT family"))return registries.values().stream().map(v->new Object[]{v.get(1),v.get(2),v.get(3),v.get(4)}).toList();
    if(sql.startsWith("SELECT family,register_name,native_id"))throw new AssertionError("unreachable");
@@ -87,7 +92,10 @@ public class DictionaryDatabaseTest {
   }
   int write(String sql,List<Object> a)throws Exception {
    order.add(sql);if(injected!=null&&sql.startsWith(failPrefix))throw injected;
-   if(sql.startsWith("INSERT INTO player_rel.world_dictionary_runtime_view(")){check(sql.contains("server_id")&&!sql.contains("server_key"),"publication supplies integer ID and lets V7 bind canonical key");viewValues=a;}
+   if(sql.startsWith("INSERT INTO player_rel.world_dictionary_runtime_view(")){check(sql.contains("server_id")&&!sql.contains("server_key"),"publication supplies integer ID and lets V7 bind canonical key");viewValues=a;states.clear();overrides.clear();registryStates.clear();}
+   if(sql.startsWith("INSERT INTO player_rel.world_dictionary_registry_state("))registryStates.add(new ArrayList<>(a));
+   if(sql.startsWith("INSERT INTO player_rel.world_dictionary_entry_state("))states.add(new ArrayList<>(a));
+   if(sql.startsWith("INSERT INTO player_rel.world_dictionary_mod_override("))overrides.add(new ArrayList<>(a));
    if(sql.startsWith("INSERT INTO player_rel.world_dictionary_journal"))event=(String)a.get(3);
    if(sql.startsWith("INSERT INTO player_rel.world_dictionary_namespace")){name=(String)a.get(1);return 1;}
    if(sql.startsWith("UPDATE player_rel.world_dictionary_namespace")){revision=((Number)a.get(0)).longValue();return 1;}
@@ -105,13 +113,14 @@ public class DictionaryDatabaseTest {
      return proxy(PreparedStatement.class,(q,n,b)->{
       switch(n.getName()){
        case "setObject":values.put((Integer)b[0],b[1]);return null;
-       case "setQueryTimeout":check(b[0].equals(sql.startsWith("SELECT family")||sql.startsWith("SELECT DISTINCT")?5:30),"publication statements use thirty seconds while history/discovery reads retain five");return null;
+       case "setQueryTimeout":check(b[0].equals(sql.startsWith("SELECT DISTINCT")||sql.startsWith("SELECT family")&&!sql.contains("WHERE namespace_id=? AND view_id=?")?5:30),"publication/comparison statements use thirty seconds while history/discovery reads retain five");return null;
        case "addBatch":batch.add(new ArrayList<>(values.values()));return null;
        case "clearBatch":batch.clear();return null;
        case "executeBatch":{int[] result=new int[batch.size()];for(int i=0;i<batch.size();i++)result[i]=failBatch?Statement.EXECUTE_FAILED:write(sql,batch.get(i));return result;}
        case "executeUpdate":return write(sql,new ArrayList<>(values.values()));
        case "executeQuery": {
-        if(sql.startsWith("SELECT family,register_name,native_id"))return rows(entries.values().stream().map(v->new Object[]{v.get(1),v.get(2),v.get(3),v.get(4),v.get(5),v.get(6),v.get(7)}).toList());
+        if(injected!=null&&sql.startsWith(failPrefix))throw injected;
+        if(sql.startsWith("SELECT family,register_name,native_id,kind,stable_key"))return rows(entries.values().stream().map(v->new Object[]{v.get(1),v.get(2),v.get(3),v.get(4),v.get(5),v.get(6),v.get(7)}).toList());
         return rows(select(sql,values));
        }
       }return zero(n.getReturnType());
@@ -126,9 +135,41 @@ public class DictionaryDatabaseTest {
   var first=database.publish(origin,snapshot);check(first.revision()==1&&fake.commits==1&&fake.notifications==1,"one transactional publication and notification");
   check(fake.viewValues.get(3).equals(1)&&new org.json.JSONObject(fake.event).getInt("server_id")==1&&!fake.event.contains("server_key"),"numeric owner is used in view and notification journal");
   check(fake.order.indexOf("notify")<fake.order.indexOf("commit"),"notification shares publication transaction");
-  int before=fake.entries.size();var second=database.publish(origin,snapshot);
-  check(second.revision()==2&&!second.view().equals(first.view())&&fake.entries.size()==before,"new immutable view without identity rewrites");
+  int before=fake.entries.size(),writes=fake.order.size();
+  var second=new ApocBRWorldDictionaryDatabase(fake::open).publish(origin,snapshot);
+  check(second.equals(first)&&fake.entries.size()==before&&fake.notifications==1,"unchanged restart reuses exact view without identity rewrites or notification");
+  check(fake.order.subList(writes,fake.order.size()).stream().noneMatch(s->s.contains("INSERT INTO player_rel.world_dictionary_revision")||s.contains("entry_state")||s.contains("runtime_view")||s.contains("registry_state")||s.contains("journal")||s.contains("mod_override")),"reuse writes no revision, view, state, override or journal rows");
+  var reversedEntries=new ArrayList<>(snapshot.entries());Collections.reverse(reversedEntries);var reversedRegistries=new ArrayList<>(snapshot.registries());Collections.reverse(reversedRegistries);
+  check(database.publish(origin,new ApocBRWorldDictionarySnapshot(reversedRegistries,reversedEntries)).equals(first),"entry and registry order do not affect reuse");
+  fake.registryStates.getFirst().set(4,0);var repaired=database.publish(origin,snapshot);
+  check(repaired.revision()==first.revision()+1,"view counters are checked independently of global registry counters");
+  fake.states.removeFirst();var complete=database.publish(origin,snapshot);
+  check(complete.revision()==repaired.revision()+1,"missing state prevents reuse");
+  // Every native mutable field must prevent reuse; restore the original between cases.
+  for(var e:snapshot.entries())for(int field=7;field<ApocBRWorldDictionarySnapshot.Entry.class.getRecordComponents().length;field++) {
+   var components=ApocBRWorldDictionarySnapshot.Entry.class.getRecordComponents();Object[] values=new Object[components.length];Class<?>[] types=new Class<?>[components.length];
+   for(int i=0;i<values.length;i++){values[i]=components[i].getAccessor().invoke(e);types[i]=components[i].getType();}
+   Object old=values[field];if(old==null||e.family().equals("object")||e.family().equals("sprite"))continue;
+   values[field]=old instanceof Boolean b?!b:old instanceof Long n?n+1:old instanceof String s?s+"-changed":new ArrayList<>(List.of("changed","override"));
+   var changed=ApocBRWorldDictionarySnapshot.Entry.class.getDeclaredConstructor(types).newInstance(values);
+   var list=new ArrayList<>(snapshot.entries());list.set(list.indexOf(e),changed);var different=new ApocBRWorldDictionarySnapshot(snapshot.registries(),list);
+   var previous=database.publish(origin,snapshot);var next=database.publish(origin,different);
+   check(next.revision()==previous.revision()+1&&!next.view().equals(previous.view()),"changed "+e.family()+"/"+components[field].getName()+" publishes new view");
+   check(database.publish(origin,different).equals(next),"changed snapshot itself is reusable");
+  }
+  database.publish(origin,snapshot);
+  var reordered=new ArrayList<>(snapshot.entries());var item=reordered.getFirst();var overrideOrder=new ArrayList<>(item.overrides());Collections.reverse(overrideOrder);
+  reordered.set(0,new ApocBRWorldDictionarySnapshot.Entry(item.family(),item.register(),item.id(),item.kind(),item.key(),item.module(),item.name(),item.loaded(),item.mod(),item.vanilla(),item.modded(),item.obsolete(),item.removed(),item.overridesPresent(),item.version(),overrideOrder));
+  var prior=database.publish(origin,snapshot);check(database.publish(origin,new ApocBRWorldDictionarySnapshot(snapshot.registries(),reordered)).revision()==prior.revision()+1,"override order is significant");
+  var counters=new ArrayList<>(snapshot.registries());var r=counters.getFirst();counters.set(0,new ApocBRWorldDictionarySnapshot.Registry(r.family(),r.name(),r.nextId()+1,r.maxLength()));
+  prior=database.publish(origin,snapshot);var increased=new ApocBRWorldDictionarySnapshot(counters,snapshot.entries());
+  check(database.publish(origin,increased).revision()==prior.revision()+1,"counter change alone publishes");
+  prior=database.publish(origin,increased);var added=new ArrayList<>(increased.entries());added.add(new ApocBRWorldDictionarySnapshot.Entry("info","",1,"item","Base.New","Base","New",true,"pz-vanilla",true,false,false,false,false,null,List.of()));
+  check(database.publish(origin,new ApocBRWorldDictionarySnapshot(counters,added)).revision()==prior.revision()+1,"new identity publishes");
   check(fake.opened==fake.closed,"publication leases returned");
+  Fake readFailure=new Fake();var readDb=new ApocBRWorldDictionaryDatabase(readFailure::open);readDb.publish(origin,snapshot);readFailure.failPrefix="SELECT family,register_name,native_id,kind,is_loaded";readFailure.injected=new SQLException("PRIVATE_READ_ERROR","08006");
+  try{readDb.publish(origin,snapshot);throw new AssertionError("comparison failure accepted");}catch(SQLException error){check(error.getMessage().contains("stage=COMPARE_READY_VIEW")&&!error.toString().contains("PRIVATE_"),"comparison failure is reported and sanitized");}
+  check(readFailure.rollbacks==1&&readFailure.commits==1&&readFailure.notifications==1&&readFailure.opened==readFailure.closed,"comparison failure rolls back without publishing");
   Fake failing=new Fake();failing.failNotify=true;
   try{new ApocBRWorldDictionaryDatabase(failing::open).publish(origin,snapshot);throw new AssertionError("notify failure accepted");}catch(SQLException expected){check(expected.getCause()==null&&!expected.toString().contains("secret"),"driver failure sanitized");}
   check(failing.commits==0&&failing.rollbacks==1&&failing.opened==failing.closed,"failure rolls back and returns lease");
@@ -187,10 +228,11 @@ public class DictionaryRolloverTest {
   @Override int write(String sql,List<Object> a)throws Exception {
    if(sql.startsWith("INSERT INTO player_rel.world_dictionary_namespace")) {
     active=(UUID)a.getFirst();var state=histories.computeIfAbsent(active,k->new DictionaryDatabaseTest.Fake());
-    registries=state.registries;entries=state.entries;revision=state.revision;
+    registries=state.registries;entries=state.entries;revision=state.revision;viewValues=state.viewValues;states=state.states;overrides=state.overrides;registryStates=state.registryStates;
    }
    int result=super.write(sql,a);
    if(sql.startsWith("UPDATE player_rel.world_dictionary_namespace"))histories.get(active).revision=revision;
+   if(sql.startsWith("INSERT INTO player_rel.world_dictionary_runtime_view("))histories.get(active).viewValues=viewValues;
    return result;
   }
  }
@@ -211,11 +253,13 @@ public class DictionaryRolloverTest {
   check(!reset.namespace().equals(seed)&&reset.revision()==1&&fake.rollbacks==1,"counter rewind starts fresh history after rollback");
   check(fake.histories.get(seed).registries.get("info:").get(3).equals(99),"old history is preserved");
   var restart=publish(db,origin,snapshot,marker);
-  check(restart.namespace().equals(reset.namespace())&&restart.revision()==2,"restart reuses persisted replacement");
+  check(restart.equals(reset),"unchanged restart reuses persisted replacement view");
   fake.histories.get(reset.namespace()).entries.put("info::0",Arrays.asList(reset.namespace(),"info","",0,"item","Base.Wrong","Base","Wrong",0L));
   var remapped=publish(db,origin,snapshot,marker);
   check(!remapped.namespace().equals(reset.namespace()),"ID remap rolls over too");
   fake.failNotify=true;int histories=fake.histories.size();String before=Files.readString(marker);
+  // Force a real publication; an unchanged startup correctly sends no notification.
+  fake.states.getFirst().set(6,false);
   try{publish(db,origin,snapshot,marker);throw new AssertionError("DB failure accepted");}
   catch(SQLException expected){check(!(expected instanceof ApocBRWorldDictionaryDatabase.HistoryChangedException),"transport failure is not a history conflict");}
   check(histories==fake.histories.size()&&before.equals(Files.readString(marker)),"SQL failures never rotate namespace");fake.failNotify=false;
