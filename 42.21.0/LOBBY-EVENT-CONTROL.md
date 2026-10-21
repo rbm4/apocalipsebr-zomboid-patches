@@ -221,10 +221,10 @@ disabled the guide only greets. Manager sync delays must remain below that
 60-second announcement freshness bound. No speech call queries JDBC or activates
 an event; the release hook retains its existing identity/revision checks.
 
-Strings use `Translator.getText()` with `IGUI_ApocExtractionMapUtils_Event*`
-keys supplied by the extraction mod's shared `Translate/EN/IG_UI.json`.
-New guide strings use PT-BR as their fallback text, including `Olá!`, in the
-existing EN category file used by dedicated servers. `displayZone` remains
+Strings use the NPC-only `HumanLanguage.text()` with
+`IGUI_ApocExtractionMapUtils_Event*` keys cached from V18's `npc_engine.label_text`.
+PTBR is the default independently of the global Translator/client language;
+standalone mode uses shipped EN/PTBR defaults. `displayZone` remains
 accepted for compatibility but relative countdowns do not depend on a timezone.
 No client Java patch is needed.
 

@@ -6,6 +6,16 @@ import java.util.*;
 /** JDBC content adapter. Called only inside the NPC worker's repeatable-read transaction. */
 public final class ApocBRNpcDialogues {
     private ApocBRNpcDialogues() { }
+    public static Map<String,Map<String,Object>> labels(Connection c)throws SQLException {
+        Map<String,Map<String,Object>> result=new LinkedHashMap<>();int count=0;
+        try(var s=query(c,"SELECT label_key,locale,text FROM npc_engine.label_text ORDER BY label_key,locale LIMIT 1025");var rows=s.executeQuery()) {
+            while(rows.next()) {
+                if(++count>1024)throw new SQLException("NPC label limit","22023");
+                result.computeIfAbsent(rows.getString(1),key->new LinkedHashMap<>()).put(rows.getString(2),Map.of("text",rows.getString(3)));
+            }
+        }
+        result.replaceAll((key,value)->Map.copyOf(value));return Map.copyOf(result);
+    }
     public static Map<String,Object> read(Connection c) throws SQLException {
         Map<String,Object> profiles = new LinkedHashMap<>();
         Map<String,Object> graphs = new HashMap<>();

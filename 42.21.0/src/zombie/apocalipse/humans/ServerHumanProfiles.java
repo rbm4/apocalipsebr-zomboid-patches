@@ -1,7 +1,7 @@
 package zombie.apocalipse.humans;
 
 import java.util.Map;
-import zombie.core.Translator;
+import zombie.apocalipse.humans.dialogue.HumanLanguage;
 import zombie.apocalipse.humans.brain.*;
 import zombie.apocalipse.humans.profiles.*;
 
@@ -26,13 +26,13 @@ public final class ServerHumanProfiles {
         var registry = new HumanProfileRegistry();
         var modules=new zombie.apocalipse.humans.profiles.HumanModuleRegistry();
         modules.register("greet",(p,b)->{GuidePolicy.from(b.parameters());if(b.parameters().containsKey("roamPauseMs"))throw new IllegalArgumentException("Roam timing belongs to roam module");announcements(p);},
-            (p,b)->new GuideBrain(GuidePolicy.from(b.parameters()),()->p.greetingKey().isEmpty()?null:Translator.getText(p.greetingKey()),announcements(p)).greetingOnly());
+            (p,b)->new GuideBrain(GuidePolicy.from(b.parameters()),()->p.greetingKey().isEmpty()?null:HumanLanguage.text(p.greetingKey()),announcements(p)).greetingOnly());
         modules.register("roam",(p,b)->{if(b.parameters().keySet().stream().anyMatch(k->!k.equals("roamPauseMs")))throw new IllegalArgumentException("Unknown roam parameter");},
             (p,b)->new zombie.apocalipse.humans.brain.RoamModule(b.parameters().getOrDefault("roamPauseMs",3000L)*1000000L));
         registry.registerBehavior("modules",p->{announcements(p);modules.validate(p);},modules::create);
         registry.registerBehavior("guide", p -> { GuidePolicy.from(p.parameters()); announcements(p); },
             p -> new GuideBrain(GuidePolicy.from(p.parameters()),
-                () -> p.greetingKey().isEmpty() ? null : Translator.getText(p.greetingKey()), announcements(p)));
+                () -> p.greetingKey().isEmpty() ? null : HumanLanguage.text(p.greetingKey()), announcements(p)));
         registry.registerBehavior("idle", p -> {
             if (!p.parameters().isEmpty() || !p.greetingKey().isEmpty() || !p.announcementId().equals("none"))
                 throw new IllegalArgumentException("Idle profile has no speech or timing configuration");

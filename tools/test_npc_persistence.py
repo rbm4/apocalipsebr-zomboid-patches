@@ -92,11 +92,13 @@ public class NpcStoreTest {
    // Publish the real dialogue migration as the backend owner, then read as engine.
    try(var owner=DriverManager.getConnection(url,"apocalipsebr","")) {
     owner.setAutoCommit(false);
-    for(String file:List.of("V16__Create_Npc_Trade_Policies.sql","V17__Create_Npc_Dialogue_Graphs.sql")) {
+    for(String file:List.of("V16__Create_Npc_Trade_Policies.sql","V17__Create_Npc_Dialogue_Graphs.sql","V18__Npc_Server_Language.sql")) {
      try(var s=owner.createStatement()){s.execute(Files.readString(Path.of(args[1]).resolveSibling(file)));}owner.commit();
     }
    }
    var content=ApocBRNpcDialogues.read(c);c.commit();
+   var labels=ApocBRNpcDialogues.labels(c);c.commit();
+   check(((Map<?,?>)labels.get("IGUI_ApocExtractionMapUtils_GuideHello").get("PTBR")).get("text").equals("Olá!"),"engine role reads default Portuguese labels from V18");
    var graph=(Map<?,?>)content.get("lobby-guide");
    check(graph!=null&&graph.get("entryNode").equals("root")&&graph.get("revision").equals(1),"published graph loaded with engine permissions");
    var root=(Map<?,?>)((Map<?,?>)graph.get("nodes")).get("root");
@@ -112,7 +114,7 @@ public class NpcStoreTest {
    invalid(c,"INSERT INTO npc_engine.dialogue VALUES('bypass','Bad',1)");
    try(var s=c.createStatement()) {
     s.execute("INSERT INTO npc_engine.dialogue VALUES('draft','Draft',NULL)");
-    s.execute("INSERT INTO npc_engine.dialogue_revision(dialogue_id,revision,entry_node) VALUES('draft',1,'root')");
+    s.execute("INSERT INTO npc_engine.dialogue_revision(dialogue_id,revision,entry_node,fallback_locale) VALUES('draft',1,'root','EN')");
     s.execute("INSERT INTO npc_engine.dialogue_node VALUES('draft',1,'root')");c.commit();
    }
    invalid(c,"UPDATE npc_engine.dialogue SET current_revision=1 WHERE dialogue_id='draft'");
@@ -137,6 +139,7 @@ public class NpcStoreTest {
    while(loaded==null&&System.nanoTime()<deadline){Thread.sleep(20);loaded=store.takeLoaded();}
    check(loaded!=null&&loaded.instances().size()==1,"worker hydrates logical instances");
    check(zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current().profiles().containsKey("lobby-guide"),"dialogue cache is hot before NPC startup snapshot becomes visible");
+   check(zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current().labels().containsKey("IGUI_ApocExtractionMapUtils_GuideHello"),"labels and graphs publish together before actor activation");
    var account=new ApocBRNpcStore.DialogueIdentity("guide","guide","steam","123");
    check(store.dialogueFlags(account).contains("met_guide"),"account dialogue facts hydrate with NPC startup");
    check(store.dialogueFlags(new ApocBRNpcStore.DialogueIdentity("guide","guide","steam","456")).isEmpty(),"facts isolated between accounts");

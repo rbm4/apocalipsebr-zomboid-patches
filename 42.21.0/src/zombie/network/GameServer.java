@@ -3004,6 +3004,10 @@ public class GameServer {
 
                     LoggerManager.getLogger("user")
                         .write(connection.getIDStr() + " \"" + player.username + "\" fully connected " + LoggerManager.getPlayerCoords(player));
+                    zombie.savefile.ApocBRPlayerLogin.successfulLogin(player,Core.gameSaveWorld,
+                        coop&&SteamUtils.isSteamModeEnabled()?connection.getIDStr():connection.getUserName(),
+                        coop&&SteamUtils.isSteamModeEnabled(),playerIndex,username,
+                        connection.getSteamId()>0?Long.toUnsignedString(connection.getSteamId()):null);
                     connected.run();
                 }
             }

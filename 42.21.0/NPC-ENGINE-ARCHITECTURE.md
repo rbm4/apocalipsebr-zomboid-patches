@@ -57,7 +57,12 @@ new HumanAction.Sequence(List.of(
 ));
 ```
 
-Production content uses existing translation keys, not the illustrative literals.
+Production autonomous content uses label keys resolved by `HumanLanguage` from
+the cached database catalog (shipped EN/PTBR defaults in standalone mode).
+NPC language defaults to PTBR independently of the global Translator. Database
+dialogue transitions belong to `HumanDialogueSession`/`ServerHumanDialogue`;
+Lua transports identifiers and resolved text through bridge v4. See
+[dialogue graphs](docs/npc-dialogue-graphs.md).
 `Sequence.speech(lines, pauseNanos)` validates the complete speech plan and
 builds these actions, inserting a wait only between phrases. Each `Say` remains
 limited to 256 characters. Empty content is a successful no-op; blank, null or

@@ -17,7 +17,7 @@ import se.krka.kahlua.vm.KahluaTable;
 import zombie.Lua.LuaEventManager;
 import zombie.Lua.LuaManager;
 import zombie.core.Core;
-import zombie.core.Translator;
+import zombie.apocalipse.humans.dialogue.HumanLanguage;
 import zombie.debug.DebugLog;
 import zombie.network.GameServer;
 import zombie.savefile.ApocBRPostgresConnector;
@@ -282,25 +282,25 @@ public final class ApocBREventControl {
     public static List<String> guideAnnouncementLines() {
         var c = current();
         if (c == null) return List.of();
-        if (!c.fresh()) return List.of(Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable"));
+        if (!c.fresh()) return List.of(HumanLanguage.text("IGUI_ApocExtractionMapUtils_EventUnavailable"));
         var snapshot = c.active;
         Guide guide = snapshot.guide;
         long now = c.wallClock.getAsLong();
         // Manager polls independently of engine freshness. Never present abandoned agenda data.
         if (guide.updatedAt <= 0 || now < guide.updatedAt || now - guide.updatedAt > 60000)
-            return List.of(Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable"));
+            return List.of(HumanLanguage.text("IGUI_ApocExtractionMapUtils_EventUnavailable"));
         String active = validName(guide.activeName) && guide.activeEnd > now
-            ? Translator.getText("IGUI_ApocExtractionMapUtils_EventRemaining", guide.activeName, remaining(guide.activeEnd - now)) : null;
+            ? HumanLanguage.text("IGUI_ApocExtractionMapUtils_EventRemaining", guide.activeName, remaining(guide.activeEnd - now)) : null;
         String next = validName(guide.nextName) && guide.nextStart > now
-            ? Translator.getText("IGUI_ApocExtractionMapUtils_EventCountdown", guide.nextName, remaining(guide.nextStart - now)) : null;
+            ? HumanLanguage.text("IGUI_ApocExtractionMapUtils_EventCountdown", guide.nextName, remaining(guide.nextStart - now)) : null;
         if (active != null) return next == null ? List.of(active) : List.of(active, next);
         if (next != null) return List.of(next);
         Schedule event = snapshot.schedule;
         if ("scheduled".equals(event.state) && now >= event.startsAt
                 && !new Receipt(event.id, event.revision).equals(c.applied)
                 && !new Receipt(event.id, event.revision).equals(snapshot.reported))
-            return List.of(Translator.getText("IGUI_ApocExtractionMapUtils_EventPending", event.name));
-        return List.of(Translator.getText("IGUI_ApocExtractionMapUtils_EventNone"));
+            return List.of(HumanLanguage.text("IGUI_ApocExtractionMapUtils_EventPending", event.name));
+        return List.of(HumanLanguage.text("IGUI_ApocExtractionMapUtils_EventNone"));
     }
 
     /** Compatibility text adapter. NPC execution uses the structured phrase list. */

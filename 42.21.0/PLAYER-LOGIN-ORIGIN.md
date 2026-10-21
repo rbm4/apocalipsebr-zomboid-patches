@@ -1,76 +1,109 @@
-# PostgreSQL character login origin and lobby teleport
+# Successful-login history and lobby teleport
 
-Status: implemented for server Build 42.21.0; awaiting live multiplayer validation.
+Status: implemented for dedicated-server Build 42.21.0; awaiting live A-to-C validation.
 
-## Ownership and behavior
+## Ownership
 
-`ApocBRPlayerLogin` is exposed to Lua only on the dedicated server. It has no
-Java login callback and is not called by `ServerPlayerDB.finishPostgresPlayer`.
-ExtractionMapUtils' Lua login hook sends `LoginLobbyState`; its server
-handler queries the getter, which lazily captures the server player's marker
-on that first request. Client arguments do not supply the marker or destination.
+`GameServer.receivePlayerConnectReady` records the connection immediately after
+the existing fully-connected user log, before its completion callback. Both
+SQLite and PostgreSQL reconstruction paths reach this accepted-connection hook.
+Rejected connections, temporary client-profile reconstruction and Lua getters do
+not create audit events. No client Java changes are required.
 
-The reserved character mod-data key `ApocBR.LastConnectedServerId.v1` stores a
-positive numeric ID from `apocbr.postgres.serverId`. Capture the saved value once
-into a weak per-player context, then stamp the current server into the live
-character. Later tag changes or duplicate capture cannot erase the original
-comparison after the first getter. No credentials, identities, schema changes or extra JDBC requests
-are introduced. Existing relational snapshot/capture/reconstruction persists the
-character's Lua mod-data (`lua.modData`) through the normal worker.
+`ApocBRPlayerLogin.successfulLogin` captures only detached identity data and the
+optional known persistent character UUID. The ordinary durable persistence journal
+stores `successful-login-v1`; `ApocBRSuccessfulLogin` runs JDBC on journal replay.
+No dictionary, item encoding, snapshot completeness or extraction/lobby setting
+is consulted. The optional UUID getter reads an existing in-memory binding without
+waiting for imports. Missing identities still get an account/world/slot audit row.
 
-This is a per-character last connection marker **as last persisted**, not a
-synchronous connection audit. Before its next successful relational checkpoint,
-a crash can lose the updated marker and cause conservative repeat relocation.
-Existing characters without a valid marker have unknown origin and use the Lua
-boundary/water fallback. Do not infer last login from `source_server_id` or
-`source_dataset_id`: those identify payload encoders and import datasets.
-Install this patch and ExtractionMapUtils on participating servers that should update
-the marker. It is stamped only when the Lua command first queries it. IDs must
-be stable and unique per server. Server mods must reserve this mod-data key.
-The value is read from live character mod-data at request time, not captured
-before all client traffic; it is a relocation hint, not an authentication or
-cross-server authorization record.
+Backend Flyway migration V19 creates `player_rel.successful_login` and the
+transactional function `player_rel.record_successful_login`. The function locks
+the account/world/mode/slot, finds its previous occurrence and inserts the event
+with `previous_server_id`. Event UUID replay returns that same previous result.
+Commit loss therefore cannot duplicate an occurrence or compare it to itself.
+JDBC publishes the result only after commit; a weak context keeps it attached to
+the accepted player without sharing game objects with workers.
 
-## Server Lua API
+The slot identity follows existing persistence semantics: world, `username` or
+`steam_coop`, identity key and player index. Username comparison is exact. Known
+character UUIDs exclude other known lives. If either UUID is missing, history
+uses slot identity; distinguishing unknown lives requires a separate stable
+incarnation identity. No graph/table foreign key is required to record a login.
 
-- `ApocBRPlayerLogin.getPreviousServerId(player)`: previous saved ID, or 0 for
-  unknown/untracked/non-server-thread calls.
-- `ApocBRPlayerLogin.hasChangedServer(player)`: true only for a known ID that
-  differs from the server captured at login.
-- `ApocBRPlayerLogin.teleportToLobby(player, x, y, z)`: game-thread-only native
-  `GameServer.sendTeleport`, requiring a living connected player, network AI and
-  finite coordinates within the configured placement range. Returns acceptance;
-  repeated requests for an accepted player acknowledge without resending.
-  Lobby authorization and destination selection belong to trusted server Lua.
+## API and Lua behavior
 
-`ApocalipseBR-ExtractionMapUtils` owns the Lua login hooks and command handler;
-it queries ExtractionMapUtils' closed-lobby/invalid-position rules and supplies the trusted
-sandbox destination; its client consumes `serverTeleported=true` without issuing
-another teleport. A temporarily unavailable connection requests bounded retry.
-Without this Java API, the mod retains its prior client placement fallback.
-Single player remains local placement.
+- `ApocBRPlayerLogin.isReady(player)`: false while the accepted event is pending;
+  true after commit, including a first occurrence with no predecessor. Disabled
+  history returns true for geometry fallback. Non-server-thread calls return false.
+- `getPreviousServerId(player)`: cached previous server, or 0 if unknown/pending.
+  Check readiness first. Does not read or write character mod-data or SQL.
+- `hasChangedServer(player)`: true only for a ready known previous ID differing
+  from the accepted connection's current ID.
+- `teleportToLobby(player,x,y,z)`: existing server-thread native teleport, finite
+  destination/living/connection guards and one-shot acknowledgement unchanged.
 
-`GameServer.sendTeleport` sends the existing vanilla Teleport packet and resets
-movement/anti-cheat state; its client handler exits a vehicle and applies the
-coordinates. This requires only server patches, with no new packet format or
-client Java patch. The client still performs native packet application.
+ExtractionMapUtils owns `LoginLobbyState` and the relocation policy. Its server
+handler waits for the audit result before checking server change and geometry.
+The client retains its 15-attempt, one-second budget; exhausted pending results
+preserve the saved position. Lobby settings gate relocation only. Auditing works
+without the extraction mod installed on the source server.
+
+## Rollout and failure behavior
+
+1. Apply backend `V19__Create_Successful_Login_History.sql` in game_runtime.
+2. Install the 42.21.0 server patch on A, C and other participating servers.
+3. Enable PostgreSQL connectivity and set stable unique registered
+   `apocbr.postgres.serverId` values. `apocbr.postgres.loginHistory.enabled`
+   defaults to true even if PostgreSQL player loading/relational sync is off.
+4. Install the updated extraction Lua on the destination server and clients.
+
+The migration explicitly grants schema/table/sequence/function privileges to
+`pz_server_01`; the backend remains migration owner. Existing role bootstrap/default
+privileges remain as described in AGENTS.md and the backend datasource guide.
+Old `ApocBR.LastConnectedServerId.v1` values are ignored and no history is invented.
+The first audited connection has unknown previous server.
+
+`[ApocBR][LoginHistory] QUEUED` and `RECORDED` always log event UUID, slot/current
+server or previous/current/changed result. No account identities or credentials
+are printed. Queue errors log `QUEUE_FAILED`. At most 512 pending result listeners
+are retained; overflow still journals the audit and reports `RESULT_CAPACITY`.
+Such a player has unavailable origin and the Lua retry limit preserves position.
+
+Game acceptance does not wait for JDBC. Local staging precedes normal journal
+fsync (usually its 25ms writer cadence); sudden termination before fsync can lose
+an event. After fsync normal replay/retry applies; exhausted audit operations are
+quarantined for inspection rather than discarded. A queue failure is visible and
+leaves origin unavailable; it does not undo an already accepted gameplay login.
+
+Cross-server history uses captured `logged_at`; `recorded_at` is database ingestion
+time and `login_sequence` breaks equal-time ties. Synchronize host clocks. Offline
+journals are not visible to other servers until committed. Late replay cannot
+replace a newer latest row, but cannot retroactively change a delivered decision.
+Recording shares the existing journal's ordered replay/backlog. No new blocking
+SQL runs on the simulation thread. Audit retention is operator-managed.
 
 ## Verification
 
-Passed:
+- `python -B tools/test_player_login_origin.py`: production bridge/store/journal,
+  absent UUIDs, known UUID enrichment, duplicate acceptance, cached origin,
+  worker publication after commit, commit failure, journal recovery, same/different
+  servers, first occurrence, queue failure, thread guards and native teleport.
+- `python -B tools/test_postgres_player_reconstruction.py`: 531 reconstruction checks.
+- `python -B tools/test_postgres_resilience.py`: production persistence coordinator
+  and journal replay; fixture dependencies include the current dialogue catalog.
+- `42.21.0/patchApocalipseBr.ps1 -DryRun`: full compile against configured 42.21.0
+  game JAR; no deployment.
+- Extraction `tests/login-position.lua` and `tests/login-lobby-state.lua`: pending
+  origin retries and existing authoritative/native movement policy.
+- Backend `SuccessfulLoginMigrationTest`: isolated PostgreSQL with distinct
+  migration/engine roles; replay, previous-server result, missing graphs/UUIDs,
+  life/slot/account/world separation, constraints, rollback and concurrency.
 
-- `python tools/test_player_login_origin.py`: previous-ID capture, same/different
-  servers, malformed/unknown markers, preservation after tag mutation, thread and
-  connection guards, and duplicate teleport suppression using engine fixtures.
-- `python tools/test_postgres_players.py`: existing player/profile/database tests.
-- `python -B tools/test_postgres_player_reconstruction.py`: 531 reconstruction
-  checks, including structured component capture/restoration.
-- `42.21.0/patchApocalipseBr.ps1 -DryRun`: full server source compilation against
-  the configured game JAR; no deployment.
-- Extraction mod: `tests/login-position.lua`, `tests/login-lobby-state.lua`,
-  `tests/login-and-maps.lua`, `tests/lobby-perimeter.lua` using fengari.
+See backend `docs/successful-login-history.md` for audit queries and migration checks.
+No live database migration or server deployment is performed by these checks.
 
-Still required in game: successful relational checkpoint of the marker, A-to-B
-and B-to-A transfers, same-server reconnect after checkpoint, unknown markers,
-operation/closed-lobby rules, boat exits, terrain streaming, native movement and
-anti-cheat acceptance. No live server or database was modified.
+Validation on 2026-10-21: all checks above passed, including 24 bridge/store/journal
+checks, 531 reconstruction checks, persistence resilience/recovery fixtures,
+the final full patch dry-run compile, and both backend migration tests on disposable
+PostgreSQL 14.24 with zero skips. Extraction `tests/login-and-maps.lua` also passed.

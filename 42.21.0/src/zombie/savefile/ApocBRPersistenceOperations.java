@@ -41,7 +41,8 @@ final class ApocBRPersistenceOperations {
     private static final ApocBRPlayerRelationalDatabase database=new ApocBRPlayerRelationalDatabase(ApocBRPostgresConnector::borrowPlayerConnection);
     static String key(String world,String identity,int slot,boolean coop){return world.length()+":"+world+":"+coop+":"+identity.length()+":"+identity+":"+slot;}
     static void apply(ApocBRPersistenceJournal.Operation operation)throws SQLException {
-        if(operation instanceof ApocBRHumanSales.Sale sale)ApocBRHumanSales.apply(sale);
+        if(operation instanceof ApocBRSuccessfulLogin.Login login)ApocBRSuccessfulLogin.apply(login);
+        else if(operation instanceof ApocBRHumanSales.Sale sale)ApocBRHumanSales.apply(sale);
         else if(operation instanceof Native nativeSave)ApocBRPostgresConnector.writeJournalSnapshot(nativeSave.snapshot());
         else if(operation instanceof Initial initial) {
             var candidate=database.creationCandidate(initial.candidate());

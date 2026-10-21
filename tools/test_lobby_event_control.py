@@ -101,7 +101,7 @@ public class EventControlTest {
   check(db.openingThread!=Thread.currentThread(),"connection only used on worker");
   int queries=db.queries;
   String greeting=ApocBREventControl.guideAnnouncement();
-  check(greeting.contains("EventCountdown")&&greeting.contains("1s")&&greeting.contains("Extraction"),"relative countdown without greeting");
+  check(greeting.contains("A pr\u00f3xima opera\u00e7\u00e3o")&&greeting.contains("1s")&&greeting.contains("Extraction"),"relative countdown without greeting");
   check(ApocBREventControl.remaining(90061001).equals("1d 1h 1min 2s"),"days/hours/minutes/seconds rounded up");
   check(ApocBREventControl.remaining(1).equals("1s"),"positive subsecond countdown never says zero");
   check(ApocBREventControl.getStartsAtMillis()==start&&ApocBREventControl.getRevision()==1,"cached typed getters");
@@ -118,7 +118,7 @@ public class EventControlTest {
     &&Boolean.FALSE.equals(context().rawget("isReplay")),"third argument is matching metadata table");
   ApocBREventControl.update();check(LuaEventManager.calls==1,"bounded signal retries");
   clock[1]+=1_000_000_000L;ApocBREventControl.update();check(LuaEventManager.calls==2,"retry when mod has not acknowledged");
-  check(ApocBREventControl.guideGreeting("Oi!").contains("EventPending"),"do not announce release before mod acceptance");
+  check(ApocBREventControl.guideGreeting("Oi!").contains("aguardando a libera\u00e7\u00e3o"),"do not announce release before mod acceptance");
   check(!ApocBREventControl.acknowledgeRelease(OTHER,1)&&!ApocBREventControl.acknowledgeRelease(ID,Double.NaN)
     &&!ApocBREventControl.acknowledgeRelease(ID,1.5)&&!ApocBREventControl.acknowledgeRelease(ID,1e20),"reject wrong identities/revisions");
   check(ApocBREventControl.acknowledgeRelease(ID,1),"mod accepts removal intent");
@@ -128,11 +128,11 @@ public class EventControlTest {
   poll(c);ApocBREventControl.update();
   String both=ApocBREventControl.guideAnnouncement();
   var phrases=ApocBREventControl.guideAnnouncementLines();
-  check(phrases.size()==2&&phrases.get(0).contains("EventRemaining")&&phrases.get(1).contains("EventCountdown"),"active and next operation exposed as two ordered phrases");
+  check(phrases.size()==2&&phrases.get(0).contains("est\u00e1 ativa")&&phrases.get(1).contains("A pr\u00f3xima opera\u00e7\u00e3o"),"active and next operation exposed as two ordered phrases");
   try{phrases.clear();throw new AssertionError("mutable phrases");}catch(UnsupportedOperationException expected){checks++;}
   int beforePhrases=db.queries;ApocBREventControl.guideAnnouncementLines();
   check(db.queries==beforePhrases,"structured announcement reads cached data without SQL");
-  check(both.contains("EventRemaining")&&both.contains("1h 0min 0s")&&both.contains("EventCountdown")&&both.contains("2h 0min 0s"),"confirmed active estimate and next countdown in separate follow-up");
+  check(both.contains("est\u00e1 ativa")&&both.contains("1h 0min 0s")&&both.contains("A pr\u00f3xima opera\u00e7\u00e3o")&&both.contains("2h 0min 0s"),"confirmed active estimate and next countdown in separate follow-up");
   db.activeName=null;db.activeEnd=0;db.nextName="Changed";db.nextStart=start+60000;
   poll(c);ApocBREventControl.update();check(db.reported==1&&db.writes==1,"asynchronous scoped receipt");
   clock[1]+=1_000_000_000L;ApocBREventControl.update();check(LuaEventManager.calls==2,"no repeated signal after acceptance");
@@ -141,7 +141,7 @@ public class EventControlTest {
   check(!ApocBREventControl.isDue(ID,1)&&ApocBREventControl.guideGreeting("Oi!").contains("Changed"),"reschedule invalidates old activation");
   db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled");poll(c);ApocBREventControl.update();
   db.nextName=null;db.nextStart=0;poll(c);ApocBREventControl.update();
-  check(!ApocBREventControl.isDue(ID,3)&&ApocBREventControl.guideAnnouncement().contains("EventNone"),"cancel clears next announcement");
+  check(!ApocBREventControl.isDue(ID,3)&&ApocBREventControl.guideAnnouncement().contains("N\u00e3o h\u00e1 pr\u00f3ximas"),"cancel clears next announcement");
   db.row=new ApocBREventControl.Schedule(ID,1,"Extraction",start,"scheduled");poll(c);ApocBREventControl.update();
   check(ApocBREventControl.getStatus().equals("STALE")&&!ApocBREventControl.isDue(ID,1),"reject revision rollback");
   db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled");poll(c);ApocBREventControl.update();
@@ -154,7 +154,7 @@ public class EventControlTest {
   clock[1]+=11_000_000_000L;db.queryFail=true;
   try{poll(c);throw new AssertionError("missing schema accepted");}catch(RuntimeException expected){checks++;}
   check(ApocBREventControl.getStatus().equals("STALE")&&!ApocBREventControl.acknowledgeRelease(OTHER,4),"outage suppresses stale activation");
-  check(ApocBREventControl.guideGreeting("Oi!").contains("EventUnavailable"),"outage greeting");
+  check(ApocBREventControl.guideGreeting("Oi!").contains("temporariamente indispon\u00edvel"),"outage greeting");
   db.queryFail=false;poll(c);ApocBREventControl.update();check(ApocBREventControl.isDue(OTHER,4),"overdue recovery");
   check(ApocBREventControl.acknowledgeRelease(OTHER,4),"recovery acknowledgement");
   db.row=new ApocBREventControl.Schedule(ID,5,"Replacement",start+60000,"scheduled");poll(c);ApocBREventControl.update();
@@ -175,11 +175,11 @@ public class EventControlTest {
   db.row=new ApocBREventControl.Schedule(null,8,null,0,"idle");c=control(db);poll(c);ApocBREventControl.update();
   check(ApocBREventControl.isReleaseAuthorized(OTHER,6),"clearing desired schedule must not rebuild a released perimeter");
   db.activeName="Expired";db.activeEnd=clock[0];poll(c);ApocBREventControl.update();
-  check(ApocBREventControl.guideAnnouncement().contains("EventNone"),"expired active estimate omitted");
+  check(ApocBREventControl.guideAnnouncement().contains("N\u00e3o h\u00e1 pr\u00f3ximas"),"expired active estimate omitted");
   db.updatedAt=clock[0]-60001;poll(c);ApocBREventControl.update();
-  check(ApocBREventControl.getStatus().equals("READY")&&ApocBREventControl.guideAnnouncement().contains("EventUnavailable"),"manager snapshot ages even with healthy engine polling");
+  check(ApocBREventControl.getStatus().equals("READY")&&ApocBREventControl.guideAnnouncement().contains("temporariamente indispon\u00edvel"),"manager snapshot ages even with healthy engine polling");
   db.updatedAt=clock[0]+1000;poll(c);ApocBREventControl.update();
-  check(ApocBREventControl.guideAnnouncement().contains("EventUnavailable"),"future manager timestamps fail closed");
+  check(ApocBREventControl.guideAnnouncement().contains("temporariamente indispon\u00edvel"),"future manager timestamps fail closed");
   check(db.opened==db.closed,"all JDBC leases closed, including failure");
   invalid(()->new ApocBREventControl.Schedule(ID,0,"Bad",start,"scheduled"));
   invalid(()->new ApocBREventControl.Schedule(ID,1,"Bad\nTitle",start,"scheduled"));
@@ -215,6 +215,7 @@ def main():
             path.write_text(content, encoding="utf-8")
             sources.append(path)
         sources.append(ROOT / "42.21.0/src/zombie/apocalipse/events/ApocBREventControl.java")
+        sources.extend(ROOT / ("42.21.0/src/zombie/apocalipse/humans/dialogue/"+name+".java") for name in ("HumanLanguage","HumanDialogueCatalog"))
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(path).replace("\\", "/") + '"' for path in sources), encoding="utf-8")
         output = work / "classes"

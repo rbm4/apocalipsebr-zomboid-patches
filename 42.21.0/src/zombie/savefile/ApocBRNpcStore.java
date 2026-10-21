@@ -89,8 +89,9 @@ public final class ApocBRNpcStore {
                     if(!initialized) {
                         var definitions=readInstances();var configuration=readProfiles(connection);
                         var dialogues=ApocBRNpcDialogues.read(connection);
+                        var labels=ApocBRNpcDialogues.labels(connection);
                         readDialogueFlags();
-                        connection.commit();zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(dialogues);
+                        connection.commit();zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(dialogues,labels);
                         loaded.set(new Loaded(configuration,definitions));initialized=true;nextProfiles=System.nanoTime()+30000000000L;
                     }
                     // Session lock + epoch fence prevent two processes writing the same NPC scope.
@@ -101,7 +102,8 @@ public final class ApocBRNpcStore {
                     flush();
                     if(System.nanoTime()>=nextProfiles){
                         var configuration=readProfiles(connection);var dialogues=ApocBRNpcDialogues.read(connection);
-                        connection.commit();zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(dialogues);
+                        var labels=ApocBRNpcDialogues.labels(connection);
+                        connection.commit();zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(dialogues,labels);
                         profiles.set(configuration);nextProfiles=System.nanoTime()+30000000000L;
                     }
                     lastIssue="";Thread.sleep(1000);

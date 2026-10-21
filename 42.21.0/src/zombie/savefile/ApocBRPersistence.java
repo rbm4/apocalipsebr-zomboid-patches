@@ -31,7 +31,8 @@ final class ApocBRPersistence {
     private String discardIssue,discardSqlState,discardDetails;
 
     static boolean enabled(){return Boolean.getBoolean("apocbr.postgres.enabled")
-        &&(ApocBRServerDatabase.enabled()||ApocBRPlayerDatabase.enabled()||ApocBRPlayerRelationalSync.enabled());}
+        &&(ApocBRServerDatabase.enabled()||ApocBRPlayerDatabase.enabled()||ApocBRPlayerRelationalSync.enabled()
+            ||Boolean.parseBoolean(System.getProperty("apocbr.postgres.loginHistory.enabled","true")));}
     static synchronized ApocBRPersistence get() {
         if(instance==null)try{instance=new ApocBRPersistence();}
         catch(IOException error){throw new IllegalStateException("PostgreSQL journal unavailable",error);}
@@ -195,6 +196,11 @@ final class ApocBRPersistence {
         journal.acknowledgeCommitted(entry.id());lastIssue="NONE";report("REPLAY_PROGRESS",null);
     }
     private void discard(ApocBRPersistenceJournal.Entry entry)throws IOException {
+        if (entry.operation() instanceof ApocBRSuccessfulLogin.Login) {
+            journal.quarantine(entry.id());
+            log("AUDIT_QUARANTINED; operation="+entry.id()+"; kind="+entry.operation().kind()+"; inspect retained payload before replay");
+            return;
+        }
         if (entry.operation() instanceof ApocBRHumanSales.Sale) {
             journal.quarantine(entry.id());
             log("SALE_QUARANTINED; operation="+entry.id()+"; inspect retained payload before crediting");

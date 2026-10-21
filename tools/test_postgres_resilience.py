@@ -505,7 +505,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
     files = []
     stubs = {
         'zombie/debug/DebugLog.java': 'package zombie.debug; public class DebugLog {public static void log(String text){System.out.println(text);}}',
-        'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static Thread mainThread=Thread.currentThread();public static boolean server=true,coop;public static String serverName="fixture";public static zombie.core.raknet.UdpEngine udpEngine;public static boolean isDelayedDisconnect(zombie.core.raknet.UdpConnection c){return false;}}',
+        'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static Thread mainThread=Thread.currentThread();public static boolean server=true,coop;public static String serverName="fixture";public static zombie.core.raknet.UdpEngine udpEngine;public static boolean isDelayedDisconnect(zombie.core.raknet.UdpConnection c){return false;}public static Object getConnectionFromPlayer(zombie.characters.IsoPlayer p){return null;}public static void sendTeleport(zombie.characters.IsoPlayer p,float x,float y,float z){}}',
         'zombie/ZomboidFileSystem.java': 'package zombie; public class ZomboidFileSystem {public static final ZomboidFileSystem instance=new ZomboidFileSystem();public String getSaveDir(){return "unused";}public String getCurrentSaveDir(){return "fixture";}}',
     }
     stubs['zombie/network/ServerWorldDatabase.java'] = 'package zombie.network; public class ServerWorldDatabase {public static class LoginRoles {}public static void useLoginRoles(LoginRoles roles){}}'
@@ -520,6 +520,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
     harness.write_text(HARNESS, encoding='utf-8')
     files += list((SRC / 'savefile').glob('ApocBR*.java'))
     files += [SRC / 'apocalipse/humans/ServerHumanDefinition.java', SRC / 'apocalipse/humans/HumanLifecycle.java', SRC / 'apocalipse/humans/profiles/HumanProfile.java', SRC / 'apocalipse/humans/profiles/HumanModuleBinding.java']
+    files += [SRC / 'apocalipse/humans/dialogue/HumanDialogueCatalog.java']
     files += [SRC / 'world/ApocBRWorldDictionarySnapshot.java', SRC / 'world/ApocBRWorldDictionaryDecode.java', harness]
     cp = os.pathsep.join(map(str, [GAME, LIB / 'postgresql-42.7.14.jar', LIB / 'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK / 'javac.exe'), '--release', '25', '-cp', cp, '-d', folder, *map(str, files)], check=True)

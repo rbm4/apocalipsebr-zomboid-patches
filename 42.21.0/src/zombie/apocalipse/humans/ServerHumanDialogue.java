@@ -11,8 +11,11 @@ import zombie.apocalipse.humans.brain.HumanObservation;
 import zombie.characters.IsoPlayer;
 import zombie.core.raknet.UdpConnection;
 import zombie.network.GameServer;
+import zombie.apocalipse.humans.dialogue.HumanDialogueCatalog;
+import zombie.apocalipse.humans.dialogue.HumanDialogueSession;
+import zombie.apocalipse.humans.dialogue.HumanLanguage;
 
-/** Simulation-thread leases and cached-content facade. Lua owns graph routing, never actor authority. */
+/** Simulation-thread conversation authority. Lua transports identifiers and resolved presentation. */
 public final class ServerHumanDialogue {
     private static final long APPROACH_NANOS = 30_000_000_000L;
     private static final long TALK_NANOS = 60_000_000_000L;
@@ -27,6 +30,8 @@ public final class ServerHumanDialogue {
         final int token;
         long deadline, emoteUntil;
         boolean arrived;
+        HumanDialogueSession graph;
+        long nextChoice;
         Session(ServerHuman human, IsoPlayer visitor, int token, long now) {
             this.human = human; this.visitor = visitor; this.token = token;
             connection = GameServer.getConnectionFromPlayer(visitor);
@@ -51,6 +56,12 @@ public final class ServerHumanDialogue {
         bind(api, "list", 1, f -> list(player(f)));
         bind(api, "roster", 0, f -> roster());
         bind(api, "dialogues", 0, f -> dialogues());
+        bind(api, "language", 0, f -> HumanLanguage.locale());
+        bind(api, "text", 1, f -> f.get(0) instanceof String key?HumanLanguage.text(key):null);
+        bind(api, "dialogueRoster", 1, f -> graphRoster(player(f)));
+        bind(api, "dialogueBegin", 5, f -> graphBegin(player(f),id(f),integer(f.get(2)),f.get(3),f.get(4),System.nanoTime()));
+        bind(api, "dialogueView", 3, f -> graphView(player(f),id(f),token(f),System.nanoTime()));
+        bind(api, "dialogueSelect", 7, f -> graphSelect(player(f),id(f),token(f),f.get(3),integer(f.get(4)),f.get(5),integer(f.get(6)),System.nanoTime()));
         bind(api, "dialogueFlags", 3, f -> dialogueFlags(player(f),id(f),f.get(2)));
         bind(api, "remember", 5, f -> remember(player(f),id(f),token(f),f.get(3),f.get(4)));
         bind(api, "begin", 2, f -> begin(player(f), id(f), System.nanoTime()));
@@ -59,7 +70,8 @@ public final class ServerHumanDialogue {
         bind(api, "react", 5, f -> react(player(f), id(f), token(f),
             f.get(3) instanceof String text ? text : null,
             f.get(4) instanceof String emote ? emote : null, System.nanoTime()));
-        api.rawset("version", 3.0);
+        api.rawset("version", 4.0);
+        zombie.debug.DebugLog.log("[ApocBR][NPC] language="+HumanLanguage.locale()+"; source=apocbr.npc.language; default=PTBR");
         environment.rawset("ApocBRHumanAPI", api);
     }
     private interface Call { Object run(LuaCallFrame frame); }
@@ -90,9 +102,60 @@ public final class ServerHumanDialogue {
         result.rawset("ready",!database || snapshot!=null);
         if(database && snapshot!=null) {
             result.rawset("generation",(double)snapshot.generation());
-            result.rawset("profiles",luaValue(snapshot.profiles()));
         }
         return result;
+    }
+    @SuppressWarnings("unchecked")
+    private static Map<String,Object> graph(ServerHuman h) {
+        var catalog=HumanDialogueCatalog.current();
+        return h==null||catalog==null?null:(Map<String,Object>)catalog.profiles().get(h.profile.id());
+    }
+    private static java.util.Set<String> flags(IsoPlayer p,ServerHuman h,HumanDialogueSession graph) {
+        var store=zombie.savefile.ApocBRNpcStore.current();
+        return store==null?java.util.Set.of():store.dialogueFlags(identity(p,h,graph.id()));
+    }
+    static KahluaTable graphRoster(IsoPlayer p) {
+        var result=LuaManager.platform.newTable();if(!owned(p))return result;int i=0;
+        for(var h:ServerHumanFactory.dialogueHumans()) {
+            var content=graph(h);if(!h.profile.dialogue()||content==null)continue;
+            var session=new HumanDialogueSession(content);
+            // Roster discovery intentionally excludes actor coordinates and session authority.
+            var actor=LuaManager.platform.newTable();actor.rawset("id",(double)h.player.getOnlineID());
+            actor.rawset("key",h.definition.key());actor.rawset("name",h.definition.displayName());
+            var view=session.view(flags(p,h,session));actor.rawset("dialogue",luaValue(view));
+            var nodes=(Map<?,?>)view.get("nodes");var root=(Map<?,?>)nodes.get(view.get("entryNode"));
+            actor.rawset("options",luaValue(root.get("options")));result.rawset((double)++i,actor);
+        }
+        return result;
+    }
+    static KahluaTable graphBegin(IsoPlayer p,int id,int revision,Object node,Object option,long now) {
+        var h=human(id);var content=graph(h);
+        if(!owned(p)||content==null||!(node instanceof String current)||!(option instanceof String selected))return rejected("unavailable");
+        var graph=new HumanDialogueSession(content);
+        if(graph.choose(current,revision,selected,1,flags(p,h,graph))==null)return rejected("unavailable");
+        var result=begin(p,id,now);if(result.rawget("error")!=null)return result;
+        sessions.get((short)id).graph=graph;return result;
+    }
+    static KahluaTable graphView(IsoPlayer p,int id,int token,long now) {
+        var s=session(p,id,token,now);
+        if(s==null||!s.arrived||s.graph==null||!near(s.human,p,2.5))return rejected("unavailable");
+        return (KahluaTable)luaValue(s.graph.view(flags(p,s.human,s.graph)));
+    }
+    static KahluaTable graphSelect(IsoPlayer p,int id,int token,Object node,int revision,Object option,int sequence,long now) {
+        var s=session(p,id,token,now);
+        if(s==null||!s.arrived||s.graph==null||now<s.nextChoice||!near(s.human,p,2.5)
+            ||!(node instanceof String current)||!(option instanceof String selected))return rejected("unavailable");
+        var choice=s.graph.choose(current,revision,selected,sequence,flags(p,s.human,s.graph));
+        if(choice==null)return rejected("unavailable");
+        String speech=(String)choice.text().get("speech"),emote=(String)choice.option().get("emote");
+        if(speech==null||speech.length()>256||emote!=null&&!emote.matches("[A-Za-z0-9_]{1,40}"))return rejected("unavailable");
+        Object flag=choice.option().get("setFlag");
+        if(flag!=null&&!remember(p,id,token,s.graph.id(),flag))return rejected("unavailable");
+        if(!react(p,id,token,speech.isBlank()?null:speech,emote,now))return rejected("unavailable");
+        s.graph.advance(choice);s.nextChoice=now+500_000_000L;
+        var result=LuaManager.platform.newTable();result.rawset("dialogue",luaValue(s.graph.view(flags(p,s.human,s.graph))));
+        result.rawset("sequence",(double)sequence);result.rawset("option",selected);
+        result.rawset("response",choice.text().get("response"));result.rawset("close",s.graph.completed());return result;
     }
     private static Object luaValue(Object value) {
         if(value instanceof Map<?,?> map) {

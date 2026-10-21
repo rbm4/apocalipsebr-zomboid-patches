@@ -67,7 +67,8 @@ no new executor or actuator subclass is needed. A different algorithm registers
 its own allowlisted behavior factory through `registerBehavior`, implementing
 `HumanBehavior`. A database editor can maintain the same data fields and
 advance `revision`; it cannot install arbitrary Java functions. Existing dialogue
-option content remains in the server Lua registry keyed by logical NPC identity.
+option content uses the engine's cached database graph when persistence is enabled;
+standalone flat menus retain server Lua registration by logical NPC identity.
 
 ## Active control and execution
 

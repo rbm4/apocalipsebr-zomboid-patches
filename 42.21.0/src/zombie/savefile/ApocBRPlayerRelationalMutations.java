@@ -176,6 +176,13 @@ public final class ApocBRPlayerRelationalMutations {
         if(!DIRTY.register(candidate.key(),cursor.session)){capacityLog();return null;}
         TRACKED.put(player,cursor);active=true;return cursor.session;
     }
+    /** Optional audit enrichment. Never wait for import/capture to establish an identity. */
+    static UUID loginCharacterId(IsoPlayer player) {
+        Cursor cursor=TRACKED.get(player);
+        if(cursor==null)return null;
+        var binding=DIRTY.binding(cursor.candidate.key(),cursor.session);
+        return binding==null?null:binding.character();
+    }
     private static void capacityLog(){long now=System.nanoTime();if(now-lastCapacityLog>=30_000_000_000L){lastCapacityLog=now;log("LIVE_TRACK_LIMIT; retryOnNextLoad=true");}}
     static void bind(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character){DIRTY.bind(candidate.key(),session,character);}
     static void bind(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character,Map<Integer,UUID> aliases){DIRTY.bind(candidate.key(),session,character,aliases);}
