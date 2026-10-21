@@ -32,6 +32,12 @@ public final class ServerHumanFactory {
     private final Set<String> reservedNames = new HashSet<>();
     private Thread owner;
     private boolean configured;
+    private zombie.savefile.ApocBRNpcStore store;
+    private final Map<String,zombie.savefile.ApocBRNpcStore.State> checkpoints=new HashMap<>();
+    private long nextCheckpoint;
+    private boolean persistencePaused;
+    private boolean configurationRejected;
+    private final Set<String> retiredKeys=new HashSet<>();
     private int nextId = FIRST_ID;
     private long nextUpdate;
     private long nextBrainUpdate;
@@ -54,14 +60,62 @@ public final class ServerHumanFactory {
         if (owner == null) owner = Thread.currentThread();
         requireOwner();
         ServerHumanDialogue.install();
-        if (!configured) {
-            configured = true;
-            try {
-                ServerHumanDefinition guide = ServerHumanDefinition.configuredGuide();
-                if (guide != null) spawn(guide);
-            } catch (RuntimeException failure) {
-                DebugLog.log("[ApocBR][ServerHumans] Guide startup failed: " + failure);
+        if(configurationRejected)return;
+        if(!configured) {
+            if(zombie.savefile.ApocBRNpcStore.enabled()) {
+                if(store==null)try {
+                    store=zombie.savefile.ApocBRNpcStore.start(System.getProperty("apocbr.npc.serverKey",GameServer.serverName),
+                        zombie.core.Core.gameSaveWorld,ServerHumanDefinition.configuredGuide());
+                } catch(RuntimeException failure) {
+                    configurationRejected=true;
+                    DebugLog.log("[ApocBR][ServerHumans] NPC persistence configuration rejected: "+failure.getClass().getSimpleName());return;
+                }
+                var loaded=store.takeLoaded();
+                if(loaded==null)return;
+                try {
+                    ServerHumanProfiles.registry().install(loaded.profiles(),true);
+                    Set<String> names=new HashSet<>();
+                    long activeCount=loaded.instances().stream().filter(r->!r.state().retired()&&r.activate()&&r.state().lifecycle()!=HumanLifecycle.State.DEAD).count();
+                    if(activeCount>LAST_ID-FIRST_ID+1)throw new IllegalArgumentException("Too many active NPCs");
+                    for(var restored:loaded.instances()) {
+                        var state=restored.state();if(state.retired())continue;
+                        ServerHumanProfiles.registry().require(state.definition().profileId());checkOnlineName(state.definition());
+                        if(!names.add(canonicalName(state.definition().username())))throw new IllegalArgumentException("Conflicting NPC names");
+                    }
+                } catch(RuntimeException failure) {
+                    configurationRejected=true;
+                    DebugLog.log("[ApocBR][ServerHumans] NPC startup configuration rejected: "+failure.getClass().getSimpleName()+"; repair configuration and restart");return;
+                }
+                configured=true;
+                for(var restored:loaded.instances()) {
+                    var state=restored.state();if(state.retired()){retiredKeys.add(state.definition().key());reservedNames.add(canonicalName(state.definition().username()));continue;}
+                    registerDormant(state.definition());
+                    instances.get(state.definition().key()).restore(state.lifecycle(),state.activations(),state.profileRevision());
+                    checkpoints.put(state.definition().key(),state);
+                    if(restored.activate()&&state.lifecycle()!=HumanLifecycle.State.DEAD)try{activate(state.definition().key());}
+                        catch(RuntimeException failure){DebugLog.log("[ApocBR][ServerHumans] NPC activation deferred key="+state.definition().key()+" issue="+failure.getClass().getSimpleName());}
+                }
+                DebugLog.log("[ApocBR][ServerHumans] PostgreSQL NPC state loaded instances="+instances.size());
+            } else {
+                configured=true;
+                try {var guide=ServerHumanDefinition.configuredGuide();if(guide!=null)spawn(guide);}
+                catch(RuntimeException failure){DebugLog.log("[ApocBR][ServerHumans] Guide startup failed: "+failure);}
             }
+        }
+        if(store!=null) {
+            var profiles=store.takeProfiles();
+            if(profiles!=null)try{ServerHumanProfiles.registry().install(profiles,false);}
+                catch(RuntimeException failure){DebugLog.log("[ApocBR][ServerHumans] Rejected database profile batch: "+failure.getClass().getSimpleName());}
+            if(!store.healthy()) {
+                if(!persistencePaused)for(var human:humans.values()) {
+                    ServerHumanDialogue.close(human,"persistence_unavailable");ServerHumanTrading.close(human);
+                    human.activity.setBlocked(true,now,human.actuator);
+                    for(var viewer:human.viewers)ServerHumanTransport.idle(human,viewer);
+                }
+                persistencePaused=true;return;
+            }
+            if(persistencePaused)for(var human:humans.values())human.activity.setBlocked(false,now,human.actuator);
+            persistencePaused=false;
         }
         if (now < nextBrainUpdate) return;
         nextBrainUpdate = now + BRAIN_UPDATE_NANOS;
@@ -101,12 +155,15 @@ public final class ServerHumanFactory {
             }
         }
         if (dead != null) for (String key : dead) markDead(key);
+        if(store!=null&&now>=nextCheckpoint){nextCheckpoint=now+1000000000L;for(String key:instances.keySet())checkpoint(key,false);}
     }
 
     /** Register logical state independently of a live presentation. Simulation thread only. */
     public void registerDormant(ServerHumanDefinition definition) {
         requireOwner();
         ServerHumanProfiles.registry().require(definition.profileId());
+        if(instances.size()+retiredKeys.size()>=256)throw new IllegalStateException("NPC logical instance limit reached");
+        if(retiredKeys.contains(definition.key()))throw new IllegalArgumentException("NPC key permanently retired");
         if (instances.containsKey(definition.key())) throw new IllegalArgumentException("Duplicate human key: " + definition.key());
         String name = canonicalName(definition.username());
         if (reservedNames.contains(name)) throw new IllegalArgumentException("Human username already used in this server process");
@@ -132,7 +189,10 @@ public final class ServerHumanFactory {
         try {
             short id = allocateId();
             ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell);
+            var restored=checkpoints.get(key);
+            if(restored!=null){human.player.setX(restored.x());human.player.setY(restored.y());human.player.setZ(restored.z());human.player.realx=restored.x();human.player.realy=restored.y();human.player.realz=(byte)restored.z();human.postX=restored.x();human.postY=restored.y();}
             humans.put(key,human); byId.put(id,human); instance.active(human.profile.revision());
+            checkpoint(key,false);
             DebugLog.log("[ApocBR][ServerHumans] Spawned key=" + key + " profile=" + definition.profileId()
                 + " id=" + id + " at=" + definition.x() + "," + definition.y() + "," + definition.z());
             ServerHumanDialogue.rosterChanged();
@@ -165,6 +225,7 @@ public final class ServerHumanFactory {
         if (human == null) return false;
         byId.remove(human.player.getOnlineID());
         if (death) instances.get(key).dead(); else instances.get(key).dormant();
+        checkpoint(key,false,human);
         human.dispose();
         ServerHumanDialogue.rosterChanged();
         return true;
@@ -175,8 +236,23 @@ public final class ServerHumanFactory {
         requireOwner();
         if (!instances.containsKey(key)) return false;
         deactivate(key);
-        instances.remove(key);
+        checkpoint(key,true);
+        instances.remove(key);retiredKeys.add(key);
         return true;
+    }
+
+    private void checkpoint(String key,boolean retired){checkpoint(key,retired,humans.get(key));}
+    private void checkpoint(String key,boolean retired,ServerHuman human) {
+        if(store==null)return;
+        var logical=instances.get(key);var d=logical.definition();var old=checkpoints.get(key);
+        float x=human!=null?human.player.getX():old!=null?old.x():d.x();
+        float y=human!=null?human.player.getY():old!=null?old.y():d.y();
+        int z=human!=null?human.player.getZi():old!=null?old.z():d.z();
+        long revision=old==null?1:old.revision();
+        var state=new zombie.savefile.ApocBRNpcStore.State(d,logical.state(),logical.activations(),logical.snapshot().profileRevision(),x,y,z,revision,retired);
+        if(old!=null&&old.equals(state))return;
+        state=new zombie.savefile.ApocBRNpcStore.State(d,state.lifecycle(),state.activations(),state.profileRevision(),x,y,z,revision+1,retired);
+        store.offer(state);checkpoints.put(key,state);
     }
 
     /** Fallback for vanilla clients discovering/reloading an unknown remote-player ID. */

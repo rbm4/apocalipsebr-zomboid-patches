@@ -1,6 +1,6 @@
 package zombie.apocalipse.humans;
 
-/** Logical NPC state survives presentation removal. PostgreSQL storage comes later. */
+/** Logical NPC state survives presentation removal. Persistence never contains the presentation actor. */
 public final class HumanLifecycle {
     public enum State { DORMANT, SPAWNING, ACTIVE, DEAD }
     public record Snapshot(ServerHumanDefinition definition, State state, int activations, int profileRevision) { }
@@ -10,6 +10,10 @@ public final class HumanLifecycle {
     private int activations;
     private int profileRevision;
     HumanLifecycle(ServerHumanDefinition definition) { this.definition = definition; }
+    void restore(State persisted,int count,int revision) {
+        if(state!=State.DORMANT||activations!=0)throw new IllegalStateException("Already initialized");
+        state=persisted==State.DEAD?State.DEAD:State.DORMANT;activations=count;profileRevision=revision;
+    }
     public ServerHumanDefinition definition() { return definition; }
     public State state() { return state; }
     public int activations() { return activations; }

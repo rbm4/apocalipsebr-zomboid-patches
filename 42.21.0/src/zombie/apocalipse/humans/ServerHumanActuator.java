@@ -12,17 +12,21 @@ import zombie.network.GameServer;
 final class ServerHumanActuator implements HumanActuator {
     static final double VISITOR_RADIUS_SQUARED = 8.0 * 8.0;
     private final ServerHuman human;
+    private long nextPerception;
+    private HumanObservation cached;
 
     ServerHumanActuator(ServerHuman human) { this.human = human; }
 
     HumanObservation observe(long now) {
+        if(cached!=null&&now<nextPerception)return new HumanObservation(now,cached.visitors(),cached.canRoam());
+        nextPerception=now+human.profile.perceptionIntervalMs()*1000000L;
         ArrayList<HumanObservation.Visitor> visitors = new ArrayList<>();
         for (IsoPlayer player : GameServer.Players) {
             if (eligible(player)) {
                 double dx = player.getX() - human.player.getX();
                 double dy = player.getY() - human.player.getY();
                 double distance = dx * dx + dy * dy;
-                if (distance <= VISITOR_RADIUS_SQUARED && visible(player)) {
+                if (distance <= radiusSquared() && visible(player)) {
                     visitors.add(new HumanObservation.Visitor(
                         new HumanObservation.Identity(player.getOnlineID(), player.getID()),
                         player.getX(), player.getY(), player.getZ(), distance));
@@ -31,7 +35,9 @@ final class ServerHumanActuator implements HumanActuator {
         }
         boolean viewed = false;
         for (UdpConnection viewer : human.viewers) if (human.isRelevant(viewer)) { viewed = true; break; }
-        return new HumanObservation(now, visitors, viewed && human.roaming.available());
+        visitors.sort(java.util.Comparator.comparingDouble(HumanObservation.Visitor::distanceSquared));
+        cached=new HumanObservation(now,visitors.subList(0,Math.min(128,visitors.size())),viewed&&human.roaming.available());
+        return cached;
     }
 
     private boolean eligible(IsoPlayer player) {
@@ -42,7 +48,9 @@ final class ServerHumanActuator implements HumanActuator {
         return connection != null && connection.isFullyConnected() && !GameServer.isDelayedDisconnect(player);
     }
 
+    private double radiusSquared(){return human.profile.perceptionRadius()*human.profile.perceptionRadius();}
     private boolean visible(IsoPlayer player) {
+        if(!human.profile.requireLos())return true;
         if (human.player.getCell().getGridSquare(human.player.getXi(), human.player.getYi(), human.definition.z()) == null
             || player.getCurrentSquare() == null) return false;
         LosUtil.TestResults result = LosUtil.lineClear(human.player.getCell(),
@@ -57,7 +65,7 @@ final class ServerHumanActuator implements HumanActuator {
         if (!eligible(player) || player.getID() != identity.instanceId()) return false;
         float dx = player.getX() - human.player.getX();
         float dy = player.getY() - human.player.getY();
-        if ((double)dx * dx + (double)dy * dy > VISITOR_RADIUS_SQUARED || !visible(player)) return false;
+        if ((double)dx * dx + (double)dy * dy > radiusSquared() || !visible(player)) return false;
         if (dx != 0 || dy != 0) human.player.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy, dx)));
         return true;
     }

@@ -105,7 +105,7 @@ public class ProfilesTest {
   check(f.markDead("guide")&&f.lifecycle("guide").state()==HumanLifecycle.State.DEAD,"death terminal at outer lifecycle");
   invalid(()->f.activate("guide"));check(f.remove("guide")&&f.lifecycle("guide")==null,"administrative removal clears logical record");
   short other=f.spawn(definition("different-key","lobby-guide"));
-  check(ServerHumanFactory.tradingHuman(other).activity.behavior() instanceof GuideBrain,"guide profile works under arbitrary actor key");
+  check(ServerHumanFactory.tradingHuman(other).activity.behavior() instanceof HumanModuleRuntime,"guide profile works under arbitrary actor key");
   var active=ServerHumanFactory.tradingHuman(other);active.player.dead=true;f.tick(ServerHumanFactory.BRAIN_UPDATE_NANOS);
   check(f.lifecycle("different-key").state()==HumanLifecycle.State.DEAD,"simulation detects active NPC death");
   var live=profile("editable",1,"idle",Map.of());builtins.register(live);short version=f.spawn(definition("editable","editable"));

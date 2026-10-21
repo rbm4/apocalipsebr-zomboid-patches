@@ -9,6 +9,18 @@ import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = {
+    "zombie/savefile/ApocBRNpcStore.java": """package zombie.savefile;
+import java.util.*;import zombie.apocalipse.humans.*;import zombie.apocalipse.humans.profiles.*;
+public final class ApocBRNpcStore {
+ public record State(ServerHumanDefinition definition,HumanLifecycle.State lifecycle,int activations,int profileRevision,float x,float y,int z,long revision,boolean retired){}
+ public record Restored(State state,boolean activate){}
+ public record Loaded(List<HumanProfile> profiles,List<Restored> instances){}
+ public static boolean enabled(){return false;}
+ public static ApocBRNpcStore start(String s,String w,ServerHumanDefinition d){throw new AssertionError("Unexpected database initialization");}
+ public Loaded takeLoaded(){return null;}public List<HumanProfile> takeProfiles(){return null;}public boolean healthy(){return true;}public void offer(State s){}
+}
+""",
+
     "zombie/iso/IsoDirections.java": """package zombie.iso;
 public enum IsoDirections { N,NW,W,SW,S,SE,E,NE }
 """,
@@ -95,6 +107,7 @@ public class DebugLog {public static void log(String value){}}
     "zombie/network/GameServer.java": """package zombie.network;
 import java.util.*;import zombie.characters.IsoPlayer;import zombie.core.raknet.UdpConnection;
 public class GameServer {
+ public static String serverName="fixture";
  public static boolean server=true;
  public static final Map<Short,IsoPlayer> IDToPlayerMap=new HashMap<>();
  public static final Map<Short,Long> IDToAddressMap=new HashMap<>();
@@ -344,12 +357,13 @@ FILES["zombie/apocalipse/humans/FactoryTest.java"] = FILES["zombie/apocalipse/hu
   visitor.x=102.5f;visitor.y=200.75f;
   check(human.actuator.face(identity)&&Math.abs(human.player.angle)<.0001,"same visitor identity resolves its new eastward position");
   visitor.x=100.5f;visitor.y=202.75f;
-  visitor.invisible=true;check(human.actuator.observe(11).visitors().isEmpty(),"invisible player ignored");visitor.invisible=false;
-  visitor.dead=true;check(human.actuator.observe(11).visitors().isEmpty(),"dead player ignored");visitor.dead=false;
-  visitor.z=1;check(human.actuator.observe(11).visitors().isEmpty(),"other floor ignored");visitor.z=0;
-  visitor.x=200;check(human.actuator.observe(11).visitors().isEmpty(),"distant player ignored");visitor.x=100.5f;
-  LosUtil.result=LosUtil.TestResults.Blocked;check(human.actuator.observe(11).visitors().isEmpty(),"wall blocks perception");
-  LosUtil.result=LosUtil.TestResults.ClearThroughClosedDoor;check(human.actuator.observe(11).visitors().isEmpty(),"closed door blocks perception");
+  // Perception snapshots are refreshed on the configured 100 ms cycle; actuation validates immediately.
+  visitor.invisible=true;check(!human.actuator.face(identity),"invisible visitor cannot be faced between perception samples");check(human.actuator.observe(100000010L).visitors().isEmpty(),"invisible player ignored");visitor.invisible=false;
+  visitor.dead=true;check(human.actuator.observe(200000010L).visitors().isEmpty(),"dead player ignored");visitor.dead=false;
+  visitor.z=1;check(human.actuator.observe(300000010L).visitors().isEmpty(),"other floor ignored");visitor.z=0;
+  visitor.x=200;check(human.actuator.observe(400000010L).visitors().isEmpty(),"distant player ignored");visitor.x=100.5f;
+  LosUtil.result=LosUtil.TestResults.Blocked;check(!human.actuator.face(identity),"new obstruction blocks actuation immediately");check(human.actuator.observe(500000010L).visitors().isEmpty(),"wall blocks perception");
+  LosUtil.result=LosUtil.TestResults.ClearThroughClosedDoor;check(human.actuator.observe(600000010L).visitors().isEmpty(),"closed door blocks perception");
   LosUtil.result=LosUtil.TestResults.Clear;
   human.viewers.add(near);
   zombie.network.packets.actions.StatePacket.sent.clear();

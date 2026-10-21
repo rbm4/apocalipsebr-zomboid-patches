@@ -8,6 +8,7 @@ public final class HumanActivityController {
     private final HumanBehavior behavior;
     private final boolean dialogue, trade;
     private String failure;
+    private boolean blocked;
     public String failure() { return failure; }
     private Mode mode = Mode.AUTONOMOUS;
     private HumanObservation.Identity visitor;
@@ -17,13 +18,14 @@ public final class HumanActivityController {
     public Mode mode() { return mode; }
     public HumanBehavior behavior() { return behavior; }
     public void update(long now, java.util.function.LongFunction<HumanObservation> perceive, HumanActuator actuator) {
-        if (mode == Mode.STOPPED) return;
+        if (mode == Mode.STOPPED || blocked) return;
         try {
             update(mode == Mode.AUTONOMOUS && behavior.needsPerception() ? perceive.apply(now)
                 : new HumanObservation(now,java.util.List.of()), actuator);
         } catch (RuntimeException problem) { fail(problem,now,actuator); }
     }
     public void update(HumanObservation observation, HumanActuator actuator) {
+        if(blocked)return;
         try {
             if (mode == Mode.AUTONOMOUS) behavior.update(observation, actuator);
             else if (mode == Mode.TRADE || mode == Mode.DIALOGUE) actuator.face(visitor);
@@ -31,7 +33,7 @@ public final class HumanActivityController {
     }
     private boolean begin(Mode next, HumanObservation.Identity visitor, long now, HumanActuator actuator) {
         Objects.requireNonNull(visitor);
-        if (mode != Mode.AUTONOMOUS) return false;
+        if (mode != Mode.AUTONOMOUS || blocked) return false;
         try {
             if (!behavior.available()) return false;
             behavior.suspend(now, actuator);
@@ -61,6 +63,16 @@ public final class HumanActivityController {
     }
     public void finishTrade(long now, HumanActuator actuator) {
         if (mode == Mode.TRADE || mode == Mode.RECORDING_SALE) finish(now, actuator);
+    }
+    /** Generic external availability gate; callers close any exclusive lease before blocking. */
+    public void setBlocked(boolean value,long now,HumanActuator actuator) {
+        if(blocked==value||mode==Mode.STOPPED)return;
+        if(mode!=Mode.AUTONOMOUS)throw new IllegalStateException("Release exclusive activity before blocking");
+        blocked=value;
+        try {
+            if(value){behavior.suspend(now,actuator);actuator.stopMoving();actuator.stopEmote();}
+            else behavior.resume(null,now,actuator);
+        }catch(RuntimeException problem){fail(problem,now,actuator);}
     }
     public void stop(long now, HumanActuator actuator) {
         if (mode == Mode.STOPPED) return;

@@ -9,12 +9,13 @@ import java.util.function.Supplier;
 import zombie.apocalipse.humans.profiles.GuidePolicy;
 
 /** Deterministic greeting policy. No world queries, threads, sleeps, or packet code. */
-public final class GuideBrain extends HumanStateMachine<GuideBrain.State> implements HumanBehavior {
+public final class GuideBrain extends HumanStateMachine<GuideBrain.State> implements HumanModule {
     public enum State { IDLE, ROAMING, FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, SUSPENDED, RETURNING_HOME, COOLDOWN, STOPPED }
     private static final int MAX_GREETING_HISTORY = 2048;
     private final Map<HumanObservation.Identity, Long> greeted = new HashMap<>();
     private HumanObservation.Identity target;
     private boolean started;
+    private boolean roamingEnabled=true;
     private final HumanAnnouncementProvider announcements;
 
     private final GuidePolicy policy;
@@ -24,6 +25,21 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> implem
         this.announcements = Objects.requireNonNull(announcements);
         this.policy = Objects.requireNonNull(policy);
         this.greeting = Objects.requireNonNull(greeting);
+    }
+
+    /** Greeting module variant shares the tested attention/speech cycle, without owning roaming. */
+    public GuideBrain greetingOnly() { roamingEnabled=false;return this; }
+    public boolean eligible(HumanObservation observation) {
+        if(!available()||state()==State.SUSPENDED)return false;
+        if(state()!=State.IDLE&&state()!=State.ROAMING)return true;
+        long now=observation.nowNanos();
+        return observation.visitors().stream().anyMatch(v ->
+            (!greeted.containsKey(v.identity())||now-greeted.get(v.identity())>=policy.visitorCooldown())
+            && (greeted.size()<MAX_GREETING_HISTORY||greeted.containsKey(v.identity())));
+    }
+    public void interrupt(long now,HumanActuator actuator) {
+        if(state()==State.IDLE)return;
+        suspend(now,actuator);resume(null,now,actuator);
     }
 
     public void update(HumanObservation observation, HumanActuator actuator) {
@@ -49,7 +65,7 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> implem
                 greeted.put(target, now);
                 transition(State.FACING_VISITOR, new HumanAction.FaceVisitor(target), "visitor_selected", now, actuator);
             } else if (state() == State.IDLE) {
-                if (!observation.canRoam() || now - enteredAt < policy.roamPause()) return;
+                if (!roamingEnabled || !observation.canRoam() || now - enteredAt < policy.roamPause()) return;
                 transition(State.ROAMING, new HumanAction.Roam(), "idle_roam_due", now, actuator);
             } else if (!observation.canRoam()) {
                 transition(State.IDLE, null, "roaming_unavailable", now, actuator);

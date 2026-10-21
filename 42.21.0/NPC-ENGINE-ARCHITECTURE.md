@@ -124,3 +124,20 @@ and interruption behavior on a dedicated server before claiming live validation.
 
 Related: [profiles/lifecycle](NPC-PROFILES-LIFECYCLE.md), [server-owned humans](SERVER-HUMANS.md), [NPC dialogue](NPC-DIALOGUE.md),
 [event controller](LOBBY-EVENT-CONTROL.md).
+
+
+## Shared modules and persistence ownership
+
+Modular roles compose registered `HumanModule` implementations through
+`HumanModuleRuntime`; a new bot role must not duplicate scheduling, perception,
+action execution, database access or lifecycle code. Eligibility must be pure;
+only the selected module may actuate. Interruptions must cancel active actions
+and leave reusable policy state. Dialogue/trade/availability remain above module
+arbitration. Profiles hold immutable data, never shared mutable policy instances.
+
+Logical NPC state belongs to the NPC engine, with IsoPlayer as a replaceable
+presentation. Capture detached mutation snapshots on the simulation thread; the
+worker and shared journal own JDBC, durability and retries. Never persist native
+IDs, Java references, connections or monotonic deadlines. New semantic memory
+requires versioned codecs and explicit restart/cancellation rules. See
+[NPC-PERSISTENCE.md](NPC-PERSISTENCE.md) for the implemented schema and ownership fence.

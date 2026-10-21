@@ -19,6 +19,7 @@ public final class HumanProfileRegistry {
     }
     private void validate(HumanProfile profile) {
         Objects.requireNonNull(profile);
+        if(!profile.behaviorId().equals("modules")&&!profile.modules().isEmpty())throw new IllegalArgumentException("Legacy behavior does not accept module bindings");
         Factory factory = factories.get(profile.behaviorId());
         if (factory == null) throw new IllegalArgumentException("Unknown behavior: " + profile.behaviorId());
         factory.validate.accept(profile);
@@ -33,6 +34,16 @@ public final class HumanProfileRegistry {
         HumanProfile previous = require(profile.id());
         if (profile.revision() <= previous.revision()) throw new IllegalArgumentException("Profile revision must advance");
         profiles.put(profile.id(),profile);
+    }
+    /** Validate the entire worker batch before publishing any of it on the simulation thread. */
+    public synchronized void install(java.util.List<HumanProfile> batch,boolean initial) {
+        if(batch.stream().map(HumanProfile::id).distinct().count()!=batch.size())throw new IllegalArgumentException("Duplicate database profiles");
+        for(var profile:batch){
+            validate(profile);var old=profiles.get(profile.id());
+            if(!initial&&old!=null&&(profile.revision()<old.revision()||profile.revision()==old.revision()&&!profile.equals(old)))
+                throw new IllegalArgumentException("Database profile revision must advance");
+        }
+        for(var profile:batch)profiles.put(profile.id(),profile);
     }
     public synchronized HumanProfile require(String id) {
         HumanProfile profile = profiles.get(id);

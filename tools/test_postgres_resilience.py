@@ -519,6 +519,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
     harness = target / 'ApocBRResilienceTest.java'
     harness.write_text(HARNESS, encoding='utf-8')
     files += list((SRC / 'savefile').glob('ApocBR*.java'))
+    files += [SRC / 'apocalipse/humans/ServerHumanDefinition.java', SRC / 'apocalipse/humans/HumanLifecycle.java', SRC / 'apocalipse/humans/profiles/HumanProfile.java', SRC / 'apocalipse/humans/profiles/HumanModuleBinding.java']
     files += [SRC / 'world/ApocBRWorldDictionarySnapshot.java', SRC / 'world/ApocBRWorldDictionaryDecode.java', harness]
     cp = os.pathsep.join(map(str, [GAME, LIB / 'postgresql-42.7.14.jar', LIB / 'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK / 'javac.exe'), '--release', '25', '-cp', cp, '-d', folder, *map(str, files)], check=True)

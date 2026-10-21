@@ -197,7 +197,7 @@ public final class ApocBRPostgresConnector {
             &&!ApocBRPlayerRelationalMutations.hasPending(world,identity,slot,coop));
     }
     public static void awaitPersistence(){ApocBRPersistence.drain();}
-    public static void runShutdownDatabaseWork(Runnable work){ApocBRAsyncLogin.shutdown();ApocBRPersistence.shutdownWork(work);}
+    public static void runShutdownDatabaseWork(Runnable work){ApocBRNpcStore.shutdown();ApocBRAsyncLogin.shutdown();ApocBRPersistence.shutdownWork(work);}
     /** Dedicated I/O workers use normal pool/socket budgets and may operate during recovery. */
     public static void runBackgroundDatabaseWork(Runnable work){
         boolean previous=ApocBRPersistence.background();ApocBRPersistence.background(true);
@@ -260,6 +260,7 @@ public final class ApocBRPostgresConnector {
 
     /** After native vehicle Reset has flushed its remaining work. */
     public static void closePool() {
+        ApocBRNpcStore.shutdown();
         ApocBRAsyncLogin.shutdown();
         ApocBRPersistence.close();
         dictionaryShutdown.run();

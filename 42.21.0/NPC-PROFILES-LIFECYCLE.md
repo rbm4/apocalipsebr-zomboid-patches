@@ -1,8 +1,9 @@
 # NPC profiles, activity ownership and logical lifecycle
 
 Status: implemented for server Build 42.21.0; regression fixtures and game-JAR
-dry compilation pass. Awaiting live dedicated-server validation. PostgreSQL
-persistence is the next integration phase and is not implemented by this change.
+dry compilation pass. Awaiting live dedicated-server validation. Shared modules and
+PostgreSQL persistence are now implemented; the current storage, setup and module
+contracts are in [NPC-PERSISTENCE.md](NPC-PERSISTENCE.md).
 
 ## Identity and configuration
 
@@ -15,8 +16,8 @@ The existing nine-argument definition constructor remains source-compatible and
 selects `roaming-greeter`. It never derives behavior from the actor key. The JVM
 startup guide explicitly selects `lobby-guide`; override it using
 `-Dapocbr.guide.profile=<registered-id>`. The remaining guide JVM settings retain
-their existing meaning. This bootstrap creates the initial actor; future
-PostgreSQL intake should call the same generic logical registration API.
+their existing meaning. This bootstrap creates the initial actor;
+PostgreSQL intake calls the same generic logical registration API.
 
 `HumanProfile` is immutable data: `id`, positive `revision`, allowlisted
 `behaviorId`, immutable millisecond `parameters`, `greetingKey`,
@@ -26,8 +27,8 @@ content adapters are registered in code separately from this data.
 
 | Built-in profile | Behavior | Announcement source | Dialogue | Trading |
 | --- | --- | --- | --- | --- |
-| `lobby-guide` | Guide roam/greet policy | `operations` | Yes | Yes |
-| `roaming-greeter` | Guide roam/greet policy | `none` | Yes | Yes |
+| `lobby-guide` | Shared greet + roam modules | `operations` | Yes | Yes |
+| `roaming-greeter` | Shared greet + roam modules | `none` | Yes | Yes |
 | `stationary` | Independent `IdleBehavior` | `none` | Yes | No |
 
 `ServerHumanProfiles` is the production composition root. `HumanProfileRegistry`
@@ -64,7 +65,7 @@ profiles.register(new HumanProfile(
 This creates another policy configuration using the existing guide behavior;
 no new executor or actuator subclass is needed. A different algorithm registers
 its own allowlisted behavior factory through `registerBehavior`, implementing
-`HumanBehavior`. A future database editor can maintain the same data fields and
+`HumanBehavior`. A database editor can maintain the same data fields and
 advance `revision`; it cannot install arbitrary Java functions. Existing dialogue
 option content remains in the server Lua registry keyed by logical NPC identity.
 
@@ -105,7 +106,7 @@ or actor-key decision is left in the actuator or action executor.
 
 `HumanLifecycle` retains logical definition, state, successful activation count and last bound profile revision
 independently of the active `ServerHuman`. Its read API returns immutable
-`HumanLifecycle.Snapshot` values suitable for a future storage adapter.
+`HumanLifecycle.Snapshot` values captured by the independent NPC storage adapter.
 
 ```mermaid
 stateDiagram-v2
@@ -148,37 +149,16 @@ revision. It allocates a fresh presentation ID. The existing no-reuse policy,
 name reservations and **64 total presentation IDs per server process** remain in
 force. This prevents delayed packets from targeting a different incarnation;
 automatic activation churn must wait for a separately validated transport/ID
-policy. Logical keys/profile IDs, not presentation IDs, are future storage keys.
+policy. Logical keys/profile IDs, not presentation IDs, are the storage keys.
 
-## PostgreSQL boundary for the next phase
+## PostgreSQL persistence
 
-No schema, migration, SQL worker or backend route is required for this refactor.
-The registry and lifecycle remain usable with code/bootstrap data. No NPC profile
-or logical state currently survives a server restart; this is not a durability
-claim. Existing trade receipt persistence is unchanged.
-
-The next phase can introduce a dedicated schema such as `npc_engine`, with:
-
-- Versioned profile rows containing the pure `HumanProfile` data and a config format version.
-- Logical instance rows scoped to server/world and keyed by logical NPC key, selecting `profileId` plus definition/desired lifecycle data.
-- Separately versioned observed state/checkpoints if restoration of position,
-  mortality or durable behavior progress is required. Do not persist transient
-  executor stacks, native presentation IDs, monotonic nanosecond timestamps,
-  connection objects or dialogue/trade session tokens.
-
-These are proposed ownership boundaries, not a committed SQL schema. A backend
-editor would write data/revisions, never class names or arbitrary executable
-callbacks. A database worker must load immutable desired snapshots, validate
-them through the registry, and marshal activation/configuration changes onto the
-simulation thread. Explicitly define server/world scope, startup reconciliation,
-deletion, offline edits, stale revisions, failure behavior and DEAD restoration
-before adding polling or write-back. No per-tick SQL is allowed. Observed state
-must not overwrite newer desired administrative changes.
-
-Any eventual backend migration must include the engine role's schema, table,
-sequence and creator-default grants required by root `AGENTS.md`, and be tested
-using distinct migration/engine roles. The user will run that migration; this
-change does not create or modify any live database.
+The worker, migration, profile/module schema, mutation snapshots and ownership
+fence are implemented. See [NPC-PERSISTENCE.md](NPC-PERSISTENCE.md) for setup,
+maintenance transactions, limits, restart semantics, failure handling and tests.
+NPCs never enter the player persistence graph; existing trade receipts retain
+their established transactional flow. The user applies the new V15 migration;
+no live database has been changed.
 
 ## Verification
 
@@ -199,3 +179,17 @@ server. No live runtime behavior or PostgreSQL integration is claimed by mocks.
 
 Related: [architecture contract](NPC-ENGINE-ARCHITECTURE.md),
 [server-owned humans](SERVER-HUMANS.md), [NPC dialogue](NPC-DIALOGUE.md).
+
+
+## A-Life comparison before the PostgreSQL migration
+
+The installed Project A-Life source uses a common actor/runtime, distinct NPC
+templates and behavior presets, registered priority-ordered modules, shared
+perception and layered relationships. The current single behavior-factory
+selection is a baseline for a module pipeline, not the final persistence schema.
+Read the [source investigation and proposed form/data model](docs/npc-alife-runtime-investigation.md)
+before creating the initial migration and guide seed. That report distinguishes
+verified A-Life behavior from proposed extensions and preserves the existing
+lifecycle/activity/execution boundaries.
+
+The A-Life investigation predates implementation; its proposed model is now refined by [the implemented storage/module contract](NPC-PERSISTENCE.md).

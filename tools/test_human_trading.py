@@ -47,7 +47,7 @@ public class TradingTest {
   PlayerID spoof=new PlayerID();spoof.id=id;spoof.index=0;ServerHumanTrading.resolveTarget(spoof);
   check(spoof.player==null,"local index cannot masquerade as remote NPC");
   check(ServerHumanTrading.request(visitor,second,connection,true)==false,"ordinary player trades fall through");
-  open(visitor,npc,attacker);check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((GuideBrain)npc.activity.behavior()).state()==GuideBrain.State.IDLE),"foreign connection cannot open offer");
+  open(visitor,npc,attacker);check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((HumanModuleRuntime)npc.activity.behavior()).selectedModule()==null),"foreign connection cannot open offer");
   check(open(visitor,npc,connection)&&npc.activity.mode()==HumanActivityController.Mode.TRADE,"native open pauses brain");
   npc.activity.update(new HumanObservation(System.nanoTime(),List.of()),npc.actuator);
   check(npc.activity.mode()==HumanActivityController.Mode.TRADE&&!npc.moving,"trade action keeps attention without roaming");
@@ -69,7 +69,7 @@ public class TradingTest {
   check(ServerPlayerDB.saves==1,"authoritative post-sale inventory captured");
   check(INetworkPacket.messages.stream().anyMatch(m->m.type()==PacketTypes.PacketType.RemoveInventoryItemFromContainer),"native inventory removal sent to owner");
   accept(visitor,npc,connection);check(ApocBRHumanSales.sales.size()==1,"duplicate finalize cannot sell twice");
-  check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((GuideBrain)npc.activity.behavior()).state()==GuideBrain.State.RETURNING_HOME),"sale returns brain to ordinary lifecycle");
+  check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((HumanModuleRuntime)npc.activity.behavior()).selectedModule()==null),"sale returns brain to ordinary lifecycle");
   InventoryItem valuable=item(visitor,13,"Base.Diamond");open(visitor,npc,connection);
   ServerHumanTrading.addItem(visitor,npc.player,connection,valuable);seal(visitor,npc,connection);accept(visitor,npc,connection);
   check(!visitor.inventory.items.contains(valuable)&&ApocBRHumanSales.sales.size()==1,"non-money offer destroyed without creating money receipt");
@@ -88,9 +88,9 @@ public class TradingTest {
   visitor.x=200;accept(visitor,npc,connection);visitor.x=101;
   check(visitor.inventory.items.contains(first)&&ApocBRHumanSales.sales.size()==2,"out of range finalization cancels safely");
   open(visitor,npc,connection);connection.connected=false;ServerHumanTrading.update(npc,System.nanoTime());connection.connected=true;
-  check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((GuideBrain)npc.activity.behavior()).state()==GuideBrain.State.RETURNING_HOME),"disconnect releases guide");
+  check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((HumanModuleRuntime)npc.activity.behavior()).selectedModule()==null),"disconnect releases guide");
   open(visitor,npc,connection);ServerHumanTrading.update(npc,System.nanoTime()+181_000_000_000L);
-  check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((GuideBrain)npc.activity.behavior()).state()==GuideBrain.State.RETURNING_HOME),"inactive trade times out");
+  check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((HumanModuleRuntime)npc.activity.behavior()).selectedModule()==null),"inactive trade times out");
   ApocBRHumanSales.enabled=false;open(visitor,npc,connection);ApocBRHumanSales.enabled=true;
   check(!RequestTradingPacket.replies.getLast().accepted(),"unavailable persistence rejects before acceptance");
   var bundle=item(visitor,30,"Base.MoneyBundle");var note=item(visitor,31,"Base.Money");
