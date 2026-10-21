@@ -75,6 +75,29 @@ while preserving it in the detached profile for `registerPostgresPlayer`.
 The regression restores native item IDs from a reader-shaped row containing the
 UUID and verifies that the UUID remains in the row. No data migration is required.
 
+## Non-finite floating-point values during reconstruction
+
+The reported `clothing_state.wetness` failure reached a native `float` field but
+reflection rejected its value. PostgreSQL's JSON representation quotes `NaN`,
+`Infinity` and `-Infinity`; previously the reader retained those as strings,
+which produces this failure. The supplied log does not expose the stored value,
+so identifying which special value was present still requires a database check.
+
+The reader now decodes string values in schema-declared `real` and
+`double precision` columns to their numeric Java types before publishing the
+detached profile. Native non-finite values are preserved rather than replaced
+with zero; text columns remain text and malformed numeric strings fail the read.
+This also handles floating-point component values and numeric keys, which use
+direct `Number` casts during restoration. No schema or saved-data migration is
+required. Item-state restoration now updates the diagnostic item subject for
+each row, avoiding a stale subject from the preceding item-creation loop.
+
+`tools/test_postgres_player_reconstruction.py` covers the production JSON/JDBC
+read through native Clothing wetness assignment for all three special values and
+a finite value, double-precision component values/keys, unchanged text columns
+and malformed numeric rejection. Live verification requires reloading the
+affected character after deploying the server patch.
+
 ## New-character persistence handoff (including respawn)
 
 `READ_BLOCKED` immediately after `CreatePlayerPacket` can mean that the new life

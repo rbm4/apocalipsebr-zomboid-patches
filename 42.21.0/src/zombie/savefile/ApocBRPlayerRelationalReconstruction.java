@@ -195,7 +195,11 @@ final class ApocBRPlayerRelationalReconstruction {
             else throw new IllegalStateException("Unknown inventory relation");
         }
         for(var r:rows("visual"))if(r.get("owner_item_id")!=null){Object item=ref(r.get("owner_item_id")),visual=ref(r.get("id"));set(item,"visual",visual);call(visual,"setInventoryItem",item);}
-        for(String table:List.of("weapon_state","food_state","clothing_state","literature_state","alarm_state","key_state","moveable_state"))for(var r:rows(table))project(table,ref(r.get("item_id")),r,"item_id");
+        for(String table:List.of("weapon_state","food_state","clothing_state","literature_state","alarm_state","key_state","moveable_state"))for(var r:rows(table)) {
+            InventoryItem item=(InventoryItem)ref(r.get("item_id"));
+            ApocBRPlayerReconstructionLog.subject("item",r.get("item_id"),item.getFullType());
+            project(table,item,r,"item_id");
+        }
         String[][] extras={{"item_extra","extraItems","full_type"},{"food_spice","spices","full_type"},{"literature_recipe","learnedRecipes","recipe_key"}};
         for(var e:extras)for(var r:rows(e[0])){Object item=ref(r.get("item_id"));Object list=get(item,e[1]);if(list==null){list=new ArrayList<>();set(item,e[1],list);}add(list,r.get(e[2]));}
         for(var r:rows("literature_page")){Object item=ref(r.get("item_id"));Object pages=get(item,"customPages");if(pages==null){pages=new HashMap<>();set(item,"customPages",pages);}put(pages,r.get("page_key"),r.get("text"));}

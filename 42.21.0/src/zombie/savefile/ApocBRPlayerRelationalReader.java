@@ -118,7 +118,17 @@ public final class ApocBRPlayerRelationalReader {
                         bytes+=json.length()*2L;
                         if(++count>ApocBRPlayerRelationalLimits.ROWS+1||bytes>ApocBRPlayerRelationalLimits.GRAPH_BYTES)
                             throw new SQLException("Relational login read exceeds graph budget","54000");
-                        tables.computeIfAbsent(table,k->new ArrayList<>()).add(new JSONObject(json).toMap());
+                        Map<String,Object> row=new JSONObject(json).toMap();
+                        // PostgreSQL JSON quotes non-finite real/double values (NaN and +/-Infinity).
+                        // Decode by schema so native fields and component values receive Numbers,
+                        // while text columns containing the same strings remain text.
+                        for(var column:ApocBRPlayerRelationalSchema.TABLES.getOrDefault(table,List.of())) {
+                            if(row.get(column.name()) instanceof String value) {
+                                if(column.type().equals("real"))row.put(column.name(),Float.valueOf(value));
+                                else if(column.type().equals("double precision"))row.put(column.name(),Double.valueOf(value));
+                            }
+                        }
+                        tables.computeIfAbsent(table,k->new ArrayList<>()).add(row);
                     }
                 }
                 trace.event("ROWS_READ","; rows="+count+"; estimatedBytes="+bytes);

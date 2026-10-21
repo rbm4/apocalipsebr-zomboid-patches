@@ -99,6 +99,32 @@ public class ReconstructionTest {
  static Object invoke(String name,Class<?>[] types,Object... args)throws Exception {
   var method=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod(name,types);method.setAccessible(true);return method.invoke(null,args);
  }
+ static void nonFiniteScalars()throws Exception {
+  Fixture f=new Fixture();var reader=new ApocBRPlayerRelationalReader(f::open);
+  String metadata="{\"status\":\"complete\",\"schema_version\":1,\"codec_version\":4,\"expected_object_count\":0,\"expected_item_count\":0,\"expected_container_count\":0,\"expected_edge_count\":0}";
+  // PostgreSQL jsonb_build_object quotes non-finite floating-point values.
+  // Exercise the production JDBC/JSON reader and native Clothing float assignment together.
+  for(String literal:List.of("\"NaN\"","\"Infinity\"","\"-Infinity\"","37.5")) {
+   f.rows=List.<Object[]>of(new Object[]{"snapshot",metadata},
+    new Object[]{"clothing_state","{\"item_id\":1,\"wetness\":"+literal+",\"sprite_name\":\"NaN\"}"},
+    new Object[]{"value_node","{\"number_value\":"+literal+",\"key_number\":"+literal+",\"text_value\":\"Infinity\"}"});
+   var profile=reader.load("world","alice",0,false);
+   var row=profile.rows("clothing_state").getFirst();
+   Object clothing=blank(zombie.inventory.types.Clothing.class);
+   ApocBRPlayerRelationalReconstruction.project("clothing_state",clothing,row,"item_id");
+   float expected=Float.parseFloat(literal.replace("\"",""));
+   check(Float.compare(((zombie.inventory.types.Clothing)clothing).getWetness(),expected)==0,"reader restores native wetness including "+literal);
+   check(row.get("sprite_name").equals("NaN"),"non-finite-looking clothing text remains text");
+   var value=profile.rows("value_node").getFirst();
+   for(String key:List.of("number_value","key_number")) {
+    check(value.get(key) instanceof Number,"double-precision component values and keys are numeric");
+    check(Double.compare(((Number)value.get(key)).doubleValue(),Double.parseDouble(literal.replace("\"","")))==0,"double-precision special value preserved");
+   }
+   check(value.get("text_value").equals("Infinity"),"non-finite-looking component text remains text");
+  }
+  f.rows=List.<Object[]>of(new Object[]{"snapshot",metadata},new Object[]{"clothing_state","{\"wetness\":\"invalid\"}"});
+  try{reader.load("world","alice",0,false);throw new AssertionError("malformed numeric data accepted");}catch(SQLException expected){checks++;}
+ }
  static void components()throws Exception {
   Object attributes=ApocBRPlayerRelationalReconstruction.create("zombie.entity.components.attributes.AttributeContainer");
   var attr=zombie.entity.components.attributes.Attribute.TestUses;
@@ -335,7 +361,7 @@ public class ReconstructionTest {
    check(ApocBRPlayerReconstructionLog.token("\ud83d\ude00\n").length()<=3,"non-ASCII labels cannot break log formatting");
   }finally{sink.set(null,previous);}
  }
- public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();traitRestoration();fitnessPersistence();itemTypes();nativeFields();jdbc();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
+ public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();traitRestoration();fitnessPersistence();itemTypes();nativeFields();jdbc();nonFiniteScalars();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
 }
 '''.replace('ROOTS',roots)
 with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:
