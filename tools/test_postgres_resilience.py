@@ -505,9 +505,10 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
     files = []
     stubs = {
         'zombie/debug/DebugLog.java': 'package zombie.debug; public class DebugLog {public static void log(String text){System.out.println(text);}}',
-        'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static boolean server=true,coop;public static String serverName="fixture";public static zombie.core.raknet.UdpEngine udpEngine;public static boolean isDelayedDisconnect(zombie.core.raknet.UdpConnection c){return false;}}',
+        'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static Thread mainThread=Thread.currentThread();public static boolean server=true,coop;public static String serverName="fixture";public static zombie.core.raknet.UdpEngine udpEngine;public static boolean isDelayedDisconnect(zombie.core.raknet.UdpConnection c){return false;}}',
         'zombie/ZomboidFileSystem.java': 'package zombie; public class ZomboidFileSystem {public static final ZomboidFileSystem instance=new ZomboidFileSystem();public String getSaveDir(){return "unused";}public String getCurrentSaveDir(){return "fixture";}}',
     }
+    stubs['zombie/network/ServerWorldDatabase.java'] = 'package zombie.network; public class ServerWorldDatabase {public static class LoginRoles {}public static void useLoginRoles(LoginRoles roles){}}'
     stubs['zombie/network/PacketTypes.java'] = 'package zombie.network; public class PacketTypes {public enum PacketType {AccessDenied;}}'
     stubs['zombie/network/packets/INetworkPacket.java'] = 'package zombie.network.packets; public interface INetworkPacket {static void send(zombie.network.IConnection c,zombie.network.PacketTypes.PacketType type,Object...args){Counter.denials++;} class Counter {public static int denials;}}'
     for name, content in stubs.items():

@@ -10,9 +10,9 @@ import zombie.pathfind.PolygonalMap2;
 
 /** Server-owned position integration; no player input, fake connection or client AI. */
 final class ServerHumanRoaming implements IndoorRoutePlanner.Grid {
-    static final float SPEED = 1.2F;
-    // Cover the 500 ms heartbeat plus scheduling/network jitter on straight paths.
-    static final double PREDICTION_SECONDS = 0.75;
+    static final float SPEED = 2.0F;
+    // One second (two tiles) covers the 500 ms heartbeat plus jitter on straight paths.
+    static final double PREDICTION_SECONDS = 1.0;
     private final ServerHuman human;
     private BuildingDef building;
     private List<Tile> route = List.of();

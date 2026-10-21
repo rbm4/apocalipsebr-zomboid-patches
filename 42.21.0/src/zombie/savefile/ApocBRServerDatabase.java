@@ -24,13 +24,13 @@ public final class ApocBRServerDatabase {
         return queueBatch(new String[]{sql},new Object[][]{values});
     }
     public static boolean queueBatch(String[] sql,Object[][] values) {
-        if(!enabled()||!ApocBRPersistence.journaling()||ApocBRPersistence.background())return false;
+        if(!enabled()||!ApocBRPersistence.journaling()||ApocBRPersistence.background()||ApocBRAsyncLogin.isWorker())return false;
         java.util.List<ApocBRPersistenceOperations.Sql> statements=new java.util.ArrayList<>();
         for(int i=0;i<sql.length;i++)statements.add(new ApocBRPersistenceOperations.Sql(sql[i],java.util.Arrays.asList(values[i])));
         ApocBRPersistence.submit(new ApocBRPersistenceOperations.Account(statements));return true;
     }
     public static boolean queueUserlog(String username,String type,String text,String issuer,int amount,String capturedAt) {
-        if(!enabled()||!ApocBRPersistence.journaling()||ApocBRPersistence.background())return false;
+        if(!enabled()||!ApocBRPersistence.journaling()||ApocBRPersistence.background()||ApocBRAsyncLogin.isWorker())return false;
         boolean byType=type.equals("LuaChecksum")||type.equals("DupeItem");
         boolean aggregate=byType||java.util.Set.of("Kicked","Banned","SuspiciousActivity","UnauthorizedPacket").contains(type);
         if(!aggregate)return queue("INSERT INTO userlog(username,type,text,issuedby,amount,lastupdate) VALUES(?,?,?,?,?,?)",username,type,text,issuer,amount,capturedAt);
@@ -135,6 +135,7 @@ public final class ApocBRServerDatabase {
         } catch (InvocationTargetException wrapper) {
             Throwable failure = wrapper.getCause();
             if (failure instanceof SQLException sql) {
+                ApocBRForegroundDatabase.failed(sql);
                 // Native exception loggers must not print PG row DETAIL/passwords/2FA secrets.
                 throw new SQLException("PostgreSQL server database operation failed; SQLState="
                         + sql.getSQLState()+"; method="+method.getName()+"; "

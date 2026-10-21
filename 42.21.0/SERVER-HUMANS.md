@@ -12,11 +12,26 @@ resumes roaming after a cooldown. Seated poses, combat, cross-server replication
 walk-up, exclusive conversations and server-controlled reactions. Native guide trades are supported as described below. Compilation and isolated tests pass; appearance, greeting playback
 and streaming still require a live multiplayer test with an unmodified 42.21.0 client.
 
+## Architecture contract
+
+All NPC engine features must follow the
+[object-oriented architecture contract](NPC-ENGINE-ARCHITECTURE.md): separate
+policy, injected content, immutable action plans, execution state, engine
+capabilities and transport. Generic bounded `Sequence`/`Wait`/`Say` actions now
+support reusable multi-phrase behavior with cancellation through the existing
+brain lifecycle. Role selection belongs to registered profile data and the composition root.
+See [profiles and lifecycle](NPC-PROFILES-LIFECYCLE.md) for immutable revisioned
+profiles, guide/roaming-greeter/stationary registrations, shared interaction
+ownership, dormant/active/dead logical state, presentation-ID bounds and the
+future PostgreSQL persistence boundary. No profile persistence is installed yet.
+
 ## Enabling the guide
 
 The optional [PostgreSQL event controller](LOBBY-EVENT-CONTROL.md) sends a separate
-message after the wave with the next operation countdown and, when available,
-the active operation's estimated remaining time. Apply manager runtime V13 first.
+announcement after the wave. When both exist, it speaks the active operation's
+estimated remaining time first, waits four seconds, then speaks the next
+operation countdown as a second phrase. Content comes from one cached snapshot
+through an injected provider; no operation-specific actuator method is used. Apply manager runtime V13 first.
 It uses a cached server-thread snapshot and the existing speech transport;
 database polling and lobby activation do not depend on the guide or its visitors.
 Other actor keys keep their original speech. Enable it separately as documented
@@ -27,6 +42,7 @@ to the server launch configuration, before the Java main class:
 
 ```text
 -Dapocbr.guide.enabled=true
+-Dapocbr.guide.profile=lobby-guide
 -Dapocbr.guide.x=14294
 -Dapocbr.guide.y=11862
 -Dapocbr.guide.z=0
@@ -97,8 +113,8 @@ heartbeat, including routine movement updates. Changes in facing or moving/stopp
 state (including blocked movement) are published at the 100 ms brain cadence.
 Position integration and collision checks remain at that cadence. Walking carries
 the native movement flag and collision-checked native prediction; there are no vehicle-hit or unrelated action
-flags. Straight movement advertises speed/direction and at most 0.75 seconds of
-prediction (about 0.729 seconds after quantization at 1.2 tiles/second), covering
+flags. Straight movement advertises speed/direction and at most one second of
+prediction (16 eighth-tile units at 2 tiles/second), covering
 the 500 ms send interval plus jitter allowance. Lookahead crosses connected,
 collinear tile centers, but stops short of the next corner or route endpoint
 with a 0.15-tile margin and is disabled if the segment is
@@ -136,7 +152,7 @@ IDLE/ROAMING -> FACING_VISITOR -> HOLDING_ATTENTION -> SALUTING -> SPEAKING
 ```
 
 After a three-second idle pause, the guide chooses a reachable indoor destination
-and walks at 1.2 tiles per real second, increased from the original 0.65. This is
+and walks at 2 tiles per real second, increased from 1.2. This is
 an initial walking-speed tuning value; real player speed also depends on native
 animation and character conditions. Movement consumes leftover elapsed time
 across waypoints instead of pausing/discarding a tick at every tile center.
@@ -284,10 +300,21 @@ The roaming fixture shares the engine stubs and compiles the actual route planne
 controller and transport. It checks bounded/deterministic search, building/floor
 confinement, floor holes/stairs/obstacles, occupancy, dynamic blockage/unload,
 movement speed, route completion, post retention, current-position perception,
-walking flags and factory-driven translation. The brain fixture also verifies
+walking flags and factory-driven translation. Speed/prediction regressions check
+0.2-tile movement per 100 ms across tile centers, full two-tile/one-second
+prediction on straight corridors, and continued clipping at corners and obstacles.
+The native timing contract is verified against this build's decompiled
+`network/fields/character/Prediction.java` (`distance / (speed * 8)`); server
+integration and transport share the same speed. The brain fixture also verifies
 route interruption, resumption and failure recovery.
 The dry run compiles all server patches against the game JAR without deploying.
 These checks do not initialize native game systems or prove client rendering.
+
+Validation for the 2026-10-20 speed/prediction adjustment: the commands above
+passed 548 roaming, 78 lifecycle/packet and 72 brain assertions; the server patch
+`-DryRun` compiled all 169 Java sources successfully against the installed game
+JAR. No deployment or live multiplayer validation was performed. Confirm walking
+pace and pauses near corners under actual client latency after applying the patch.
 
 Before claiming runtime support, start a test server and verify with two clients:
 

@@ -29,7 +29,7 @@ registration/heartbeat/receipt fields plus SELECT. The existing game account
 already has other persistence permissions; do not expose it to clients.
 
 This version deliberately uses bounded polling, not a new LISTEN session: one
-worker, one row, default two seconds, no command queue, and one pending receipt.
+worker, one row, default 30 seconds, no command queue, and one pending receipt.
 Reading durable state on every poll also handles missed synchronization,
 reconnects and startup without a notification dependency. LISTEN can later
 reduce notification latency while retaining these reconciliation reads.
@@ -59,8 +59,8 @@ Use a unique serverKey/world pair for each concurrently running server process.
 | --- | --- | --- |
 | `apocbr.events.enabled` | false | Server-only opt-in. PostgreSQL must also be enabled. |
 | `apocbr.events.serverKey` | server name | Stable backend scope, matched exactly. |
-| `apocbr.events.pollMillis` | 2000 | 1000–60000 ms between completed polls. |
-| `apocbr.events.freshMillis` | 10000 | At least twice pollMillis, at most 300000. |
+| `apocbr.events.pollMillis` | 30000 | 1000–60000 ms between completed polls. |
+| `apocbr.events.freshMillis` | 90000 | At least twice pollMillis, at most 300000. |
 | `apocbr.events.displayZone` | America/Fortaleza | Valid Java zone ID; affects greeting display only. |
 
 The worker uses existing pooled connections inside
@@ -72,11 +72,11 @@ per 30 seconds. Missing schema/outage retries without preventing game startup;
 activation waits for a valid fresh snapshot. Shutdown stops further worker
 iterations; already-running JDBC remains subject to those timeouts.
 
-## Backend contract v1
+## Backend release contract with v2 metadata
 
 Primary key is `(server_key, world)`. Never delete/recreate an active control row
 or change its scope. The engine creates an idle row when enabled and connected.
-`engine_version='42.21.0/event-control-v1'` identifies this contract. Heartbeat
+`engine_version='42.21.0/event-control-v2'` identifies this contract. Heartbeat
 means the worker contacted the row; it does not assert a successful release.
 
 **Backend-owned desired columns:**
@@ -149,6 +149,7 @@ ApocBREventControl.getEventId()
 ApocBREventControl.getRevision()
 ApocBREventControl.getEventName()
 ApocBREventControl.getStartsAtMillis() -- real Unix milliseconds
+ApocBREventControl.getEventContext(eventId, revision) -- fresh matching specification, or nil
 ApocBREventControl.getScheduleState()
 ApocBREventControl.isDue(eventId, revision)
 ApocBREventControl.isReleaseAuthorized(eventId, revision)
@@ -160,7 +161,7 @@ before presenting a current schedule; both due/release authorization fail closed
 when the snapshot is not fresh. No getter performs a database operation.
 
 When a fresh scheduled event is due, Java dispatches
-`Events.OnApocBRLobbyEventDue(eventId, revision)` on the server main thread.
+`Events.OnApocBRLobbyEventDue(eventId, revision, context)` on the server main thread.
 It retries at most once per second until the mod accepts. Registration happens
 before `OnServerStarted`; the mod subscribes there and checks cached startup
 state too. `Lobby.releaseForEvent()` revalidates the bridge's current due
@@ -263,3 +264,95 @@ Executed successfully for this change: `tools/test_lobby_event_control.py`
 harnesses; and the 42.21.0 patch script with `-DryRun`. Translation JSON was
 parsed and edited sources checked for UTF-8 without BOM. These checks do not
 substitute for applying the backend migration or a live dedicated-server test.
+
+
+## Operation metadata transport (v2)
+
+Apply manager runtime migration **V14** before installing this patch or the
+updated manager. Reference SQL: [LOBBY-EVENT-METADATA.sql](LOBBY-EVENT-METADATA.sql).
+The original V11/V13 migrations and reference DDL remain unchanged. V14 adds
+`desired_metadata_json`, non-null text defaulting to `{}`, constrained to a JSON
+object of at most 32768 characters. Its exact text participates in the revision
+guard. Publish metadata and schedule fields atomically with a strictly increasing
+revision; even formatting-only changes require a new revision. The manager
+supports v1/v2 engine rows during rollout, but v1 engines ignore metadata.
+
+The manager publishes this JSON envelope from the existing operation editor:
+
+```json
+{"schemaVersion":1,"gameType":"extraction","ruleset":"default","durationMinutes":60,"parameters":{"objectives":[]}}
+```
+
+`parameters` is the parsed object entered in the website JSON field. No scripts
+or commands are generated or evaluated. Duration remains informational. The
+engine validates the bounded JSON object on its JDBC worker and caches the
+original string; it does not interpret objective structure. Metadata is part of
+immutable schedule equality, so same-revision mutations fail closed.
+
+The first two callback arguments retain their existing meanings. The third is
+a new Lua table created on the main thread for each dispatch:
+
+```lua
+Events.OnApocBRLobbyEventDue.Add(function(eventId, revision, context)
+    if not context or context.isReplay or not context.metadataJson then return end
+    -- context.metadataJson is the JSON envelope from the matching operation.
+    -- Validate supported schema/types and persist accepted definitions in the mod.
+end)
+```
+
+Fields: `eventId` (string), `revision` (number), `isReplay` (boolean), and, when
+the desired identity/revision match, `name`, `startsAtMillis`, `state` and
+`metadataJson` (string). Existing two-argument Lua listeners continue to work.
+`getEventContext(eventId, revision)` returns a fresh table for the exact current
+desired identity/revision, including before its deadline, or nil if stale,
+unavailable or mismatched. It performs no SQL or JSON parsing. Check schedule
+state/deadline for activation; reading context does not authorize activation.
+Changing a returned table cannot change the cached specification.
+
+Receipt restoration sets `isReplay=true`, including when the receipt matches an
+already-due desired schedule. A receipt whose original specification is no
+longer current carries only identity/revision/replay fields: it NEVER receives a
+replacement event's JSON. Receipts still contain no durable metadata. Objective
+consumers must save accepted definitions/progress and handle retries/restarts;
+this transport does not add an objective lifecycle or reconstruct lost progress.
+The extraction perimeter listener can continue ignoring the third argument.
+
+Polling now defaults to **30000 ms**, freshness to **90000 ms**. Existing JVM
+overrides still apply and freshness must be at least twice the poll interval.
+Remove an old explicit 2000-ms override to use the new default; an explicit
+10000-ms freshness value is incompatible with 30000-ms polling. An already
+cached schedule still activates on its real deadline through the server loop.
+New schedules/cancellations are observed on the next poll (up to approximately
+30 seconds plus I/O, in addition to manager sync latency). Receipts also flush
+on this cadence. Guide data retains its separate 60-second manager-age limit;
+keep manager publication comfortably below that limit (default 10 seconds).
+
+The event fixture uses the real game JAR for its JSON parser (default installed
+path; override with `PZ_GAME_JAR`). Engine/Lua/JDBC boundaries remain mocked.
+Verification: production event fixture covers metadata, identity/revision,
+Lua-table mutation isolation, receipt replay, outage freshness and polling
+constants. Real game-JAR compilation and coordinated manager/migration tests are
+required alongside it. No live deployment is implied by these checks.
+
+
+Executed for the metadata enhancement: `python tools/test_lobby_event_control.py`
+passed 251 production assertions; `test_human_brain.py` passed 72 and
+`test_server_humans.py` passed 78. `42.21.0/patchApocalipseBr.ps1 -DryRun`
+compiled all 169 patched sources against the installed 42.21.0 game JAR without
+deployment. The manager's 37 targeted tests passed, including the disposable
+PostgreSQL 17.6 V14/adapter checks. Live website-to-dedicated-server Lua dispatch
+still requires validation after coordinated migration and deployment.
+
+
+### Structured NPC announcement content
+
+`guideAnnouncementLines()` returns immutable ordered phrases from one cached
+schedule snapshot and one clock reading: active operation first, then next
+operation when both exist. Empty/single fallback cases retain their existing
+meaning. It performs no SQL or speech. `guideAnnouncement()` and
+`guideGreeting()` remain compatibility text adapters. The guide's injected
+`OperationAnnouncementProvider` supplies those phrases to generic `Say`, `Wait`
+and `Sequence` actions, with a four-second pause instead of concatenating both
+messages into one transmission. See the mandatory
+[NPC engine architecture contract](NPC-ENGINE-ARCHITECTURE.md) for ownership,
+composition, cancellation, bounds and validation requirements for all NPC work.

@@ -88,18 +88,6 @@ final class ServerHumanActuator implements HumanActuator {
     }
 
     @Override
-    public boolean greet() {
-        return say(zombie.core.Translator.getText("IGUI_ApocExtractionMapUtils_GuideHello"));
-    }
-
-    @Override
-    public boolean announceOperation() {
-        if (!"guide".equals(human.definition.key())) return true;
-        String announcement = zombie.apocalipse.events.ApocBREventControl.guideAnnouncement();
-        return announcement == null || say(announcement);
-    }
-
-    @Override
     public boolean startRoaming(long now) { return human.roaming.start(now); }
 
     @Override

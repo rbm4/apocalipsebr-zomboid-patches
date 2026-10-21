@@ -404,7 +404,7 @@ FILES["zombie/apocalipse/humans/FactoryTest.java"] = FILES["zombie/apocalipse/hu
 # Shared inventory/protocol ports used by the production trading adapter.
 FILES.update({
  "zombie/core/Core.java": "package zombie.core; public class Core { public static String gameSaveWorld=\"test-world\"; }",
- "zombie/apocalipse/events/ApocBREventControl.java": "package zombie.apocalipse.events; public final class ApocBREventControl { public static String guideAnnouncement(){return null;} }",
+ "zombie/apocalipse/events/ApocBREventControl.java": "package zombie.apocalipse.events; public final class ApocBREventControl { public static java.util.List<String> guideAnnouncementLines(){return java.util.List.of();} }",
  "zombie/core/Translator.java": "package zombie.core; public final class Translator { public static String getText(String key){return key;} }",
  "zombie/core/TradingState.java": "package zombie.core; public enum TradingState { WindowWasClosed,DealWasSealed,DealWasUnsealed,DealWasFinalized }",
  "zombie/core/znet/SteamUtils.java": "package zombie.core.znet; public class SteamUtils { public static boolean isSteamModeEnabled(){return true;} }",

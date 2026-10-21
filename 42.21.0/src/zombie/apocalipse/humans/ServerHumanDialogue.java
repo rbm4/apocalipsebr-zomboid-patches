@@ -41,15 +41,17 @@ public final class ServerHumanDialogue {
         LuaEventManager.AddEvent("OnApocBRHumanDialogueReserved");
         LuaEventManager.AddEvent("OnApocBRHumanDialogueOpened");
         LuaEventManager.AddEvent("OnApocBRHumanDialogueClosed");
+        LuaEventManager.AddEvent("OnApocBRHumanRosterChanged");
         KahluaTable api = LuaManager.platform.newTable();
         bind(api, "list", 1, f -> list(player(f)));
+        bind(api, "roster", 0, f -> roster());
         bind(api, "begin", 2, f -> begin(player(f), id(f), System.nanoTime()));
         bind(api, "arrive", 3, f -> arrive(player(f), id(f), token(f), System.nanoTime()));
         bind(api, "finish", 3, f -> finish(player(f), id(f), token(f)));
         bind(api, "react", 5, f -> react(player(f), id(f), token(f),
             f.get(3) instanceof String text ? text : null,
             f.get(4) instanceof String emote ? emote : null, System.nanoTime()));
-        api.rawset("version", 1.0);
+        api.rawset("version", 2.0);
         environment.rawset("ApocBRHumanAPI", api);
     }
     private interface Call { Object run(LuaCallFrame frame); }
@@ -94,20 +96,40 @@ public final class ServerHumanDialogue {
         if (!owned(p)) return result;
         int i = 0;
         for (ServerHuman h : ServerHumanFactory.dialogueHumans()) {
+            if (!h.profile.dialogue()) continue;
             double dx = p.getX() - h.player.getX(), dy = p.getY() - h.player.getY();
             if (p.getZi() == h.player.getZi() && dx * dx + dy * dy <= 32 * 32) result.rawset((double)++i, description(h));
         }
         return result;
+    }
+
+    /** Stable public identity only; cached Lua menus must not depend on player proximity. */
+    static KahluaTable roster() {
+        KahluaTable result = LuaManager.platform.newTable();
+        int i = 0;
+        for (ServerHuman h : ServerHumanFactory.dialogueHumans()) {
+            if (!h.profile.dialogue()) continue;
+            KahluaTable actor = LuaManager.platform.newTable();
+            actor.rawset("id", (double)h.player.getOnlineID());
+            actor.rawset("key", h.definition.key());
+            actor.rawset("name", h.definition.displayName());
+            result.rawset((double)++i, actor);
+        }
+        return result;
+    }
+
+    static void rosterChanged() {
+        LuaEventManager.triggerEvent("OnApocBRHumanRosterChanged");
     }
     private static KahluaTable rejected(String reason) {
         KahluaTable t = LuaManager.platform.newTable(); t.rawset("error", reason); return t;
     }
     static KahluaTable begin(IsoPlayer p, int id, long now) {
         ServerHuman h = human(id);
-        if (h == null || !owned(p)) return rejected("unavailable");
+        if (h == null || !h.profile.dialogue() || !owned(p)) return rejected("unavailable");
         if (sessions.containsKey((short)id) || sessions.values().stream().anyMatch(s -> s.visitor == p)) return rejected("busy");
         if (!near(h, p, 8)) return rejected("unavailable");
-        if (!h.brain.beginDialogue(new HumanObservation.Identity(p.getOnlineID(), p.getID()), now, h.actuator)) return rejected("busy");
+        if (!h.activity.beginDialogue(new HumanObservation.Identity(p.getOnlineID(), p.getID()), now, h.actuator)) return rejected("busy");
         // Tokens only need process-lifetime uniqueness within this bounded lease registry.
         if (++sequence <= 0) sequence = 1;
         Session s = new Session(h, p, sequence, now); sessions.put((short)id, s);
@@ -159,7 +181,7 @@ public final class ServerHumanDialogue {
     static void close(ServerHuman h, String reason) {
         Session s = sessions.remove(h.player.getOnlineID());
         if (s == null) return;
-        h.actuator.stopEmote(); h.brain.finishDialogue(System.nanoTime(), h.actuator);
+        h.actuator.stopEmote(); h.activity.finishDialogue(System.nanoTime(), h.actuator);
         KahluaTable t = description(h); t.rawset("token", (double)s.token); t.rawset("reason", reason);
         LuaEventManager.triggerEvent("OnApocBRHumanDialogueClosed", s.visitor, t);
     }

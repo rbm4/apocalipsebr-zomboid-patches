@@ -848,3 +848,16 @@ with the old public getElements calls and a PZArrayList lacking audited-reader
 methods. This establishes a local installation mismatch, not the classpath of an
 uninspected remote server. Deploy the complete matching class set and restart;
 then inspect exposure counters to identify any genuinely remaining callers.
+
+
+## Deferred PostgreSQL login integration
+
+`database.login.continuations` measures the main-loop drain of `ApocBRAsyncLogin`,
+including lifecycle cleanup, character reconstruction, client-profile encoding and
+connection/world integration performed by completed requests. The drain starts at
+most two continuations per tick and stops starting another after two milliseconds;
+one reconstruction may exceed that budget. JDBC execution and queue wait happen
+on dedicated workers and are excluded from this phase. Compare this phase and
+packet-processing spikes under representative simultaneous logins; no measured
+runtime savings are claimed from compilation or isolated fixtures. See
+[relational login](PLAYER-RELATIONAL-LOGIN.md) for deadlines and validation.

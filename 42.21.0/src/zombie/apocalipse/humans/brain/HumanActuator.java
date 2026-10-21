@@ -10,7 +10,5 @@ public interface HumanActuator {
     boolean startEmote(String name);
     void stopEmote();
     boolean say(String text);
-    default boolean greet() { return say("Olá!"); }
-    default boolean announceOperation() { return true; }
     boolean returnHome();
 }

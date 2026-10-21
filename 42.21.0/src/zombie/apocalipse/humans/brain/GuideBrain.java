@@ -3,27 +3,34 @@ package zombie.apocalipse.humans.brain;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
+import java.util.List;
+import java.util.function.Supplier;
+import zombie.apocalipse.humans.profiles.GuidePolicy;
 
 /** Deterministic greeting policy. No world queries, threads, sleeps, or packet code. */
-public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
-    public enum State { IDLE, ROAMING, FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, WAITING_TRADE_ACCEPTANCE, RECORDING_SALE, DIALOGUE, RETURNING_HOME, COOLDOWN, STOPPED }
-    public static final long ROAM_PAUSE_NANOS = 3_000_000_000L;
-    public static final long ATTENTION_NANOS = 1_000_000_000L;
-    public static final long SALUTATION_NANOS = 2_500_000_000L;
-    public static final long COOLDOWN_NANOS = 3_000_000_000L;
-    public static final long VISITOR_COOLDOWN_NANOS = 120_000_000_000L;
+public final class GuideBrain extends HumanStateMachine<GuideBrain.State> implements HumanBehavior {
+    public enum State { IDLE, ROAMING, FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, SUSPENDED, RETURNING_HOME, COOLDOWN, STOPPED }
     private static final int MAX_GREETING_HISTORY = 2048;
     private final Map<HumanObservation.Identity, Long> greeted = new HashMap<>();
     private HumanObservation.Identity target;
     private boolean started;
+    private final HumanAnnouncementProvider announcements;
 
-    public GuideBrain() { super(State.IDLE); }
+    private final GuidePolicy policy;
+    private final Supplier<String> greeting;
+    public GuideBrain(GuidePolicy policy, Supplier<String> greeting, HumanAnnouncementProvider announcements) {
+        super(State.IDLE);
+        this.announcements = Objects.requireNonNull(announcements);
+        this.policy = Objects.requireNonNull(policy);
+        this.greeting = Objects.requireNonNull(greeting);
+    }
 
     public void update(HumanObservation observation, HumanActuator actuator) {
-        if (state() == State.STOPPED) return;
+        if (state() == State.STOPPED || state() == State.SUSPENDED) return;
         long now = observation.nowNanos();
         if (!started) { enteredAt = now; started = true; }
-        greeted.entrySet().removeIf(entry -> now - entry.getValue() >= VISITOR_COOLDOWN_NANOS);
+        greeted.entrySet().removeIf(entry -> now - entry.getValue() >= policy.visitorCooldown());
         if (attending()) {
             if (observation.find(target) == null) {
                 transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "visitor_lost", now, actuator);
@@ -42,7 +49,7 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
                 greeted.put(target, now);
                 transition(State.FACING_VISITOR, new HumanAction.FaceVisitor(target), "visitor_selected", now, actuator);
             } else if (state() == State.IDLE) {
-                if (!observation.canRoam() || now - enteredAt < ROAM_PAUSE_NANOS) return;
+                if (!observation.canRoam() || now - enteredAt < policy.roamPause()) return;
                 transition(State.ROAMING, new HumanAction.Roam(), "idle_roam_due", now, actuator);
             } else if (!observation.canRoam()) {
                 transition(State.IDLE, null, "roaming_unavailable", now, actuator);
@@ -63,10 +70,9 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
             } else {
                 switch (state()) {
                     case FACING_VISITOR -> transition(State.HOLDING_ATTENTION,
-                        new HumanAction.HoldAttention(target, ATTENTION_NANOS), "facing_complete", now, actuator);
-                    case HOLDING_ATTENTION -> transition(State.SALUTING,
-                        new HumanAction.Emote("wavehi", SALUTATION_NANOS, true), "attention_complete", now, actuator);
-                    case SALUTING -> transition(State.SPEAKING, new HumanAction.AnnounceOperation(), "salutation_complete", now, actuator);
+                        new HumanAction.HoldAttention(target, policy.attention()), "facing_complete", now, actuator);
+                    case HOLDING_ATTENTION -> beginSalutation(now, actuator);
+                    case SALUTING -> beginAnnouncement(now, actuator);
                     case SPEAKING -> {
                         greeted.put(target, now);
                         transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "greeting_complete", now, actuator);
@@ -74,9 +80,34 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
                     default -> { }
                 }
             }
-        } else if (state() == State.COOLDOWN && now - enteredAt >= COOLDOWN_NANOS) {
+        } else if (state() == State.COOLDOWN && now - enteredAt >= policy.cooldown()) {
             transition(State.IDLE, null, "cooldown_complete", now, actuator);
         }
+    }
+
+    private void beginSalutation(long now, HumanActuator actuator) {
+        HumanAction plan;
+        try {
+            String text = greeting.get();
+            HumanAction wave = new HumanAction.Emote("wavehi", policy.salutation());
+            plan = text == null ? wave : new HumanAction.Parallel(List.of(wave, new HumanAction.Say(text)));
+        } catch (RuntimeException failure) {
+            transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "greeting_unavailable", now, actuator);
+            return;
+        }
+        transition(State.SALUTING, plan, "attention_complete", now, actuator);
+    }
+
+    private void beginAnnouncement(long now, HumanActuator actuator) {
+        HumanAction.Sequence plan;
+        try {
+            // Resolve content once. Mutable event state must not change mid-plan.
+            plan = HumanAction.Sequence.speech(announcements.lines(), policy.announcementPause());
+        } catch (RuntimeException failure) {
+            transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "announcement_unavailable", now, actuator);
+            return;
+        }
+        transition(State.SPEAKING, plan, "salutation_complete", now, actuator);
     }
 
     public void stop(long now, HumanActuator actuator) {
@@ -85,39 +116,19 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
         greeted.clear();
     }
 
-    public boolean beginTrade(HumanObservation.Identity visitor, long now, HumanActuator actuator) {
-        if (state() == State.STOPPED || state() == State.WAITING_TRADE_ACCEPTANCE || state() == State.RECORDING_SALE || state() == State.DIALOGUE) return false;
+    public boolean available() { return state() != State.STOPPED; }
+
+    public void suspend(long now, HumanActuator actuator) {
+        if (!available() || state() == State.SUSPENDED) throw new IllegalStateException("Behavior cannot suspend");
+        transition(State.SUSPENDED, null, "control_taken", now, actuator);
         actuator.stopMoving();
-        target = visitor;
-        transition(State.WAITING_TRADE_ACCEPTANCE, new HumanAction.WaitForTrade(visitor), "trade_opened", now, actuator);
-        return true;
     }
 
-    public boolean beginDialogue(HumanObservation.Identity visitor, long now, HumanActuator actuator) {
-        if (state() == State.STOPPED || state() == State.WAITING_TRADE_ACCEPTANCE
-            || state() == State.RECORDING_SALE || state() == State.DIALOGUE) return false;
-        actuator.stopMoving();
-        target = visitor;
-        transition(State.DIALOGUE, null, "dialogue_reserved", now, actuator);
-        return true;
-    }
-
-    public void finishDialogue(long now, HumanActuator actuator) {
-        if (state() == State.DIALOGUE) {
-            if (target != null && (greeted.containsKey(target) || greeted.size() < MAX_GREETING_HISTORY)) greeted.put(target, now);
-            transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "dialogue_finished", now, actuator);
-        }
-    }
-
-    public void recordingSale(long now, HumanActuator actuator) {
-        transition(State.RECORDING_SALE, null, "trade_accepted", now, actuator);
-    }
-
-    public void finishTrade(long now, HumanActuator actuator) {
-        if (state() == State.WAITING_TRADE_ACCEPTANCE || state() == State.RECORDING_SALE) {
-            if (target != null && (greeted.containsKey(target) || greeted.size() < MAX_GREETING_HISTORY)) greeted.put(target, now);
-            transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "trade_finished", now, actuator);
-        }
+    public void resume(HumanObservation.Identity visitor, long now, HumanActuator actuator) {
+        if (state() != State.SUSPENDED) return;
+        if (visitor != null && (greeted.containsKey(visitor) || greeted.size() < MAX_GREETING_HISTORY)) greeted.put(visitor, now);
+        target = null;
+        transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "control_released", now, actuator);
     }
 
     private boolean attending() {
@@ -140,12 +151,9 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> {
     @Override
     protected boolean permits(State from, State to) {
         if (to == State.STOPPED) return from != State.STOPPED;
-        if (to == State.DIALOGUE) return from != State.STOPPED && from != State.WAITING_TRADE_ACCEPTANCE
-            && from != State.RECORDING_SALE && from != State.DIALOGUE;
-        if (to == State.WAITING_TRADE_ACCEPTANCE) return from != State.STOPPED && from != State.RECORDING_SALE && from != State.DIALOGUE;
-        if (from == State.WAITING_TRADE_ACCEPTANCE && to == State.RECORDING_SALE) return true;
+        if (to == State.SUSPENDED) return from != State.STOPPED && from != State.SUSPENDED;
         if (to == State.RETURNING_HOME) return switch (from) {
-            case FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, WAITING_TRADE_ACCEPTANCE, RECORDING_SALE, DIALOGUE -> true;
+            case FACING_VISITOR, HOLDING_ATTENTION, SALUTING, SPEAKING, SUSPENDED -> true;
             default -> false;
         };
         return switch (from) {

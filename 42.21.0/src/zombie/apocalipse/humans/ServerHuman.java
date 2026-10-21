@@ -3,7 +3,8 @@ package zombie.apocalipse.humans;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.Set;
-import zombie.apocalipse.humans.brain.GuideBrain;
+import zombie.apocalipse.humans.brain.HumanActivityController;
+import zombie.apocalipse.humans.profiles.HumanProfile;
 import zombie.characters.IsoPlayer;
 import zombie.characters.SurvivorDesc;
 import zombie.core.raknet.UdpConnection;
@@ -14,15 +15,19 @@ final class ServerHuman {
     final ServerHumanDefinition definition;
     final IsoPlayer player;
     final Set<UdpConnection> viewers = Collections.newSetFromMap(new IdentityHashMap<>());
-    final GuideBrain brain = new GuideBrain();
+    final HumanActivityController activity;
+    final HumanProfile profile;
     final ServerHumanActuator actuator;
     final ServerHumanRoaming roaming;
     boolean moving;
     float postX, postY;
     String emote;
+    private boolean disposed;
 
     ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell) {
         this.definition = definition;
+        this.profile = ServerHumanProfiles.registry().require(definition.profileId());
+        this.activity = new HumanActivityController(ServerHumanProfiles.registry().create(profile),profile.dialogue(),profile.trading());
         SurvivorDesc descriptor = new SurvivorDesc(false);
         descriptor.setFemale(definition.female());
         descriptor.setForename(definition.displayName());
@@ -66,9 +71,11 @@ final class ServerHuman {
     }
 
     void dispose() {
+        if (disposed) return;
+        disposed = true;
+        activity.stop(System.nanoTime(), actuator);
         ServerHumanDialogue.close(this, "removed");
         ServerHumanTrading.close(this);
-        brain.stop(System.nanoTime(), actuator);
         roaming.stop();
         // Never call normal disconnectPlayer(): this actor has no account/connection/save.
         for (UdpConnection connection : viewers) {

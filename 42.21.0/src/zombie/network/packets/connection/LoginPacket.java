@@ -37,9 +37,17 @@ public class LoginPacket implements INetworkPacket {
     @JSONField
     int authType;
 
+    private record DatabaseLogin(ServerWorldDatabase.LogonResult auth,Role coopRole,boolean exists,boolean caseExists,boolean steamAllowed) {}
+    private DatabaseLogin databaseLogin;
+
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
         if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        if(zombie.savefile.ApocBRAsyncLogin.enabled()) {
+            LoginPacket request=new LoginPacket();request.username=this.username;request.password=this.password;
+            request.clientVersion=this.clientVersion;request.authType=this.authType;
+            request.processServerDatabase(packetType,connection);return;
+        }
         try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
             processServerDatabase(packetType,connection);
         }catch(RuntimeException failure) {
@@ -78,6 +86,38 @@ public class LoginPacket implements INetworkPacket {
                 }
             }
 
+            if(zombie.savefile.ApocBRServerDatabase.enabled()) {
+                final String ip=connection.getIP();final long steam=connection.getSteamId(),owner=connection.getOwnerId();
+                final boolean steamMode=SteamUtils.isSteamModeEnabled(),steamCoop=CoopSlave.instance!=null&&steamMode;
+                zombie.savefile.ApocBRAsyncLogin.submit(connection,"login-auth",()->{
+                    ServerWorldDatabase db=ServerWorldDatabase.instance;
+                    ServerWorldDatabase.LogonResult auth=null;
+                    if(!steamCoop) {
+                        if(steamMode) {
+                            if(steam<=0){auth=db.new LogonResult();auth.authorized=false;auth.dcReason="AccessDenied";}
+                            else {auth=db.authSteamClient(steam);if(auth.authorized)auth=db.authSteamOwner(steam,owner);}
+                        }
+                        if(auth==null||auth.authorized)auth=db.authClient(this.username,this.password,ip,steam,this.authType);
+                    }
+                    return new DatabaseLogin(auth,steamCoop?db.getUserRoleNameByUsername(this.username):null,
+                        db.containsUser(this.username),db.containsCaseinsensitiveUser(this.username),
+                        steamCoop&&db.isSteamIDAllowed(SteamUtils.convertSteamIDToString(steam)));
+                },result->{
+                    if(result.auth()!=null) {
+                        Role current=result.auth().role==null?null:zombie.characters.Roles.getRoleById(result.auth().role.getId());
+                        if(current==null||result.auth().authorized&&!current.hasCapability(Capability.LoginOnServer)){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+                        result.auth().role=current;
+                    }
+                    Role coopRole=result.coopRole()==null?null:zombie.characters.Roles.getRoleById(result.coopRole().getId());
+                    if(steamCoop&&coopRole==null){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+                    this.databaseLogin=new DatabaseLogin(result.auth(),coopRole,result.exists(),result.caseExists(),result.steamAllowed());
+                    this.finishLogin(connection);
+                });
+            } else this.finishLogin(connection);
+        }
+    }
+
+    private void finishLogin(UdpConnection connection) {
             connection.password = this.password;
             LoggerManager.getLogger("user").write(connection.getIDStr() + " \"" + this.username + "\" attempting to join");
             if (CoopSlave.instance != null && SteamUtils.isSteamModeEnabled()) {
@@ -95,7 +135,7 @@ public class LoginPacket implements INetworkPacket {
                 connection.usernames[0] = this.username;
                 connection.isCoopHost = GameServer.udpEngine.connections.size() == 1;
                 DebugLog.log(connection.getIDStr() + " isCoopHost=" + connection.isCoopHost);
-                Role role = ServerWorldDatabase.instance.getUserRoleNameByUsername(this.username);
+                Role role = databaseLogin!=null?databaseLogin.coopRole():ServerWorldDatabase.instance.getUserRoleNameByUsername(this.username);
                 connection.setRole(role);
                 if (!ServerOptions.instance.doLuaChecksum.getValue()) {
                     connection.checksumState = UdpConnection.ChecksumState.Done;
@@ -119,6 +159,13 @@ public class LoginPacket implements INetworkPacket {
                     connection.setLastConnection(UdpConnection.lastConnections.getOrDefault(this.username, 0L));
                     UdpConnection.lastConnections.put(this.username, System.currentTimeMillis() / 1000L);
 
+                    if(databaseLogin!=null) {
+                        zombie.savefile.ApocBRAsyncLogin.submit(connection,"login-account",()->{
+                            if(!databaseLogin.exists()&&databaseLogin.steamAllowed())ServerWorldDatabase.instance.addUser(this.username,this.password,this.authType);
+                            return true;
+                        },ok->GameServer.receiveClientConnect(connection,r));return;
+                    }
+
                     try {
                         if (!ServerWorldDatabase.instance.containsUser(this.username)
                             && ServerWorldDatabase.instance.isSteamIDAllowed(SteamUtils.convertSteamIDToString(connection.getSteamId()))) {
@@ -136,7 +183,7 @@ public class LoginPacket implements INetworkPacket {
                 INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "AccessDenied");
                 connection.forceDisconnect("access-denied-no-steam-session");
             } else {
-                ServerWorldDatabase.LogonResult r = ServerWorldDatabase.instance
+                ServerWorldDatabase.LogonResult r = databaseLogin!=null?databaseLogin.auth():ServerWorldDatabase.instance
                     .authClient(this.username, this.password, connection.getIP(), connection.getSteamId(), this.authType);
                 connection.setRole(r.role);
                 connection.setLastConnection(UdpConnection.lastConnections.getOrDefault(this.username, 0L));
@@ -179,7 +226,8 @@ public class LoginPacket implements INetworkPacket {
                         return;
                     }
 
-                    if (!ServerWorldDatabase.instance.containsUser(this.username) && ServerWorldDatabase.instance.containsCaseinsensitiveUser(this.username)) {
+                    if (databaseLogin!=null?!databaseLogin.exists()&&databaseLogin.caseExists():
+                        !ServerWorldDatabase.instance.containsUser(this.username)&&ServerWorldDatabase.instance.containsCaseinsensitiveUser(this.username)) {
                         INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "InvalidUsername");
                         connection.forceDisconnect("access-denied-invalid-username");
                         return;
@@ -197,6 +245,24 @@ public class LoginPacket implements INetworkPacket {
                     }
 
                     LoggerManager.getLogger("user").write(connection.getIDStr() + " \"" + this.username + "\" allowed to join");
+
+                    if(databaseLogin!=null) {
+                        final long steam=connection.getSteamId();final boolean steamMode=SteamUtils.isSteamModeEnabled();
+                        zombie.savefile.ApocBRAsyncLogin.submit(connection,"login-account",()->{
+                            ServerWorldDatabase db=ServerWorldDatabase.instance;
+                            if(!databaseLogin.exists())db.addUser(this.username,this.password,this.authType);
+                            else db.setPassword(this.username,this.password);
+                            db.updateLastConnectionDate(this.username,this.password);
+                            if(steamMode)db.setUserSteamID(this.username,SteamUtils.convertSteamIDToString(steam));
+                            return true;
+                        },ok->{
+                            if(r.needSecondFactor){
+                                zombie.savefile.ApocBRAsyncLogin.expectSecondFactor(connection,this.username);
+                                INetworkPacket.send(connection,PacketTypes.PacketType.GoogleAuthRequest);
+                            }
+                            else GameServer.receiveClientConnect(connection,r);
+                        });return;
+                    }
 
                     try {
                         if (!ServerWorldDatabase.instance.containsUser(this.username)) {
@@ -235,7 +301,6 @@ public class LoginPacket implements INetworkPacket {
                     connection.forceDisconnect("access-denied-unauthorized");
                 }
             }
-        }
     }
 
     @Override

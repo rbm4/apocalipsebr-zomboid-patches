@@ -47,6 +47,29 @@ public class GoogleAuthKeyPacket implements INetworkPacket {
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
         if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        if(zombie.savefile.ApocBRServerDatabase.enabled()) {
+            final String user=this.username,pass=this.password,secret=this.key,version=this.clientVersion;
+            final int type=this.authType;
+            if(!Core.getInstance().getVersionNumber().equals(version)) {
+                INetworkPacket.send(connection,PacketTypes.PacketType.AccessDenied,"ClientVersionMismatch##"+version+"##"+Core.getInstance().getVersionNumber());
+                connection.forceDisconnect("access-denied-client-version");return;
+            }
+            final String ip=connection.getInetSocketAddress().getHostString();final long steam=connection.getSteamId(),owner=connection.getOwnerId();
+            final boolean steamMode=zombie.core.znet.SteamUtils.isSteamModeEnabled(),steamCoop=zombie.network.CoopSlave.instance!=null;
+            zombie.savefile.ApocBRAsyncLogin.submit(connection,"google-key",()->{
+                ServerWorldDatabase db=ServerWorldDatabase.instance;
+                if(steamMode&&!steamCoop&&(steam<=0||!db.authSteamClient(steam).authorized||!db.authSteamOwner(steam,owner).authorized))throw new IllegalStateException("Steam admission denied");
+                if(!db.authClient(user,pass,ip,steam,type).authorized)throw new IllegalStateException("Authentication denied");
+                if(!db.containsUser(user))db.addUser(user,pass,type);
+                String saved=db.getUserGoogleKey(user);
+                if(saved!=null&&!saved.isEmpty())return "Registration failed. Google key already exists";
+                if(!db.setUserGoogleKey(user,secret))throw new IllegalStateException("Google key persistence failed");
+                return "QR key registered successfully";
+            },message->{
+                INetworkPacket.send(connection,PacketTypes.PacketType.GoogleAuthKey,message);
+                connection.forceDisconnect("google-key-saved");
+            });return;
+        }
         try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
             processServerDatabase(packetType,connection);
         }catch(RuntimeException failure) {

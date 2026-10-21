@@ -53,7 +53,7 @@ final class ApocBRPlayerRelationalReconstruction {
         apply("character_nutrition",get(player,"nutrition"),"character_id");
         for(var r:rows("descriptor_extra"))add(get(descriptor,"extra"),r.get("value"));
         for(var r:rows("character_stat"))call(get(player,"stats"),"set",staticCall("zombie.characters.CharacterStat","getById",r.get("stat_key")),((Number)r.get("value")).floatValue());
-        for(var r:rows("character_trait"))add(get(player,"characterTraits.knownTraits"),registry("zombie.scripting.objects.CharacterTrait",r.get("trait_key")));
+        traits(player);
         trace.stage("RESTORE_PERKS");perks(player,descriptor);
         trace.stage("RESTORE_SEQUENCES");sequences(player);
         trace.stage("RESTORE_HEALTH");health(player);
@@ -80,6 +80,14 @@ final class ApocBRPlayerRelationalReconstruction {
             ApocBRPlayerReconstructionLog.table(table,source.rows(table).size());throw new IllegalStateException("Unrestored relational table: "+table);
         }
         return player;
+    }
+    private void traits(IsoPlayer player) {
+        for(var r:rows("character_trait")) {
+            ApocBRPlayerReconstructionLog.field("trait_key");
+            Object trait=registry("zombie.scripting.objects.CharacterTrait",r.get("trait_key"));
+            // Native load uses CharacterTraits.add to restore both the flags and known list.
+            call(get(player,"characterTraits"),"add",trait);
+        }
     }
     private void perks(IsoPlayer player,SurvivorDesc descriptor) {
         for(var r:rows("character_perk")) {
@@ -465,7 +473,17 @@ final class ApocBRPlayerRelationalReconstruction {
         for(Class<?> type=target.getClass();type!=null;type=type.getSuperclass())for(Method m:type.getDeclaredMethods())if(m.getName().equals(name)&&m.getParameterCount()==args.length)try{m.setAccessible(true);return m.invoke(target,args);}catch(IllegalArgumentException mismatch){}catch(ReflectiveOperationException e){throw new IllegalStateException("Cannot restore native state: "+name,e);}
         throw new IllegalStateException("Missing native method: "+name);
     }
-    private static Object registry(String name,Object key){if(key==null)return null;Object result=staticCall(name,"get",staticCall("zombie.scripting.objects.ResourceLocation","of",key));return Objects.requireNonNull(result,"Missing registry key");}
+    private static Object registry(String name,Object key){
+        if(key==null)return null;
+        Object location=staticCall("zombie.scripting.objects.ResourceLocation","of",key);
+        Object result=staticCall(name,"get",location);
+        if(result==null){
+            ApocBRPlayerReconstructionLog.subject("registry",null,name);
+            ApocBRPlayerReconstructionLog.missingRegistry(name,location);
+            throw new IllegalStateException("Missing registry key");
+        }
+        return result;
+    }
     private static Class<?> type(String name){try{return Class.forName(name);}catch(ClassNotFoundException e){throw new IllegalStateException(e);}}
     static Object create(String name,Object... args) {
         for(Constructor<?> constructor:type(name).getDeclaredConstructors())if(constructor.getParameterCount()==args.length)try {

@@ -6,12 +6,12 @@ import java.util.concurrent.*;
 import org.json.JSONObject;
 
 /** JDBC-only login read. Its detached result may cross from an I/O executor to the game thread. */
-final class ApocBRPlayerRelationalReader {
+public final class ApocBRPlayerRelationalReader {
     private final ApocBRPlayerRelationalDatabase.Connections connections;
     ApocBRPlayerRelationalReader() { this(ApocBRPostgresConnector::borrowPlayerConnection); }
     ApocBRPlayerRelationalReader(ApocBRPlayerRelationalDatabase.Connections connections) { this.connections=connections; }
-    record Profile(Map<String,List<Map<String,Object>>> tables) {
-        Profile {
+    public record Profile(Map<String,List<Map<String,Object>>> tables) {
+        public Profile {
             Map<String,List<Map<String,Object>>> copy=new LinkedHashMap<>();
             tables.forEach((k,v)->copy.put(k,v.stream().map(r->Collections.unmodifiableMap(new LinkedHashMap<>(r))).toList()));
             tables=Collections.unmodifiableMap(copy);

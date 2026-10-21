@@ -31,6 +31,12 @@ Follow one request from `BEGIN` to `PAYLOAD_READY` (client profile) or
   context where available, controlled validation reasons, exception/cause types,
   SQLStates and up to six source frames for each of four causes. Missing or changed
   item definitions also emit `ITEM_TYPE_MISMATCH` with full type and runtime classes.
+- `MISSING_REGISTRY` names the registry class and bounded, sanitized definition key
+  that could not resolve. For traits, `FAILED` also reports `table=character_trait`,
+  `field=trait_key` and `reason=Missing registry key`. Restore the defining mod and
+  its registry initialization on the destination server, or perform an explicit
+  data migration if that definition was intentionally retired. Reconstruction
+  continues to reject unavailable definitions rather than silently dropping them.
 - `RESTORED` confirms engine reconstruction. `ENCODE_GROW` is a normal client
   buffer resize; `PAYLOAD_READY` records encoded byte count and destination
   dictionary provenance. `REGISTER_PLAYER`/`PLAYER_READY` cover server registration.
@@ -53,6 +59,10 @@ incompatible heads, count mismatches, SQL failures, unavailable source dictionar
 ownership failures and field restoration failures. It checks correlation, context
 cleanup and omission of identities/values/driver messages. Existing player profile,
 dictionary decoding and dictionary publication fixtures cover the affected callers.
+Trait coverage checks both native gameplay flags and known-trait membership for
+vanilla and registered mod traits, a native save/load round trip, and explicit
+diagnostics when a saved trait definition is unavailable. Trait restoration uses
+the native `CharacterTraits.add` path to keep both state representations consistent.
 
 ## Confirmed failure: database identity projected into InventoryItem
 

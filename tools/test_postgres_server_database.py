@@ -42,6 +42,7 @@ STUBS = {
  public static final Role user=new Role("user"), banned=new Role("banned");
  static { user.setId(1);user.addCapability(Capability.LoginOnServer);banned.setId(2); }
  public static void init(){}
+ public static java.util.ArrayList<Role> getRoles(){return new java.util.ArrayList<>(java.util.List.of(user,banned));}
  public static Role getRoleById(int id){return id==1?user:banned;}
  public static Role getRole(String name){return user;}
  public static Role getDefaultForNewUser(){return user;}
@@ -120,6 +121,21 @@ public class ServerDatabaseTest {
   check(!db.containsUser("bob"),"missing whitelist read");
   ServerOptions.instance.open.value=true;
   check(db.authClient("alice","stored_hash","127.0.0.1",765,1).authorized,"valid credentials allowed");
+  var roleView=new ServerWorldDatabase.LoginRoles();zombie.characters.Roles.user.removeCapability(zombie.characters.Capability.LoginOnServer);
+  ServerWorldDatabase.useLoginRoles(roleView);
+  try{check(db.authClient("alice","stored_hash","127.0.0.1",765,1).authorized,"worker uses detached role capability view");}
+  finally{ServerWorldDatabase.useLoginRoles(null);zombie.characters.Roles.user.addCapability(zombie.characters.Capability.LoginOnServer);}
+  int gateBefore=fake.borrowed;ApocBRAsyncLogin.simulation=true;
+  try{ApocBRPostgresConnector.borrowServerConnection();throw new AssertionError("simulation JDBC was permitted");}
+  catch(SQLException expected){check(expected.getSQLState().equals("55000")&&fake.borrowed==gateBefore,"simulation gate fails before pool acquisition");}
+  finally{ApocBRAsyncLogin.simulation=false;}
+  try(var budget=ApocBRForegroundDatabase.beginLogin()) {
+   fake.failQuery=true;db.authClient("alice","stored_hash","127.0.0.1",765,1);fake.failQuery=false;
+   try{ApocBRForegroundDatabase.verifySuccess();throw new AssertionError("caught SQL error acknowledged");}
+   catch(SQLException expected){check(true,"caught vanilla SQL error still fails async workflow");}
+  }
+  try(var budget=ApocBRForegroundDatabase.beginLogin()){ApocBRForegroundDatabase.verifySuccess();}
+
   check(!db.authClient("alice","wrong","127.0.0.1",765,1).authorized,"wrong password denied");
   check(db.authClient("bob","new_hash","127.0.0.1",765,1).authorized,"new account open-server policy");
   db.addUser("bob","new_hash",1);
@@ -128,9 +144,9 @@ public class ServerDatabaseTest {
   db.banIp("1.2.3.4","alice","reason",true);db.banSteamID("765","reason",true);
   check(fake.queries.stream().anyMatch(q->q.startsWith("INSERT INTO bannedip")),"IP ban write routed");
   check(fake.queries.stream().anyMatch(q->q.startsWith("DELETE FROM allowedsteamid")),"Steam ban removes allow entry");
-  fake.bannedSteam=true;check(!db.authClient(765L).authorized,"Steam ban denies login");
-  check(!db.authOwner(765L,999L).authorized,"shared-game owner ban denies login");
-  fake.bannedSteam=false;check(db.authClient(765L).authorized,"unbanned Steam allowed");
+  fake.bannedSteam=true;check(db.authClient(765L).authorized&&db.authOwner(765L,999L).authorized,"native callbacks admit transport only; packet worker performs admission");check(!db.authSteamClient(765L).authorized,"Steam ban denies login");
+  check(!db.authSteamOwner(765L,999L).authorized,"shared-game owner ban denies login");
+  fake.bannedSteam=false;check(db.authSteamClient(765L).authorized,"unbanned Steam allowed");
   check(!db.googleAuthClient("alice","wrong").authorized,"missing 2FA key does not authorize");
   fake.bannedIP=true;check(!db.authClient("alice","stored_hash","1.2.3.4",765,1).authorized,"IP ban denies login");fake.bannedIP=false;
   db.saveRoleCapabilities(zombie.characters.Roles.user);
@@ -150,7 +166,7 @@ public class ServerDatabaseTest {
    check(fake.borrowed==before+1,"nested scopes do not consume pool slots");}}
   check(fake.borrowed==fake.returned,"all API leases released");
   fake.failQuery=true;check(!db.authClient("alice","stored_hash","127.0.0.1",765,1).authorized,"SQL failure does not authorize login");
-  check(!db.authOwner(765L,999L).authorized,"owner-query failure does not authorize login");
+  check(!db.authSteamOwner(765L,999L).authorized,"owner-query failure does not authorize login");
   try(var call=ApocBRServerDatabase.open(null);var statement=call.connection().prepareStatement("SELECT private")){
    try{statement.executeQuery();throw new AssertionError("query should fail");}catch(SQLException expected){check(!expected.toString().contains("PRIVATE_SECRET"),"secret error details suppressed");}}
   fake.failQuery=false;fake.missingSchema=true;
@@ -161,7 +177,7 @@ public class ServerDatabaseTest {
   check(fake.borrowed==before,"disabled accounts do not borrow PostgreSQL");
   System.setProperty("apocbr.postgres.serverDatabase.enabled","true");
   mirror.close();try{db.containsUser("alice");throw new AssertionError("unavailable backend fell back");}catch(IllegalStateException expected){}
-  check(!db.authClient(765L).authorized,"connection acquisition failure returns denied login");
+  check(!db.authSteamClient(765L).authorized,"connection acquisition failure returns denied login");
   System.out.println("Server DB: actual account/auth/ban/role/support methods, schema checks, leases, failure and opt-out tests passed");
  }
 }

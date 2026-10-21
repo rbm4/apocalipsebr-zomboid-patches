@@ -12,10 +12,12 @@ final class ApocBRPlayerReconstructionLog {
     private static final Set<String> REASONS=Set.of("Relational login requires a complete compatible head","Relational login graph count mismatch",
         "Relational login edge count mismatch","Relational login read exceeds graph budget","Missing root inventory","Duplicate item","Duplicate container",
         "Invalid container owner","Invalid saved item type or identity","Saved item type changed","Incomplete component","Unsupported saved component",
-        "Missing relational reference","Unresolved relational reference","Duplicate relational identity","Unresolved structured reference","Cyclic structured value");
+        "Missing relational reference","Unresolved relational reference","Duplicate relational identity","Unresolved structured reference","Cyclic structured value","Missing registry key");
     static Attempt begin(String phase,int slot){return new Attempt(phase,slot);}
     static void table(String table,int count){var a=current.get();if(a!=null){a.table=token(table);a.rows=count;a.field="NONE";}}
     static void field(String field){var a=current.get();if(a!=null)a.field=token(field);}
+    // Registry identifiers describe definitions, rather than private character/row values.
+    static void missingRegistry(String registry,Object key){var a=current.get();if(a!=null)a.event("MISSING_REGISTRY","; registry="+token(registry)+"; key="+token(key));}
     static void subject(String kind,Object id,Object type){var a=current.get();if(a!=null)a.subject=token(kind)+":"+(id instanceof Number?id:"NONE")+":"+token(type);}
     static String token(Object value){if(value==null)return "NONE";String text=value.toString().replaceAll("[^A-Za-z0-9_.$:/-]","_");return text.substring(0,Math.min(160,text.length()));}
     static final class Attempt implements AutoCloseable {

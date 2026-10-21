@@ -80,6 +80,7 @@ public final class ServerHumanTrading {
             return false;
         }
         if (!owned(visitor, connection)) return true;
+        if (!human.profile.trading()) { reply(human,visitor,connection,false); return true; }
         Session active=sessions.get(target.getOnlineID());
         if (!ask) {
             if (active != null && active.visitor == visitor) finish(active, true);
@@ -97,7 +98,7 @@ public final class ServerHumanTrading {
             human.actuator.say("Não posso negociar agora. Tente novamente em instantes.");
             return true;
         }
-        if (!human.brain.beginTrade(new HumanObservation.Identity(visitor.getOnlineID(),visitor.getID()), System.nanoTime(),human.actuator)) {
+        if (!human.activity.beginTrade(new HumanObservation.Identity(visitor.getOnlineID(),visitor.getID()), System.nanoTime(),human.actuator)) {
             reply(human, visitor, connection, false); return true;
         }
         sessions.put(target.getOnlineID(), new Session(human, visitor, connection));
@@ -194,7 +195,7 @@ public final class ServerHumanTrading {
             || "Base.MoneyBundle".equals(item.getFullType())).map(InventoryItem::getID).toList();
         List<Integer> bundleIds=items.stream().filter(item -> "Base.MoneyBundle".equals(item.getFullType())).map(InventoryItem::getID).toList();
         try {
-            session.human.brain.recordingSale(System.nanoTime(),session.human.actuator);
+            session.human.activity.recordingSale(System.nanoTime(),session.human.actuator);
             if (!moneyIds.isEmpty()) {
                 var sale=new ApocBRHumanSales.Sale(saleId,ApocBRPayloadProvenance.configuredServerId(),Core.gameSaveWorld,
                     session.visitor.getUsername(),SteamUtils.isSteamModeEnabled() ? Long.toUnsignedString(session.visitor.getSteamID()) : null,
@@ -234,7 +235,7 @@ public final class ServerHumanTrading {
         sessions.remove(session.human.player.getOnlineID(),session);
         session.offer.close();
         if (notify && session.connection.isFullyConnected()) sendState(session,TradingState.WindowWasClosed);
-        session.human.brain.finishTrade(System.nanoTime(),session.human.actuator);
+        session.human.activity.finishTrade(System.nanoTime(),session.human.actuator);
     }
 
     static void update(ServerHuman human, long now) {

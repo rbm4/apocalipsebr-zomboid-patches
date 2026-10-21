@@ -153,6 +153,7 @@ public final class ApocBRPostgresConnector {
     }
 
     public static Connection borrowDictionaryConnection() throws SQLException {
+        if(ApocBRAsyncLogin.isWorker())return borrowConnection(false,true);
         Connection connection=borrowConnection(false,false);
         try {
             // pgJDBC implements this using the socket read timeout. Hikari tracks this change
@@ -196,7 +197,7 @@ public final class ApocBRPostgresConnector {
             &&!ApocBRPlayerRelationalMutations.hasPending(world,identity,slot,coop));
     }
     public static void awaitPersistence(){ApocBRPersistence.drain();}
-    public static void runShutdownDatabaseWork(Runnable work){ApocBRPersistence.shutdownWork(work);}
+    public static void runShutdownDatabaseWork(Runnable work){ApocBRAsyncLogin.shutdown();ApocBRPersistence.shutdownWork(work);}
     /** Dedicated I/O workers use normal pool/socket budgets and may operate during recovery. */
     public static void runBackgroundDatabaseWork(Runnable work){
         boolean previous=ApocBRPersistence.background();ApocBRPersistence.background(true);
@@ -215,6 +216,7 @@ public final class ApocBRPostgresConnector {
 
     private static Connection borrowConnection(boolean autoCommit) throws SQLException {return borrowConnection(autoCommit,!ApocBRPersistence.background());}
     private static Connection borrowConnection(boolean autoCommit,boolean foreground) throws SQLException {
+        if(ApocBRAsyncLogin.onSimulationThread())throw new SQLException("PostgreSQL work must be deferred from the simulation thread","55000");
         if(ApocBRPersistence.journaling()&&foreground&&!ApocBRPersistence.reachable())
             throw new SQLException("PostgreSQL temporarily unavailable","08001");
         ApocBRPostgresConnector target = current();
@@ -258,6 +260,7 @@ public final class ApocBRPostgresConnector {
 
     /** After native vehicle Reset has flushed its remaining work. */
     public static void closePool() {
+        ApocBRAsyncLogin.shutdown();
         ApocBRPersistence.close();
         dictionaryShutdown.run();
         if (instance != null) instance.close();

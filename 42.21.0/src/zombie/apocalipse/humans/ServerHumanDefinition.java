@@ -7,10 +7,16 @@ import zombie.iso.IsoDirections;
 /** Immutable input to the factory; contains no connection or database identity. */
 public record ServerHumanDefinition(
     String key, String username, String displayName, float x, float y, int z,
-    IsoDirections facing, boolean female, String outfit
+    IsoDirections facing, boolean female, String outfit, String profileId
 ) {
+    /** Compatibility input selects an explicit generic profile, independently of actor key. */
+    public ServerHumanDefinition(String key, String username, String displayName, float x, float y, int z,
+                                 IsoDirections facing, boolean female, String outfit) {
+        this(key,username,displayName,x,y,z,facing,female,outfit,"roaming-greeter");
+    }
     public ServerHumanDefinition {
         requireText(key, "key");
+        zombie.apocalipse.humans.profiles.HumanProfile.identifier(profileId);
         requireText(username, "username");
         requireText(displayName, "displayName");
         requireText(outfit, "outfit");
@@ -38,7 +44,8 @@ public record ServerHumanDefinition(
             Integer.parseInt(System.getProperty("apocbr.guide.z", "0")),
             IsoDirections.valueOf(System.getProperty("apocbr.guide.facing", "E").trim().toUpperCase(Locale.ROOT)),
             Boolean.getBoolean("apocbr.guide.female"),
-            System.getProperty("apocbr.guide.outfit", "CostumeMonster")
+            System.getProperty("apocbr.guide.outfit", "CostumeMonster"),
+            System.getProperty("apocbr.guide.profile", "lobby-guide")
         );
     }
 }

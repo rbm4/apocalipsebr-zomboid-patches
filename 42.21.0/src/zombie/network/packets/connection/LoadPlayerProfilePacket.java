@@ -177,20 +177,24 @@ public class LoadPlayerProfilePacket implements INetworkPacket {
             this.write(b);
             PacketTypes.PacketType.LoadPlayerProfile.send(connection);
         } else if (ApocBRPlayerDatabase.enabled()) {
-            boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
-            if (coop) ServerPlayerDB.getInstance().serverConvertNetworkCharacter(connection.getUserName(),connection.getIDStr());
-            try {
-                ApocBRPlayerDatabase.Profile profile=ServerPlayerDB.getInstance().serverLoadPostgresClientProfile(
-                        this.playerIndex,coop?connection.getIDStr():connection.getUserName(),coop,connection.getUserName());
-                this.isExist=profile!=null;
-                if (profile!=null) {
-                    this.x=profile.x(); this.y=profile.y(); this.z=profile.z(); this.buffer=profile.data();
-                    this.worldVersion=profile.worldVersion(); this.isDead=profile.dead(); this.username=profile.splitUsername();
-                }
-                ByteBufferWriter b=connection.startPacket();
-                PacketTypes.PacketType.LoadPlayerProfile.doPacket(b); this.write(b);
-                PacketTypes.PacketType.LoadPlayerProfile.send(connection);
-            } catch (Exception failure) { zombie.savefile.ApocBRLoginGuard.deny(connection); }
+            final int slot=this.playerIndex;
+            final boolean coop=GameServer.coop && SteamUtils.isSteamModeEnabled();
+            final String identity=coop?connection.getIDStr():connection.getUserName();
+            final String username=connection.getUserName(),world=Core.gameSaveWorld;
+            zombie.savefile.ApocBRAsyncLogin.submit(connection,"profile:"+slot,()->{
+                if(coop)ServerPlayerDB.getInstance().serverConvertNetworkCharacter(username,identity);
+                return ServerPlayerDB.getInstance().readPostgresProfile(world,identity,slot,coop);
+            },profile->{
+                if(!zombie.savefile.ApocBRLoginGuard.playerReady(connection,slot))return;
+                try {
+                    ApocBRPlayerDatabase.Profile encoded=ServerPlayerDB.getInstance().buildPostgresClientProfile(profile,slot,username);
+                    LoadPlayerProfilePacket reply=new LoadPlayerProfilePacket();reply.playerIndex=(byte)slot;reply.isExist=encoded!=null;
+                    if(encoded!=null){reply.x=encoded.x();reply.y=encoded.y();reply.z=encoded.z();reply.buffer=encoded.data();
+                        reply.worldVersion=encoded.worldVersion();reply.isDead=encoded.dead();reply.username=encoded.splitUsername();}
+                    ByteBufferWriter b=connection.startPacket();PacketTypes.PacketType.LoadPlayerProfile.doPacket(b);reply.write(b);
+                    PacketTypes.PacketType.LoadPlayerProfile.send(connection);
+                }catch(Exception failure){zombie.savefile.ApocBRLoginGuard.deny(connection);}
+            });
         } else if (ServerPlayerDB.getInstance().conn != null) {
             if (GameServer.coop && SteamUtils.isSteamModeEnabled()) {
                 ServerPlayerDB.getInstance().serverConvertNetworkCharacter(connection.getUserName(), connection.getIDStr());

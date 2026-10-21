@@ -59,6 +59,27 @@ public class ServerWorldDatabase {
     Connection conn;
     private static final String nullChar = String.valueOf('\u0000');
 
+    /** Captured on simulation thread so JDBC login workers never traverse mutable role registries. */
+    public static final class LoginRoles {
+        private final java.util.Map<Integer,Role> roles=new java.util.HashMap<>();
+        private final Role banned,user,newUser;
+        public LoginRoles() {
+            for(Role role:Roles.getRoles())roles.put(role.getId(),copy(role));
+            banned=copy(Roles.getDefaultForBanned());user=copy(Roles.getDefaultForUser());newUser=copy(Roles.getDefaultForNewUser());
+        }
+        private static Role copy(Role source) {
+            Role copy=new Role(source.getName());copy.setId(source.getId());copy.setPosition(source.getPosition());
+            for(Capability capability:source.getCapabilities())copy.addCapability(capability);
+            return copy;
+        }
+    }
+    private static final ThreadLocal<LoginRoles> loginRoles=new ThreadLocal<>();
+    public static void useLoginRoles(LoginRoles roles){if(roles==null)loginRoles.remove();else loginRoles.set(roles);}
+    private static Role loginRole(int id){LoginRoles view=loginRoles.get();return view==null?Roles.getRoleById(id):view.roles.get(id);}
+    private static Role loginBannedRole(){LoginRoles view=loginRoles.get();return view==null?Roles.getDefaultForBanned():view.banned;}
+    private static Role loginUserRole(){LoginRoles view=loginRoles.get();return view==null?Roles.getDefaultForUser():view.user;}
+    private static Role loginNewRole(){LoginRoles view=loginRoles.get();return view==null?Roles.getDefaultForNewUser():view.newUser;}
+
     public void getWhitelistUsers(HashMap<String, NetworkUser> users) {
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
@@ -68,13 +89,13 @@ public class ServerWorldDatabase {
 
                 while (rs.next()) {
                     IsoPlayer player = GameServer.getPlayerByUserNameForCommand(rs.getString("username"));
-                    Role role = Roles.getRoleById(rs.getInt("role"));
+                    Role role = loginRole(rs.getInt("role"));
                     if (role == null) {
                         DebugType.Multiplayer
                             .error(
                                 "ServerWorldDatabase.getWhitelistUsers player '" + rs.getString("username") + " have no role. (roleId=" + rs.getInt("role") + ")"
                             );
-                        role = Roles.getDefaultForUser();
+                        role = loginUserRole();
                     }
 
                     NetworkUser user = new NetworkUser(
@@ -109,7 +130,7 @@ public class ServerWorldDatabase {
                 while (rs.next()) {
                     String username = rs.getString("username");
                     if (!users.containsKey(username)) {
-                        NetworkUser user = new NetworkUser(GameServer.serverName, username, "", Roles.getDefaultForUser(), 1, "", "", false);
+                        NetworkUser user = new NetworkUser(GameServer.serverName, username, "", loginUserRole(), 1, "", "", false);
                         users.put(username, user);
                     }
                 }
@@ -341,7 +362,7 @@ public class ServerWorldDatabase {
                     stat.setString(2, user);
                     stat.setString(3, pass);
                     stat.setInt(4, authType);
-                    stat.setInt(5, Roles.getDefaultForNewUser().getId());
+                    stat.setInt(5, loginNewRole().getId());
                     stat.executeUpdate();
                     stat.close();
                     if (SteamUtils.isSteamModeEnabled()) {
@@ -622,9 +643,9 @@ public class ServerWorldDatabase {
                     .prepareStatement(
                         "INSERT INTO whitelist_new (world, username, password, lastConnection, role, authType, googleKey, steamid, ownerid) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
                     );
-                int roleId = Roles.getDefaultForUser().getId();
+                int roleId = loginUserRole().getId();
                 if ("true".equals(rs2.getString("banned"))) {
-                    roleId = Roles.getDefaultForBanned().getId();
+                    roleId = loginBannedRole().getId();
                 }
 
                 if ("true".equals(rs2.getString("priority"))) {
@@ -751,7 +772,7 @@ public class ServerWorldDatabase {
                     int userId = rs2.getInt("id");
                     Role role = Roles.getRole(rs2.getString("rolename"));
                     if (role == null) {
-                        role = Roles.getDefaultForUser();
+                        role = loginUserRole();
                         DebugType.Multiplayer
                             .warn("The server can't find role for " + rs2.getString("username") + ". The '" + role.getName() + "' role is set.");
                     }
@@ -806,7 +827,7 @@ public class ServerWorldDatabase {
             pstat1.setString(1, GameServer.serverName);
             pstat1.setString(2, this.commandLineAdminUsername);
             pstat1.setString(3, PZcrypt.hash(encrypt(pwd)));
-            pstat1.setInt(4, this.doAdmin ? Roles.getDefaultForAdmin().getId() : Roles.getDefaultForNewUser().getId());
+            pstat1.setInt(4, this.doAdmin ? Roles.getDefaultForAdmin().getId() : loginNewRole().getId());
             pstat1.executeUpdate();
             pstat1.close();
             System.out.println("Administrator account '" + this.commandLineAdminUsername + "' created.");
@@ -870,7 +891,7 @@ public class ServerWorldDatabase {
                 pstat1.setString(1, GameServer.serverName);
                 pstat1.setString(2, this.commandLineAdminUsername);
                 pstat1.setString(3, PZcrypt.hash(encrypt(pwd)));
-                pstat1.setInt(4, this.doAdmin ? Roles.getDefaultForAdmin().getId() : Roles.getDefaultForNewUser().getId());
+                pstat1.setInt(4, this.doAdmin ? Roles.getDefaultForAdmin().getId() : loginNewRole().getId());
                 pstat1.executeUpdate();
                 pstat1.close();
                 System.out.println("Administrator account '" + this.commandLineAdminUsername + "' created.");
@@ -1229,7 +1250,7 @@ public class ServerWorldDatabase {
             Connection database = databaseCall.connection();
             DebugType.DetailedInfo.println("User " + user + " is trying to connect.");
             ServerWorldDatabase.LogonResult result = new ServerWorldDatabase.LogonResult();
-            if (!ServerOptions.instance.allowNonAsciiUsername.getValue() && !asciiEncoder.canEncode(user)) {
+            if (!ServerOptions.instance.allowNonAsciiUsername.getValue() && !Charset.forName("US-ASCII").newEncoder().canEncode(user)) {
                 result.authorized = false;
                 result.dcReason = "NonAsciiCharacters";
                 return result;
@@ -1246,7 +1267,7 @@ public class ServerWorldDatabase {
                         if (rs.next()) {
                             result.authorized = false;
                             result.bannedReason = rs.getString("reason");
-                            result.role = Roles.getDefaultForBanned();
+                            result.role = loginBannedRole();
                             stat.close();
                             return result;
                         }
@@ -1277,8 +1298,8 @@ public class ServerWorldDatabase {
                     stat.setString(2, Core.gameSaveWorld);
                     ResultSet rs = stat.executeQuery();
                     if (rs.next()) {
-                        Role roleInternal = Roles.getRoleById(rs.getInt("role"));
-                        result.role = roleInternal != null ? roleInternal : Roles.getDefaultForBanned();
+                        Role roleInternal = loginRole(rs.getInt("role"));
+                        result.role = roleInternal != null ? roleInternal : loginBannedRole();
                         if (!result.role.hasCapability(Capability.LoginOnServer)) {
                             result.authorized = false;
                             result.bannedReason = "";
@@ -1356,6 +1377,13 @@ public class ServerWorldDatabase {
     }
 
     public ServerWorldDatabase.LogonResult authClient(long steamID) {
+        // Native Steam callback requires an immediate int result. PostgreSQL admission is
+        // completed by LoginPacket's JDBC worker before any client-connect state is granted.
+        if(ApocBRServerDatabase.enabled()){LogonResult transport=new LogonResult();transport.authorized=true;return transport;}
+        return authSteamClient(steamID);
+    }
+
+    public ServerWorldDatabase.LogonResult authSteamClient(long steamID) {
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             String steamIDstr = SteamUtils.convertSteamIDToString(steamID);
@@ -1369,7 +1397,7 @@ public class ServerWorldDatabase {
                 if (rs.next()) {
                     result.authorized = false;
                     result.bannedReason = rs.getString("reason");
-                    result.role = Roles.getDefaultForBanned();
+                    result.role = loginBannedRole();
                     stat.close();
                     return result;
                 }
@@ -1394,6 +1422,11 @@ public class ServerWorldDatabase {
     }
 
     public ServerWorldDatabase.LogonResult authOwner(long steamID, long ownerID) {
+        if(ApocBRServerDatabase.enabled()){LogonResult transport=new LogonResult();transport.authorized=true;return transport;}
+        return authSteamOwner(steamID,ownerID);
+    }
+
+    public ServerWorldDatabase.LogonResult authSteamOwner(long steamID, long ownerID) {
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             String steamIDstr = SteamUtils.convertSteamIDToString(steamID);
@@ -1408,7 +1441,7 @@ public class ServerWorldDatabase {
                 if (rs.next()) {
                     result.authorized = false;
                     result.bannedReason = rs.getString("reason");
-                    result.role = Roles.getDefaultForBanned();
+                    result.role = loginBannedRole();
                     stat.close();
                     return result;
                 }
@@ -1480,7 +1513,7 @@ public class ServerWorldDatabase {
                                     break label126;
                                 }
 
-                                role = Roles.getRoleById(rs.getInt(1));
+                                role = loginRole(rs.getInt(1));
                             } while (!role.hasCapability(Capability.PriorityLogin));
 
                             var13 = true;
@@ -1626,12 +1659,12 @@ public class ServerWorldDatabase {
     }
 
     public void addUserlog(String username, Userlog.UserlogType type, String text, String issuedBy, int amount) {
-        if(ApocBRServerDatabase.queueUserlog(username,type.toString(),text,issuedBy,amount,dateFormat.format(Calendar.getInstance().getTime())))return;
+        if(ApocBRServerDatabase.queueUserlog(username,type.toString(),text,issuedBy,amount,formatConnectionDate()))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
                 boolean add = true;
-                String lastUpdate = dateFormat.format(Calendar.getInstance().getTime());
+                String lastUpdate = formatConnectionDate();
                 if (type != Userlog.UserlogType.LuaChecksum && type != Userlog.UserlogType.DupeItem) {
                     if (type == Userlog.UserlogType.Kicked
                         || type == Userlog.UserlogType.Banned
@@ -1702,7 +1735,7 @@ public class ServerWorldDatabase {
     public Role getUserRoleNameByUsername(String username) {
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
-            Role role = Roles.getDefaultForUser();
+            Role role = loginUserRole();
 
             try {
                 PreparedStatement stat = database.prepareStatement("SELECT role FROM whitelist WHERE username = ? AND world = ?");
@@ -1711,7 +1744,7 @@ public class ServerWorldDatabase {
                 ResultSet rs = stat.executeQuery();
                 boolean exists = rs.next();
                 if (exists) {
-                    role = Roles.getRoleById(rs.getInt("role"));
+                    role = loginRole(rs.getInt("role"));
                 }
 
                 stat.close();
@@ -1736,7 +1769,7 @@ public class ServerWorldDatabase {
                 PreparedStatement stat2 = database.prepareStatement("INSERT INTO whitelist (world, username, role, password) VALUES (?, ?, ?, ?)");
                 stat2.setString(1, Core.gameSaveWorld);
                 stat2.setString(2, username);
-                stat2.setInt(3, Roles.getDefaultForBanned().getId());
+                stat2.setInt(3, loginBannedRole().getId());
                 stat2.setString(4, PZcrypt.hash(encrypt("BANNEDPASS" + username)));
                 stat2.executeUpdate();
                 stat2.close();
@@ -1746,7 +1779,7 @@ public class ServerWorldDatabase {
 
             stat.close();
             if (exists) {
-                Role role = ban ? Roles.getDefaultForBanned() : Roles.getDefaultForUser();
+                Role role = ban ? loginBannedRole() : loginUserRole();
                 stat = database.prepareStatement("UPDATE whitelist SET role = ? WHERE username = ?");
                 stat.setInt(1, role.getId());
                 stat.setString(2, username);
@@ -1993,13 +2026,17 @@ public class ServerWorldDatabase {
         }
     }
 
+    private static String formatConnectionDate() {
+        synchronized(dateFormat){return dateFormat.format(Calendar.getInstance().getTime());}
+    }
+
     public void updateLastConnectionDate(String u, String p) {
-        if(ApocBRServerDatabase.queue("UPDATE whitelist SET lastconnection=? WHERE username=? AND password=?",dateFormat.format(Calendar.getInstance().getTime()),u,p))return;
+        if(ApocBRServerDatabase.queue("UPDATE whitelist SET lastconnection=? WHERE username=? AND password=?",formatConnectionDate(),u,p))return;
         try (ApocBRServerDatabase.Call databaseCall = ApocBRServerDatabase.open(this.conn)) {
             Connection database = databaseCall.connection();
             try {
                 PreparedStatement stat = database.prepareStatement("UPDATE whitelist SET lastConnection = ? WHERE username = ? AND password = ?");
-                stat.setString(1, dateFormat.format(Calendar.getInstance().getTime()));
+                stat.setString(1, formatConnectionDate());
                 stat.setString(2, u);
                 stat.setString(3, p);
                 stat.executeUpdate();
@@ -2176,7 +2213,7 @@ public class ServerWorldDatabase {
         public LogonResult() {
             Objects.requireNonNull(ServerWorldDatabase.this);
             super();
-            this.role = Roles.getDefaultForNewUser();
+            this.role = loginNewRole();
         }
     }
 }

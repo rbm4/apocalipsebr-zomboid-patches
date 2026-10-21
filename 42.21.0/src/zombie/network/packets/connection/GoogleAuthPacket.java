@@ -34,6 +34,13 @@ public class GoogleAuthPacket implements INetworkPacket {
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
         if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        if(zombie.savefile.ApocBRServerDatabase.enabled()) {
+            if(!zombie.savefile.ApocBRAsyncLogin.takeSecondFactor(connection,this.username)){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+            GoogleAuthPacket request=new GoogleAuthPacket();request.username=this.username;request.code=this.code;
+            zombie.savefile.ApocBRAsyncLogin.submit(connection,"google-auth",
+                ()->ServerWorldDatabase.instance.googleAuthClient(request.username,request.code),
+                result->request.finishAuthentication(connection,result));return;
+        }
         try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
             processServerDatabase(packetType,connection);
         }catch(RuntimeException failure) {
@@ -44,6 +51,15 @@ public class GoogleAuthPacket implements INetworkPacket {
 
     private void processServerDatabase(PacketTypes.PacketType packetType, UdpConnection connection) {
         ServerWorldDatabase.LogonResult r = ServerWorldDatabase.instance.googleAuthClient(this.username, this.code);
+        finishAuthentication(connection,r);
+    }
+
+    private void finishAuthentication(UdpConnection connection,ServerWorldDatabase.LogonResult r) {
+        if(zombie.savefile.ApocBRServerDatabase.enabled()) {
+            zombie.characters.Role current=connection.getRole()==null?null:zombie.characters.Roles.getRoleById(connection.getRole().getId());
+            if(current==null||!current.hasCapability(Capability.LoginOnServer)){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+            r.role=current;
+        }
         if (!r.authorized) {
             LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" reason \"" + r.dcReason + "\"");
             INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, r.dcReason != null ? r.dcReason : "AccessDenied");

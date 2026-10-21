@@ -8,10 +8,14 @@ import java.util.concurrent.TimeUnit;
 public final class ApocBRForegroundDatabase implements AutoCloseable {
     private static final ThreadLocal<Long> deadline=new ThreadLocal<>();
     private static final ThreadLocal<Integer> networkLimit=new ThreadLocal<>();
+    private static final ThreadLocal<SQLException> failure=new ThreadLocal<>();
+    public static void failed(SQLException error){if(deadline.get()!=null&&failure.get()==null)failure.set(new SQLException("Database workflow failed",error.getSQLState()));}
+    public static void verifySuccess() throws SQLException {if(failure.get()!=null)throw failure.get();}
+
     private final Long previous;
     private ApocBRForegroundDatabase(int milliseconds,int networkMillis){
         previous=deadline.get();
-        if(previous==null){deadline.set(System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(milliseconds));networkLimit.set(networkMillis);}
+        if(previous==null){failure.remove();deadline.set(System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(milliseconds));networkLimit.set(networkMillis);}
     }
     public static ApocBRForegroundDatabase begin(){return new ApocBRForegroundDatabase(500,250);}
     /** Connection phases perform multiple synchronous account/player reads, not one query. */
@@ -24,7 +28,7 @@ public final class ApocBRForegroundDatabase implements AutoCloseable {
     }
     // Pool contention must still fail quickly; only login socket/query waits grow.
     static int acquisitionMillis()throws SQLException {return deadline.get()==null?250:remaining(deadline.get(),250);}
-    @Override public void close(){if(previous==null){deadline.remove();networkLimit.remove();}else deadline.set(previous);}
+    @Override public void close(){if(previous==null){deadline.remove();networkLimit.remove();failure.remove();}else deadline.set(previous);}
     static Connection wrap(Connection connection)throws SQLException {
         long expires=deadline.get()==null?System.nanoTime()+TimeUnit.MILLISECONDS.toNanos(250):deadline.get();
         Integer limit=networkLimit.get();
@@ -49,14 +53,14 @@ public final class ApocBRForegroundDatabase implements AutoCloseable {
                 if(result instanceof ResultSet s)return proxy(ResultSet.class,s,connection,expires,limit);
                 return result;
             }catch(InvocationTargetException wrapper){Throwable cause=wrapper.getCause();if(cause instanceof SQLException sql){
-                ApocBRPersistence.failed(sql);
+                failed(sql);ApocBRPersistence.failed(sql);
                 Throwable root=sql;for(int depth=0;depth<8&&root.getCause()!=null;depth++)root=root.getCause();
                 String state=sql.getSQLState();
                 // Driver messages can contain connection details or SQL/player data. Log only types and budgets.
                 zombie.debug.DebugLog.log("[ApocBR][Postgres] FOREGROUND_JDBC_FAILURE; SQLState="
                     +(state!=null&&state.matches("[A-Z0-9]{5}")?state:"UNKNOWN")+"; networkLimitMs="+limit+"; cause="+root.getClass().getName());
                 throw new SQLException("PostgreSQL foreground operation unavailable",sql.getSQLState());}throw cause;}
-            catch(SQLException error){ApocBRPersistence.failed(error);throw error;}
+            catch(SQLException error){failed(error);ApocBRPersistence.failed(error);throw error;}
         });
     }
 }

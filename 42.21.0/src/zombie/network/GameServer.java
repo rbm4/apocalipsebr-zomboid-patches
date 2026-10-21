@@ -873,6 +873,9 @@ public class GameServer {
                         NetworkZombiePacker.getInstance().awaitWorkers();
                     }
                     long telemetryPacketsStart = System.nanoTime();
+                    try(ApocBRServerTelemetryLite.Scope login=ApocBRServerTelemetryLite.phase("database.login.continuations")) {
+                        zombie.savefile.ApocBRAsyncLogin.update();
+                    }
                     PoolCaps.updateServerCaps();
                     MainLoopNetData2.clear();
 
@@ -2849,16 +2852,45 @@ public class GameServer {
     }
 
     public static void receivePlayerConnect(ByteBufferReader bb, IConnection connection, String username) {
+        receivePlayerConnect(bb,connection,username,()->{});
+    }
+
+    public static void receivePlayerConnect(ByteBufferReader bb,IConnection connection,String username,Runnable connected) {
         if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
         try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
-            receivePlayerConnectDatabase(bb,connection,username);
+            receivePlayerConnectDatabase(bb,connection,username,connected);
         }catch(RuntimeException failure) {
             if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
             zombie.savefile.ApocBRLoginGuard.deny(connection);
         }
     }
 
-    private static void receivePlayerConnectDatabase(ByteBufferReader bb,IConnection connection,String username) {
+    private static void receivePlayerConnectDatabase(ByteBufferReader bb,IConnection connection,String username,Runnable connected) {
+        if(zombie.savefile.ApocBRPlayerDatabase.enabled()&&connection instanceof UdpConnection udp) {
+            java.nio.ByteBuffer copy=java.nio.ByteBuffer.allocate(bb.remaining());copy.put(bb.bb.duplicate());copy.flip();
+            if(copy.remaining()<3){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+            int slot=copy.get(0);
+            if(slot<0||slot>=4||connection.getPlayerAt(slot)!=null){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+            // A newly created character is already durable and held in simulation-thread memory.
+            IsoPlayer created=zombie.savefile.ApocBRCreatedPlayerHandoff.take(udp,slot);
+            if(created!=null){receivePlayerConnectReady(new ByteBufferReader(copy),connection,username,created,connected);return;}
+            String world=Core.gameSaveWorld;
+            boolean steamCoop=coop&&SteamUtils.isSteamModeEnabled();
+            String identity=steamCoop?connection.getIDStr():connection.getUserName();
+            zombie.savefile.ApocBRAsyncLogin.submit(udp,"player-connect:"+slot,
+                ()->ServerPlayerDB.getInstance().readPostgresProfile(world,identity,slot,steamCoop),
+                profile->{
+                    if(connection.getPlayerAt(slot)!=null)return;
+                    if(!java.util.Objects.equals(connection.getUserName(slot),username)){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+                    IsoPlayer player=ServerPlayerDB.getInstance().finishPostgresPlayer(profile,slot,identity,steamCoop);
+                    receivePlayerConnectReady(new ByteBufferReader(copy),connection,username,player,connected);
+                });
+            return;
+        }
+        receivePlayerConnectReady(bb,connection,username,null,connected);
+    }
+
+    private static void receivePlayerConnectReady(ByteBufferReader bb,IConnection connection,String username,IsoPlayer loaded,Runnable connected) {
         ConnectionManager.log("receive-packet", "player-connect", connection);
         if (SteamUtils.isSteamModeEnabled() && !coop && connection.getSteamId() <= 0L) {
             LoggerManager.getLogger("user")
@@ -2877,8 +2909,8 @@ public class GameServer {
             if (playerIndex >= 0 && playerIndex < 4 && connection.getPlayerAt(playerIndex) == null) {
                 byte range = (byte)Math.max(12, Math.min(20, bb.getByte()));
                 connection.setRelevantRange((byte)(range / 2 + 2));
-                IsoPlayer player=connection instanceof UdpConnection udp?zombie.savefile.ApocBRCreatedPlayerHandoff.take(udp,playerIndex):null;
-                if (player==null) {
+                IsoPlayer player=loaded;
+                if (player==null&&!zombie.savefile.ApocBRPlayerDatabase.enabled()) {
                     if (coop && SteamUtils.isSteamModeEnabled()) {
                         player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getIDStr());
                     } else {
@@ -2972,6 +3004,7 @@ public class GameServer {
 
                     LoggerManager.getLogger("user")
                         .write(connection.getIDStr() + " \"" + player.username + "\" fully connected " + LoggerManager.getPlayerCoords(player));
+                    connected.run();
                 }
             }
         }

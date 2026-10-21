@@ -202,6 +202,34 @@ public class ReconstructionTest {
    check(!bytes.hasRemaining()&&client.getAmount()==2.5f&&client.getCapacity()==4f,"native fluid save/load preserves reconstructed water on client wire path");
   }finally{if(previous==null)registry.remove("Water");else registry.put("Water",previous);}
  }
+ static void traitRestoration()throws Exception {
+  var smoker=zombie.scripting.objects.CharacterTrait.SMOKER;
+  var custom=zombie.scripting.objects.CharacterTrait.register("apocbr_fixture:custom_trait");
+  var nativeTraits=new zombie.characters.traits.CharacterTraits();
+  var player=(zombie.characters.IsoPlayer)blank(zombie.characters.IsoPlayer.class);
+  ApocBRPlayerRelationalReconstruction.set(player,"characterTraits",nativeTraits);
+  var constructor=ApocBRPlayerRelationalReconstruction.class.getDeclaredConstructor(ApocBRPlayerRelationalReader.Profile.class,ApocBRPlayerReconstructionLog.Attempt.class);constructor.setAccessible(true);
+  var method=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod("traits",zombie.characters.IsoPlayer.class);method.setAccessible(true);
+  var profile=new ApocBRPlayerRelationalReader.Profile(Map.of("character_trait",List.of(Map.of("trait_key",smoker.toString()),Map.of("trait_key",custom.toString()))));
+  method.invoke(constructor.newInstance(profile,null),player);
+  check(nativeTraits.get(smoker)&&nativeTraits.get(custom),"restored vanilla and mod traits enable native gameplay flags");
+  check(!nativeTraits.get(zombie.scripting.objects.CharacterTrait.STRONG),"unsaved trait retains false default");
+  check(nativeTraits.getKnownTraits().equals(List.of(smoker,custom)),"known traits match restored flags");
+  var bytes=java.nio.ByteBuffer.allocate(4096);nativeTraits.save(bytes);bytes.flip();
+  var client=new zombie.characters.traits.CharacterTraits();client.load(bytes);
+  check(!bytes.hasRemaining()&&client.get(smoker)&&client.get(custom)&&client.getKnownTraits().equals(nativeTraits.getKnownTraits()),"native trait wire round trip preserves relational state");
+  Field sink=ApocBRPlayerReconstructionLog.class.getDeclaredField("sink");sink.setAccessible(true);Object previous=sink.get(null);
+  List<String> logs=new ArrayList<>();sink.set(null,(java.util.function.Consumer<String>)logs::add);
+  try(var attempt=ApocBRPlayerReconstructionLog.begin("RESTORE_PLAYER",0)) {
+   attempt.stage("RESTORE_CHARACTER_FIELDS");
+   var missing=new ApocBRPlayerRelationalReader.Profile(Map.of("character_trait",List.of(Map.of("trait_key","apocbr_fixture:missing_trait"))));
+   try{method.invoke(constructor.newInstance(missing,attempt),player);throw new AssertionError("missing trait accepted");}
+   catch(InvocationTargetException expected){check(expected.getCause() instanceof IllegalStateException,"missing trait has explicit reconstruction failure");attempt.failure(expected.getCause());}
+   check(logs.stream().anyMatch(s->s.contains("MISSING_REGISTRY")&&s.contains("registry=zombie.scripting.objects.CharacterTrait; key=apocbr_fixture:missing_trait")),"missing definition diagnostic identifies registry and key");
+   check(logs.stream().anyMatch(s->s.contains("FAILED")&&s.contains("table=character_trait")&&s.contains("field=trait_key")&&s.contains("reason=Missing registry key")),"failure retains table field and reason");
+   check(nativeTraits.getKnownTraits().equals(List.of(smoker,custom)),"missing definition is never added to native trait state");
+  }finally{sink.set(null,previous);}
+ }
  static void fitnessPersistence()throws Exception {
   var nativeFitness=new zombie.characters.BodyDamage.Fitness(null);
   Object exercise=blank(Class.forName("zombie.characters.BodyDamage.Fitness$FitnessExercise"));
@@ -307,7 +335,7 @@ public class ReconstructionTest {
    check(ApocBRPlayerReconstructionLog.token("\ud83d\ude00\n").length()<=3,"non-ASCII labels cannot break log formatting");
   }finally{sink.set(null,previous);}
  }
- public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();fitnessPersistence();itemTypes();nativeFields();jdbc();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
+ public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();traitRestoration();fitnessPersistence();itemTypes();nativeFields();jdbc();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
 }
 '''.replace('ROOTS',roots)
 with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:

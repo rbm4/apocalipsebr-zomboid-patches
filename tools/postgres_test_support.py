@@ -8,6 +8,13 @@ from pathlib import Path
 
 def inactive_persistence_stubs(target: Path, *, mutations=False):
     sources = {
+        # Inline coordinator for isolated JDBC/wire fixtures; real scheduling is tested by test_postgres_async_login.py.
+        'ApocBRAsyncLogin': """package zombie.savefile; public final class ApocBRAsyncLogin {
+ public static boolean simulation; public static boolean isWorker(){return false;} public static boolean onSimulationThread(){return simulation;}public static void shutdown(){}
+ public static <T> void submit(Object c,String phase,java.util.concurrent.Callable<T> work,java.util.function.Consumer<T> resume){
+  try{resume.accept(work.call());}catch(Exception error){throw new IllegalStateException(error);}
+ }
+}""",
         'ApocBRPersistence': '''package zombie.savefile; final class ApocBRPersistence {
  static <T>T status(){return null;}
  static boolean enabled(){return false;} static boolean journaling(){return false;}
@@ -26,7 +33,7 @@ def inactive_persistence_stubs(target: Path, *, mutations=False):
  record Account(java.util.List<Sql> statements){}
 }''',
         'ApocBRLoginGuard': '''package zombie.savefile; public final class ApocBRLoginGuard {
- public static boolean enabled(){return false;} public static boolean ready(Object c){return true;}
+ public static boolean enabled(){return false;} public static boolean ready(Object c){return true;} public static boolean playerReady(Object c,int slot){return true;}
  public static void deny(Object c){throw new AssertionError("Unexpected profile denial");}
 }''',
     }

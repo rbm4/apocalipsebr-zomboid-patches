@@ -26,6 +26,7 @@ public final class ServerHumanFactory {
     static final long UPDATE_NANOS = 500_000_000L;
     static final long BRAIN_UPDATE_NANOS = 100_000_000L;
     private static final ServerHumanFactory INSTANCE = new ServerHumanFactory();
+    private final Map<String, HumanLifecycle> instances = new LinkedHashMap<>();
     private final Map<String, ServerHuman> humans = new LinkedHashMap<>();
     private final Map<Short, ServerHuman> byId = new HashMap<>();
     private final Set<String> reservedNames = new HashSet<>();
@@ -66,7 +67,13 @@ public final class ServerHumanFactory {
         nextBrainUpdate = now + BRAIN_UPDATE_NANOS;
         boolean heartbeat = now >= nextUpdate;
         if (heartbeat) nextUpdate = now + UPDATE_NANOS;
+        java.util.List<String> dead = null;
         for (ServerHuman human : humans.values()) {
+            if (human.player.isDead()) {
+                if (dead == null) dead = new java.util.ArrayList<>();
+                dead.add(human.definition.key());
+                continue;
+            }
             // Forget disconnected/replaced connection instances; do not retain them forever.
             Iterator<UdpConnection> iterator = human.viewers.iterator();
             while (iterator.hasNext()) {
@@ -83,7 +90,7 @@ public final class ServerHumanFactory {
             boolean wasMoving = human.moving;
             ServerHumanTrading.update(human, now);
             ServerHumanDialogue.update(human, now);
-            human.brain.update(human.actuator.observe(now), human.actuator);
+            human.activity.update(now, human.actuator::observe, human.actuator);
             // Simulate at 10 Hz, but publish routine motion only on the 2 Hz heartbeat.
             // Turns and starts/stops must replace stale client prediction immediately.
             boolean turned = Float.compare(previousDirection, human.player.getDirectionAngleRadians()) != 0;
@@ -93,35 +100,82 @@ public final class ServerHumanFactory {
                 }
             }
         }
+        if (dead != null) for (String key : dead) markDead(key);
     }
 
-    /** Returns the presentation online ID. Reusing a key requires explicit removal. */
-    public short spawn(ServerHumanDefinition definition) {
+    /** Register logical state independently of a live presentation. Simulation thread only. */
+    public void registerDormant(ServerHumanDefinition definition) {
         requireOwner();
-        if (humans.containsKey(definition.key())) throw new IllegalArgumentException("Duplicate human key: " + definition.key());
+        ServerHumanProfiles.registry().require(definition.profileId());
+        if (instances.containsKey(definition.key())) throw new IllegalArgumentException("Duplicate human key: " + definition.key());
         String name = canonicalName(definition.username());
         if (reservedNames.contains(name)) throw new IllegalArgumentException("Human username already used in this server process");
-        for (zombie.characters.IsoPlayer player : GameServer.IDToPlayerMap.values()) {
-            if (player.getUsername() != null && canonicalName(player.getUsername()).equals(name)) {
-                throw new IllegalArgumentException("Human username conflicts with an online player");
-            }
-        }
-        short id = allocateId();
-        ServerHuman human = new ServerHuman(definition, id, IsoWorld.instance.currentCell);
-        humans.put(definition.key(), human);
-        byId.put(id, human);
+        checkOnlineName(definition);
+        instances.put(definition.key(),new HumanLifecycle(definition));
         reservedNames.add(name);
-        DebugLog.log("[ApocBR][ServerHumans] Spawned key=" + definition.key() + " id=" + id
-            + " at=" + definition.x() + "," + definition.y() + "," + definition.z());
-        return id;
     }
 
-    public boolean remove(String key) {
+    /** Compatibility spawn creates a logical instance and activates it immediately. */
+    public short spawn(ServerHumanDefinition definition) {
+        registerDormant(definition);
+        return activate(definition.key());
+    }
+
+    public short activate(String key) {
+        requireOwner();
+        HumanLifecycle instance = instances.get(key);
+        if (instance == null) throw new IllegalArgumentException("Unknown human key: " + key);
+        ServerHumanDefinition definition = instance.definition();
+        ServerHumanProfiles.registry().require(definition.profileId());
+        checkOnlineName(definition);
+        instance.spawning();
+        try {
+            short id = allocateId();
+            ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell);
+            humans.put(key,human); byId.put(id,human); instance.active(human.profile.revision());
+            DebugLog.log("[ApocBR][ServerHumans] Spawned key=" + key + " profile=" + definition.profileId()
+                + " id=" + id + " at=" + definition.x() + "," + definition.y() + "," + definition.z());
+            ServerHumanDialogue.rosterChanged();
+            return id;
+        } catch (RuntimeException failure) {
+            if (instance.state() == HumanLifecycle.State.SPAWNING) instance.dormant();
+            throw failure;
+        }
+    }
+
+    private void checkOnlineName(ServerHumanDefinition definition) {
+        String name = canonicalName(definition.username());
+        for (zombie.characters.IsoPlayer player : GameServer.IDToPlayerMap.values()) {
+            if (player.getUsername() != null && canonicalName(player.getUsername()).equals(name))
+                throw new IllegalArgumentException("Human username conflicts with an online player");
+        }
+    }
+
+    public HumanLifecycle.Snapshot lifecycle(String key) {
+        requireOwner();
+        HumanLifecycle instance = instances.get(key);
+        return instance == null ? null : instance.snapshot();
+    }
+
+    public boolean deactivate(String key) { return retire(key,false); }
+    public boolean markDead(String key) { return retire(key,true); }
+    private boolean retire(String key, boolean death) {
         requireOwner();
         ServerHuman human = humans.remove(key);
         if (human == null) return false;
         byId.remove(human.player.getOnlineID());
+        if (death) instances.get(key).dead(); else instances.get(key).dormant();
         human.dispose();
+        ServerHumanDialogue.rosterChanged();
+        return true;
+    }
+
+    /** Permanent administrative removal; dormancy uses deactivate instead. */
+    public boolean remove(String key) {
+        requireOwner();
+        if (!instances.containsKey(key)) return false;
+        deactivate(key);
+        instances.remove(key);
         return true;
     }
 

@@ -1,10 +1,15 @@
 """Execute production event worker/cache with fake JDBC and deterministic clocks; no live DB."""
 from pathlib import Path
 import subprocess
+import os
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
+GAME_JAR = Path(os.environ.get("PZ_GAME_JAR", "Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar"))
 FILES = {
+    "se/krka/kahlua/vm/KahluaTable.java": 'package se.krka.kahlua.vm; public class KahluaTable { private final java.util.Map<Object,Object> data=new java.util.HashMap<>(); public void rawset(Object key,Object value){data.put(key,value);} public Object rawget(Object key){return data.get(key);} }',
+    "zombie/Lua/LuaManager.java": 'package zombie.Lua; public class LuaManager { public static final Platform platform=new Platform(); public static class Platform {public se.krka.kahlua.vm.KahluaTable newTable(){return new se.krka.kahlua.vm.KahluaTable();}} }',
+
     "zombie/network/GameServer.java": 'package zombie.network; public class GameServer { public static boolean server=true; public static String serverName="test"; }',
     "zombie/core/Core.java": 'package zombie.core; public class Core { public static String gameSaveWorld="world"; }',
     "zombie/core/Translator.java": '''package zombie.core; public class Translator {
@@ -65,7 +70,7 @@ public class EventControlTest {
      if(queryFail)throw new SQLException("missing schema","42P01");reads++;int[] cursor={0};
      yield proxy(ResultSet.class,(r,rm,ra)->switch(rm.getName()){
       case "next" -> ++cursor[0]==1;
-      case "getString" -> switch((int)ra[0]){case 1->row.id();case 3->row.name();case 5->row.state();case 6->reportedId;case 8->reportedId==null?null:"release_requested";case 9->nextName;case 11->activeName;default->throw new AssertionError();};
+      case "getString" -> switch((int)ra[0]){case 1->row.id();case 3->row.name();case 5->row.state();case 6->reportedId;case 8->reportedId==null?null:"release_requested";case 9->nextName;case 11->activeName;case 14->row.metadataJson();default->throw new AssertionError();};
       case "getLong" -> (int)ra[0]==7?reported:row.revision();
       case "getTimestamp" -> {long value=switch((int)ra[0]){case 4->row.startsAt();case 10->nextStart;case 12->activeEnd;case 13->updatedAt;default->throw new AssertionError();};yield value==0?null:new Timestamp(value);}
       case "close" -> null;default -> throw new AssertionError("Unexpected result method "+rm.getName());});
@@ -83,9 +88,13 @@ public class EventControlTest {
   worker.start();worker.join();if(failure[0]!=null)throw new RuntimeException(failure[0]);
   check(LuaEventManager.calls==calls,"JDBC worker must never call Lua");
  }
+ static se.krka.kahlua.vm.KahluaTable context(){return (se.krka.kahlua.vm.KahluaTable)LuaEventManager.arguments[2];}
  static void invalid(Runnable action){try{action.run();throw new AssertionError("invalid schedule accepted");}catch(IllegalArgumentException|NullPointerException expected){checks++;}}
  public static void main(String[] ignored) throws Exception {
   Database db=new Database();var c=control(db);
+  String metadata="{\"parameters\":{\"objectives\":[{\"target\":100}]}}";
+  db.row=new ApocBREventControl.Schedule(ID,1,"Extraction",start,"scheduled",metadata);
+  check(ApocBREventControl.DEFAULT_POLL_MILLIS==30000&&ApocBREventControl.DEFAULT_FRESH_MILLIS==90000,"30 second polling with compatible freshness");
   check(ApocBREventControl.getStatus().equals("STARTING"),"starting without a database result");
   poll(c);check(ApocBREventControl.getEventId()==null,"worker cannot install main-thread snapshot");
   ApocBREventControl.update();check(LuaEventManager.calls==0&&ApocBREventControl.getStatus().equals("READY"),"future schedule");
@@ -96,10 +105,17 @@ public class EventControlTest {
   check(ApocBREventControl.remaining(90061001).equals("1d 1h 1min 2s"),"days/hours/minutes/seconds rounded up");
   check(ApocBREventControl.remaining(1).equals("1s"),"positive subsecond countdown never says zero");
   check(ApocBREventControl.getStartsAtMillis()==start&&ApocBREventControl.getRevision()==1,"cached typed getters");
+  var cached=ApocBREventControl.getEventContext(ID,1);
+  check(cached.rawget("metadataJson").equals(metadata),"matching cached metadata before deadline");
+  cached.rawset("metadataJson","mutated");
+  check(ApocBREventControl.getEventContext(ID,1).rawget("metadataJson").equals(metadata),"Lua mutation cannot alter cache");
+  check(ApocBREventControl.getEventContext(OTHER,1)==null&&ApocBREventControl.getEventContext(ID,2)==null,"context requires exact identity/revision");
   check(!ApocBREventControl.isDue(ID,1)&&!ApocBREventControl.acknowledgeRelease(ID,1),"do not activate early");
   check(db.queries==queries,"Lua getters/greetings perform no SQL");
   clock[0]=start;ApocBREventControl.update();check(LuaEventManager.calls==1,"deadline signal without clients/game-time progression");
   check(LuaEventManager.event.equals("OnApocBRLobbyEventDue")&&LuaEventManager.arguments[0].equals(ID),"typed event signal");
+  check(LuaEventManager.arguments.length==3&&context().rawget("metadataJson").equals(metadata)
+    &&Boolean.FALSE.equals(context().rawget("isReplay")),"third argument is matching metadata table");
   ApocBREventControl.update();check(LuaEventManager.calls==1,"bounded signal retries");
   clock[1]+=1_000_000_000L;ApocBREventControl.update();check(LuaEventManager.calls==2,"retry when mod has not acknowledged");
   check(ApocBREventControl.guideGreeting("Oi!").contains("EventPending"),"do not announce release before mod acceptance");
@@ -111,10 +127,16 @@ public class EventControlTest {
   db.activeName="Extraction";db.activeEnd=start+3600000;db.nextName="Next";db.nextStart=start+7200000;
   poll(c);ApocBREventControl.update();
   String both=ApocBREventControl.guideAnnouncement();
+  var phrases=ApocBREventControl.guideAnnouncementLines();
+  check(phrases.size()==2&&phrases.get(0).contains("EventRemaining")&&phrases.get(1).contains("EventCountdown"),"active and next operation exposed as two ordered phrases");
+  try{phrases.clear();throw new AssertionError("mutable phrases");}catch(UnsupportedOperationException expected){checks++;}
+  int beforePhrases=db.queries;ApocBREventControl.guideAnnouncementLines();
+  check(db.queries==beforePhrases,"structured announcement reads cached data without SQL");
   check(both.contains("EventRemaining")&&both.contains("1h 0min 0s")&&both.contains("EventCountdown")&&both.contains("2h 0min 0s"),"confirmed active estimate and next countdown in separate follow-up");
   db.activeName=null;db.activeEnd=0;db.nextName="Changed";db.nextStart=start+60000;
   poll(c);ApocBREventControl.update();check(db.reported==1&&db.writes==1,"asynchronous scoped receipt");
   clock[1]+=1_000_000_000L;ApocBREventControl.update();check(LuaEventManager.calls==2,"no repeated signal after acceptance");
+  check(phrases.get(1).contains("Next")&&!phrases.get(1).contains("Changed"),"previous phrase snapshot survives schedule changes");
   db.row=new ApocBREventControl.Schedule(ID,2,"Changed",start+60000,"scheduled");poll(c);ApocBREventControl.update();
   check(!ApocBREventControl.isDue(ID,1)&&ApocBREventControl.guideGreeting("Oi!").contains("Changed"),"reschedule invalidates old activation");
   db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled");poll(c);ApocBREventControl.update();
@@ -125,6 +147,9 @@ public class EventControlTest {
   db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled");poll(c);ApocBREventControl.update();
   db.row=new ApocBREventControl.Schedule(ID,3,"Silent edit",start,"scheduled");poll(c);ApocBREventControl.update();
   check(ApocBREventControl.getStatus().equals("STALE"),"same-revision mutation fails closed");
+  db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled");poll(c);ApocBREventControl.update();
+  db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled","{\"changed\":true}");poll(c);ApocBREventControl.update();
+  check(ApocBREventControl.getStatus().equals("STALE")&&ApocBREventControl.getEventContext(ID,3)==null,"same-revision metadata edit fails closed");
   db.row=new ApocBREventControl.Schedule(OTHER,4,"Overdue",start,"scheduled");poll(c);ApocBREventControl.update();
   clock[1]+=11_000_000_000L;db.queryFail=true;
   try{poll(c);throw new AssertionError("missing schema accepted");}catch(RuntimeException expected){checks++;}
@@ -140,9 +165,12 @@ public class EventControlTest {
   poll(c);ApocBREventControl.update();
   c=control(db);poll(c);int before=LuaEventManager.calls;ApocBREventControl.update();
   check(LuaEventManager.calls==before+1,"even reported release must reconcile a world-save gap after restart");
+  check(Boolean.TRUE.equals(context().rawget("isReplay")),"matching overdue receipt explicitly marked as replay");
   db.row=new ApocBREventControl.Schedule(OTHER,7,"Cancelled after acceptance",start,"cancelled");
   c=control(db);poll(c);ApocBREventControl.update();
   check(!ApocBREventControl.isDue(OTHER,6)&&ApocBREventControl.isReleaseAuthorized(OTHER,6),"durable receipt restores removal even after backend cancellation");
+  check(Boolean.TRUE.equals(context().rawget("isReplay"))&&context().rawget("eventId").equals(OTHER)
+    &&context().rawget("metadataJson")==null,"old receipt never receives new schedule metadata");
   check(ApocBREventControl.acknowledgeRelease(OTHER,6),"restore receipt across cancellation/world-save gap");
   db.row=new ApocBREventControl.Schedule(null,8,null,0,"idle");c=control(db);poll(c);ApocBREventControl.update();
   check(ApocBREventControl.isReleaseAuthorized(OTHER,6),"clearing desired schedule must not rebuild a released perimeter");
@@ -159,10 +187,17 @@ public class EventControlTest {
   invalid(()->new ApocBREventControl.Schedule(ID,Long.MAX_VALUE,"Bad",start,"scheduled"));
   invalid(()->new ApocBREventControl.Schedule(ID,1,"Bad",Long.MAX_VALUE,"scheduled"));
   invalid(()->new ApocBREventControl.Schedule(ID,1,"Bad",start,"idle"));
+  invalid(()->new ApocBREventControl.Schedule(ID,1,"Bad",start,"scheduled","[]"));
+  invalid(()->new ApocBREventControl.Schedule(ID,1,"Bad",start,"scheduled","{} trailing"));
+  invalid(()->new ApocBREventControl.Schedule(ID,1,"Bad",start,"scheduled"," ".repeat(32769)));
+  var slow=new ApocBREventControl("scope","world",30000,90000,ZoneId.of("UTC"),db::open,()->clock[0],()->clock[1]);
+  poll(slow);slow.acceptIncoming();clock[1]+=30_000_000_000L;check(slow.fresh(),"default cache stays fresh between 30 second polls");
+  clock[1]+=60_000_000_001L;check(!slow.fresh(),"90 second outage expires default snapshot");
   clock[1]=-20_000_000_000L;c=control(db);poll(c);before=LuaEventManager.calls;ApocBREventControl.update();
   check(LuaEventManager.calls==before+1,"System.nanoTime may be negative; first signal must still run");
   GameServer.server=false;check(ApocBREventControl.getStatus().equals("DISABLED")&&!ApocBREventControl.isDue(OTHER,6),"client guard");
   check(ApocBREventControl.guideGreeting("Oi!").equals("Oi!"),"disabled greeting preserves native text");
+  check(ApocBREventControl.guideAnnouncementLines().isEmpty(),"disabled controller supplies empty announcement");
   GameServer.server=true;ApocBREventControl.shutdown();check(ApocBREventControl.getStatus().equals("DISABLED"),"shutdown");
   System.out.println("Passed "+checks+" production event SQL/cache/clock/revision/outage/restart/greeting assertions.");
  }
@@ -183,8 +218,8 @@ def main():
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(path).replace("\\", "/") + '"' for path in sources), encoding="utf-8")
         output = work / "classes"
-        subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-encoding", "UTF-8", "-d", str(output), "@" + str(args)], check=True)
-        subprocess.run([str(ROOT / "jdk/bin/java.exe"), "-cp", str(output), "zombie.apocalipse.events.EventControlTest"], check=True)
+        subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-encoding", "UTF-8", "-cp", str(GAME_JAR), "-d", str(output), "@" + str(args)], check=True)
+        subprocess.run([str(ROOT / "jdk/bin/java.exe"), "-cp", os.pathsep.join((str(output), str(GAME_JAR))), "zombie.apocalipse.events.EventControlTest"], check=True)
 
 
 if __name__ == "__main__":

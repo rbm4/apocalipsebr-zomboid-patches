@@ -7,10 +7,15 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.ZoneId;
 import java.util.Objects;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.LongSupplier;
+import org.json.JSONObject;
+import org.json.JSONTokener;
+import se.krka.kahlua.vm.KahluaTable;
 import zombie.Lua.LuaEventManager;
+import zombie.Lua.LuaManager;
 import zombie.core.Core;
 import zombie.core.Translator;
 import zombie.debug.DebugLog;
@@ -20,16 +25,19 @@ import zombie.savefile.ApocBRPostgresConnector;
 /** Server-only cached API. JDBC belongs exclusively to the bounded polling worker. */
 public final class ApocBREventControl {
     static final long MAX_REVISION = 9_007_199_254_740_991L;
+    static final long DEFAULT_POLL_MILLIS = 30000L;
+    static final long DEFAULT_FRESH_MILLIS = 90000L;
     static final String REGISTER = """
         INSERT INTO player_rel.lobby_event_control(server_key,world,engine_version,engine_heartbeat_at)
-        VALUES (?,?,'42.21.0/event-control-v1',CURRENT_TIMESTAMP)
+        VALUES (?,?,'42.21.0/event-control-v2',CURRENT_TIMESTAMP)
         ON CONFLICT(server_key,world) DO UPDATE
         SET engine_version=EXCLUDED.engine_version,engine_heartbeat_at=EXCLUDED.engine_heartbeat_at
         """;
     static final String READ = """
         SELECT desired_event_id,desired_revision,desired_name,desired_starts_at,desired_state,
                reported_event_id,reported_revision,reported_state,
-               guide_next_name,guide_next_starts_at,guide_active_name,guide_active_ends_at,guide_updated_at
+               guide_next_name,guide_next_starts_at,guide_active_name,guide_active_ends_at,guide_updated_at,
+               desired_metadata_json
         FROM player_rel.lobby_event_control WHERE server_key=? AND world=?
         """;
     static final String RECEIPT = """
@@ -37,8 +45,17 @@ public final class ApocBREventControl {
         SET reported_event_id=?,reported_revision=?,reported_state='release_requested',reported_at=CURRENT_TIMESTAMP
         WHERE server_key=? AND world=? AND (reported_revision IS NULL OR reported_revision<=?)
         """;
-    record Schedule(String id, long revision, String name, long startsAt, String state) {
+    record Schedule(String id, long revision, String name, long startsAt, String state, String metadataJson) {
+        Schedule(String id, long revision, String name, long startsAt, String state) {
+            this(id, revision, name, startsAt, state, "{}");
+        }
         Schedule {
+            if (metadataJson == null || metadataJson.length() > 32768)
+                throw new IllegalArgumentException("Invalid event metadata size");
+            // Worker-side validation only; JSON stays opaque data for the mod.
+            JSONTokener json = new JSONTokener(metadataJson);
+            if (!(json.nextValue() instanceof JSONObject) || json.nextClean() != 0)
+                throw new IllegalArgumentException("Event metadata must be a JSON object");
             if (revision < 0 || revision > MAX_REVISION || !java.util.Set.of("idle", "scheduled", "cancelled").contains(state))
                 throw new IllegalArgumentException("Invalid event revision/state");
             if ("idle".equals(state)) {
@@ -87,8 +104,8 @@ public final class ApocBREventControl {
         if (!Boolean.getBoolean("apocbr.postgres.enabled")) { log("POSTGRES_DISABLED; event control disabled"); return; }
         try {
             var control = new ApocBREventControl(System.getProperty("apocbr.events.serverKey", GameServer.serverName),
-                Core.gameSaveWorld, Long.getLong("apocbr.events.pollMillis", 2000L),
-                Long.getLong("apocbr.events.freshMillis", 10000L),
+                Core.gameSaveWorld, Long.getLong("apocbr.events.pollMillis", DEFAULT_POLL_MILLIS),
+                Long.getLong("apocbr.events.freshMillis", DEFAULT_FRESH_MILLIS),
                 ZoneId.of(System.getProperty("apocbr.events.displayZone", "America/Fortaleza")),
                 ApocBRPostgresConnector::borrowServerConnection, System::currentTimeMillis, System::nanoTime);
             LuaEventManager.AddEvent("OnApocBRLobbyEventDue");
@@ -140,7 +157,7 @@ public final class ApocBREventControl {
                     if (!rows.next()) throw new SQLException("Missing event control row", "02000");
                     Timestamp time = rows.getTimestamp(4);
                     Schedule schedule = new Schedule(rows.getString(1), rows.getLong(2), rows.getString(3),
-                        time == null ? 0 : time.toInstant().toEpochMilli(), rows.getString(5));
+                        time == null ? 0 : time.toInstant().toEpochMilli(), rows.getString(5), rows.getString(14));
                     String reportedId = rows.getString(6);
                     Receipt reported = null;
                     if (reportedId != null) {
@@ -200,9 +217,10 @@ public final class ApocBREventControl {
         Observed current = control.active;
         long now = control.monotonic.getAsLong();
         Receipt request = null;
+        boolean replay = false;
         if (current != null && control.fresh()) {
             if (current.reported != null && !current.reported.equals(control.restored)
-                && !current.reported.equals(control.applied)) request = current.reported;
+                && !current.reported.equals(control.applied)) { request = current.reported; replay = true; }
             else if (control.due(current.schedule.id, current.schedule.revision)
                 && !new Receipt(current.schedule.id, current.schedule.revision).equals(control.applied))
                 request = new Receipt(current.schedule.id, current.schedule.revision);
@@ -210,7 +228,8 @@ public final class ApocBREventControl {
         if (request != null && (!control.signalled || now - control.nextSignalNanos >= 0)) {
             control.signalled = true;
             control.nextSignalNanos = now + 1_000_000_000L;
-            LuaEventManager.triggerEvent("OnApocBRLobbyEventDue", request.id, (double)request.revision);
+            LuaEventManager.triggerEvent("OnApocBRLobbyEventDue", request.id, (double)request.revision,
+                control.context(request.id, request.revision, replay));
         }
     }
 
@@ -224,6 +243,28 @@ public final class ApocBREventControl {
     public static String getEventName() { var c = current(); return c == null || c.active == null ? null : c.active.schedule.name; }
     public static double getStartsAtMillis() { var c = current(); return c == null || c.active == null ? 0 : c.active.schedule.startsAt; }
     public static String getScheduleState() { var c = current(); return c == null || c.active == null ? null : c.active.schedule.state; }
+    /** Fresh matching desired specification, including before its deadline. No JDBC or JSON parsing. */
+    public static KahluaTable getEventContext(String id, double revision) {
+        var c = current();
+        if (c == null || !validRevision(revision) || !c.fresh()) return null;
+        Schedule s = c.active.schedule;
+        return Objects.equals(s.id, id) && s.revision == (long)revision ? c.context(id, (long)revision, false) : null;
+    }
+    private KahluaTable context(String id, long revision, boolean replay) {
+        KahluaTable result = LuaManager.platform.newTable();
+        result.rawset("eventId", id);
+        result.rawset("revision", (double)revision);
+        result.rawset("isReplay", replay);
+        Schedule s = active.schedule;
+        // Receipts only persist identity. Never attach a replacement schedule's metadata.
+        if (Objects.equals(s.id, id) && s.revision == revision) {
+            result.rawset("name", s.name);
+            result.rawset("startsAtMillis", (double)s.startsAt);
+            result.rawset("state", s.state);
+            result.rawset("metadataJson", s.metadataJson);
+        }
+        return result;
+    }
     public static boolean isDue(String id, double revision) {
         var c = current(); return c != null && validRevision(revision) && c.due(id, (long)revision);
     }
@@ -237,28 +278,35 @@ public final class ApocBREventControl {
 
     private static long millis(Timestamp time) { return time == null ? 0 : time.toInstant().toEpochMilli(); }
 
-    /** Separate follow-up after the wave. Reads cached data only, on the simulation thread. */
-    public static String guideAnnouncement() {
+    /** Ordered, immutable phrases from one cached schedule snapshot; no SQL or speech. */
+    public static List<String> guideAnnouncementLines() {
         var c = current();
-        if (c == null) return null;
-        if (!c.fresh()) return Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable");
-        Guide guide = c.active.guide;
+        if (c == null) return List.of();
+        if (!c.fresh()) return List.of(Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable"));
+        var snapshot = c.active;
+        Guide guide = snapshot.guide;
         long now = c.wallClock.getAsLong();
         // Manager polls independently of engine freshness. Never present abandoned agenda data.
         if (guide.updatedAt <= 0 || now < guide.updatedAt || now - guide.updatedAt > 60000)
-            return Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable");
+            return List.of(Translator.getText("IGUI_ApocExtractionMapUtils_EventUnavailable"));
         String active = validName(guide.activeName) && guide.activeEnd > now
             ? Translator.getText("IGUI_ApocExtractionMapUtils_EventRemaining", guide.activeName, remaining(guide.activeEnd - now)) : null;
         String next = validName(guide.nextName) && guide.nextStart > now
             ? Translator.getText("IGUI_ApocExtractionMapUtils_EventCountdown", guide.nextName, remaining(guide.nextStart - now)) : null;
-        if (active != null) return next == null ? active : active + " " + next;
-        if (next != null) return next;
-        Schedule event = c.active.schedule;
+        if (active != null) return next == null ? List.of(active) : List.of(active, next);
+        if (next != null) return List.of(next);
+        Schedule event = snapshot.schedule;
         if ("scheduled".equals(event.state) && now >= event.startsAt
                 && !new Receipt(event.id, event.revision).equals(c.applied)
-                && !new Receipt(event.id, event.revision).equals(c.active.reported))
-            return Translator.getText("IGUI_ApocExtractionMapUtils_EventPending", event.name);
-        return Translator.getText("IGUI_ApocExtractionMapUtils_EventNone");
+                && !new Receipt(event.id, event.revision).equals(snapshot.reported))
+            return List.of(Translator.getText("IGUI_ApocExtractionMapUtils_EventPending", event.name));
+        return List.of(Translator.getText("IGUI_ApocExtractionMapUtils_EventNone"));
+    }
+
+    /** Compatibility text adapter. NPC execution uses the structured phrase list. */
+    public static String guideAnnouncement() {
+        List<String> lines = guideAnnouncementLines();
+        return lines.isEmpty() ? null : String.join(" ", lines);
     }
 
     private static boolean validName(String name) {

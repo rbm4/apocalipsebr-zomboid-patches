@@ -412,6 +412,20 @@ public final class ServerPlayerDB {
             trace.event("READ_BLOCKED","; availability="+ApocBRPostgresConnector.availability());throw new SQLException("Player persistence is pending","55000");
         }
         var profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
+        return this.buildPostgresClientProfile(profile,slot,username);
+        }catch(SQLException|IOException|RuntimeException|LinkageError failure){trace.failure(failure);throw failure;}
+        }
+    }
+
+    public ApocBRPlayerRelationalReader.Profile readPostgresProfile(String world,String identity,int slot,boolean coop) throws SQLException {
+        if(!ApocBRPostgresConnector.playerReadable(world,identity,slot,coop))throw new SQLException("Player persistence is pending","55000");
+        return new ApocBRPlayerRelationalReader().load(world,identity,slot,coop);
+    }
+
+    /** Simulation-thread continuation; all source dictionaries were prepared by the reader. */
+    public ApocBRPlayerDatabase.Profile buildPostgresClientProfile(ApocBRPlayerRelationalReader.Profile profile,int slot,String username) throws IOException {
+        try(var trace=ApocBRPlayerReconstructionLog.begin("CLIENT_PROFILE_ENCODE",slot)) {
+        try {
         if(profile==null){trace.profile(null);return null;}
         trace.stage("RECONSTRUCT_PLAYER");
         IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
@@ -433,7 +447,7 @@ public final class ServerPlayerDB {
                 capacity=Math.min(capacity*2,ApocBRPlayerRelationalLimits.SOURCE_BYTES);
             }
         }
-        }catch(SQLException|IOException|RuntimeException|LinkageError failure){trace.failure(failure);throw failure;}
+        }catch(IOException|RuntimeException|LinkageError failure){trace.failure(failure);throw failure;}
         }
     }
 
@@ -445,14 +459,19 @@ public final class ServerPlayerDB {
         try {
             ApocBRPlayerRelationalReader.Profile profile=new ApocBRPlayerRelationalReader().load(Core.gameSaveWorld,identity,slot,coop);
             if (profile==null){trace.profile(null);return null;}
-            trace.stage("RECONSTRUCT_PLAYER");
-            IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
-            trace.stage("REGISTER_PLAYER");
-            ApocBRPlayerRelationalSync.registerPostgresPlayer(player,Core.gameSaveWorld,identity,slot,coop,profile);
+            IsoPlayer player=finishPostgresPlayer(profile,slot,identity,coop);
             trace.event("PLAYER_READY","");
             return player;
         } catch (Exception failure) { trace.failure(failure);ExceptionLogger.logException(failure); return null; }
         }
+    }
+
+    public IsoPlayer finishPostgresPlayer(ApocBRPlayerRelationalReader.Profile profile,int slot,String identity,boolean coop) {
+        if(!ApocBRPostgresConnector.playerReadable(Core.gameSaveWorld,identity,slot,coop))throw new IllegalStateException("Player persistence is pending");
+        if(profile==null)return null;
+        IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
+        ApocBRPlayerRelationalSync.registerPostgresPlayer(player,Core.gameSaveWorld,identity,slot,coop,profile);
+        return player;
     }
 
     private static final class NetworkCharacterData {

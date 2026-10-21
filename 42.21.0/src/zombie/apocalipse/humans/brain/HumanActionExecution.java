@@ -9,6 +9,9 @@ public final class HumanActionExecution {
     private Status status = Status.PENDING;
     private long startedAt;
     private String failure;
+    private java.util.List<HumanActionExecution> parallel;
+    private int childIndex;
+    private HumanActionExecution child;
 
     public HumanActionExecution(HumanAction action) { this.action = Objects.requireNonNull(action); }
     public HumanAction action() { return action; }
@@ -28,22 +31,35 @@ public final class HumanActionExecution {
                     }
                     case HumanAction.FaceVisitor face -> settle(actuator.face(face.visitor()));
                     case HumanAction.Say say -> settle(actuator.say(say.text()));
-                    case HumanAction.AnnounceOperation ignored -> settle(actuator.announceOperation());
+                    case HumanAction.Sequence ignored -> { }
+                    case HumanAction.Parallel group -> parallel = group.actions().stream().map(HumanActionExecution::new).toList();
+                    case HumanAction.Wait ignored -> { }
                     case HumanAction.ReturnHome ignored -> settle(actuator.returnHome());
                     case HumanAction.Emote emote -> {
-                        if (!actuator.startEmote(emote.name()) || emote.greet() && !actuator.greet()) {
+                        if (!actuator.startEmote(emote.name())) {
                             stopSafely(actuator);
                             settle(false);
                         }
                     }
                     case HumanAction.HoldAttention ignored -> { }
-                    case HumanAction.WaitForTrade ignored -> { }
                 }
             }
             if (status != Status.RUNNING) return;
             switch (action) {
-                case HumanAction.WaitForTrade wait -> {
-                    if (!actuator.face(wait.visitor())) settle(false);
+                case HumanAction.Wait wait -> {
+                    if (now - startedAt >= wait.durationNanos()) settle(true);
+                }
+                case HumanAction.Sequence sequence -> updateSequence(sequence, now, actuator);
+                case HumanAction.Parallel ignored -> {
+                    boolean complete = true;
+                    for (HumanActionExecution lane : parallel) {
+                        lane.update(now, actuator);
+                        if (lane.terminal() && lane.status() != Status.SUCCEEDED) {
+                            cancelParallel(actuator); status = lane.status(); failure = lane.failure(); return;
+                        }
+                        complete &= lane.terminal();
+                    }
+                    if (complete) settle(true);
                 }
                 case HumanAction.Roam ignored -> {
                     HumanActuator.MotionStatus result = actuator.updateRoaming(now);
@@ -69,6 +85,8 @@ public final class HumanActionExecution {
             failure = exception.getClass().getSimpleName();
             if (action instanceof HumanAction.Emote) stopSafely(actuator);
             if (action instanceof HumanAction.Roam) stopMovementSafely(actuator);
+            if (child != null) child.cancel(actuator);
+            cancelParallel(actuator);
             status = Status.FAILED;
         }
     }
@@ -77,7 +95,30 @@ public final class HumanActionExecution {
         if (terminal()) return;
         if (status == Status.RUNNING && action instanceof HumanAction.Emote) stopSafely(actuator);
         if (status == Status.RUNNING && action instanceof HumanAction.Roam) stopMovementSafely(actuator);
+        if (child != null) child.cancel(actuator);
+        cancelParallel(actuator);
         status = Status.CANCELLED;
+    }
+
+    private void cancelParallel(HumanActuator actuator) {
+        if (parallel != null) for (HumanActionExecution lane : parallel) lane.cancel(actuator);
+    }
+
+    private void updateSequence(HumanAction.Sequence sequence, long now, HumanActuator actuator) {
+        // Drain immediate commands; plan size/depth bounds cap work per update.
+        while (childIndex < sequence.actions().size()) {
+            if (child == null) child = new HumanActionExecution(sequence.actions().get(childIndex));
+            child.update(now, actuator);
+            if (!child.terminal()) return;
+            if (child.status() != Status.SUCCEEDED) {
+                status = child.status();
+                failure = child.failure();
+                return;
+            }
+            childIndex++;
+            child = null;
+        }
+        settle(true);
     }
 
     private void stopSafely(HumanActuator actuator) {

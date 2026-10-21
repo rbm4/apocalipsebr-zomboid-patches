@@ -76,7 +76,7 @@ public class RoamingTest {
     walked=true;ServerHumanTransport.idle(human,viewer);var packet=PlayerPacketReliable.sent.getLast();
     check(packet.prediction.x==human.player.x&&packet.prediction.y==human.player.y,"movement packets use live position");
     check((packet.booleanVariables&(1<<8))!=0,"native walking flag maintained");
-    check(packet.prediction.distance>=0&&packet.prediction.distance<=7,"750ms prediction horizon bounded in eighth-tile units");
+    check(packet.prediction.distance>=0&&packet.prediction.distance<=16,"one-second prediction horizon bounded to two tiles in eighth-tile units");
     if(packet.prediction.distance>0){
      sawPrediction=true;
      check(packet.prediction.type==1&&packet.prediction.speed==ServerHumanRoaming.SPEED,"native moving prediction carries speed");
@@ -91,17 +91,28 @@ public class RoamingTest {
   check(sawPrediction,"straight movement actually enables native prediction");
   check(!human.moving,"route completion clears movement");
   // Exercise straight tile-center lookahead and clipping at a real corner.
+  check(human.roaming.start(0),"reset motion clock for controlled straight corridor");
   var routeField=ServerHumanRoaming.class.getDeclaredField("route");routeField.setAccessible(true);
   var waypointField=ServerHumanRoaming.class.getDeclaredField("waypoint");waypointField.setAccessible(true);
   routeField.set(human.roaming,List.of(new Tile(101,200),new Tile(102,200),new Tile(102,201)));
   waypointField.setInt(human.roaming,0);human.player.x=101.4f;human.player.y=200.5f;
   human.player.setDirectionAngle(0);human.moving=true;
   int straightUnits=human.roaming.predictionDistanceUnits();
-  check(straightUnits==7,"prediction spans straight tile centers and covers heartbeat plus jitter");
+  check(straightUnits==7,"prediction spans straight tile centers and clips before the upcoming corner");
+  // A full straight corridor must cover delayed heartbeats at the requested speed.
+  routeField.set(human.roaming,List.of(new Tile(101,200),new Tile(102,200),new Tile(103,200),new Tile(104,200)));
+  straightUnits=human.roaming.predictionDistanceUnits();
+  check(straightUnits==16,"unobstructed straight prediction covers two full tiles");
+  check(Math.abs(straightUnits/(8.0*ServerHumanRoaming.SPEED)-1.0)<.0001,"native decoded prediction lasts one second");
   check(straightUnits/(8.0*ServerHumanRoaming.SPEED)>.5,"quantized horizon exceeds 500ms send interval");
+  human.roaming.update(STEP);
+  check(Math.abs(human.player.x-101.6f)<.0001&&human.player.y==200.5f,"walks 0.2 tiles in 100ms across a tile center (two tiles per second)");
+  human.player.x=101.4f;
+  waypointField.setInt(human.roaming,0);
   cell.getGridSquare(102,200,0).free=false;
   check(human.roaming.predictionDistanceUnits()==0,"blocked next straight tile prevents prediction across waypoint");
   cell.getGridSquare(102,200,0).free=true;
+  routeField.set(human.roaming,List.of(new Tile(101,200),new Tile(102,200),new Tile(102,201)));
   waypointField.setInt(human.roaming,1);human.player.x=102.0f;
   int cornerUnits=human.roaming.predictionDistanceUnits();
   check(cornerUnits==2&&human.player.x+cornerUnits/8.0<=102.35,"prediction clips before corner with safety margin");

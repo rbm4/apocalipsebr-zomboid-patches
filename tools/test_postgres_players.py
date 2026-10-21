@@ -48,7 +48,8 @@ final class ApocBRPlayerRelationalReconstruction {
 'zombie/core/raknet/UdpConnection.java': '''package zombie.core.raknet; public class UdpConnection {
  public zombie.characters.IsoPlayer[] players=new zombie.characters.IsoPlayer[4];
  public String getUserName(){return "alice";} public String getIDStr(){return "765";}
- public zombie.core.network.ByteBufferWriter startPacket(){return new zombie.core.network.ByteBufferWriter(java.nio.ByteBuffer.allocate(4096));} }''',
+ public java.nio.ByteBuffer sent;
+ public zombie.core.network.ByteBufferWriter startPacket(){sent=java.nio.ByteBuffer.allocate(4096);return new zombie.core.network.ByteBufferWriter(sent);} }''',
 'zombie/network/PacketTypes.java': '''package zombie.network; public class PacketTypes {
  public enum PacketType { LoadPlayerProfile; public void doPacket(zombie.core.network.ByteBufferWriter out){}
  public void send(zombie.core.raknet.UdpConnection c){} } }''',
@@ -116,6 +117,14 @@ public class PlayersTest {
       }return zero(rm.getReturnType());});
     }return zero(m.getReturnType());});}
  }
+ // Read the transmitted reply: the cached request handler is no longer the response object.
+ static zombie.network.packets.connection.LoadPlayerProfilePacket sentProfile(UdpConnection c) {
+  var reply=new zombie.network.packets.connection.LoadPlayerProfilePacket();var bytes=c.sent.duplicate();bytes.flip();
+  GameServer.server=false;
+  try{reply.parse(new zombie.core.network.ByteBufferReader(bytes),null);check(!bytes.hasRemaining(),"sent profile consumed exactly");}
+  finally{GameServer.server=true;}
+  return reply;
+ }
  static Object field(Object object,String name)throws Exception{Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(object);}
  static void vanillaProfileResponse(Object packet)throws Exception {
   var bytes=java.nio.ByteBuffer.allocate(4096);
@@ -167,7 +176,7 @@ public class PlayersTest {
   // Simulate an old imported blob whose IDs/version belong to a different dictionary.
   fake.row.put("data",new byte[]{99});fake.row.put("worldversion",123);fake.row.put("splitusername","split-alice");
   int queriesBeforeProfile=fake.queries.size();
-  var packet=new zombie.network.packets.connection.LoadPlayerProfilePacket();packet.processServer(null,connection);
+  var packet=new zombie.network.packets.connection.LoadPlayerProfilePacket();packet.processServer(null,connection);packet=sentProfile(connection);
   check((boolean)field(packet,"isExist") && ((byte[])field(packet,"buffer"))[0]==17,"profile packet serializes relational reconstruction, never forwards imported bytes");
   check(field(packet,"worldVersion").equals(249),"freshly serialized profile advertises current engine version, not imported version");
   check(fake.queries.subList(queriesBeforeProfile,fake.queries.size()).stream().noneMatch(q->q.startsWith("SELECT id,x,y,z,data")),"client profile does not read legacy native payload");
@@ -180,10 +189,10 @@ public class PlayersTest {
    fake.row.put("playerindex",(int)slot);
    var secondary=new zombie.network.packets.connection.LoadPlayerProfilePacket();
    Field slotField=secondary.getClass().getDeclaredField("playerIndex");slotField.setAccessible(true);slotField.setByte(secondary,slot);
-   secondary.processServer(null,connection);check((boolean)field(secondary,"isExist"),"secondary slot uses relational reconstruction");vanillaProfileResponse(secondary);
+   secondary.processServer(null,connection);secondary=sentProfile(connection);check((boolean)field(secondary,"isExist"),"secondary slot uses relational reconstruction");vanillaProfileResponse(secondary);
   }
   fake.row.put("playerindex",0);fake.relationalAbsent=true;
-  var missing=new zombie.network.packets.connection.LoadPlayerProfilePacket();missing.processServer(null,connection);
+  var missing=new zombie.network.packets.connection.LoadPlayerProfilePacket();missing.processServer(null,connection);missing=sentProfile(connection);
   check(!(boolean)field(missing,"isExist")&&fake.row.get("data")!=null,"legacy bytes cannot substitute for a missing relational profile");vanillaProfileResponse(missing);
   fake.relationalAbsent=false;
   IsoPlayer.payloadBytes=40000;
@@ -195,7 +204,7 @@ public class PlayersTest {
   check(loaded.health==0,"dead player state restored");
   helper.convert("servertest","alice","765");GameServer.coop=true;zombie.core.znet.SteamUtils.enabled=true;
   loaded=db.serverLoadNetworkCharacter(0,"765");check(loaded!=null,"Steam coop identity lookup");
-  var coopPacket=new zombie.network.packets.connection.LoadPlayerProfilePacket();coopPacket.processServer(null,connection);
+  var coopPacket=new zombie.network.packets.connection.LoadPlayerProfilePacket();coopPacket.processServer(null,connection);coopPacket=sentProfile(connection);
   check((boolean)field(coopPacket,"isExist"),"Steam coop client profile uses relational identity lookup");vanillaProfileResponse(coopPacket);
   check(db.getNetworkUserSteamID("nonexistent-local-dir","alice","servertest").equals("765"),"Steam lookup ignores absent SQLite file");
   check(db.countOtherNetworkAccounts("765","alice")==3,"account counts routed");
