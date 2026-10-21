@@ -20,7 +20,7 @@ public class SequenceTest {
   public boolean say(String s){text.add(s);times.add(now);if(throwSpeech)throw new IllegalStateException();return !fail;}
   public boolean returnHome(){homes++;return true;}
   public boolean startRoaming(long now){return true;}
-  public MotionStatus updateRoaming(long now){return MotionStatus.RUNNING;}
+  public MotionStatus updateMovement(long now){return MotionStatus.RUNNING;}
   public void stopMoving(){halts++;}
  }
  static HumanObservation.Identity visitor=new HumanObservation.Identity((short)1,11);

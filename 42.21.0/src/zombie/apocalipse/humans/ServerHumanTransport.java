@@ -31,17 +31,18 @@ final class ServerHumanTransport {
         packet.prediction.y = human.player.getY();
         packet.prediction.z = (byte)human.player.getZi();
         packet.prediction.direction = human.player.getDirectionAngleRadians();
-        int predictionUnits = human.roaming.predictionDistanceUnits();
+        ServerHumanMovement.Snapshot motion = human.movement.snapshot();
+        int predictionUnits = motion.predictionUnits();
         if (predictionUnits > 0) {
             packet.prediction.type = 1;
             packet.prediction.moveDirection = packet.prediction.direction;
-            packet.prediction.speed = ServerHumanRoaming.SPEED;
+            packet.prediction.speed = motion.speed();
             packet.prediction.distance = (byte)predictionUnits;
         }
         packet.prediction.position.set(packet.prediction.x, packet.prediction.y, packet.prediction.z);
         packet.hitVehicleId.set(null);
         // The native movement flag drives client walking; god mode travels in ConnectedPlayer.
-        packet.booleanVariables = human.moving
+        packet.booleanVariables = motion.moving()
             ? (short)(1 << NetworkPlayerVariables.Flags.hasDeferredMovement.ordinal()) : 0;
         packet.disconnected = false;
         packet.variables.set(human.player);

@@ -62,7 +62,7 @@ public final class HumanActionExecution {
                     if (complete) settle(true);
                 }
                 case HumanAction.Roam ignored -> {
-                    HumanActuator.MotionStatus result = actuator.updateRoaming(now);
+                    HumanActuator.MotionStatus result = actuator.updateMovement(now);
                     if (result != HumanActuator.MotionStatus.RUNNING) {
                         actuator.stopMoving();
                         settle(result == HumanActuator.MotionStatus.SUCCEEDED);

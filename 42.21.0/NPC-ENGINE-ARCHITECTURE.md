@@ -22,6 +22,7 @@ and ability is not the intended hierarchy.
 | Action definitions | `HumanAction` records, including `Sequence`, `Wait`, `Say` | Immutable descriptions of intended actions and their parameters. |
 | Execution lifecycle | `HumanActionExecution` and its child executions | Pending/running/terminal state, monotonic timing, ordered execution and cleanup. |
 | Engine capabilities | `HumanActuator`, `ServerHumanActuator` | Execute world operations for the owning NPC on the simulation thread. |
+| Physical movement | `ServerHumanMovement`, `MovementGrid` | Follow caller-selected routes, enforce traversal, integrate position and resolve motion presentation; roaming selects routes separately. |
 | Transport and feature services | `ServerHumanTransport`, dialogue/trade controllers | Delivery, authenticated requests, exclusive leases and feature-specific authoritative rules. |
 
 Brains depend on ports and action data, not on concrete event controllers,
@@ -48,6 +49,14 @@ PostgreSQL boundary and current presentation-ID limitations. Do not accumulate
 unrelated role flags inside `GuideBrain` or put gameplay policy into transport.
 
 ## Generic action composition
+
+Movement follows this pattern: behavioral modules decide when to roam,
+`ServerHumanRoaming` selects a route and building constraint, and
+`ServerHumanMovement` executes it. Transport consumes the movement engine's
+snapshot, never a pattern's private state. Future capability services should
+similarly own mechanics while modules/patterns supply intent. Do not move
+destination-selection or role-specific rules into the physical engine. See
+[movement ownership and cancellation](NPC-MOVEMENT.md).
 
 ```java
 new HumanAction.Sequence(List.of(

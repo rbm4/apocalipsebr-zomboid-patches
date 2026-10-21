@@ -28,7 +28,7 @@ public class BrainTest {
  static class RoamingPort extends Port {
   int walks,steps,halts;MotionStatus motion=MotionStatus.RUNNING;
   public boolean startRoaming(long now){walks++;return true;}
-  public MotionStatus updateRoaming(long now){steps++;return motion;}
+  public MotionStatus updateMovement(long now){steps++;return motion;}
   public void stopMoving(){halts++;}
  }
  static void cycle(GuideBrain brain,Port port,long from,HumanObservation.Identity... ids){

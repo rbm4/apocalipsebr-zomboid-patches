@@ -1,5 +1,11 @@
 # Installed Project A-Life runtime and persistence comparison
 
+Historical investigation: the profile/module and PostgreSQL foundation described
+below has since been implemented; see [current persistence](../NPC-PERSISTENCE.md).
+For the 2026-10-21 investigation of running, injuries, aiming, attacks, zombie
+integration and faction/grudge persistence, see
+[physical capabilities and combat](npc-physical-capabilities-and-combat.md).
+
 Status: source investigation and proposed design; no engine or database change.
 This document precedes the PostgreSQL NPC migration/schema decision.
 

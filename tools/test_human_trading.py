@@ -50,7 +50,7 @@ public class TradingTest {
   open(visitor,npc,attacker);check((npc.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&((HumanModuleRuntime)npc.activity.behavior()).selectedModule()==null),"foreign connection cannot open offer");
   check(open(visitor,npc,connection)&&npc.activity.mode()==HumanActivityController.Mode.TRADE,"native open pauses brain");
   npc.activity.update(new HumanObservation(System.nanoTime(),List.of()),npc.actuator);
-  check(npc.activity.mode()==HumanActivityController.Mode.TRADE&&!npc.moving,"trade action keeps attention without roaming");
+  check(npc.activity.mode()==HumanActivityController.Mode.TRADE&&!npc.movement.moving(),"trade action keeps attention without roaming");
   open(second,npc,other);check(!RequestTradingPacket.replies.getLast().accepted(),"one visitor per guide");
   InventoryItem first=item(visitor,11,"Base.Money"),next=item(visitor,12,"Base.Money");
   ServerHumanTrading.addItem(visitor,npc.player,connection,first);seal(visitor,npc,connection);

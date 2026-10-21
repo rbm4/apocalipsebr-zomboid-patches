@@ -141,14 +141,14 @@ public final class ServerHumanFactory {
                 if (!human.viewers.contains(connection)) ServerHumanTransport.announce(human, connection);
             }
             float previousDirection = human.player.getDirectionAngleRadians();
-            boolean wasMoving = human.moving;
+            boolean wasMoving = human.movement.moving();
             ServerHumanTrading.update(human, now);
             ServerHumanDialogue.update(human, now);
             human.activity.update(now, human.actuator::observe, human.actuator);
             // Simulate at 10 Hz, but publish routine motion only on the 2 Hz heartbeat.
             // Turns and starts/stops must replace stale client prediction immediately.
             boolean turned = Float.compare(previousDirection, human.player.getDirectionAngleRadians()) != 0;
-            if (heartbeat || turned || wasMoving != human.moving) {
+            if (heartbeat || turned || wasMoving != human.movement.moving()) {
                 for (UdpConnection connection : human.viewers) {
                     if (human.isRelevant(connection)) ServerHumanTransport.idle(human, connection);
                 }

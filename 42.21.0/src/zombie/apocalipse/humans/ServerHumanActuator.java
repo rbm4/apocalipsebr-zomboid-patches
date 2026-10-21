@@ -99,10 +99,10 @@ final class ServerHumanActuator implements HumanActuator {
     public boolean startRoaming(long now) { return human.roaming.start(now); }
 
     @Override
-    public MotionStatus updateRoaming(long now) { return human.roaming.update(now); }
+    public MotionStatus updateMovement(long now) { return human.movement.update(now); }
 
     @Override
-    public void stopMoving() { human.roaming.stop(); }
+    public void stopMoving() { human.movement.stop(); }
 
     @Override
     public boolean returnHome() {

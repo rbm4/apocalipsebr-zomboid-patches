@@ -6,16 +6,13 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Random;
+import zombie.apocalipse.humans.movement.MovementGrid.Tile;
 
 /** Bounded cardinal-grid search. The grid owns building/floor/collision policy. */
 public final class IndoorRoutePlanner {
     public static final int MAX_VISITED = 256;
     public static final int MAX_STEPS = 12;
-    public record Tile(int x, int y) { }
-    public interface Grid {
-        boolean walkable(Tile tile);
-        boolean connected(Tile from, Tile to);
-    }
+    public interface Grid extends MovementGrid { }
     private record Node(Tile tile, Node parent, int depth) { }
     private static final int[][] DIRECTIONS = {{1,0},{0,1},{-1,0},{0,-1}};
 
@@ -30,7 +27,7 @@ public final class IndoorRoutePlanner {
             Node current = queue.remove();
             if (current.depth >= MAX_STEPS) continue;
             for (int[] direction : DIRECTIONS) {
-                Tile next = new Tile(current.tile.x + direction[0], current.tile.y + direction[1]);
+                Tile next = new Tile(current.tile.x() + direction[0], current.tile.y() + direction[1]);
                 if (seen.containsKey(next) || !grid.walkable(next) || !grid.connected(current.tile, next)) continue;
                 Node node = new Node(next, current, current.depth + 1);
                 seen.put(next, node);

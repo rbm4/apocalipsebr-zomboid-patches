@@ -13,7 +13,7 @@ public class NpcRuntimeTest {
  static void invalid(Runnable r){try{r.run();throw new AssertionError("invalid accepted");}catch(IllegalArgumentException|IllegalStateException expected){checks++;}}
  static class Port implements HumanActuator {
   int roams,stops,says,homes;public boolean face(HumanObservation.Identity i){return true;}
-  public boolean startRoaming(long n){roams++;return true;}public MotionStatus updateRoaming(long n){return MotionStatus.RUNNING;}
+  public boolean startRoaming(long n){roams++;return true;}public MotionStatus updateMovement(long n){return MotionStatus.RUNNING;}
   public void stopMoving(){stops++;}public boolean startEmote(String n){return true;}public void stopEmote(){}
   public boolean say(String t){says++;return true;}public boolean returnHome(){homes++;return true;}
  }

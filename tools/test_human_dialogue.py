@@ -48,7 +48,7 @@ public class DialogueTest {
   p.x=104;p.z=0;
   check(ServerHumanDialogue.list(p).values.size()==1,"nearby registered actors discoverable");
   var lease=ServerHumanDialogue.begin(p,id,now);int token=token(lease);
-  check(h.activity.mode()==HumanActivityController.Mode.DIALOGUE&&!h.moving,"reservation stops roaming");
+  check(h.activity.mode()==HumanActivityController.Mode.DIALOGUE&&!h.movement.moving(),"reservation stops roaming");
   check(ServerHumanDialogue.begin(other,id,now).rawget("error").equals("busy"),"NPC reserved exclusively");
   check(!h.activity.beginTrade(new HumanObservation.Identity(p.id,p.instanceId),now,h.actuator),"native trade cannot steal dialogue lease");
   check(!ServerHumanDialogue.arrive(p,id,token,now),"distant player cannot arrive");

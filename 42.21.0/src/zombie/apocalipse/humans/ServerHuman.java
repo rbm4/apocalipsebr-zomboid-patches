@@ -18,8 +18,8 @@ final class ServerHuman {
     final HumanActivityController activity;
     final HumanProfile profile;
     final ServerHumanActuator actuator;
+    final ServerHumanMovement movement;
     final ServerHumanRoaming roaming;
-    boolean moving;
     float postX, postY;
     String emote;
     private boolean disposed;
@@ -62,6 +62,7 @@ final class ServerHuman {
         this.player.setVariable("IdleSpeed", 1.0F);
         this.postX = definition.x();
         this.postY = definition.y();
+        this.movement = new ServerHumanMovement(this);
         this.roaming = new ServerHumanRoaming(this);
         this.actuator = new ServerHumanActuator(this);
     }
@@ -76,7 +77,7 @@ final class ServerHuman {
         activity.stop(System.nanoTime(), actuator);
         ServerHumanDialogue.close(this, "removed");
         ServerHumanTrading.close(this);
-        roaming.stop();
+        movement.stop();
         // Never call normal disconnectPlayer(): this actor has no account/connection/save.
         for (UdpConnection connection : viewers) {
             if (connection.isFullyConnected()) ServerHumanTransport.remove(this, connection);

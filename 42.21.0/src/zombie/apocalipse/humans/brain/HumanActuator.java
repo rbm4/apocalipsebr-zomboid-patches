@@ -4,7 +4,8 @@ package zombie.apocalipse.humans.brain;
 public interface HumanActuator {
     enum MotionStatus { RUNNING, SUCCEEDED, FAILED }
     default boolean startRoaming(long now) { return false; }
-    default MotionStatus updateRoaming(long now) { return MotionStatus.FAILED; }
+    /** Advance the owned physical route, independently of the pattern that selected it. */
+    default MotionStatus updateMovement(long now) { return MotionStatus.FAILED; }
     default void stopMoving() { }
     boolean face(HumanObservation.Identity visitor);
     boolean startEmote(String name);

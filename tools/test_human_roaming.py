@@ -14,7 +14,7 @@ package zombie.apocalipse.humans;
 import java.util.*;
 import zombie.apocalipse.humans.brain.*;
 import zombie.apocalipse.humans.movement.IndoorRoutePlanner;
-import zombie.apocalipse.humans.movement.IndoorRoutePlanner.Tile;
+import zombie.apocalipse.humans.movement.MovementGrid.Tile;
 import zombie.characters.*;
 import zombie.core.raknet.UdpConnection;
 import zombie.iso.*;
@@ -68,58 +68,58 @@ public class RoamingTest {
   HumanActuator.MotionStatus status=HumanActuator.MotionStatus.RUNNING;boolean walked=false,sawPrediction=false;
   BuildingDef building=cell.getGridSquare(100,200,0).building;
   for(long now=STEP;now<=400*STEP&&status==HumanActuator.MotionStatus.RUNNING;now+=STEP){
-   float x=human.player.x,y=human.player.y;status=human.roaming.update(now);
-   check(Math.hypot(human.player.x-x,human.player.y-y)<=ServerHumanRoaming.SPEED*.15+.0001,"per-tick distance obeys speed and elapsed cap");
-   if(status==HumanActuator.MotionStatus.RUNNING)check(Math.abs(Math.abs(human.player.x-x)+Math.abs(human.player.y-y)-ServerHumanRoaming.SPEED*.1)<.0001,"waypoints consume leftover distance without a dead tick");
+   float x=human.player.x,y=human.player.y;status=human.movement.update(now);
+   check(Math.hypot(human.player.x-x,human.player.y-y)<=ServerHumanMovement.WALK_SPEED*.15+.0001,"per-tick distance obeys speed and elapsed cap");
+   if(status==HumanActuator.MotionStatus.RUNNING)check(Math.abs(Math.abs(human.player.x-x)+Math.abs(human.player.y-y)-ServerHumanMovement.WALK_SPEED*.1)<.0001,"waypoints consume leftover distance without a dead tick");
    check(cell.getGridSquare(human.player.getXi(),human.player.getYi(),0).building==building&&human.player.z==0,"all movement stays in original building and floor");
-   if(human.moving){
+   if(human.movement.moving()){
     walked=true;ServerHumanTransport.idle(human,viewer);var packet=PlayerPacketReliable.sent.getLast();
     check(packet.prediction.x==human.player.x&&packet.prediction.y==human.player.y,"movement packets use live position");
     check((packet.booleanVariables&(1<<8))!=0,"native walking flag maintained");
     check(packet.prediction.distance>=0&&packet.prediction.distance<=16,"one-second prediction horizon bounded to two tiles in eighth-tile units");
     if(packet.prediction.distance>0){
      sawPrediction=true;
-     check(packet.prediction.type==1&&packet.prediction.speed==ServerHumanRoaming.SPEED,"native moving prediction carries speed");
+     check(packet.prediction.type==1&&packet.prediction.speed==ServerHumanMovement.WALK_SPEED,"native moving prediction carries speed");
      check(packet.prediction.moveDirection==packet.prediction.direction,"prediction follows current segment heading");
      PolygonalMap2.instance.blocked=true;
-     check(human.roaming.predictionDistanceUnits()==0,"new collision disables extrapolation immediately");
+     check(human.movement.predictionDistanceUnits()==0,"new collision disables extrapolation immediately");
      PolygonalMap2.instance.blocked=false;
     }else check(packet.prediction.type==0,"near-corner prediction falls back to static point");
    }
   }
   check(walked&&status==HumanActuator.MotionStatus.SUCCEEDED,"route eventually completes");
   check(sawPrediction,"straight movement actually enables native prediction");
-  check(!human.moving,"route completion clears movement");
+  check(!human.movement.moving(),"route completion clears movement");
   // Exercise straight tile-center lookahead and clipping at a real corner.
-  check(human.roaming.start(0),"reset motion clock for controlled straight corridor");
-  var routeField=ServerHumanRoaming.class.getDeclaredField("route");routeField.setAccessible(true);
-  var waypointField=ServerHumanRoaming.class.getDeclaredField("waypoint");waypointField.setAccessible(true);
-  routeField.set(human.roaming,List.of(new Tile(101,200),new Tile(102,200),new Tile(102,201)));
-  waypointField.setInt(human.roaming,0);human.player.x=101.4f;human.player.y=200.5f;
-  human.player.setDirectionAngle(0);human.moving=true;
-  int straightUnits=human.roaming.predictionDistanceUnits();
+  human.player.x=101.4f;human.player.y=200.5f;human.player.setDirectionAngle(0);
+  check(human.movement.start(List.of(new Tile(101,200),new Tile(102,200),new Tile(102,201)),0),"explicit route starts independently of roaming");
+  human.movement.update(1_000_000L);
+  int straightUnits=human.movement.predictionDistanceUnits();
   check(straightUnits==7,"prediction spans straight tile centers and clips before the upcoming corner");
-  // A full straight corridor must cover delayed heartbeats at the requested speed.
-  routeField.set(human.roaming,List.of(new Tile(101,200),new Tile(102,200),new Tile(103,200),new Tile(104,200)));
-  straightUnits=human.roaming.predictionDistanceUnits();
+  human.player.x=101.4f;
+  check(human.movement.start(List.of(new Tile(101,200),new Tile(102,200),new Tile(103,200),new Tile(104,200)),0),"caller selects a full straight corridor");
+  human.movement.update(1_000_000L);
+  straightUnits=human.movement.predictionDistanceUnits();
   check(straightUnits==16,"unobstructed straight prediction covers two full tiles");
-  check(Math.abs(straightUnits/(8.0*ServerHumanRoaming.SPEED)-1.0)<.0001,"native decoded prediction lasts one second");
-  check(straightUnits/(8.0*ServerHumanRoaming.SPEED)>.5,"quantized horizon exceeds 500ms send interval");
-  human.roaming.update(STEP);
+  check(Math.abs(straightUnits/(8.0*ServerHumanMovement.WALK_SPEED)-1.0)<.0001,"native decoded prediction lasts one second");
+  check(straightUnits/(8.0*ServerHumanMovement.WALK_SPEED)>.5,"quantized horizon exceeds 500ms send interval");
+  human.movement.update(STEP);
   check(Math.abs(human.player.x-101.6f)<.0001&&human.player.y==200.5f,"walks 0.2 tiles in 100ms across a tile center (two tiles per second)");
   human.player.x=101.4f;
-  waypointField.setInt(human.roaming,0);
+  human.movement.start(List.of(new Tile(101,200),new Tile(102,200),new Tile(103,200)),0);
+  human.movement.update(1_000_000L);
   cell.getGridSquare(102,200,0).free=false;
-  check(human.roaming.predictionDistanceUnits()==0,"blocked next straight tile prevents prediction across waypoint");
+  check(human.movement.predictionDistanceUnits()==0,"blocked next straight tile prevents prediction across waypoint");
   cell.getGridSquare(102,200,0).free=true;
-  routeField.set(human.roaming,List.of(new Tile(101,200),new Tile(102,200),new Tile(102,201)));
-  waypointField.setInt(human.roaming,1);human.player.x=102.0f;
-  int cornerUnits=human.roaming.predictionDistanceUnits();
+  human.player.x=102.0f;
+  human.movement.start(List.of(new Tile(102,200),new Tile(102,201)),0);
+  human.movement.update(1_000_000L);
+  int cornerUnits=human.movement.predictionDistanceUnits();
   check(cornerUnits==2&&human.player.x+cornerUnits/8.0<=102.35,"prediction clips before corner with safety margin");
   human.player.x=102.4f;
-  check(human.roaming.predictionDistanceUnits()==0,"prediction cannot continue old heading around corner");
-  human.roaming.stop();
-  check(!human.moving,"explicit stop clears movement");
+  check(human.movement.predictionDistanceUnits()==0,"prediction cannot continue old heading around corner");
+  human.movement.stop();
+  check(!human.movement.moving(),"explicit stop clears movement");
   ServerHumanTransport.idle(human,viewer);
   check(PlayerPacketReliable.sent.getLast().prediction.distance==0&&PlayerPacketReliable.sent.getLast().prediction.type==0,"stopping clears prediction");
   float postX=human.player.x,postY=human.player.y;
@@ -134,19 +134,19 @@ public class RoamingTest {
   check(observation.find(new HumanObservation.Identity(visitor.id,visitor.instanceId)).distanceSquared()==1,"visitor distance measured from roaming position");
   GameServer.Players.clear();GameServer.IDToPlayerMap.clear();
   check(human.roaming.start(0),"second route planned");
-  human.roaming.update(STEP);float beforeX=human.player.x,beforeY=human.player.y;
+  human.movement.update(STEP);float beforeX=human.player.x,beforeY=human.player.y;
   PolygonalMap2.instance.blocked=true;
-  check(human.roaming.update(2*STEP)==HumanActuator.MotionStatus.FAILED,"new native collision aborts active path");
-  check(!human.moving&&human.player.x==beforeX&&human.player.y==beforeY,"obstruction stops before crossing");
+  check(human.movement.update(2*STEP)==HumanActuator.MotionStatus.FAILED,"new native collision aborts active path");
+  check(!human.movement.moving()&&human.player.x==beforeX&&human.player.y==beforeY,"obstruction stops before crossing");
   PolygonalMap2.instance.blocked=false;
   check(human.roaming.start(0),"route can be retried after obstacle clears");
   for(var square:cell.tiles.values())square.occupied=true;
-  human.roaming.update(STEP);
-  check(human.roaming.update(2*STEP)==HumanActuator.MotionStatus.FAILED,"occupied destination stops movement");
+  human.movement.update(STEP);
+  check(human.movement.update(2*STEP)==HumanActuator.MotionStatus.FAILED,"occupied destination stops movement");
   for(var square:cell.tiles.values())square.occupied=false;
   check(human.roaming.start(0),"route planned before unload");
   IsoGridSquare origin=cell.tiles.remove(key(100,200));
-  check(human.roaming.update(STEP)==HumanActuator.MotionStatus.FAILED,"unloaded origin safely suspends route");cell.tiles.put(key(100,200),origin);
+  check(human.movement.update(STEP)==HumanActuator.MotionStatus.FAILED,"unloaded origin safely suspends route");cell.tiles.put(key(100,200),origin);
   human.dispose();
   GameServer.udpEngine.connections.clear();GameServer.udpEngine.connections.add(viewer);
   var constructor=ServerHumanFactory.class.getDeclaredConstructor();constructor.setAccessible(true);
@@ -157,9 +157,9 @@ public class RoamingTest {
   int suppressedMotion=0,transitions=0,heartbeats=0;
   for(long now=STEP;now<=200*STEP;now+=STEP){
    float oldDirection=replica.player.getDirectionAngleRadians(),oldX=replica.player.x,oldY=replica.player.y;
-   boolean oldMoving=replica.moving;int before=PlayerPacketReliable.sent.size();
+   boolean oldMoving=replica.movement.moving();int before=PlayerPacketReliable.sent.size();
    factory.tick(now);
-   boolean changed=Float.compare(oldDirection,replica.player.getDirectionAngleRadians())!=0||oldMoving!=replica.moving;
+   boolean changed=Float.compare(oldDirection,replica.player.getDirectionAngleRadians())!=0||oldMoving!=replica.movement.moving();
    boolean heartbeat=now%ServerHumanFactory.UPDATE_NANOS==0;
    check(PlayerPacketReliable.sent.size()-before==(heartbeat||changed?1:0),"only heartbeat or immediate turn/start/stop sends movement packet");
    if(changed)transitions++;
@@ -177,6 +177,60 @@ public class RoamingTest {
   check(sawWalk&&sawTranslation,"factory starts roaming and publishes translation even along constant heading");
   check(PlayerPacketReliable.sent.size()<=heartbeats+transitions,"extra movement packets require a transition");
   factory.remove("factory");
+  // Exercise movement as a physical capability, without invoking a roaming pattern.
+  IsoCell physicalCell=house();ServerHuman physical=new ServerHuman(definition("physical"),(short)1120,physicalCell);
+  physical.player.x=106.5f;physical.player.y=200.5f;
+  physicalCell.tiles.remove(key(100,200));
+  List<Tile> supplied=new ArrayList<>(List.of(new Tile(106,200),new Tile(107,200)));
+  check(physical.movement.start(supplied,0),"movement accepts caller route without a loaded roaming home");
+  supplied.clear();
+  var idleMotion=physical.movement.snapshot();
+  check(idleMotion.gait()==ServerHumanMovement.Gait.IDLE&&!idleMotion.moving()&&idleMotion.speed()==0&&idleMotion.predictionUnits()==0,"planned route has no fabricated motion before integration");
+  for(int i=1;i<=6;i++)physical.movement.update(i*STEP);
+  check(Math.abs(physical.player.x-107.5f)<.0001&&!physical.movement.moving(),"movement crosses building boundary and copies caller route");
+  check(physical.postX==physical.player.x&&physical.postY==physical.player.y,"completion captures generic movement stopping point");
+  check(!physical.movement.start(List.of(),0),"empty route refused");
+  check(!physical.movement.start(List.of(new Tile(108,201)),0),"diagonal route refused before movement");
+  check(!physical.movement.start(List.of(new Tile(109,200)),0),"skipped route tiles refused");
+  check(!physical.movement.start(Collections.nCopies(ServerHumanMovement.MAX_WAYPOINTS+1,new Tile(107,200)),0),"oversized route refused");
+  List<Tile> corridor=List.of(new Tile(107,200),new Tile(108,200),new Tile(109,200));
+  check(physical.movement.start(corridor,0),"independent corridor accepted");
+  physical.movement.update(10*STEP);
+  check(Math.abs(physical.player.x-107.8f)<.0001,"long scheduling gap integrates at most 150ms");
+  var walkMotion=physical.movement.snapshot();
+  check(walkMotion.gait()==ServerHumanMovement.Gait.WALK&&walkMotion.speed()==2&&walkMotion.moving(),"engine resolves physical speed and walking presentation together");
+  ServerHumanTransport.idle(physical,viewer);var walkingPacket=PlayerPacketReliable.sent.getLast();
+  check(walkingPacket.prediction.speed==walkMotion.speed()&&walkingPacket.prediction.distance==walkMotion.predictionUnits()&&(walkingPacket.booleanVariables&(1<<8))!=0,"transport consumes resolved movement snapshot outside roaming");
+  ServerHumanTransport.announce(physical,viewer);ServerHumanTransport.idle(physical,viewer);
+  check(PlayerPacketReliable.sent.getLast().prediction.distance==walkMotion.predictionUnits(),"new viewer receives current physical prediction");
+  float gapX=physical.player.x;
+  physical.movement.update(9*STEP);physical.movement.update(10*STEP);
+  check(physical.player.x==gapX,"out-of-order clock cannot create a second distance budget");
+  physical.actuator.stopMoving();
+  check(!physical.movement.moving()&&physical.movement.snapshot().predictionUnits()==0,"generic capability cancellation clears motion and prediction");
+  physical.movement.start(corridor,0);physical.movement.update(STEP);
+  check(!physical.movement.start(List.of(new Tile(109,200)),STEP)&&!physical.movement.moving(),"invalid replacement cancels prior route rather than leaving stale motion");
+  var permissive=new zombie.apocalipse.humans.movement.MovementGrid(){
+   public boolean walkable(Tile t){return true;}public boolean connected(Tile a,Tile b){return true;}
+  };
+  check(physical.movement.start(corridor,permissive,0),"external traversal policy can be composed");
+  PolygonalMap2.instance.blocked=true;
+  float blockedX=physical.player.x;
+  check(physical.movement.update(STEP)==HumanActuator.MotionStatus.FAILED&&physical.player.x==blockedX,"permissive pattern cannot bypass native collision checks");
+  PolygonalMap2.instance.blocked=false;
+  boolean[] enabled={true};
+  var scoped=new zombie.apocalipse.humans.movement.MovementGrid(){
+   public boolean available(){return enabled[0];}
+   public boolean walkable(Tile t){return true;}public boolean connected(Tile a,Tile b){return true;}
+  };
+  physical.movement.start(corridor,scoped,0);enabled[0]=false;
+  check(physical.movement.update(STEP)==HumanActuator.MotionStatus.FAILED,"scope becoming unavailable aborts motion");
+  physical.movement.start(corridor,0);physical.movement.update(STEP);
+  check(physical.movement.moving(),"motion can restart after scope cancellation");
+  ServerHuman other=new ServerHuman(definition("other"),(short)1121,house());
+  other.movement.stop();check(physical.movement.moving(),"movement executions are isolated per NPC");
+  physical.dispose();other.dispose();
+  check(!physical.movement.moving()&&physical.movement.snapshot().predictionUnits()==0,"despawn clears independent movement");
   System.out.println("Passed "+checks+" indoor route, motion and replication assertions.");
  }
 }

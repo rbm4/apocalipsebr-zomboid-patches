@@ -83,7 +83,8 @@ The actor implementation lives under `src/zombie/apocalipse/humans/`; its typed 
 | `ServerHumanTransport` | Vanilla `ConnectedPlayer`, `PlayerUpdateReliable` and `PlayerTimeout` packets. |
 | `ServerHumanActuator` | Main-thread perception, target validation, facing, emote, speech and post restoration. |
 | `ServerHumanEmotePacket` | Constructs the existing `State` packet with native emote parameters/events. |
-| `ServerHumanRoaming` | Building/floor boundaries, native collision checks and server-owned movement. |
+| `ServerHumanRoaming` | Indoor route selection and home-building confinement. |
+| `ServerHumanMovement` | Physical route execution, native collision/occupancy checks, walking gait/speed and prediction. |
 | `movement/IndoorRoutePlanner` | Original bounded cardinal-grid search for short reachable routes. |
 | `brain/HumanObservation` | Immutable visitor snapshots; identity includes the player instance ID. |
 | `brain/HumanAction`, `HumanActionExecution`, `HumanActuator` | Typed commands, execution lifecycle and engine port. |
@@ -144,6 +145,11 @@ stale speech-cache identity. Names conflicting with an online player at creation
 are also rejected. Restarting clears the reservations along with client sessions.
 
 ## Indoor roaming and greeting state machine
+
+Walking mechanics now belong to the per-NPC `ServerHumanMovement` engine.
+Roaming supplies its selected route and building constraint; transport consumes
+the movement engine's snapshot. See [NPC-MOVEMENT.md](NPC-MOVEMENT.md) for the
+implemented capability boundary, cancellation semantics and direct-route tests.
 
 ```text
 IDLE -> ROAMING -> IDLE
