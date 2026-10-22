@@ -31,6 +31,7 @@ and ability is not the intended hierarchy.
 | Engagement and combat boundary | `HumanEngagement`, `EngageZombiesModule`, `HumanCombat`, `ServerHumanCombat` | Pure engagement/target selection, selected-module execution ownership and validated combat handoff. See [NPC-ENGAGEMENT.md](NPC-ENGAGEMENT.md). |
 | Weapon execution | `HumanWeaponCombat`, `HumanCombatInventory`, native inventory/approach/network adapters | Per-execution phases and one-shot commits, fixed test inventory, native equip/aim/hit replication and local consequence processing. See [NPC-COMBAT.md](NPC-COMBAT.md). |
 | Local combat tactics | `HumanCombatTactics`, `CombatRoutePlanner`, `ServerHumanCombatApproach` | Per-engagement spacing/reaction/retreat policy and bounded placement routes; weapon phases retain attack timing and commitment. See [NPC-COMBAT.md](NPC-COMBAT.md#local-combat-tactics-and-exposure-windows). |
+| Tactical coordination | `TacticalIntent`, `SurvivalModule`, `ServerHumanActuator` | Immutable objective/posture/target/exposure decisions, guarded movement and explicit escape-route ownership during defensive combat. See [NPC-TACTICS.md](NPC-TACTICS.md). |
 | Transport and feature services | `ServerHumanTransport`, dialogue/trade controllers | Delivery, authenticated requests, exclusive leases and feature-specific authoritative rules. |
 
 Brains depend on ports and action data, not on concrete event controllers,

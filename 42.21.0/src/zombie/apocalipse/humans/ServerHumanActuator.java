@@ -10,6 +10,17 @@ import zombie.network.GameServer;
 final class ServerHumanActuator implements HumanActuator {
     static final double VISITOR_RADIUS_SQUARED = 8.0 * 8.0;
     private final ServerHuman human;
+    private zombie.apocalipse.humans.brain.TacticalIntent intent=zombie.apocalipse.humans.brain.TacticalIntent.NONE;
+    zombie.apocalipse.humans.brain.TacticalIntent intent(){return intent;}
+    @Override public void tactical(zombie.apocalipse.humans.brain.TacticalIntent value){
+        var previous=intent;intent=java.util.Objects.requireNonNull(value);
+        var target=value.target()==null?null:human.perception.resolveZombie(value.target());
+        boolean guarded=value.guarded()&&target!=null;
+        human.movement.tactical(guarded?target.getX():null,guarded?target.getY():null,value.elevatedExposure());
+        ServerHumanTransport.aim(human,guarded&&!human.movement.traversing());
+        if(!previous.equals(value))HumanLog.log(HumanLog.Level.DEBUG,()->"tactical key="+human.definition.key()+"; objective="+value.objective()
+            +"; posture="+value.posture()+"; target="+value.target()+"; elevated="+value.elevatedExposure());
+    }
     private final zombie.apocalipse.humans.survival.SurvivalPort survival;
 
     ServerHumanActuator(ServerHuman human) { this.human = human;this.survival=new ServerHumanSurvival(human); }

@@ -10,6 +10,7 @@ public final class HumanWeaponCombat implements Execution {
     public enum Mode { AUTO, MELEE, RANGED }
     public enum Phase { SELECT, EQUIP, APPROACH, WINDUP, RELOAD, RECOVER, FINISHED }
     public interface Operations {
+        default boolean canAttackMoving(){return false;}
         double distance();
         boolean defeated();
         HumanActuator.MotionStatus approach(HumanCombatInventory.Weapon weapon,long now);
@@ -57,7 +58,7 @@ public final class HumanWeaponCombat implements Execution {
         if(phase==Phase.EQUIP){if(now<deadline)return result;phase=Phase.APPROACH;}
         if(phase==Phase.RECOVER){
             if(now<deadline){
-                if(now>=movementUnlock)operations.reposition(weapon,now,true);
+                if(now>=movementUnlock||operations.canAttackMoving())operations.reposition(weapon,now,true);
                 return result;
             }
             phase=Phase.APPROACH;
@@ -76,11 +77,11 @@ public final class HumanWeaponCombat implements Execution {
             }
             var status=operations.approach(weapon,now);
             if(status==HumanActuator.MotionStatus.FAILED)return finish(Status.FAILED,Reason.UNREACHABLE);
-            if(status==HumanActuator.MotionStatus.RUNNING)return result;
-            operations.stop();operations.face();operations.aim(true);phase=Phase.WINDUP;deadline=now+varied(weapon.windupNanos());return result;
+            if(status==HumanActuator.MotionStatus.RUNNING&&(!operations.canAttackMoving()||operations.distance()>weapon.reach()||!operations.clearAttackLine(weapon)))return result;
+            if(status!=HumanActuator.MotionStatus.RUNNING)operations.stop();operations.face();operations.aim(true);phase=Phase.WINDUP;deadline=now+varied(weapon.windupNanos());return result;
         }
         if(phase==Phase.WINDUP){
-            if(operations.reposition(weapon,now,false)){phase=Phase.APPROACH;return result;}
+            if(operations.reposition(weapon,now,false)&&!operations.canAttackMoving()){phase=Phase.APPROACH;return result;}
             operations.face();
             if(operations.distance()>weapon.reach()||!operations.clearAttackLine(weapon)){phase=Phase.APPROACH;return result;}
             if(now<deadline)return result;

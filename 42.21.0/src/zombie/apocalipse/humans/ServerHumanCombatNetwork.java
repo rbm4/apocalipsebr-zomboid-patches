@@ -40,7 +40,7 @@ final class ServerHumanCombatNetwork {
     }
     static boolean commit(ServerHuman human,IsoZombie target,int itemId,long execution,long strike,long now){
         HandWeapon weapon=human.inventory.item(itemId);
-        if(weapon==null||human.player.getPrimaryHandItem()!=weapon||weapon.getCondition()<=0||target.isDead())return false;
+        if(weapon==null||human.player.getPrimaryHandItem()!=weapon||weapon.getCondition()<=0||target.isDead()||human.movement.traversing())return false;
         var actor=human.player;
         actor.setUseHandWeapon(weapon);actor.setDoShove(false);actor.setAimAtFloor(target.isOnFloor());
         actor.setAttackType(weapon.isRanged()?AttackType.SHOT:target.isOnFloor()?AttackType.MELEE_TO_FLOOR:AttackType.MELEE_SWING);

@@ -209,13 +209,12 @@ public class HumanWeaponCombatTest {
   pressured.target().square.moving.remove(pressured.target());pressured.target().square.occupied=false;
   pressured.target().x=102.5f;pressured.target().square=pressured.human().player.getCell().getGridSquare(102,200,0);
   pressured.target().square.moving.add(pressured.target());pressured.target().square.occupied=true;
-  boolean withdrew=false,lowered=true,aimed=false;
+  boolean withdrew=false,guarded=true;
   for(long tick=STEP;tick<15*S&&PlayerHitZombiePacket.localProcesses==0;tick+=STEP){
    pressured.factory().tick(tick);
-   if(pressured.human().player.getX()<100.5f&&pressured.human().movement.moving()){withdrew=true;lowered&=!pressured.human().aiming;}
-   if(!pressured.human().movement.moving()&&pressured.human().aiming)aimed=true;
+   if(pressured.human().player.getX()<100.5f&&pressured.human().movement.moving()){withdrew=true;guarded&=pressured.human().aiming;}
   }
-  check(withdrew&&lowered&&aimed&&PlayerHitZombiePacket.localProcesses==1,"native weapon backend lowers aim to retreat then reacquires and commits one shot");
+  check(withdrew&&guarded&&PlayerHitZombiePacket.localProcesses==1,"native weapon backend keeps guard while retreating and commits one shot");
   pressured.factory().deactivate("pressured-gunner");System.clearProperty("apocbr.npc.combat.testWeapon");
 
   CombatRoutePlanner.Grid grid=new CombatRoutePlanner.Grid(){

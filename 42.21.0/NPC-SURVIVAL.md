@@ -26,11 +26,14 @@ retained contacts up to two seconds old use last-known positions but distances
 are recomputed from the observer. The assessment list is bounded at 48.
 
 Phases are `SAFE -> ESCAPING -> RECOVERING -> SAFE`, with `CORNERED` when no
-escape starts or execution fails. Route retries are throttled every two seconds;
-both cornered and recovering actors can immediately defend against
+escape starts or execution fails. Two accumulated failures enter a four-second
+`CREATE_OPENING` window before another escape attempt; a completed defensive
+execution ends that window early. Outside that window route retries are
+throttled every two seconds. Escaping, cornered and recovering actors can defend against
 a visible eligible territory target within 1.5 tiles. Defense is cancelled when
 the target leaves that range; ordinary pursuit stays suppressed. Terminal or
-failed defense executions also back off. Existing combat validation still applies.
+failed defense executions also back off. During escape, defense runs alongside
+movement and cannot cancel or replace its route. Existing combat validation still applies.
 
 Arrival is not safety and enters recovery. Failed execution or the 14-second
 deadline enters cornered defense immediately, rather than waiting passively.
@@ -52,14 +55,17 @@ path length and crossing cost. It requires a destination at least two tiles fart
 from the nearest threat and avoids the crowd contact envelope. Actors already
 touching a threat can move outward. This bounded heuristic cannot guarantee escape.
 Destination scoring also rewards usable local exits and penalizes pockets with
-one exit. Native occupied tiles are excluded during planning except for the
-actor's origin. Recently failed directed edges are refused for three seconds
+one exit. Native occupied tiles are normally excluded during planning except for
+the actor's origin. After two failures, elevated exposure permits body-clear
+segments through occupied tiles with an additional route cost; it does not
+permit crossing bodies or static obstacles. See [tactical coordination](NPC-TACTICS.md).
+Recently failed directed edges are refused for three seconds
 for body/timeout failures and ten seconds for other failures, in bounded per-actor
 memory. Cleared edges become eligible again; no permanent obstacle is invented.
 
 Movement allows separation from overlapping characters within the current tile
 only when the step increases separation without crossing their body. It does not
-permit entry into another occupied tile or ignore static collision. Occupied
+permit entry into another occupied tile under normal exposure or ignore static collision. Occupied
 origins skip the initial recentering waypoint; ordinary corner prediction and
 traversal centering retain their existing checks.
 

@@ -17,11 +17,14 @@ public final class RetreatPlanner {
         return result;
     }
     public static List<Tile> plan(MovementGrid grid,Tile start,List<Threat> supplied,int distance){
+        return plan(grid,start,supplied,distance,false);
+    }
+    public static List<Tile> plan(MovementGrid grid,Tile start,List<Threat> supplied,int distance,boolean elevated){
         if(distance<2||distance>24||supplied.isEmpty()||supplied.size()>48||!grid.available()||!grid.walkable(start))return List.of();
         var free=new HashMap<Tile,Boolean>();
         java.util.function.Predicate<Tile> walkable=t->free.computeIfAbsent(t,grid::walkable);
         var threats=List.copyOf(supplied);
-        double initial=clearance(start,threats),floor=Math.min(1.25,initial);
+        double initial=clearance(start,threats),floor=Math.min(elevated?.65:1.25,initial);
         var queue=new PriorityQueue<Node>(Comparator.comparingDouble(Node::score).reversed().thenComparingLong(Node::order));
         var seen=new HashSet<Tile>();long order=0;
         var root=new Node(start,null,0,0,initial,initial,order++);queue.add(root);seen.add(start);Node best=null;

@@ -28,6 +28,16 @@ final class ServerHumanMovement implements MovementGrid {
     private Failure lastFailure;
     Failure lastFailure(){return lastFailure;}
     Tile nextTile(){return waypoint<route.size()?route.get(waypoint):new Tile(human.player.getXi(),human.player.getYi());}
+    private Float facingX,facingY;
+    private boolean occupiedGaps;
+    private float travelDirection;
+    void tactical(Float x,Float y,boolean elevated){facingX=x;facingY=y;occupiedGaps=elevated;faceTarget();if(lastResolution!=Long.MIN_VALUE)refresh(lastResolution);}
+    boolean guarded(){return facingX!=null&&facingY!=null&&!traversal.active();}
+    private void faceTarget(){if(facingX!=null&&facingY!=null&&!traversal.active()){
+        double dx=facingX-human.player.getX(),dy=facingY-human.player.getY();
+        if(dx*dx+dy*dy>.000001)human.player.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy,dx)));
+    }}
+    float travelDirection(){return guarded()?travelDirection:human.player.getDirectionAngleRadians();}
     private final ServerHuman human;
     private final HumanTraversal traversal;
     private MovementGrid policy;
@@ -116,6 +126,11 @@ final class ServerHumanMovement implements MovementGrid {
         lastResolution = Math.max(lastResolution, now);
         traversal.clock(lastResolution);
         resolved = MovementModifiers.resolve(requestedPace, conditions, settings, lastResolution, rhythmOrigin);
+        if(guarded()&&resolved.speed()>0){
+            float ratio=Math.min(1,1.3F/resolved.speed());var animation=resolved.animation();
+            resolved=new Resolved(Pace.WALK,resolved.speed()*ratio,
+                new Animation(animation.walkInjury(),animation.walkSpeed()*ratio,animation.runSpeed()*ratio,animation.sneaking()),resolved.reason());
+        }
         if (resolved.speed() == 0 && moving) {
             moving = false;
             human.postX = human.player.getX(); human.postY = human.player.getY();
@@ -185,6 +200,7 @@ final class ServerHumanMovement implements MovementGrid {
                     if (Math.hypot(cx-x, cy-y) > .001) { tx = cx; ty = cy; centering = true; }
                     else {
                         moving = false; applyPresentation();
+                        ServerHumanTransport.aim(human,false);
                         traversal.start(edge, now);
                         if (traversal.update(now) == TraversalExecution.Result.FAILED) return fail("traversal_"+traversal.reason());
                         return HumanActuator.MotionStatus.RUNNING;
@@ -210,7 +226,8 @@ final class ServerHumanMovement implements MovementGrid {
             human.player.setY(ny);
             human.player.realx = nx;
             human.player.realy = ny;
-            human.player.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy, dx)));
+            travelDirection=(float)Math.atan2(dy,dx);
+            if(guarded())faceTarget();else human.player.setDirectionAngle((float)Math.toDegrees(travelDirection));
             moving = true;
             applyPresentation();
             remaining -= step;
@@ -226,7 +243,7 @@ final class ServerHumanMovement implements MovementGrid {
         float x = human.player.getX(), y = human.player.getY();
         double dx = target.x() + 0.5 - x, dy = target.y() + 0.5 - y;
         double distance = Math.hypot(dx, dy);
-        double angle = human.player.getDirectionAngleRadians();
+        double angle = travelDirection();
         // Never extrapolate the old heading around an upcoming corner.
         if (distance < 0.001 || (dx * Math.cos(angle) + dy * Math.sin(angle)) / distance < 0.999) return 0;
         if (!allowed(target)) return 0;
@@ -270,6 +287,7 @@ final class ServerHumanMovement implements MovementGrid {
     boolean occupancyAllows(float x,float y,float nx,float ny) {
         var destination=square((int)Math.floor(nx),(int)Math.floor(ny));
         if(destination==null)return false;
+        if(occupiedGaps)return bodyClear(x,y,nx,ny);
         if(destination.isFree(true))return true;
         // Permit separation from existing overlap, never entering another occupied tile.
         if((int)Math.floor(x)!=destination.x||(int)Math.floor(y)!=destination.y)return false;
@@ -287,6 +305,28 @@ final class ServerHumanMovement implements MovementGrid {
                 double length=dx*dx+dy*dy;
                 double t=length==0?0:Math.clamp(-outward/length,0,1);
                 if(Math.hypot(x+t*dx-character.getX(),y+t*dy-character.getY())<.65)return false;
+            }
+        }
+        return true;
+    }
+    /** Continuous local body clearance for elevated-exposure routes; static geometry remains mandatory elsewhere. */
+    boolean bodyClear(float x,float y,float nx,float ny){
+        int inspected=0;
+        var seen=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<zombie.iso.IsoMovingObject,Boolean>());
+        int left=(int)Math.floor(Math.min(x,nx))-1,right=(int)Math.floor(Math.max(x,nx))+1;
+        int top=(int)Math.floor(Math.min(y,ny))-1,bottom=(int)Math.floor(Math.max(y,ny))+1;
+        if(right-left>3||bottom-top>3)return false;
+        for(int tx=left;tx<=right;tx++)for(int ty=top;ty<=bottom;ty++){
+            var square=square(tx,ty);if(square==null)continue;
+            for(var body:square.getMovingObjects()){
+                if(!seen.add(body)||body==human.player)continue;
+                if(++inspected>64)return false;
+                if(!(body instanceof zombie.characters.IsoGameCharacter c))return false;
+                double dx=nx-x,dy=ny-y,before=Math.hypot(x-c.getX(),y-c.getY()),after=Math.hypot(nx-c.getX(),ny-c.getY());
+                double outward=(x-c.getX())*dx+(y-c.getY())*dy;
+                if(before<.65){if((before>.00001&&outward<=0)||after<=before+.00001)return false;}
+                else {double length=dx*dx+dy*dy,t=length==0?0:Math.clamp(-outward/length,0,1);
+                    if(Math.hypot(x+t*dx-c.getX(),y+t*dy-c.getY())<.65)return false;}
             }
         }
         return true;

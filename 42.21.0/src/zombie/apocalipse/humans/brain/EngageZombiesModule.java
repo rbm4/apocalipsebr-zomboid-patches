@@ -31,8 +31,9 @@ public final class EngageZombiesModule implements HumanModule {
         boolean changed=!Objects.equals(selector.target(),next.target().identity());
         if(changed)cancel(Reason.TARGET_CHANGED);
         selector.retain(next);
-        if(next.choice()==Choice.WATCH){cancel(Reason.TARGET_LOST);actuator.stopMoving();return;}
+        if(next.choice()==Choice.WATCH){cancel(Reason.TARGET_LOST);actuator.stopMoving();actuator.tactical(TacticalIntent.NONE);return;}
         if(execution==null){
+            actuator.tactical(new TacticalIntent(TacticalIntent.Objective.ENGAGE,TacticalIntent.Posture.GUARDED,next.target().identity(),false));
             actuator.stopMoving();
             execution=Objects.requireNonNull(actuator.combat().begin(new Request(next.target().identity(),template),observation.nowNanos()));
         }
@@ -45,8 +46,8 @@ public final class EngageZombiesModule implements HumanModule {
         var owned=execution;execution=null;
         if(owned!=null){owned.cancel(reason);lastResult=new Result(Status.CANCELLED,reason);}
     }
-    public void interrupt(long now,HumanActuator actuator){cancel(Reason.PREEMPTED);selector.clear();}
-    public void suspend(long now,HumanActuator actuator){suspended=true;cancel(Reason.SUSPENDED);selector.clear();}
+    public void interrupt(long now,HumanActuator actuator){cancel(Reason.PREEMPTED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
+    public void suspend(long now,HumanActuator actuator){suspended=true;cancel(Reason.SUSPENDED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
     public void resume(HumanObservation.Identity visitor,long now,HumanActuator actuator){suspended=false;selector.clear();}
-    public void stop(long now,HumanActuator actuator){stopped=true;cancel(Reason.STOPPED);selector.clear();}
+    public void stop(long now,HumanActuator actuator){stopped=true;cancel(Reason.STOPPED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
 }

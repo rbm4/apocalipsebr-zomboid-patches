@@ -12,7 +12,8 @@ public final class HumanCombat {
     public enum Reason { NONE, NOT_IMPLEMENTED, INVALID_TARGET, STALE_OBSERVATION, OUTSIDE_TERRITORY,
         INCAPACITATED, BUSY, TARGET_LOST, TARGET_CHANGED, PREEMPTED, SUSPENDED, STOPPED, TIMEOUT, BACKEND_FAILURE,
         NO_WEAPON,NO_AMMO,UNREACHABLE }
-    public record Request(HumanSenses.Identity target,Template template) {
+    public record Request(HumanSenses.Identity target,Template template,boolean externalMovement) {
+        public Request(HumanSenses.Identity target,Template template){this(target,template,false);}
         public Request { Objects.requireNonNull(target);Objects.requireNonNull(template); }
     }
     public record Result(Status status,Reason reason) {

@@ -43,7 +43,7 @@ final class ServerHumanTransport {
         int predictionUnits = motion.predictionUnits();
         if (predictionUnits > 0) {
             packet.prediction.type = 1;
-            packet.prediction.moveDirection = packet.prediction.direction;
+            packet.prediction.moveDirection = human.movement.travelDirection();
             packet.prediction.speed = motion.speed();
             packet.prediction.distance = (byte)predictionUnits;
         }

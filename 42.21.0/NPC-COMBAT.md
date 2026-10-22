@@ -130,13 +130,16 @@ not hidden world-wide knowledge. A blocked retreat holds position; it does not
 teleport, walk through obstacles or fail the whole combat execution merely
 because no escape exists. Normal unreachable approach failures still apply.
 
-Retreat lowers aim and turns toward travel, preserving movement prediction's
-heading contract. The bot must finish moving, face the target and complete a
-new aim/windup before firing. Native backward-strafing animation and separate
-facing/travel prediction are not implemented by this change. Windup can yield
-to a delayed retreat before spending ammunition. The first 350ms after a
-committed strike locks movement; the remainder of recovery permits defensive
-footwork without another attack. Equip and reload remain stationary windows.
+Guarded retreat retains aim toward the target while travel and prediction follow
+the route. Guarded pace is capped at WALK / 1.3 tiles per second, subject to
+slower physical restrictions. Guarded windup/recovery allow footwork and attacks
+while moving, with range and clear-lane checks retained. Unguarded movement still
+resets windup and retains the initial 350ms recovery movement lock. Weapon-owned
+equip/reload stop movement. Survival-owned escape routes continue independently
+of defensive weapon executions; cancellation cannot stop those routes. Active
+obstacle traversal suppresses attacks. See [tactical ownership, opening creation
+and elevated exposure](NPC-TACTICS.md) for the coordination contract and runtime
+animation checks.
 
 Windup and recovery each sample a bounded 80–120% multiplier when entering the
 phase. Polling never resamples or shortens the deadline, and missed ticks never

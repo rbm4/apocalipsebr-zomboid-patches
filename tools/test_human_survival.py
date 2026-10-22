@@ -28,14 +28,15 @@ public class SurvivalTest {
   return new HumanObservation(now,List.of(),true,state,new Frame(true,now,contacts,Coverage.COMPLETE,coverage,false,new Work(0,0,0,0,0)),new HumanTerritory(true,true,contacts.stream().map(Contact::identity).collect(java.util.stream.Collectors.toSet())));
  }
  static class Port implements HumanActuator {
-  int escapes,cancels,begins,stops,failures;boolean possible=true;String problem;MotionStatus motion=MotionStatus.RUNNING;List<String> transitions=new ArrayList<>();
+  int escapes,cancels,begins,stops,failures,externalBegins;TacticalIntent intent=TacticalIntent.NONE;boolean possible=true;String problem;MotionStatus motion=MotionStatus.RUNNING;List<String> transitions=new ArrayList<>();
+  public void tactical(TacticalIntent value){intent=value;}
   public SurvivalPort survival(){return new SurvivalPort(){
    public boolean escape(List<Contact> c,SurvivalSettings s,long now){escapes++;return possible;}
    public void failed(boolean timeout,long now){failures++;}
    public String routeProblem(long now){return problem;}
    public void transition(String phase,String reason,int nearby){transitions.add(phase+":"+reason);}
   };}
-  public HumanCombat.Port combat(){return (request,now)->{begins++;return new Execution(){
+  public HumanCombat.Port combat(){return (request,now)->{begins++;if(request.externalMovement())externalBegins++;return new Execution(){
    public Result update(long at){return new Result(Status.RUNNING,Reason.NONE);}public void cancel(Reason reason){cancels++;}
   };};}
   public MotionStatus updateMovement(long now){return motion;}public void stopMoving(){stops++;}
@@ -79,8 +80,10 @@ public class SurvivalTest {
   cornered.update(observe(2*SECOND,HumanState.INITIAL,4,9,Coverage.COMPLETE),p);
   check(p.cancels==1&&p.begins==1,"self-defense never pursues a departing target");
   p.possible=true;cornered.update(observe(4*SECOND,HumanState.INITIAL,4,9,Coverage.COMPLETE),p);
-  check(cornered.phase()==SurvivalModule.Phase.ESCAPING,"cornered actor retries and escapes once possible");
-  cornered.update(observe(19*SECOND,HumanState.INITIAL,0,0,Coverage.COMPLETE),p);
+  check(cornered.phase()==SurvivalModule.Phase.CREATE_OPENING&&p.escapes==2,"repeated failures commit an opening window instead of restarting the same flight");
+  cornered.update(observe(6*SECOND,HumanState.INITIAL,4,9,Coverage.COMPLETE),p);
+  check(cornered.phase()==SurvivalModule.Phase.ESCAPING,"opening window ends with a renewed escape attempt");
+  cornered.update(observe(21*SECOND,HumanState.INITIAL,0,0,Coverage.COMPLETE),p);
   check(cornered.phase()==SurvivalModule.Phase.RECOVERING,"route deadline terminates stuck movement");
  }
  static void arbitration(){
@@ -105,6 +108,24 @@ public class SurvivalTest {
   stalled.update(observe(0,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);p.problem="movement_stalled";
   stalled.update(observe(2*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
   check(stalled.phase()==SurvivalModule.Phase.CORNERED&&p.begins==1&&p.failures==1,"stalled movement leaves escape and defends");
+ }
+ static void coordinated(){
+  var s=new SurvivalModule(SurvivalSettings.DEFAULT);var p=new Port();
+  s.update(observe(0,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  s.update(observe(SECOND/10,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.ESCAPING&&p.externalBegins==1,"escape movement and defensive execution run together with explicit route ownership");
+  check(p.intent.objective()==TacticalIntent.Objective.ESCAPE&&p.intent.guarded(),"fighting while escaping does not replace the escape objective");
+  s.suspend(SECOND,p);check(p.cancels==1&&p.intent.equals(TacticalIntent.NONE),"exclusive interaction clears tactical state and external defense");
+  s=new SurvivalModule(SurvivalSettings.DEFAULT);p=new Port();p.possible=false;
+  s.update(observe(0,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  s.update(observe(2*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.CREATE_OPENING&&p.intent.objective()==TacticalIntent.Objective.CREATE_OPENING,"repeated failures escalate to opening creation");
+  int cancels=p.cancels;
+  s.update(observe(3*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  s.update(observe(4*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(p.escapes==2&&p.cancels==cancels,"opening window protects the fight from repeated route retry cancellations");
+  p.possible=true;s.update(observe(6*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.ESCAPING&&p.intent.elevatedExposure(),"renewed escape explicitly accepts elevated exposure after opening window");
  }
  static class Grid implements MovementGrid {
   int calls;Set<Tile> blocked=new HashSet<>();
@@ -170,7 +191,7 @@ public class SurvivalTest {
   check("movement_stalled".equals(actor.actuator.survival().routeProblem(3*SECOND)),"production adapter detects no positional progress independently of route deadline");
   actor.dispose();
  }
- public static void main(String[]args){lifecycle();arbitration();failedFlight();routes();flags();adapter();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
+ public static void main(String[]args){lifecycle();arbitration();failedFlight();coordinated();routes();flags();adapter();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
 }
 '''
 

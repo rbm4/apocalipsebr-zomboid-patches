@@ -87,15 +87,18 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
     }
     public boolean walkable(Tile tile){
         var square=human.movement.square(tile.x(),tile.y());
-        if(square==null||!square.isFree(true)||!human.movement.walkable(tile)||!human.territory.contains(tile.x()+.5F,tile.y()+.5F,human.player.getZ()))return false;
         boolean current=tile.x()==human.player.getXi()&&tile.y()==human.player.getYi();
+        boolean elevated=human.actuator.intent().elevatedExposure();
+        if(square==null||!human.movement.walkable(tile)||!human.territory.contains(tile.x()+.5F,tile.y()+.5F,human.player.getZ()))return false;
+        if(!current&&!square.isFree(true)&&(!elevated||!human.movement.bodyClear(tile.x()+.5F,tile.y()+.5F,tile.x()+.5F,tile.y()+.5F)))return false;
         if(!current)for(var contact:human.perception.snapshot().contacts()){
             if(contact.visible()&&contact.identity().kind()==HumanSenses.Kind.ZOMBIE
-                &&Math.hypot(tile.x()+.5-contact.x(),tile.y()+.5-contact.y())<.8)return false;
+                &&Math.hypot(tile.x()+.5-contact.x(),tile.y()+.5-contact.y())<(elevated?.65:.8))return false;
         }
         return true;
     }
-    public boolean connected(Tile from,Tile to){return walkable(from)&&walkable(to)&&human.movement.connected(from,to);}
+    public boolean connected(Tile from,Tile to){return walkable(from)&&walkable(to)&&human.movement.connected(from,to)
+        &&(!human.actuator.intent().elevatedExposure()||human.movement.bodyClear(from.x()+.5F,from.y()+.5F,to.x()+.5F,to.y()+.5F));}
     @Override public int traversalCost(Tile from,Tile to){return connected(from,to)?human.movement.traversalCost(from,to):0;}
     public boolean clearAttack(Tile from){return clear(from.x()+.5F,from.y()+.5F);}
 }
