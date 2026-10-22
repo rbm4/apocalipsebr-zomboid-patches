@@ -28,9 +28,11 @@ public class SurvivalTest {
   return new HumanObservation(now,List.of(),true,state,new Frame(true,now,contacts,Coverage.COMPLETE,coverage,false,new Work(0,0,0,0,0)),new HumanTerritory(true,true,contacts.stream().map(Contact::identity).collect(java.util.stream.Collectors.toSet())));
  }
  static class Port implements HumanActuator {
-  int escapes,cancels,begins,stops;boolean possible=true;MotionStatus motion=MotionStatus.RUNNING;List<String> transitions=new ArrayList<>();
+  int escapes,cancels,begins,stops,failures;boolean possible=true;String problem;MotionStatus motion=MotionStatus.RUNNING;List<String> transitions=new ArrayList<>();
   public SurvivalPort survival(){return new SurvivalPort(){
    public boolean escape(List<Contact> c,SurvivalSettings s,long now){escapes++;return possible;}
+   public void failed(boolean timeout,long now){failures++;}
+   public String routeProblem(long now){return problem;}
    public void transition(String phase,String reason,int nearby){transitions.add(phase+":"+reason);}
   };}
   public HumanCombat.Port combat(){return (request,now)->{begins++;return new Execution(){
@@ -90,6 +92,20 @@ public class SurvivalTest {
   runtime.update(observe(2*SECOND,HumanState.INITIAL,1,9,Coverage.COMPLETE),p);
   check(runtime.selectedModule().equals("survival")&&p.begins==1,"crowd dropping below threshold cannot immediately restart pursuit");
  }
+ static void failedFlight(){
+  var s=new SurvivalModule(SurvivalSettings.DEFAULT);var p=new Port();
+  s.update(observe(0,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  p.motion=HumanActuator.MotionStatus.FAILED;
+  s.update(observe(SECOND/5,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.CORNERED&&p.begins==1&&p.failures==1,"execution failure immediately enables defense and reports failure");
+  s.update(observe(SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(p.begins==1&&p.escapes==1,"retry cooldown throttles planning without suppressing retained defense");
+  s.suspend(SECOND,p);check(p.cancels==1,"suspension cancels cornered defense");
+  var stalled=new SurvivalModule(SurvivalSettings.DEFAULT);p=new Port();
+  stalled.update(observe(0,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);p.problem="movement_stalled";
+  stalled.update(observe(2*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(stalled.phase()==SurvivalModule.Phase.CORNERED&&p.begins==1&&p.failures==1,"stalled movement leaves escape and defends");
+ }
  static class Grid implements MovementGrid {
   int calls;Set<Tile> blocked=new HashSet<>();
   public boolean available(){return true;}
@@ -97,6 +113,10 @@ public class SurvivalTest {
   public boolean connected(Tile a,Tile b){return !blocked.contains(b);}
  }
  static void routes(){
+  var refused=new RouteRefusals();var from=new Tile(0,0);var to=new Tile(1,0);
+  refused.refuse(from,to,0,true);
+  check(refused.blocked(from,to,SECOND)&&!refused.blocked(to,from,SECOND),"failed edges are directed and temporary");
+  check(!refused.blocked(from,to,3*SECOND),"body blockage expires to permit a cleared route");
   var grid=new Grid();var start=new Tile(0,0);var threats=List.of(new RetreatPlanner.Threat(2.5,.5));
   var route=RetreatPlanner.plan(grid,start,threats,12);
   check(route.size()>2&&route.getFirst().equals(start)&&route.getLast().x()<0,"escape leads away from crowd");
@@ -131,9 +151,26 @@ public class SurvivalTest {
    check(actor.player.x>=100&&actor.player.x<113&&actor.player.y>=200&&actor.player.y<205,"emergency movement remains inside assigned area");
   }
   check(result==HumanActuator.MotionStatus.SUCCEEDED&&actor.player.x>106,"adapter progresses the actual shared movement engine away from threat");
+  actor.player.setX(104.5f);actor.player.setY(202.5f);
+  var square=cell.getGridSquare(104,202,0);var body=new zombie.characters.IsoZombie();body.x=104.25f;body.y=202.5f;body.square=square;
+  square.moving.add(body);square.occupied=true;
+  check(actor.movement.occupancyAllows(104.5f,202.5f,104.7f,202.5f),"overlap can separate outward within its current tile");
+  check(!actor.movement.occupancyAllows(104.5f,202.5f,104.4f,202.5f),"overlap cannot move toward or through the body");
+  body.x=104.5f;
+  check(actor.movement.occupancyAllows(104.5f,202.5f,104.7f,202.5f),"exact coincidence can separate instead of becoming a permanent deadlock");
+  cell.getGridSquare(105,202,0).occupied=true;
+  check(!actor.movement.occupancyAllows(104.9f,202.5f,105.1f,202.5f),"separation never authorizes entering an occupied neighboring tile");
+  cell.getGridSquare(105,202,0).occupied=false;body.x=104.8f;
+  check(actor.movement.start(List.of(new Tile(104,202),new Tile(105,202)),actor.movement,0),"occupied origin does not prevent route admission");
+  check(actor.movement.update(100_000_000L)==HumanActuator.MotionStatus.FAILED,"unsafe step fails during actual execution");
+  check(actor.movement.lastFailure().reason().equals("body_occupied")&&actor.movement.lastFailure().to().equals(new Tile(105,202)),"failure identifies cause and attempted edge");
+  actor.actuator.survival().failed(false,100_000_000L);square.moving.clear();square.occupied=false;
+  check(actor.actuator.survival().escape(List.of(c),profile.survival(),SECOND),"failed route can replan another direction");
+  check(!actor.movement.nextTile().equals(new Tile(105,202)),"replan avoids the recently failed first edge");
+  check("movement_stalled".equals(actor.actuator.survival().routeProblem(3*SECOND)),"production adapter detects no positional progress independently of route deadline");
   actor.dispose();
  }
- public static void main(String[]args){lifecycle();arbitration();routes();flags();adapter();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
+ public static void main(String[]args){lifecycle();arbitration();failedFlight();routes();flags();adapter();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
 }
 '''
 

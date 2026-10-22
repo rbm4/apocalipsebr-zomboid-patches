@@ -3,6 +3,13 @@
 Implemented for the server-owned IsoPlayer engine on Build 42.21.0. Perception
 owns facts about observed entities; it does not choose enemies or execute combat.
 
+`HumanObservation.awareness` additionally publishes local zombie crowd facts
+without requiring line of sight. It shares the existing discovery/body budgets,
+membership validation, floor and radius restrictions. The visual `senses` frame
+and `resolveZombie` still gate attacks through line of sight. Awareness can detect
+new or moving zombies behind furniture/walls; it cannot authorize shooting through
+them. Retained awareness distances follow the observer's current position.
+
 ## Ownership and flow
 
 ```mermaid

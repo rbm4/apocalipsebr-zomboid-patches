@@ -4,7 +4,8 @@ import java.util.List;
 
 /** Values only: never pass live engine objects into a brain. Time is monotonic. */
 public record HumanObservation(long nowNanos, List<Visitor> visitors, boolean movementAvailable,
-                               zombie.apocalipse.humans.state.HumanState state, HumanSenses.Frame senses,HumanTerritory territory) {
+                               zombie.apocalipse.humans.state.HumanState state, HumanSenses.Frame senses,HumanTerritory territory,HumanSenses.Frame awareness) {
+    public HumanObservation(long nowNanos,List<Visitor> visitors,boolean movementAvailable,zombie.apocalipse.humans.state.HumanState state,HumanSenses.Frame senses,HumanTerritory territory){this(nowNanos,visitors,movementAvailable,state,senses,territory,senses);}
     public HumanObservation(long nowNanos,List<Visitor> visitors,boolean movementAvailable,zombie.apocalipse.humans.state.HumanState state,HumanSenses.Frame senses){this(nowNanos,visitors,movementAvailable,state,senses,HumanTerritory.UNAVAILABLE);}
     public HumanObservation(long nowNanos,List<Visitor> visitors,boolean movementAvailable,zombie.apocalipse.humans.state.HumanState state){this(nowNanos,visitors,movementAvailable,state,HumanSenses.Frame.EMPTY);}
     public HumanObservation(long nowNanos,List<Visitor> visitors,boolean movementAvailable){this(nowNanos,visitors,movementAvailable,zombie.apocalipse.humans.state.HumanState.INITIAL);}
@@ -13,6 +14,7 @@ public record HumanObservation(long nowNanos, List<Visitor> visitors, boolean mo
         java.util.Objects.requireNonNull(state);
         java.util.Objects.requireNonNull(senses);
         java.util.Objects.requireNonNull(territory);
+        java.util.Objects.requireNonNull(awareness);
         visitors = List.copyOf(visitors);
     }
 

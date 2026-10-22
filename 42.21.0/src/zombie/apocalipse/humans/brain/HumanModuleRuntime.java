@@ -32,6 +32,7 @@ public final class HumanModuleRuntime implements HumanBehavior {
             }
         }
         if(selected!=winner) {
+            actuator.moduleChanged(selected==null?"none":selected.id(),winner==null?"none":winner.id());
             if(selected!=null)selected.module().interrupt(now,actuator);
             selected=winner;
         }

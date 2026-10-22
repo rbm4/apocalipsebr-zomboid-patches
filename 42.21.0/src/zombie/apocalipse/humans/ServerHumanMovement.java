@@ -24,6 +24,10 @@ final class ServerHumanMovement implements MovementGrid {
     }
     record Presentation(Gait gait, float speed, Animation animation) { }
 
+    record Failure(String reason, Tile from, Tile to, float x, float y) { }
+    private Failure lastFailure;
+    Failure lastFailure(){return lastFailure;}
+    Tile nextTile(){return waypoint<route.size()?route.get(waypoint):new Tile(human.player.getXi(),human.player.getYi());}
     private final ServerHuman human;
     private final HumanTraversal traversal;
     private MovementGrid policy;
@@ -83,7 +87,13 @@ final class ServerHumanMovement implements MovementGrid {
             previous = tile;
         }
         if (!available() || !policy.available()) return false;
+        lastFailure=null;
         this.route = copy;
+        // Preserve ordinary centering/prediction. In an occupied origin, do not first
+        // recenter toward an overlapping body before attempting to separate.
+        var origin=square(human.player.getXi(),human.player.getYi());
+        waypoint=copy.size()>1&&origin!=null&&!origin.isFree(true)
+            &&copy.getFirst().equals(new Tile(human.player.getXi(),human.player.getYi()))?1:0;
         this.policy = policy;
         lastStep = now;
         rhythmOrigin = now;
@@ -141,15 +151,15 @@ final class ServerHumanMovement implements MovementGrid {
     }
 
     HumanActuator.MotionStatus update(long now) {
-        if (route.isEmpty()) return HumanActuator.MotionStatus.FAILED;
+        if (route.isEmpty()) return fail("route_missing");
         double elapsed = Math.max(0, Math.min(0.15, (now - lastStep) / 1_000_000_000.0));
         lastStep = Math.max(lastStep, now);
         refresh(now);
-        if (!available() || !policy.available()) return fail();
+        if (!available() || !policy.available()) return fail("scope_or_origin_unavailable");
         if (traversal.active()) {
-            if (resolved.speed() == 0) return fail();
+            if (resolved.speed() == 0) return fail("traversal_immobile");
             var result = traversal.update(now);
-            if (result == TraversalExecution.Result.FAILED) return fail();
+            if (result == TraversalExecution.Result.FAILED) return fail("traversal_"+traversal.reason());
             // A completed climb lands at the target; the normal loop consumes that waypoint next tick.
             return HumanActuator.MotionStatus.RUNNING;
         }
@@ -169,14 +179,14 @@ final class ServerHumanMovement implements MovementGrid {
             boolean centering = false;
             if (!source.equals(target)) {
                 TraversalEdge edge = traversal.inspect(source, target);
-                if (!edge.usable() || !edgeAllowed(source, target)) return fail();
+                if (!edge.usable() || !edgeAllowed(source, target)) return fail("edge_blocked");
                 if (edge.kind() != TraversalEdge.Kind.WALK) {
                     float cx = source.x()+.5F, cy = source.y()+.5F;
                     if (Math.hypot(cx-x, cy-y) > .001) { tx = cx; ty = cy; centering = true; }
                     else {
                         moving = false; applyPresentation();
                         traversal.start(edge, now);
-                        if (traversal.update(now) == TraversalExecution.Result.FAILED) return fail();
+                        if (traversal.update(now) == TraversalExecution.Result.FAILED) return fail("traversal_"+traversal.reason());
                         return HumanActuator.MotionStatus.RUNNING;
                     }
                 }
@@ -188,11 +198,14 @@ final class ServerHumanMovement implements MovementGrid {
             float nx = step == distance ? tx : (float)(x + dx / distance * step);
             float ny = step == distance ? ty : (float)(y + dy / distance * step);
             IsoGridSquare destination = square((int)Math.floor(nx), (int)Math.floor(ny));
-            if (!allowed(target) || destination == null || !destination.isFree(true)
-                || !allowed(new Tile((int)Math.floor(nx), (int)Math.floor(ny)))) return fail();
+            if (!allowed(target) || !allowed(new Tile((int)Math.floor(nx), (int)Math.floor(ny)))) return fail("scope_rejected");
+            if(destination==null)return fail("square_unloaded");
+            if(!destination.isFree(false))return fail("static_obstacle");
+            if(!occupancyAllows(x,y,nx,ny))return fail("body_occupied");
             Tile current = new Tile((int)Math.floor(x), (int)Math.floor(y));
             Tile next = new Tile((int)Math.floor(nx), (int)Math.floor(ny));
-            if ((!current.equals(next) && !edgeAllowed(current, next)) || blocked(x, y, nx, ny)) return fail();
+            if(!current.equals(next)&&!edgeAllowed(current,next))return fail("edge_changed");
+            if(blocked(x,y,nx,ny))return fail("collision_segment");
             human.player.setX(nx);
             human.player.setY(ny);
             human.player.realx = nx;
@@ -203,7 +216,7 @@ final class ServerHumanMovement implements MovementGrid {
             remaining -= step;
             if (step == distance && !centering) waypoint++;
         }
-        return fail();
+        return fail("step_budget");
     }
 
     /** Native prediction distance is quantized in eighths of a tile. */
@@ -254,7 +267,39 @@ final class ServerHumanMovement implements MovementGrid {
         human.postY = human.player.getY();
     }
 
-    private HumanActuator.MotionStatus fail() {
+    boolean occupancyAllows(float x,float y,float nx,float ny) {
+        var destination=square((int)Math.floor(nx),(int)Math.floor(ny));
+        if(destination==null)return false;
+        if(destination.isFree(true))return true;
+        // Permit separation from existing overlap, never entering another occupied tile.
+        if((int)Math.floor(x)!=destination.x||(int)Math.floor(y)!=destination.y)return false;
+        var bodies=destination.getMovingObjects();
+        if(bodies.isEmpty()||bodies.size()>64)return false;
+        for(var body:bodies){
+            if(body==human.player)continue;
+            if(!(body instanceof zombie.characters.IsoGameCharacter character))return false;
+            double before=Math.hypot(x-character.getX(),y-character.getY());
+            double after=Math.hypot(nx-character.getX(),ny-character.getY());
+            double dx=nx-x,dy=ny-y;
+            double outward=(x-character.getX())*dx+(y-character.getY())*dy;
+            if(before<.65){if((before>.00001&&outward<=0)||after<=before+.00001)return false;}
+            else {
+                double length=dx*dx+dy*dy;
+                double t=length==0?0:Math.clamp(-outward/length,0,1);
+                if(Math.hypot(x+t*dx-character.getX(),y+t*dy-character.getY())<.65)return false;
+            }
+        }
+        return true;
+    }
+    private HumanActuator.MotionStatus fail(String reason) {
+        Tile from=new Tile(human.player.getXi(),human.player.getYi());
+        Tile to=waypoint<route.size()?route.get(waypoint):from;
+        lastFailure=new Failure(reason,from,to,human.player.getX(),human.player.getY());
+        var failure=lastFailure;
+        var tile=square(to.x(),to.y());int occupants=tile==null?-1:tile.getMovingObjects().size();
+        HumanLog.log(HumanLog.Level.DEBUG,()->"movement failed key="+human.definition.key()+"; reason="+failure.reason()
+            +"; from="+failure.from()+"; to="+failure.to()+"; x="+failure.x()+"; y="+failure.y()
+            +"; waypoint="+waypoint+"; routeSize="+route.size()+"; occupants="+occupants);
         stop();
         return HumanActuator.MotionStatus.FAILED;
     }

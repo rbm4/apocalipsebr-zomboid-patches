@@ -39,9 +39,12 @@ public final class SurvivalModule implements HumanModule {
         }
         if(phase==Phase.ESCAPING){
             var result=actuator.updateMovement(now);
-            if(result==RUNNING&&now<routeDeadline)return;
+            String problem=result==FAILED?"route_failed":result==SUCCEEDED?null:now>=routeDeadline?"route_timeout":actuator.survival().routeProblem(now);
+            if(result==RUNNING&&problem==null)return;
+            if(result!=SUCCEEDED)actuator.survival().failed("route_timeout".equals(problem),now);
             actuator.stopMoving();nextAttempt=now+settings.retryMs()*1_000_000L;
-            transition(Phase.RECOVERING,result==SUCCEEDED?"arrived":"route_failed_or_timed_out",facts,actuator);
+            transition(result==SUCCEEDED?Phase.RECOVERING:Phase.CORNERED,
+                result==SUCCEEDED?"arrived":problem,facts,actuator);
         }
         boolean nearby=facts.nearest()<=settings.safeDistance()*settings.safeDistance();
         if(nearby&&now>=nextAttempt){
@@ -56,7 +59,7 @@ public final class SurvivalModule implements HumanModule {
         // A cornered actor can defend against immediate contact, without resuming pursuit.
         var selection=new HumanEngagement.Selector().preview(o,HumanEngagement.GUARD_ZOMBIES,HumanEngagement.Settings.DEFAULT);
         var target=selection.target();
-        if(phase==Phase.CORNERED&&target!=null&&target.visible()&&target.distanceSquared()<=2.25){
+        if(nearby&&target!=null&&target.visible()&&target.distanceSquared()<=2.25){
             if(defense==null&&now>=nextDefense){defended=target.identity();defense=actuator.combat().begin(new Request(defended,Template.GUARD_BASIC),now);}
             if(defense!=null&&!target.identity().equals(defended)){cancelDefense();nextDefense=now+settings.retryMs()*1_000_000L;}
             if(defense!=null&&defense.update(now).terminal()){defense=null;defended=null;nextDefense=now+settings.retryMs()*1_000_000L;}

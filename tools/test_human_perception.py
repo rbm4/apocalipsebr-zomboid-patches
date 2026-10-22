@@ -128,6 +128,18 @@ public class HumanPerceptionTest {
   check(factory.state("factory-sense").revision()==0,"sensor retention does not mutate physical state or dirty its persistence revision");
   factory.deactivate("factory-sense");
   check(factory.perception("factory-sense")==null&&!owned.perception.snapshot().sampled(),"factory deactivation clears sensing state");
+  var awareCell=new IsoCell();var aware=actor(awareCell,"roaming-greeter");
+  LosUtil.result=LosUtil.TestResults.Blocked;
+  for(int n=1;n<=4;n++)zombie(awareCell,100.5f+n,200.5f,0);
+  var aroundCorner=aware.actuator.observe(0);
+  check(aroundCorner.senses().visible(Kind.ZOMBIE).isEmpty(),"occluded crowd does not authorize visual attacks");
+  check(aroundCorner.awareness().contacts().size()==4,"local awareness includes zombies through obstacles");
+  check(zombie.apocalipse.humans.survival.ThreatAssessment.assess(aroundCorner,zombie.apocalipse.humans.survival.SurvivalSettings.DEFAULT).pressured(),"hidden crowd triggers survival");
+  check(aware.perception.resolveZombie(aroundCorner.awareness().contacts().getFirst().identity())==null,"awareness identity cannot bypass attack line of sight");
+  var old=aroundCorner.awareness().contacts().getFirst();aware.player.setX(99.5f);
+  var moved=aware.actuator.observe(STEP).awareness().contacts().stream().filter(c->c.identity().equals(old.identity())).findFirst().orElseThrow();
+  check(moved.distanceSquared()>old.distanceSquared(),"danger distances follow observer movement");bounded(aroundCorner.awareness());
+  aware.dispose();LosUtil.result=LosUtil.TestResults.Clear;
   System.out.println("Passed "+checks+" perception discovery, visibility, retention, identity and work-bound assertions.");
  }
 }

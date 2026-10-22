@@ -22,6 +22,8 @@ final class ServerHumanPerception {
     private record Scan(int tiles,int bodies,boolean complete,boolean loaded) { }
     private final ServerHuman human;
     private final HumanContactMemory memory=new HumanContactMemory();
+    private final HumanContactMemory awarenessMemory=new HumanContactMemory();
+    private Frame awareness=Frame.EMPTY;
     private final IdentityHashMap<IsoGameCharacter,Binding> bindings=new IdentityHashMap<>();
     private final List<Offset> offsets;
     private final Cursor near=new Cursor(),far=new Cursor();
@@ -47,7 +49,7 @@ final class ServerHumanPerception {
         var visitors=frame.visible(Kind.PLAYER).stream().map(c->new HumanObservation.Visitor(
             new HumanObservation.Identity(c.identity().onlineId(),c.identity().instanceId()),c.x(),c.y(),c.z(),c.distanceSquared()))
             .sorted(Comparator.comparingDouble(HumanObservation.Visitor::distanceSquared)).toList();
-        return new HumanObservation(now,visitors,human.walking.available(),human.state.snapshot(),frame,territory);
+        return new HumanObservation(now,visitors,human.walking.available(),human.state.snapshot(),frame,territory,awareness);
     }
 
     void update(long suppliedNow){
@@ -86,7 +88,17 @@ final class ServerHumanPerception {
             :close.complete()&&outer.complete()&&close.loaded()&&outer.loaded()&&!truncated&&zombies.size()<=ZOMBIE_RAYS?Coverage.COMPLETE:Coverage.PARTIAL;
         frame=memory.update(now,sightings,invalid,originLoaded?pc:Coverage.UNAVAILABLE,zc,truncated,
             new Work(checked,close.tiles()+outer.tiles(),close.bodies()+outer.bodies(),zombies.size(),playerChecks+zombieChecks));
+        // Local crowd awareness shares discovery budgets; attack authorization retains visual rays.
+        var nearby=new ArrayList<Sighting>();
+        for(var candidate:zombies){var body=candidate.body();var binding=bind(body);
+            nearby.add(new Sighting(binding.identity(),body.getX(),body.getY(),body.getZ(),candidate.distance()));}
+        awareness=awarenessMemory.update(now,nearby,invalid,Coverage.UNAVAILABLE,zc,truncated,frame.work());
+        // Retained positions are last-known; distances follow the observer's current position.
+        awareness=new Frame(true,now,awareness.contacts().stream().map(c->{double dx=c.x()-human.player.getX(),dy=c.y()-human.player.getY();
+            return new Contact(c.identity(),c.x(),c.y(),c.z(),dx*dx+dy*dy,c.firstSeenNanos(),c.lastSeenNanos(),c.visible());}).toList(),
+            Coverage.UNAVAILABLE,zc,awareness.contactsTruncated(),frame.work());
         var kept=new HashSet<Identity>();for(var c:frame.contacts())kept.add(c.identity());
+        for(var c:awareness.contacts())kept.add(c.identity());
         bindings.values().removeIf(b->!kept.contains(b.identity()));
         territory=human.territory.observe(frame);
         transitions(previous,frame);
@@ -125,16 +137,17 @@ final class ServerHumanPerception {
         for(int index:chosen){
             var candidate=candidates.get(index);var body=candidate.body();
             if(!visible(body))continue;
-            Object membership=body instanceof IsoZombie?membership(body):null;
-            var binding=bindings.get(body);
-            short online=online(body);
-            if(binding==null||binding.membership()!=membership||binding.identity().onlineId()!=online||binding.identity().instanceId()!=body.getID()){
-                binding=new Binding(body,membership,new Identity(body instanceof IsoZombie?Kind.ZOMBIE:Kind.PLAYER,online,body.getID(),++generation));
-                bindings.put(body,binding);
-            }
+            var binding=bind(body);
             sightings.add(new Sighting(binding.identity(),body.getX(),body.getY(),body.getZ(),candidate.distance()));
         }
         return checks;
+    }
+    private Binding bind(IsoGameCharacter body){
+        Object member=body instanceof IsoZombie?membership(body):null;short online=online(body);var binding=bindings.get(body);
+        if(binding==null||binding.membership()!=member||binding.identity().onlineId()!=online||binding.identity().instanceId()!=body.getID()){
+            binding=new Binding(body,member,new Identity(body instanceof IsoZombie?Kind.ZOMBIE:Kind.PLAYER,online,body.getID(),++generation));bindings.put(body,binding);
+        }
+        return binding;
     }
     private Object membership(IsoGameCharacter body){
         return human.player.getCell().getObjectList() instanceof ServerMovingObjectSet set?set.member(body):null;
@@ -190,5 +203,5 @@ final class ServerHumanPerception {
             &&binding.body() instanceof IsoZombie zombie&&distance(zombie)<=radiusSquared()&&visible(zombie))return zombie;
         return null;
     }
-    void clear(){memory.clear();bindings.clear();frame=Frame.EMPTY;territory=HumanTerritory.UNAVAILABLE;sampled=false;near.tile=near.body=far.body=0;far.tile=9;}
+    void clear(){awarenessMemory.clear();awareness=Frame.EMPTY;memory.clear();bindings.clear();frame=Frame.EMPTY;territory=HumanTerritory.UNAVAILABLE;sampled=false;near.tile=near.body=far.body=0;far.tile=9;}
 }

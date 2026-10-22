@@ -14,6 +14,9 @@ final class ServerHumanActuator implements HumanActuator {
 
     ServerHumanActuator(ServerHuman human) { this.human = human;this.survival=new ServerHumanSurvival(human); }
     @Override public zombie.apocalipse.humans.survival.SurvivalPort survival(){return survival;}
+    @Override public void moduleChanged(String previous,String selected){
+        HumanLog.log(HumanLog.Level.DEBUG,()->"module change key="+human.definition.key()+"; previous="+previous+"; selected="+selected);
+    }
     @Override public zombie.apocalipse.humans.brain.HumanCombat.Port combat(){return human.combat;}
 
     HumanObservation observe(long now) {

@@ -9,6 +9,7 @@ public interface HumanActuator {
     default void stopMoving() { }
     default HumanCombat.Port combat(){return HumanCombat.UNSUPPORTED;}
     default zombie.apocalipse.humans.survival.SurvivalPort survival(){return zombie.apocalipse.humans.survival.SurvivalPort.UNSUPPORTED;}
+    default void moduleChanged(String previous,String selected){ }
     boolean face(HumanObservation.Identity visitor);
     boolean startEmote(String name);
     void stopEmote();

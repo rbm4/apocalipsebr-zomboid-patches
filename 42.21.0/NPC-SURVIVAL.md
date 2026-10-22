@@ -18,18 +18,24 @@ retains the recovery latch and resets the safety hold. Activation creates fresh
 transient state; phases/routes/monotonic timers are not persisted.
 
 Default pressure is four known zombies within four tiles (Euclidean), health
-<=0.35, or endurance <=0.24. Threats outside patrol territory also count. Visible
-and remembered zombie sightings up to two seconds old contribute; remembered
-distances remain last-seen facts. The contact list is bounded at 48.
+<=0.35, or endurance <=0.24. Threats outside patrol territory also count. Local
+crowd awareness detects eligible same-floor zombies inside perception radius
+without line-of-sight rays, sharing the existing bounded discovery scan. Attack
+visibility remains separate. Known hidden zombies refresh their positions;
+retained contacts up to two seconds old use last-known positions but distances
+are recomputed from the observer. The assessment list is bounded at 48.
 
 Phases are `SAFE -> ESCAPING -> RECOVERING -> SAFE`, with `CORNERED` when no
-escape starts. A cornered actor retries every two seconds and may defend against
+escape starts or execution fails. Route retries are throttled every two seconds;
+both cornered and recovering actors can immediately defend against
 a visible eligible territory target within 1.5 tiles. Defense is cancelled when
 the target leaves that range; ordinary pursuit stays suppressed. Terminal or
 failed defense executions also back off. Existing combat validation still applies.
 
-Arrival is not safety. Failure or a 14-second route deadline stops movement and
-returns to recovery. Release requires health >=0.55, endurance >=0.72, at least
+Arrival is not safety and enters recovery. Failed execution or the 14-second
+deadline enters cornered defense immediately, rather than waiting passively.
+No positional progress for 1.5 seconds also interrupts escape; active obstacle
+traversal is excluded from that progress check. Release requires health >=0.55, endurance >=0.72, at least
 eight seconds in survival, and five uninterrupted seconds of fresh, available,
 non-truncated observations without a known zombie within six tiles. Stale or
 unavailable sensing resets the hold. Partial coverage can establish sustained
@@ -45,6 +51,17 @@ The planner expands at most 256 nodes inside the configured retreat distance
 path length and crossing cost. It requires a destination at least two tiles farther
 from the nearest threat and avoids the crowd contact envelope. Actors already
 touching a threat can move outward. This bounded heuristic cannot guarantee escape.
+Destination scoring also rewards usable local exits and penalizes pockets with
+one exit. Native occupied tiles are excluded during planning except for the
+actor's origin. Recently failed directed edges are refused for three seconds
+for body/timeout failures and ten seconds for other failures, in bounded per-actor
+memory. Cleared edges become eligible again; no permanent obstacle is invented.
+
+Movement allows separation from overlapping characters within the current tile
+only when the step increases separation without crossing their body. It does not
+permit entry into another occupied tile or ignore static collision. Occupied
+origins skip the initial recentering waypoint; ordinary corner prediction and
+traversal centering retain their existing checks.
 
 Routes retain the `background` movement scope: building, rectangle and floor.
 Leon cannot flee outside his assigned indoor territory in this version. RUN intent
@@ -80,7 +97,14 @@ publishing a revision without that module, rather than rewriting published rows.
 ## Verification
 
 DEBUG phase-transition logs include key, reason, crowd count, health and endurance;
-there is no per-tick logging. `tools/test_human_survival.py` exercises production
+failed movement records reason, source/target tiles, position, waypoint, route
+length and target occupant count before cleanup. Reasons distinguish body
+occupancy, collision segments, blocked/changed edges, scope, unloaded squares,
+traversal failure and missing routes. Retreat logs include destination/length;
+module-change logs show which policy preempted combat. Stall, timeout, no-route
+and arrival are distinct events. There is no per-tick logging.
+No additional migration is needed beyond V25; flags and territory are unchanged.
+`tools/test_human_survival.py` exercises production
 policy, preemption, hysteresis, sensing loss, blocked escape, bounded planning,
 cornered defense and independent activation flags. The persistence fixture and
 manager tests use disposable PostgreSQL with separate migration/engine roles.
