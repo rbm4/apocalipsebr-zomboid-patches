@@ -43,7 +43,13 @@ public class HumanEngagementTest {
   check(first.target().identity().equals(b.identity()),"nearest eligible zombie chosen");
   check(selector.target()==null,"eligibility preview never mutates target ownership");selector.retain(first);
   var retained=selector.preview(observation(STEP,contact(1,STEP,true,1),contact(2,STEP,true,8)),GUARD_ZOMBIES,settings);
-  check(retained.target().identity().equals(b.identity()),"visible valid target retained despite nearer challenger");
+  check(retained.target().identity().equals(a.identity()),"immediate closer threat overrides retained pursuit target");
+  var stable=selector.preview(observation(STEP,contact(1,STEP,true,4),contact(2,STEP,true,8)),GUARD_ZOMBIES,settings);
+  check(stable.target().identity().equals(b.identity()),"non-immediate nearer challenger does not interrupt pursuit");
+  var jitter=selector.preview(observation(STEP,contact(1,STEP,true,1),contact(2,STEP,true,1.21)),GUARD_ZOMBIES,settings);
+  check(jitter.target().identity().equals(b.identity()),"small distance changes inside reach retain target without flapping");
+  var lostDanger=selector.preview(observation(STEP,contact(1,STEP,true,1),contact(2,0,false,8)),GUARD_ZOMBIES,settings);
+  check(lostDanger.target().identity().equals(a.identity()),"immediate threat overrides watching an occluded target");
   var watch=selector.preview(observation(2*STEP,contact(2,STEP,false,8)),GUARD_ZOMBIES,settings);
   check(watch.choice()==Choice.WATCH,"lost visibility holds intent without attacking last-known coordinates");
   check(selector.preview(observation(12*STEP,contact(2,STEP,false,8)),GUARD_ZOMBIES,settings).choice()==Choice.IGNORE,"target released after lost-contact grace");
@@ -87,6 +93,10 @@ public class HumanEngagementTest {
    new HumanModuleRuntime.Entry("engage-zombies",100,100,selected),new HumanModuleRuntime.Entry("roam",1000,100,background)));
   var arbitration=new Port();runtime.update(observation(0),arbitration);runtime.update(observation(STEP,contact(1,STEP,true,9)),arbitration);
   check(bg.get()==1&&interrupts.get()==1&&arbitration.begins==1,"threat module preempts background through existing scheduler");
+  var urgent=new EngageZombiesModule(settings);var urgentPort=new Port();
+  urgent.update(observation(0,contact(1,0,true,9)),urgentPort);
+  urgent.update(observation(STEP,contact(1,STEP,true,9),contact(2,STEP,true,1)),urgentPort);
+  check(urgentPort.cancels==1&&urgentPort.begins==2&&urgent.target().equals(id(2)),"immediate challenger cancels owned attack and starts a fresh execution without retry delay");
   runtime.update(observation(20*STEP),arbitration);check(arbitration.cancels==1&&bg.get()==2,"lost target returns control to background");
 
   var registry=ServerHumanProfiles.registry();var profile=registry.require("militia-patrol");

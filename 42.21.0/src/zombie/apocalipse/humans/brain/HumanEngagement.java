@@ -43,8 +43,16 @@ public final class HumanEngagement {
         private Contact held;
         /** Pure preview: scheduler eligibility must never acquire a target or mutate timers. */
         public Selection preview(HumanObservation observation,Policy policy,Settings settings){
+            var immediate=observation.senses().contacts().stream()
+                .filter(c->c.distanceSquared()<=2.25&&policy.evaluate(observation,c,settings)==Choice.ENGAGE)
+                .min(Comparator.comparingDouble(Contact::distanceSquared).thenComparingLong(c->c.identity().generation())).orElse(null);
             if(held!=null){
                 var current=observation.senses().contacts().stream().filter(c->c.identity().equals(held.identity())).findFirst().orElse(null);
+                // Immediate personal danger overrides pursuit, with a distance margin against target flapping.
+                if(immediate!=null&&!immediate.identity().equals(held.identity())
+                    &&(current==null||policy.evaluate(observation,current,settings)!=Choice.ENGAGE
+                        ||Math.sqrt(immediate.distanceSquared())+.25<Math.sqrt(current.distanceSquared())))
+                    return new Selection(immediate,Choice.ENGAGE);
                 if(current!=null){
                     Choice choice=policy.evaluate(observation,current,settings);
                     if(choice==Choice.ENGAGE)return new Selection(current,choice);

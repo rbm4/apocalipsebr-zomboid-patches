@@ -28,7 +28,7 @@ flowchart TD
 | Component | Owns |
 | --- | --- |
 | `brain/HumanEngagement.Policy` | Pure contact/condition/territory-to-choice rule. Initial `GUARD_ZOMBIES` doctrine only. |
-| `brain/HumanEngagement.Selector` | One transient target identity and pure candidate preview; retained target wins over nearer challengers while valid. |
+| `brain/HumanEngagement.Selector` | One transient target identity and pure preview; immediate closer threats can override retention with distance hysteresis. |
 | `brain/EngageZombiesModule` | Per-NPC selection, combat execution handle, cancellation and retry scheduling. Only selected-module updates actuate. |
 | `brain/HumanTerritory` | Immutable observation of actor/contact membership in a defended area. No native building objects or faction ownership. |
 | `ServerHumanTerritory` | Native adapter for the loaded origin building on the origin floor. Live containment checks for combat. |
@@ -48,7 +48,13 @@ players. Exhaustion/fear/outnumbering/relations/weapon utility remain future
 policy extensions. Weapon selection belongs behind the combat port, not here.
 
 The selector chooses the nearest eligible contact when acquiring, then retains
-that identity instead of switching every perception update. Lost visibility can
+that identity instead of switching every perception update. A visible eligible
+challenger within 1.5 tiles overrides a target at least 0.25 tiles farther away,
+or overrides WATCH/missing-target retention. Smaller distance changes and distant
+challengers retain the target. Selection remains pure; the selected module cancels
+the owned execution with TARGET_CHANGED before starting its replacement, without
+a failure retry delay. Pending windup cannot commit a strike on the old target;
+already committed damage is never rolled back. Lost visibility can
 produce WATCH for up to `lostGraceMs`: the module cancels active combat while
 remembering intent. WATCH does not authorize attacking last-known coordinates.
 Expired grace, a confirmed missing contact, territory exit or physical veto

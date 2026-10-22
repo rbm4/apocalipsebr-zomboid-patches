@@ -10,7 +10,7 @@ import zombie.network.packets.hit.PlayerHitZombiePacket;
 /** Native wire packet; the server has already committed ammunition through its inventory port. */
 final class ServerHumanHitPacket extends PlayerHitZombiePacket {
     ServerHumanHitPacket(IsoPlayer actor,HandWeapon weapon,IsoZombie target,List<WeaponHit> hits){
-        set(actor,weapon,false,List.of(),hits,target,false);
+        set(actor,weapon,actor.isCriticalHit(),List.of(),hits,target,false);
         // No locally simulated fall trajectory exists on this synthetic attacker.
         fall.set(0,0,(byte)0,0);
     }

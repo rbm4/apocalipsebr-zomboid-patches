@@ -76,7 +76,8 @@ a temporary server-wide test option, not a millisecond profile parameter.
 The selected weapon remains bound during its execution; it is reselected if
 removed/broken or exhausted without reserve. The initial backend has one target,
 no friendly/player target policy, no multi-hit attack and no advanced weapon
-utility, headshot or critical-hit doctrine. Melee reach uses native item reach
+utility or headshot doctrine. Native melee/item firearm critical chances are rolled on landed hits
+and serialized in the hit packet. Melee reach uses native item reach
 plus a small body allowance; firearm reach is bounded to 15 tiles. Selection,
 inventory availability and execution are separate concerns.
 
@@ -188,14 +189,42 @@ the preceding windup currently presents aim/ready state. A second synthetic
 SwipeState attack is not sent in addition. Exact visual-impact alignment, rich
 draw/reload presets and animation-speed tuning still require live work.
 
+## NPC damage calibration
+
+The synthetic actor starts without authored weapon proficiency. Native 42.21.0
+applies a 0.3 baseline weapon-level multiplier and an additional 0.15 melee damage
+multiplier. The old bridge also disabled every critical. This explains prolonged
+low-damage fights; the bridge now uses explicit NPC output calibration of
+1/0.3 for ranged and 1/(0.3*0.15) for melee. Calibration happens after native
+force/modifier calculation and before packet delivery; native consequences still
+apply exactly once. Native knockback, critical multiplier, ground-hit modifiers,
+relative proficiency bonuses and server changes from default combat multipliers
+retain their effects. No zombie health cap, scripted kill or damage floor is used.
+This is NPC balance tuning, not a claim of complete native player attack parity.
+
+At normal 1.8-2.1 zombie health, healthy base-weapon rolls should generally produce
+about 1-5 landed hits with the fixed Crowbar/Pistol loadout. Misses,
+server combat modifiers, modded weapons and altered zombie health can extend that.
+Melee criticals use the native player chance; ranged criticals use the item's
+authored chance. Native ranged chance calculation requires client lighting and
+cannot safely use a detached player's index -1. Full aimed-ballistic/lighting
+modifiers remain outside this initial adapter. Both use native critical damage
+multipliers and neither guarantees a critical. DEBUG commit logs
+include target ID, critical result, packet damage and authoritative health before
+and after the native hit. Packet damage is before consequence reductions and may
+therefore differ from observed health loss. No migration or live flag change is
+required. Verify actual live health deltas before further tuning.
+
 ## Native packet and server mutation contract
 
 Outbound serialization does not execute server-side consequences. The bridge
 uses the same native packet **and its native local processing**:
 
 1. Build native attack variables, target hit info, attack type and shot ID.
-2. For a hit, choose a base damage value from the native weapon range and call
-   native `target.processHitDamage` for native hit modifiers/force.
+2. For a hit, roll damage from the native weapon range, apply melee weapon/strength
+   modifiers and call native `target.processHitDamage` for modifiers/force. Roll
+   critical chance (native melee/item firearm) and preserve its flag through serialization.
+   `HumanCombatDamage` calibrates the resulting packet damage for NPC balance.
 3. Construct native `PlayerHitZombie` / `WeaponHit`, or `PlayerHitSquare` for a
    miss. Broadcast immediately to relevant announced viewers.
 4. Invoke the native HitCharacter local processing path once on the server.

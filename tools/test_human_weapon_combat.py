@@ -59,6 +59,24 @@ public class HumanWeaponCombatTest {
   for(long now=start;now<start+15*S;now+=STEP){f.factory().tick(now);if(PlayerHitZombiePacket.localProcesses>=desired)return now;}
   throw new AssertionError("Combat never reached native commit");
  }
+ static void damageCalibration()throws Exception{
+  for(boolean ranged:List.of(false,true)){
+   var f=fixture("damage-"+ranged,ranged?"RANGED":"MELEE");
+   var inventory=f.human().inventory;var selected=inventory.weapons().stream().filter(w->w.ranged()==ranged).findFirst().orElseThrow();
+   check(inventory.equip(selected.itemId()),"balance fixture equips weapon");
+   f.target().health=2.1f;f.target().dead=false;zombie.core.random.Rand.roll=49;
+   int strikes=0;
+   while(!f.target().dead&&strikes<6){strikes++;check(ServerHumanCombatNetwork.commit(f.human(),f.target(),selected.itemId(),1,strikes,strikes*STEP),"calibrated native bridge commits hit");}
+   check(strikes>=1&&strikes<=5,"ordinary weapon rolls kill a normal-health fixture in one to five landed hits");
+   f.factory().deactivate("damage-"+ranged);
+  }
+  var f=fixture("critical-test","MELEE");var weapon=f.human().inventory.weapons().getFirst();f.human().inventory.equip(weapon.itemId());
+  zombie.core.random.Rand.roll=0;f.target().health=2.1f;f.target().dead=false;f.human().viewers.add(new UdpConnection());
+  check(ServerHumanCombatNetwork.commit(f.human(),f.target(),weapon.itemId(),1,1,STEP),"critical strike commits");
+  check(PlayerHitZombiePacket.sent.getLast().critical&&f.human().player.isCriticalHit(),"critical outcome survives packet construction");
+  near(f.target().health,.6f,"critical multiplier is applied exactly once to calibrated weapon damage");
+  f.factory().deactivate("critical-test");zombie.core.random.Rand.roll=0;
+ }
  public static void main(String[] ignored)throws Exception{
   var inventory=new Inventory();var operations=new Operations();var phase=new HumanWeaponCombat(inventory,operations,HumanWeaponCombat.Mode.RANGED,()->.5);
   phase.update(0);check(inventory.equips==1&&operations.aim,"equip phase calls inventory port and aim intent");
@@ -227,6 +245,7 @@ public class HumanWeaponCombatTest {
    public boolean clearAttack(Tile tile){rays.incrementAndGet();return false;}
   };
   check(CombatRoutePlanner.plan(limited,new Tile(0,0),0,0,15).isEmpty()&&rays.get()==16,"route search bounds expensive attack-line probes independently of visited nodes");
+  damageCalibration();
   System.out.println("Passed "+checks+" weapon phase, inventory, native bridge, movement and replication assertions.");
  }
 }
