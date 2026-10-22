@@ -12,15 +12,17 @@ public final class EngageZombiesModule implements HumanModule {
     private final Selector selector=new Selector();
     private Execution execution;
     private boolean suspended,stopped,backingOff;
-    private long retryAt;
+    private long retryAt,urgentRetryAt;
     private Result lastResult;
     public EngageZombiesModule(Settings settings){this(GUARD_ZOMBIES,settings,Template.GUARD_BASIC);}
     public EngageZombiesModule(Policy policy,Settings settings,Template template){
         this.policy=Objects.requireNonNull(policy);this.settings=Objects.requireNonNull(settings);this.template=Objects.requireNonNull(template);
     }
     public boolean eligible(HumanObservation observation){
-        return available()&&!suspended&&(!backingOff||observation.nowNanos()>=retryAt)
-            &&selector.preview(observation,policy,settings).choice()!=Choice.IGNORE;
+        if(!available()||suspended)return false;
+        var next=selector.preview(observation,policy,settings);
+        boolean urgent=next.choice()==Choice.ENGAGE&&next.target().distanceSquared()<=HumanCombatTactics.IMMEDIATE_RANGE*HumanCombatTactics.IMMEDIATE_RANGE;
+        return (!backingOff||observation.nowNanos()>=retryAt||urgent&&observation.nowNanos()>=urgentRetryAt)&&next.choice()!=Choice.IGNORE;
     }
     public boolean available(){return !stopped;}
     public HumanSenses.Identity target(){return selector.target();}
@@ -40,6 +42,7 @@ public final class EngageZombiesModule implements HumanModule {
         lastResult=Objects.requireNonNull(execution.update(observation.nowNanos()));
         if(lastResult.terminal()){
             execution=null;selector.clear();backingOff=true;retryAt=observation.nowNanos()+settings.retryNanos();
+            urgentRetryAt=observation.nowNanos()+300_000_000L;actuator.tactical(TacticalIntent.NONE);
         }
     }
     private void cancel(Reason reason){

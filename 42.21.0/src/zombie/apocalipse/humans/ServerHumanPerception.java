@@ -26,6 +26,9 @@ final class ServerHumanPerception {
     private Frame awareness=Frame.EMPTY;
     private final IdentityHashMap<IsoGameCharacter,Binding> bindings=new IdentityHashMap<>();
     private final List<Offset> offsets;
+    private final double awarenessRadius;
+    private final int nearTiles;
+    private final boolean survivalEnabled;
     private final Cursor near=new Cursor(),far=new Cursor();
     private int playerCursor,zombieRayCursor,playerRayCursor;
     private long generation,nextSample;
@@ -35,12 +38,14 @@ final class ServerHumanPerception {
 
     ServerHumanPerception(ServerHuman human){
         this.human=human;
-        int radius=(int)Math.ceil(human.profile.perceptionRadius());
+        survivalEnabled=human.profile.modules().stream().anyMatch(m->m.moduleId().equals("survival"));
+        awarenessRadius=survivalEnabled?Math.max(human.profile.perceptionRadius(),Math.min(24,human.profile.survival().retreatDistance()+human.profile.survival().crowdRadius())):human.profile.perceptionRadius();
+        int radius=(int)Math.ceil(awarenessRadius);
         var offsets=new ArrayList<Offset>();
         for(int x=-radius;x<=radius;x++)for(int y=-radius;y<=radius;y++)offsets.add(new Offset(x,y));
         offsets.sort(Comparator.comparingInt((Offset o)->Math.max(Math.abs(o.x()),Math.abs(o.y())))
             .thenComparingInt(o->o.x()*o.x()+o.y()*o.y()).thenComparingInt(Offset::x).thenComparingInt(Offset::y));
-        this.offsets=List.copyOf(offsets);far.tile=9;
+        this.offsets=List.copyOf(offsets);nearTiles=Math.min(offsets.size(),25);far.tile=nearTiles;
     }
 
     Frame snapshot(){return frame;}
@@ -53,12 +58,23 @@ final class ServerHumanPerception {
     }
 
     void update(long suppliedNow){
+        // Death/removal must not survive until the next scheduled discovery sample.
+        var invalid=new HashSet<Identity>();
+        for(var b:bindings.values())if(!valid(b)){
+            invalid.add(b.identity());
+            HumanLog.log(HumanLog.Level.DEBUG,()->"perception invalid key="+human.definition.key()+"; contact="+b.identity()
+                +"; dead="+b.body().isDead()+"; health="+b.body().getHealth());
+        }
+        if(!invalid.isEmpty()){
+            var previous=frame;memory.invalidate(invalid);awarenessMemory.invalidate(invalid);
+            frame=without(frame,invalid);awareness=without(awareness,invalid);
+            bindings.values().removeIf(b->invalid.contains(b.identity()));
+            territory=human.territory.observe(frame);transitions(previous,frame);
+        }
         if(sampled&&suppliedNow<nextSample)return;
         long now=sampled?Math.max(suppliedNow,frame.sampledAtNanos()):suppliedNow;
-        sampled=true;nextSample=now+human.profile.perceptionIntervalMs()*1_000_000L;
+        sampled=true;nextSample=now+(survivalEnabled?Math.min(100,human.profile.perceptionIntervalMs()):human.profile.perceptionIntervalMs())*1_000_000L;
         var previous=frame;
-        var invalid=new HashSet<Identity>();
-        for(var b:bindings.values())if(!valid(b))invalid.add(b.identity());
         var players=new ArrayList<Candidate>();
         int size=GameServer.Players.size(),checked=Math.min(size,PLAYER_BUDGET);
         for(int n=0;n<checked;n++){
@@ -67,10 +83,10 @@ final class ServerHumanPerception {
         }
         var zombies=new ArrayList<Candidate>();
         // Refresh known in-range bodies even when discovery is visiting another ring.
-        for(var b:bindings.values())if(b.identity().kind()==Kind.ZOMBIE&&!invalid.contains(b.identity())&&distance(b.body())<=radiusSquared())
+        for(var b:bindings.values())if(b.identity().kind()==Kind.ZOMBIE&&!invalid.contains(b.identity())&&distance(b.body())<=awarenessRadius*awarenessRadius)
             zombies.add(new Candidate(b.body(),distance(b.body())));
-        Scan close=scan(near,0,9,9,64,zombies);
-        Scan outer=scan(far,9,offsets.size(),TILE_BUDGET-9,BODY_BUDGET-64,zombies);
+        Scan close=scan(near,0,nearTiles,nearTiles,64,zombies);
+        Scan outer=scan(far,nearTiles,offsets.size(),TILE_BUDGET-nearTiles,BODY_BUDGET-64,zombies);
         boolean truncated=zombies.size()>ZOMBIE_CANDIDATES;
         // Stable distance sorting must not let retained bodies monopolize equal-distance slots.
         if(!zombies.isEmpty())Collections.rotate(zombies,Math.floorMod(zombieRayCursor,zombies.size()));
@@ -79,7 +95,8 @@ final class ServerHumanPerception {
         players.sort(Comparator.comparingDouble(Candidate::distance));
         var sightings=new ArrayList<Sighting>();
         int playerChecks=see(players,PLAYER_RAYS,playerRayCursor,sightings);
-        int zombieChecks=see(zombies,ZOMBIE_RAYS,zombieRayCursor,sightings);
+        var visual=zombies.stream().filter(c->c.distance()<=radiusSquared()).toList();
+        int zombieChecks=see(visual,ZOMBIE_RAYS,zombieRayCursor,sightings);
         playerRayCursor+=PLAYER_RAYS;zombieRayCursor+=ZOMBIE_RAYS;
         Coverage pc=size>PLAYER_BUDGET||players.size()>PLAYER_RAYS?Coverage.PARTIAL:Coverage.COMPLETE;
         boolean originLoaded=human.player.getCell().getGridSquare(human.player.getXi(),human.player.getYi(),human.player.getZi())!=null;
@@ -104,6 +121,12 @@ final class ServerHumanPerception {
         transitions(previous,frame);
     }
 
+    private static Frame without(Frame frame,Set<Identity> invalid){
+        return new Frame(frame.sampled(),frame.sampledAtNanos(),frame.contacts().stream().filter(c->!invalid.contains(c.identity())).toList(),
+            frame.players(),frame.zombies(),frame.contactsTruncated(),frame.work());
+    }
+    Frame awareness(){return awareness;}
+
     private Scan scan(Cursor cursor,int start,int end,int tilesLimit,int bodiesLimit,List<Candidate> candidates){
         if(start>=end)return new Scan(0,0,true,true);
         if(cursor.tile<start||cursor.tile>=end){cursor.tile=start;cursor.body=0;}
@@ -117,7 +140,7 @@ final class ServerHumanPerception {
                 var object=objects.get(cursor.body++);bodies++;
                 if(object instanceof IsoZombie zombie&&zombie.getCurrentSquare()==square&&eligible(zombie)){
                     double distance=distance(zombie);
-                    if(distance<=radiusSquared()&&candidates.stream().noneMatch(c->c.body()==zombie))candidates.add(new Candidate(zombie,distance));
+                    if(distance<=awarenessRadius*awarenessRadius&&candidates.stream().noneMatch(c->c.body()==zombie))candidates.add(new Candidate(zombie,distance));
                 }
             }
             if(objects!=null&&cursor.body<objects.size())break;
@@ -203,5 +226,5 @@ final class ServerHumanPerception {
             &&binding.body() instanceof IsoZombie zombie&&distance(zombie)<=radiusSquared()&&visible(zombie))return zombie;
         return null;
     }
-    void clear(){awarenessMemory.clear();awareness=Frame.EMPTY;memory.clear();bindings.clear();frame=Frame.EMPTY;territory=HumanTerritory.UNAVAILABLE;sampled=false;near.tile=near.body=far.body=0;far.tile=9;}
+    void clear(){awarenessMemory.clear();awareness=Frame.EMPTY;memory.clear();bindings.clear();frame=Frame.EMPTY;territory=HumanTerritory.UNAVAILABLE;sampled=false;near.tile=near.body=far.body=0;far.tile=nearTiles;}
 }

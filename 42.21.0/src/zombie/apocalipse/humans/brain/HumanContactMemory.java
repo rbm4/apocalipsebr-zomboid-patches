@@ -8,6 +8,7 @@ public final class HumanContactMemory {
     public static final int CAPACITY=128;
     public static final long RETENTION_NANOS=3_000_000_000L;
     private final Map<Identity,Contact> contacts=new LinkedHashMap<>();
+    public void invalidate(Set<Identity> invalid){contacts.keySet().removeAll(invalid);}
     public Frame update(long now,List<Sighting> sightings,Set<Identity> invalid,
                         Coverage players,Coverage zombies,boolean truncated,Work work){
         contacts.entrySet().removeIf(e->invalid.contains(e.getKey())||now-e.getValue().lastSeenNanos()>=RETENTION_NANOS);

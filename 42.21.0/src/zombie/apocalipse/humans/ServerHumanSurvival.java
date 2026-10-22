@@ -38,7 +38,12 @@ final class ServerHumanSurvival implements SurvivalPort {
             }
         };
         var route=RetreatPlanner.plan(planning,start,positions,settings.retreatDistance(),elevated);
-        if(route.size()<2){transition("CORNERED","no_reachable_escape",threats.size());return false;}
+        if(route.size()<2){
+            double nearest=threats.stream().mapToDouble(Contact::distanceSquared).min().orElse(Double.POSITIVE_INFINITY);
+            HumanLog.log(HumanLog.Level.DEBUG,()->"retreat unavailable key="+human.definition.key()+"; reason=no_reachable_escape"
+                +"; threats="+threats.size()+"; nearest="+Math.sqrt(nearest)+"; from="+start+"; elevated="+elevated);
+            return false;
+        }
         progressX=human.player.getX();progressY=human.player.getY();lastProgress=now;
         boolean started=human.movement.start(route,scope,Pace.RUN,now);
         if(started)HumanLog.log(HumanLog.Level.DEBUG,()->"retreat route key="+human.definition.key()+"; from="+start

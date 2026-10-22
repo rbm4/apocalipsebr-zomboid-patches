@@ -37,16 +37,20 @@ A-life perception machinery described in the
 Our implementation queries loaded squares directly instead of taking a complete
 world-zombie snapshot. It uses our detached actor and native 42.21.0 LOS rules.
 
-Sampling uses the profile's existing `perceptionRadius`,
-`perceptionIntervalMs` and `requireLos`. No new profile rows, migration, militia
-actor or combat behavior are installed. Active profiles retain their existing
+Visual sensing uses the profile's existing `perceptionRadius` and `requireLos`.
+Survival-enabled profiles extend obstacle-independent awareness to at least
+`min(24, retreatDistance + crowdRadius)` tiles (16 with default settings), without
+extending visual attack authorization. Their discovery interval is capped at
+100ms; other profiles retain `perceptionIntervalMs`. No migration is required.
+Active profiles retain their existing
 revision semantics. Contact memory remains separate from durable physical state.
 
 ## Discovery and work bounds
 
 The origin is the actor's current position and floor. Tile offsets are prepared
 once per actor, ordered from near to far. Discovery has two independent cursors:
-the surrounding 3x3 squares receive a close-contact allowance; the remaining
+the surrounding 5x5 squares receive a close-contact allowance (or the whole
+configured area for smaller radii); the remaining
 offsets receive a rotating outer allowance. Dense-square entity iteration resumes
 at its previous body position instead of repeatedly inspecting its first entries.
 These are best-effort samples of changing world lists, not an atomic world view.
@@ -56,7 +60,7 @@ Per sample, per actor:
 | Work | Maximum |
 | --- | --- |
 | Connected-player list entries inspected | 128, with rotating cursor |
-| Tile visits | 128: 9 close, 119 outer |
+| Tile visits | 128: up to 25 close, remainder outer |
 | Square moving-object entries inspected | 256: 64 close, 192 outer |
 | Zombie candidates kept for visibility | 48 nearest; equal-distance ties rotate |
 | Player visibility checks | 32, rotating |
@@ -89,6 +93,13 @@ on the current floor, in a loaded current square and registered in the active
 world set. Discovery ignores stale square-list entries. Grapple-only reanimated
 corpses are excluded. There is no assumption that a zombie is hostile, reachable
 or attacking just because it is observed.
+
+Known binding death, zero health, removal and identity reuse are revalidated on
+each heartbeat, even before the next discovery sample. Both awareness and visual
+memory are invalidated together; invalidation preserves the original sample time
+and does not invent fresh coverage. DEBUG invalidation logs include identity,
+native dead flag and health. Memory is transient and starts empty on activation;
+already dead indexed zombies are excluded from fresh discovery after a restart.
 
 With `requireLos=true`, the adapter checks the loaded path and asks native
 `LosUtil.lineClear(..., false)`. Walls and closed doors block sight; native clear

@@ -55,7 +55,7 @@ public final class HumanWeaponCombat implements Execution {
         var current=inventory.weapons().stream().filter(w->w.itemId()==weapon.itemId()&&w.usable()).findFirst().orElse(null);
         if(current==null){operations.stop();operations.aim(false);phase=Phase.SELECT;return result;}
         weapon=current;
-        if(phase==Phase.EQUIP){if(now<deadline)return result;phase=Phase.APPROACH;}
+        if(phase==Phase.EQUIP){if(now<deadline){if(operations.canAttackMoving())operations.reposition(weapon,now,true);return result;}phase=Phase.APPROACH;}
         if(phase==Phase.RECOVER){
             if(now<deadline){
                 if(now>=movementUnlock||operations.canAttackMoving())operations.reposition(weapon,now,true);
@@ -64,7 +64,7 @@ public final class HumanWeaponCombat implements Execution {
             phase=Phase.APPROACH;
         }
         if(phase==Phase.RELOAD){
-            if(now<deadline)return result;
+            if(now<deadline){if(operations.canAttackMoving())operations.reposition(weapon,now,true);return result;}
             // Commit once; cancellation before this point changes no ammunition.
             phase=Phase.APPROACH;
             if(!inventory.reload(weapon.itemId())){phase=Phase.SELECT;if(mode==Mode.RANGED)return finish(Status.FAILED,Reason.NO_AMMO);}

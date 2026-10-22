@@ -12,7 +12,7 @@ public final class SurvivalModule implements HumanModule {
     private Phase phase=Phase.SAFE;
     private boolean stopped,suspended;
     private int failedAttempts;
-    private long started,nextAttempt,nextDefense,routeDeadline,openingUntil,clearSince=Long.MIN_VALUE;
+    private long started,nextAttempt,nextDefense,routeDeadline,openingUntil,clearSince=Long.MIN_VALUE,controlledSince=Long.MIN_VALUE;
     private Execution defense;
     private boolean externalDefense;
     private HumanSenses.Identity defended;
@@ -54,7 +54,7 @@ public final class SurvivalModule implements HumanModule {
         if(defense==null)return false;
         var result=defense.update(o.nowNanos());
         if(!result.terminal())return false;
-        defense=null;defended=null;nextDefense=o.nowNanos()+settings.retryMs()*1_000_000L;
+        defense=null;defended=null;nextDefense=o.nowNanos()+Math.min(settings.retryMs(),300)*1_000_000L;
         return result.status()==Status.COMPLETED;
     }
     private void failed(long now,String reason,ThreatAssessment facts,HumanActuator actuator){
@@ -66,15 +66,24 @@ public final class SurvivalModule implements HumanModule {
     public void update(HumanObservation o,HumanActuator actuator){
         if(!eligible(o))return;
         long now=o.nowNanos();var facts=ThreatAssessment.assess(o,settings);
-        if(phase==Phase.SAFE){started=now;nextAttempt=now;failedAttempts=0;clearSince=Long.MIN_VALUE;
+        if(phase==Phase.SAFE){started=now;nextAttempt=now;failedAttempts=0;clearSince=controlledSince=Long.MIN_VALUE;
             transition(Phase.RECOVERING,facts.pressure(),facts,actuator);}
         boolean clear=facts.reliable()&&facts.nearest()>settings.safeDistance()*settings.safeDistance()&&!facts.pressured();
         if(clear){if(clearSince==Long.MIN_VALUE)clearSince=now;}else clearSince=Long.MIN_VALUE;
+        boolean imminent=facts.nearest()<=HumanCombatTactics.IMMEDIATE_RANGE*HumanCombatTactics.IMMEDIATE_RANGE;
+        boolean controlled=facts.reliable()&&!facts.pressured()&&!imminent;
+        if(controlled){if(controlledSince==Long.MIN_VALUE)controlledSince=now;}else controlledSince=Long.MIN_VALUE;
         var vitals=o.state().vitals();
-        if(clearSince!=Long.MIN_VALUE&&now-clearSince>=settings.safeHoldMs()*1_000_000L
+        if((clearSince!=Long.MIN_VALUE&&now-clearSince>=settings.safeHoldMs()*1_000_000L
+            ||controlledSince!=Long.MIN_VALUE&&now-controlledSince>=Math.max(settings.safeHoldMs(),settings.minimumRetreatMs())*1_000_000L)
             &&now-started>=settings.minimumRetreatMs()*1_000_000L&&vitals.health()>=settings.reengageHealth()&&vitals.endurance()>=settings.reengageEndurance()){
             cancelDefense();actuator.stopMoving();actuator.tactical(TacticalIntent.NONE);failedAttempts=0;
             transition(Phase.SAFE,"recovered",facts,actuator);return;
+        }
+        // Distant contacts alone must not hold an opening/retry loop after local pressure ends.
+        if(controlled&&phase!=Phase.RECOVERING){
+            cancelDefense();actuator.stopMoving();failedAttempts=0;nextAttempt=now;openingUntil=now;
+            transition(Phase.RECOVERING,"pressure_relieved",facts,actuator);
         }
         var target=target(o,actuator);publish(actuator,target);
         if(phase==Phase.ESCAPING){
@@ -87,7 +96,7 @@ public final class SurvivalModule implements HumanModule {
             else failed(now,problem,facts,actuator);
         }
         if(phase==Phase.CREATE_OPENING&&now>=openingUntil)transition(Phase.CORNERED,"opening_window_ended",facts,actuator);
-        boolean nearby=facts.nearest()<=settings.safeDistance()*settings.safeDistance();
+        boolean nearby=imminent||facts.pressured()&&!facts.threats().isEmpty();
         if(nearby&&now>=nextAttempt&&phase!=Phase.CREATE_OPENING){
             cancelDefense();actuator.stopMoving();publish(actuator,target);
             if(o.movementAvailable()&&!o.state().injuries().immobile()&&!o.state().injuries().downed()
@@ -104,9 +113,9 @@ public final class SurvivalModule implements HumanModule {
     }
     public void interrupt(long now,HumanActuator actuator){
         cancelDefense();selector.clear();actuator.stopMoving();actuator.tactical(TacticalIntent.NONE);
-        if(phase!=Phase.SAFE)phase=Phase.RECOVERING;clearSince=Long.MIN_VALUE;nextAttempt=now;
+        if(phase!=Phase.SAFE)phase=Phase.RECOVERING;clearSince=controlledSince=Long.MIN_VALUE;nextAttempt=now;
     }
     public void suspend(long now,HumanActuator actuator){suspended=true;interrupt(now,actuator);}
-    public void resume(HumanObservation.Identity visitor,long now,HumanActuator actuator){suspended=false;clearSince=Long.MIN_VALUE;nextAttempt=now;}
+    public void resume(HumanObservation.Identity visitor,long now,HumanActuator actuator){suspended=false;clearSince=controlledSince=Long.MIN_VALUE;nextAttempt=now;}
     public void stop(long now,HumanActuator actuator){stopped=true;interrupt(now,actuator);}
 }

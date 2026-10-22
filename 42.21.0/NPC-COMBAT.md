@@ -111,6 +111,8 @@ the weapon's actual reach for shorter-range weapons. Melee closes to 90% of
 reach and normally reacts to pressure below 55% of reach. During late melee
 recovery that pressure threshold becomes 85%, allowing a short disengaging step.
 These are initial engine defaults, not additional database profile parameters.
+Immediate danger also uses the [urgent awareness and footwork rules](NPC-TACTICS.md),
+which bypass sampled reaction latency for additional nearby attackers.
 
 The controller samples decisions every 300–650ms; it does not reroll or dodge
 on every 100ms physics tick. An initially surprised actor waits for that first
@@ -119,14 +121,17 @@ blocked. Within that cooldown the actor may stand and fight inside its preferred
 minimum range. Range bounds provide hysteresis instead of chasing an exact
 distance, and one cached retreat order can start at most one leg.
 
-Withdrawal searches at most two cardinal steps (one for melee), scores increased
-distance against nearby visible zombie pressure, and rejects routes which first
-close on the selected zombie. Native movement validates every traversed edge.
+Withdrawal searches at most two cardinal steps (one for melee) and scores
+distance against nearby obstacle-independent zombie awareness. It rejects
+approach to the selected zombie unless whole-crowd placement improves.
+Native movement validates every traversed edge.
 The leg walks, lasts at most 900ms and does not continue indefinitely until an
-ideal distance is restored. Known visible zombie centers also prevent selecting
-tiles within 0.8 tiles of them; this is a conservative coarse placement check,
+ideal distance is restored. Known awareness zombie centers also prevent selecting
+tiles within 0.65 tiles of them; this is a conservative coarse placement check,
 not complete collision prediction. Scores use bounded current sensor contacts,
-not hidden world-wide knowledge. A blocked retreat holds position; it does not
+not hidden world-wide knowledge. Improved whole-crowd placement may justify a
+step closer to the selected target; physical body clearance remains required.
+A blocked retreat holds position; it does not
 teleport, walk through obstacles or fail the whole combat execution merely
 because no escape exists. Normal unreachable approach failures still apply.
 
@@ -135,7 +140,7 @@ the route. Guarded pace is capped at WALK / 1.3 tiles per second, subject to
 slower physical restrictions. Guarded windup/recovery allow footwork and attacks
 while moving, with range and clear-lane checks retained. Unguarded movement still
 resets windup and retains the initial 350ms recovery movement lock. Weapon-owned
-equip/reload stop movement. Survival-owned escape routes continue independently
+equip/reload may perform guarded defensive footwork. Survival-owned escape routes continue independently
 of defensive weapon executions; cancellation cannot stop those routes. Active
 obstacle traversal suppresses attacks. See [tactical ownership, opening creation
 and elevated exposure](NPC-TACTICS.md) for the coordination contract and runtime

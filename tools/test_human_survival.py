@@ -127,6 +127,24 @@ public class SurvivalTest {
   p.possible=true;s.update(observe(6*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
   check(s.phase()==SurvivalModule.Phase.ESCAPING&&p.intent.elevatedExposure(),"renewed escape explicitly accepts elevated exposure after opening window");
  }
+ static void relieved(){
+  var s=new SurvivalModule(SurvivalSettings.DEFAULT);var p=new Port();p.possible=false;
+  s.update(observe(0,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  s.update(observe(2*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.CREATE_OPENING,"pressure enters opening creation before relief");
+  s.update(observe(3*SECOND,HumanState.INITIAL,2,25,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.RECOVERING&&!p.intent.elevatedExposure(),"two peripheral contacts end opening creation and elevated exposure");
+  for(long now=4*SECOND;now<8*SECOND;now+=SECOND)s.update(observe(now,HumanState.INITIAL,2,25,Coverage.COMPLETE),p);
+  check(p.escapes==2,"peripheral contacts never restart cornered route attempts");
+  s.update(observe(8*SECOND,HumanState.INITIAL,2,25,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.RECOVERING,"controlled contacts require a longer hold than complete safe-distance clearance");
+  s.update(observe(11*SECOND,HumanState.INITIAL,2,25,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.SAFE,"sustained pressure relief releases survival for normal engagement despite peripheral contacts");
+  s.update(observe(12*SECOND,HumanState.INITIAL,4,1,Coverage.COMPLETE),p);
+  check(s.phase()==SurvivalModule.Phase.CORNERED,"renewed crowd pressure triggers immediate fresh flight without stale failure escalation");
+  s.update(observe(13*SECOND,HumanState.INITIAL,0,0,Coverage.UNAVAILABLE),p);
+  check(s.phase()!=SurvivalModule.Phase.SAFE,"unavailable sensing cannot manufacture recovery");
+ }
  static class Grid implements MovementGrid {
   int calls;Set<Tile> blocked=new HashSet<>();
   public boolean available(){return true;}
@@ -191,7 +209,7 @@ public class SurvivalTest {
   check("movement_stalled".equals(actor.actuator.survival().routeProblem(3*SECOND)),"production adapter detects no positional progress independently of route deadline");
   actor.dispose();
  }
- public static void main(String[]args){lifecycle();arbitration();failedFlight();coordinated();routes();flags();adapter();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
+ public static void main(String[]args){lifecycle();arbitration();failedFlight();coordinated();relieved();routes();flags();adapter();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
 }
 '''
 

@@ -80,6 +80,10 @@ public class HumanEngagementTest {
   check(!unsupported.eligible(observation(STEP,contact(1,STEP,true,9)))&&fallback.begins==1,"unsupported outcome backs off even after scheduler interruption");
   unsupported.update(observation(20*STEP,contact(1,20*STEP,true,9)),fallback);
   check(fallback.begins==2&&unsupported.lastResult().status()==Status.UNSUPPORTED,"retry deadline permits a later attempt, never fake success");
+  var closeRetry=new EngageZombiesModule(settings);var closePort=new Port();closePort.output=new Result(Status.FAILED,Reason.UNREACHABLE);
+  closeRetry.update(observation(0,contact(1,0,true,9)),closePort);
+  check(!closeRetry.eligible(observation(STEP,contact(2,STEP,true,1))),"urgent combat retry still has a minimum bounded backoff");
+  check(closeRetry.eligible(observation(3*STEP,contact(2,3*STEP,true,1))),"an approaching threat bypasses the ordinary two-second combat retry after bounded backoff");
   var done=new EngageZombiesModule(settings);var completed=new Port();completed.output=new Result(Status.COMPLETED,Reason.NONE);
   done.update(observation(0,a),completed);check(done.target()==null&&done.lastResult().status()==Status.COMPLETED,"completed backend releases engagement");
 

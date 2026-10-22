@@ -129,6 +129,11 @@ public class HumanWeaponCombatTest {
   tactics=new HumanCombatTactics(()->0);tactics.update(club,1.1,true,false,0);
   check(tactics.update(club,1.1,true,true,300_000_000L).maneuver()==HumanCombatTactics.Maneuver.WITHDRAW,"melee may create a short recovery gap while remaining near weapon reach");
   check(tactics.update(gun,6,true,false,400_000_000L).maximum()==7,"weapon switch resets sampled spacing band without resetting retreat cooldown");
+  var urgentTactics=new HumanCombatTactics(()->1);
+  var urgentOrder=urgentTactics.update(gun,6,true,false,1.7,0);
+  check(urgentOrder.maneuver()==HumanCombatTactics.Maneuver.WITHDRAW,"a close additional threat bypasses ordinary reaction delay while selected target remains far away");
+  check(urgentTactics.update(gun,6,true,false,1.7,100_000_000L)==urgentOrder,"urgent polling does not create a new retreat order on every heartbeat");
+  check(urgentTactics.update(gun,6,true,false,1.7,500_000_000L)!=urgentOrder,"urgent crowd pressure permits another attempt after half a second");
 
   var melee=fixture("melee-test","MELEE");long at=untilCommit(melee,STEP,1);
   check(melee.human().player.getPrimaryHandItem().getFullType().equals(ServerHumanInventory.MELEE),"melee mode selects Crowbar through real inventory adapter");
@@ -181,6 +186,9 @@ public class HumanWeaponCombatTest {
   var bystander=new IsoPlayer(body.human().player.getCell(),new SurvivorDesc(false),0,0,0);bystander.x=103.5f;bystander.y=200.5f;
   bystander.getCurrentSquare().moving.add(bystander);
   check(!ServerHumanCombatNetwork.clearBodies(body.human(),body.target()),"body in direct lane blocks the initial shot");
+  bystander.dead=true;
+  check(ServerHumanCombatNetwork.clearBodies(body.human(),body.target()),"dead character awaiting world cleanup does not block the standing attack lane");
+  bystander.dead=false;
   untilCommit(body,STEP,1);
   check(body.human().player.getY()!=200.5f&&ServerHumanCombatNetwork.clearBodies(body.human(),body.target()),"blocked lane causes reposition to a clear attack point before committing");
   body.factory().deactivate("body-test");System.clearProperty("apocbr.npc.combat.testWeapon");
@@ -238,6 +246,11 @@ public class HumanWeaponCombatTest {
   };
   var escape=CombatRoutePlanner.withdraw(crowd,new Tile(0,0),1.5f,.5f,2);
   check(!escape.isEmpty()&&escape.getLast().y()<0&&escape.size()<=3,"escape scores pressure and keeps the leg within two cardinal steps");
+  CombatRoutePlanner.Grid sideExit=new CombatRoutePlanner.Grid(){
+   public boolean walkable(Tile tile){return tile.y()==0&&tile.x()>=0&&tile.x()<=1;}public boolean connected(Tile a,Tile b){return true;}
+   public boolean clearAttack(Tile tile){return true;}public double placementScore(Tile tile){return tile.x()==0?-10:0;}
+  };
+  check(CombatRoutePlanner.withdraw(sideExit,new Tile(0,0),3.5f,.5f,1).equals(List.of(new Tile(0,0),new Tile(1,0))),"footwork can approach the selected target when it improves whole-crowd clearance and is the only safe exit");
   var rays=new java.util.concurrent.atomic.AtomicInteger();
   CombatRoutePlanner.Grid limited=new CombatRoutePlanner.Grid(){
    public boolean walkable(Tile tile){return Math.abs(tile.x())<20&&Math.abs(tile.y())<20;}public boolean connected(Tile a,Tile b){return true;}

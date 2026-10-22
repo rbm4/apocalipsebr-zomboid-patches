@@ -546,7 +546,7 @@ FILES.update({
   public abstract int getID();public abstract IsoGridSquare getCurrentSquare();
  }""",
  "zombie/characters/IsoGameCharacter.java": """package zombie.characters;
- public abstract class IsoGameCharacter extends zombie.iso.IsoMovingObject {}""",
+ public abstract class IsoGameCharacter extends zombie.iso.IsoMovingObject {public abstract boolean isDead();public abstract float getHealth();}""",
  "zombie/characters/IsoZombie.java": """package zombie.characters;
  public class IsoZombie extends IsoGameCharacter {
   public int nativeHits;public String reaction;

@@ -30,6 +30,7 @@ final class ServerHumanCombatNetwork {
             for(var object:square.getMovingObjects()){
                 if(++inspected>256)return false;
                 if(!(object instanceof IsoGameCharacter body)||body==target||body==human.player||!seen.add(body))continue;
+                if(body.isDead()||body.getHealth()<=0)continue;
                 double t=((body.getX()-fromX)*dx+(body.getY()-fromY)*dy)/length;
                 if(t<=0||t>=1)continue;
                 double ox=body.getX()-(fromX+t*dx),oy=body.getY()-(fromY+t*dy);

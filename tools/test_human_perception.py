@@ -140,6 +140,21 @@ public class HumanPerceptionTest {
   var moved=aware.actuator.observe(STEP).awareness().contacts().stream().filter(c->c.identity().equals(old.identity())).findFirst().orElseThrow();
   check(moved.distanceSquared()>old.distanceSquared(),"danger distances follow observer movement");bounded(aroundCorner.awareness());
   aware.dispose();LosUtil.result=LosUtil.TestResults.Clear;
+  registry.register(new HumanProfile("sense-slow",1,"idle",Map.of(),"","none",false,false,List.of(),8,1000,true));
+  var slowCell=new IsoCell();var slow=actor(slowCell,"sense-slow");var dying=zombie(slowCell,101.5f,200.5f,0);
+  slow.actuator.observe(0);dying.health=0;
+  var death=slow.actuator.observe(STEP);
+  check(death.senses().contacts().stream().noneMatch(c->c.identity().kind()==Kind.ZOMBIE)&&death.awareness().contacts().isEmpty(),"zero-health contacts leave both memories before the next discovery interval");
+  check(death.senses().sampledAtNanos()==0,"death invalidation does not manufacture a fresh discovery sample");
+  check(slow.actuator.observe(10*STEP).awareness().contacts().isEmpty(),"invalidated contacts cannot reappear from retained memory");
+  check(actor(slowCell,"sense-slow").actuator.observe(0).awareness().contacts().isEmpty(),"fresh activation excludes an already dead zombie still in the world index");
+  var wideCell=new IsoCell();var wide=actor(wideCell,"militia-patrol");var distant=zombie(wideCell,112.5f,200.5f,0);
+  for(int n=0;n<30;n++)wide.actuator.observe(n*STEP);
+  check(wide.perception.awareness().contacts().stream().anyMatch(c->c.identity().instanceId()==distant.getID()),"survival awareness discovers beyond the eight-tile visual radius");
+  check(wide.perception.snapshot().visible(Kind.ZOMBIE).isEmpty(),"wider awareness does not extend attack vision");
+  var urgentBody=zombie(wideCell,102.1f,200.5f,0);var urgentFrame=wide.actuator.observe(30*STEP);
+  check(urgentFrame.awareness().contacts().stream().anyMatch(c->c.identity().instanceId()==urgentBody.getID()),"reserved five-by-five scan finds a new nearby arrival on the next heartbeat");
+  bounded(urgentFrame.awareness());slow.dispose();wide.dispose();
   System.out.println("Passed "+checks+" perception discovery, visibility, retention, identity and work-bound assertions.");
  }
 }

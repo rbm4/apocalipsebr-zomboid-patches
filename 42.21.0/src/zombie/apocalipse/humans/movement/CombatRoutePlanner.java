@@ -53,19 +53,19 @@ public final class CombatRoutePlanner {
         queue.add(new Node(start,null,0));seen.add(start);
         Node best=null;
         double initial=Math.hypot(start.x()+.5-targetX,start.y()+.5-targetY);
-        double bestScore=initial+grid.placementScore(start);
+        double initialPlacement=grid.placementScore(start),bestScore=initial+initialPlacement;
         int[][] directions={{1,0},{0,1},{-1,0},{0,-1}};
         while(!queue.isEmpty()){
             var node=queue.remove();
             double distance=Math.hypot(node.tile().x()+.5-targetX,node.tile().y()+.5-targetY);
             double score=distance+grid.placementScore(node.tile())-.1*node.depth();
-            if(node.depth()>0&&distance>initial+.2&&score>bestScore){best=node;bestScore=score;}
+            if(node.depth()>0&&(distance>initial+.2||grid.placementScore(node.tile())>initialPlacement+.5)&&score>bestScore){best=node;bestScore=score;}
             if(node.depth()>=steps)continue;
             for(var d:directions){
                 var next=new Tile(node.tile().x()+d[0],node.tile().y()+d[1]);
                 if(!seen.contains(next)&&grid.walkable(next)&&grid.traversalCost(node.tile(),next)==1){
                     // Do not briefly close with the selected zombie to reach a better endpoint.
-                    if(Math.hypot(next.x()+.5-targetX,next.y()+.5-targetY)<initial)continue;
+                    if(Math.hypot(next.x()+.5-targetX,next.y()+.5-targetY)<initial&&grid.placementScore(next)<=initialPlacement)continue;
                     seen.add(next);queue.add(new Node(next,node,node.depth()+1));
                 }
             }

@@ -19,7 +19,7 @@ transient state; phases/routes/monotonic timers are not persisted.
 
 Default pressure is four known zombies within four tiles (Euclidean), health
 <=0.35, or endurance <=0.24. Threats outside patrol territory also count. Local
-crowd awareness detects eligible same-floor zombies inside perception radius
+crowd awareness detects eligible same-floor zombies inside its extended awareness radius
 without line-of-sight rays, sharing the existing bounded discovery scan. Attack
 visibility remains separate. Known hidden zombies refresh their positions;
 retained contacts up to two seconds old use last-known positions but distances
@@ -32,7 +32,7 @@ execution ends that window early. Outside that window route retries are
 throttled every two seconds. Escaping, cornered and recovering actors can defend against
 a visible eligible territory target within 1.5 tiles. Defense is cancelled when
 the target leaves that range; ordinary pursuit stays suppressed. Terminal or
-failed defense executions also back off. During escape, defense runs alongside
+failed defense executions also back off, capped at 300ms for close defense. During escape, defense runs alongside
 movement and cannot cancel or replace its route. Existing combat validation still applies.
 
 Arrival is not safety and enters recovery. Failed execution or the 14-second
@@ -46,6 +46,14 @@ observed clearance; it does not prove the area empty. No healing is invented:
 injured actors can remain in recovery until another system restores their health.
 Personality fear, ammunition doctrine, inferred attack intent and squad morale
 are future policies; crowd/condition pressure does not manufacture a fear stat.
+
+When reliable sensing shows no crowd/condition pressure and no threat within
+1.75 tiles, opening creation and escape retries end immediately. A longer
+controlled-contact hold (`max(safeHoldMs, minimumRetreatMs)`, default eight seconds)
+also permits returning to normal engagement with peripheral contacts still
+present, subject to recovered vitals and minimum survival duration. This prevents
+post-combat retry loops when a few distant zombies remain. See [tactical
+coordination](NPC-TACTICS.md) for urgent footwork, body-clear gaps and diagnostics.
 
 ## Escape routes
 

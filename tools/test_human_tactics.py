@@ -73,8 +73,14 @@ public class TacticalTest {
   check(!h.movement.occupancyAllows(100.05f,200.1f,99.9f,200.1f),"ordinary escape rejects occupied destination tiles");
   h.actuator.tactical(guard(f,true));
   check(h.movement.occupancyAllows(100.05f,200.1f,99.9f,200.1f),"elevated exposure accepts a clear segment into a sparsely occupied tile");
+  h.actuator.tactical(guard(f,false));
+  check(h.movement.occupancyAllows(100.05f,200.1f,99.9f,200.1f),"ordinary guarded footwork measures a usable gap rather than rejecting its whole tile");
+  h.actuator.tactical(guard(f,true));
   body.x=99.8f;body.y=200.1f;
   check(!h.movement.occupancyAllows(100.05f,200.1f,99.9f,200.1f),"desperate exposure still rejects moving into an overlapping body");
+  body.health=0;
+  check(h.movement.occupancyAllows(100.05f,200.1f,99.9f,200.1f),"zero-health zombie does not remain a live body obstacle");
+  body.health=1;
   body.x=99.02f;body.y=200.98f;
   cell.getGridSquare(100,199,0).free=false;cell.getGridSquare(100,201,0).free=false;
   var threats=h.perception.snapshot().visible(HumanSenses.Kind.ZOMBIE);

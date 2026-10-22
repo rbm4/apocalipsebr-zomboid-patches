@@ -37,7 +37,13 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
             return failures>=3?HumanActuator.MotionStatus.FAILED:HumanActuator.MotionStatus.RUNNING;
         }
         boolean lane=clear(human.player.getX(),human.player.getY());
-        var order=tactics.update(weapon,distance(),lane,recovering,now);
+        double nearest=human.perception.awareness().contacts().stream()
+            .filter(c->c.identity().kind()==HumanSenses.Kind.ZOMBIE&&now>=c.lastSeenNanos()&&now-c.lastSeenNanos()<=2_000_000_000L)
+            // A melee opponent inside weapon reach is expected; extra attackers take priority.
+            .filter(c->weapon.ranged()||c.identity().instanceId()!=target.getID()||c.identity().onlineId()!=target.getOnlineID()
+                ||distance()<weapon.reach()*.55)
+            .mapToDouble(c->Math.hypot(c.x()-human.player.getX(),c.y()-human.player.getY())).min().orElse(Double.POSITIVE_INFINITY);
+        var order=tactics.update(weapon,distance(),lane,recovering,nearest,now);
         if(retreating){
             if(now<retreatDeadline&&human.movement.update(now)==HumanActuator.MotionStatus.RUNNING)return HumanActuator.MotionStatus.RUNNING;
             human.movement.stop();retreating=routeActive=false;
@@ -78,7 +84,7 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
     private HumanCombatTactics.Order lastRetreatOrder;
     @Override public double placementScore(Tile tile){
         double penalty=0;
-        for(var contact:human.perception.snapshot().contacts()){
+        for(var contact:human.perception.awareness().contacts()){
             if(!contact.visible()||contact.identity().kind()!=HumanSenses.Kind.ZOMBIE)continue;
             double distance=Math.hypot(tile.x()+.5-contact.x(),tile.y()+.5-contact.y());
             if(distance<3)penalty-=2*(3-distance);
@@ -88,17 +94,17 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
     public boolean walkable(Tile tile){
         var square=human.movement.square(tile.x(),tile.y());
         boolean current=tile.x()==human.player.getXi()&&tile.y()==human.player.getYi();
-        boolean elevated=human.actuator.intent().elevatedExposure();
         if(square==null||!human.movement.walkable(tile)||!human.territory.contains(tile.x()+.5F,tile.y()+.5F,human.player.getZ()))return false;
-        if(!current&&!square.isFree(true)&&(!elevated||!human.movement.bodyClear(tile.x()+.5F,tile.y()+.5F,tile.x()+.5F,tile.y()+.5F)))return false;
-        if(!current)for(var contact:human.perception.snapshot().contacts()){
+        if(!current&&!square.isFree(true)&&(square.getMovingObjects().isEmpty()||!human.movement.bodyClear(tile.x()+.5F,tile.y()+.5F,tile.x()+.5F,tile.y()+.5F)))return false;
+        if(!current)for(var contact:human.perception.awareness().contacts()){
             if(contact.visible()&&contact.identity().kind()==HumanSenses.Kind.ZOMBIE
-                &&Math.hypot(tile.x()+.5-contact.x(),tile.y()+.5-contact.y())<(elevated?.65:.8))return false;
+                &&Math.hypot(tile.x()+.5-contact.x(),tile.y()+.5-contact.y())<.65)return false;
         }
         return true;
     }
     public boolean connected(Tile from,Tile to){return walkable(from)&&walkable(to)&&human.movement.connected(from,to)
-        &&(!human.actuator.intent().elevatedExposure()||human.movement.bodyClear(from.x()+.5F,from.y()+.5F,to.x()+.5F,to.y()+.5F));}
+        &&human.movement.bodyClear(from.x()==human.player.getXi()&&from.y()==human.player.getYi()?human.player.getX():from.x()+.5F,
+            from.x()==human.player.getXi()&&from.y()==human.player.getYi()?human.player.getY():from.y()+.5F,to.x()+.5F,to.y()+.5F);}
     @Override public int traversalCost(Tile from,Tile to){return connected(from,to)?human.movement.traversalCost(from,to):0;}
     public boolean clearAttack(Tile from){return clear(from.x()+.5F,from.y()+.5F);}
 }

@@ -287,7 +287,7 @@ final class ServerHumanMovement implements MovementGrid {
     boolean occupancyAllows(float x,float y,float nx,float ny) {
         var destination=square((int)Math.floor(nx),(int)Math.floor(ny));
         if(destination==null)return false;
-        if(occupiedGaps)return bodyClear(x,y,nx,ny);
+        if(occupiedGaps||guarded())return (destination.isFree(true)||!destination.getMovingObjects().isEmpty())&&bodyClear(x,y,nx,ny);
         if(destination.isFree(true))return true;
         // Permit separation from existing overlap, never entering another occupied tile.
         if((int)Math.floor(x)!=destination.x||(int)Math.floor(y)!=destination.y)return false;
@@ -322,6 +322,7 @@ final class ServerHumanMovement implements MovementGrid {
                 if(!seen.add(body)||body==human.player)continue;
                 if(++inspected>64)return false;
                 if(!(body instanceof zombie.characters.IsoGameCharacter c))return false;
+                if(c.isDead()||c.getHealth()<=0)continue;
                 double dx=nx-x,dy=ny-y,before=Math.hypot(x-c.getX(),y-c.getY()),after=Math.hypot(nx-c.getX(),ny-c.getY());
                 double outward=(x-c.getX())*dx+(y-c.getY())*dy;
                 if(before<.65){if((before>.00001&&outward<=0)||after<=before+.00001)return false;}
