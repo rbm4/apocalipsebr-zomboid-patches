@@ -165,6 +165,33 @@ Never change only one end of a packet contract without confirming the other end.
 
 Backward compatibility matters. Do not reorder or reinterpret serialized fields without tracing format-version handling.
 
+### PostgreSQL migrations and engine role permissions
+
+Whenever a feature adds or changes PostgreSQL tables, sequences, or schemas, include the engine role's permissions in the migration/deployment work. The engine connects to `game_runtime` as `pz_server_01`; backend migrations normally run as `apocalipsebr`. Objects created by the backend do not automatically grant access to the engine role.
+
+For `public` and `player_rel`, preserve the following grants. Execute them in `game_runtime` as an administrator or a role authorized to grant these privileges, after the schemas and objects exist:
+
+```sql
+GRANT USAGE, CREATE ON SCHEMA public, player_rel TO pz_server_01;
+GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public, player_rel TO pz_server_01;
+GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public, player_rel TO pz_server_01;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE apocalipsebr
+IN SCHEMA public, player_rel
+GRANT ALL PRIVILEGES ON TABLES TO pz_server_01;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE apocalipsebr
+IN SCHEMA public, player_rel
+GRANT ALL PRIVILEGES ON SEQUENCES TO pz_server_01;
+```
+
+- Include explicit grants for newly created objects in each migration, or verify that the actual object-creating role's default privileges already cover them. Default privileges affect future objects only; they do not repair existing objects.
+- Default privileges belong to the role that actually creates the objects. If migrations create objects as `postgres` or another role, configure the same defaults with `FOR ROLE` naming that role. Defaults for `apocalipsebr` alone do not cover other creators.
+- Apply the same schema, table, sequence, and creator-default policy when introducing a new engine-accessed schema. Include required function privileges when a feature introduces restricted routines.
+- `ALL PRIVILEGES` does not confer ownership or the right to alter/drop another role's tables. Keep schema migrations under the migration owner; if the engine must execute DDL, explicitly design and document ownership requirements instead of granting superuser access.
+- Validate migrations in an isolated PostgreSQL database with distinct migration and engine roles. Check the feature's actual queries as `pz_server_01`, including inserts using sequences and access to newly created objects; successful migration as an administrator does not verify engine access.
+- Document the required grants, object-creating role, and any administrator bootstrap step with the feature. Grants take effect when committed and require no PostgreSQL configuration reload. Do not apply changes to a live database merely to validate a patch.
+
 ### Characters, zombies, and AI
 
 - `characters/`: players, zombies, body damage, stats, skills, and character state.
@@ -302,6 +329,10 @@ Use this map as a starting point, then inspect the script's production source li
 | `test_player_packet_algorithms.py` | Inventory update indexing, player spatial queries, sound stress indexing, zombie packet flags/contracts, and extracted expiry/path-threshold logic. |
 | `test_zombie_auth_algorithms.py` | Zombie ownership indexes, authorization coverage and cadence, including disconnect and reassignment behavior. |
 | `test_packet_ownership_guard.py` | Packet receive direction, player ownership and online-ID sentinel validation, spoof rejection, and production player-stat deserialization. |
+| `test_server_humans.py` | Human factory lifecycle, identity retention across relevance/reconnects, observation/actuation, idle/emote packet fields and the production chat bridge. See `42.21.0/SERVER-HUMANS.md`. |
+| `test_human_brain.py` | Production greeting state machine and action execution: selection, transitions, timing, terminal outcomes, cancellation, incarnation changes and repeat suppression. |
+| `test_human_roaming.py` | Indoor route planner/controller, bounded search, collision/occupancy/unload checks, building/floor confinement, movement speed and packet replication. Shares the human lifecycle fixture. |
+| `test_human_trading.py` | Production native NPC trade adapter, mixed-item destruction, money-only receipt capture, ownership/consent, duplicates, cancellation and persistence refusal. |
 | `test_unload_simulation_algorithms.py` | Entity removal versus vanilla, animal-zone topology and geometry invalidation, sound expiration, thumpable no-work predicates, vehicle telemetry batching, and source contracts preserving vehicle/thumpable update behavior. |
 | `test_vehicle_idle_algorithms.py` | Idle vehicle part selection versus vanilla under live activation, callback mutations and nested updates; capability hooks, elapsed-minute cooling, same-call square reuse, first-model indexing and work-counter batching. Imports the method extractor from `test_unload_simulation_algorithms.py`. |
 | `test_iso_entity_registry.py` | Production registry/lifecycle methods, square mutation hooks and server ID getter: shifted lookups before getters, raw arrays, cyclic reorder, re-add, detachment, coordinate changes, collision ownership, exceptions/retry, reset and client behavior. |
@@ -356,3 +387,31 @@ For each implemented patch, report:
 - Compilation or dry-run command used and its result.
 - Runtime scenarios still requiring manual validation.
 - Any assumptions, version-specific risks, or related classes that future work should inspect.
+
+
+## NPC engine object-oriented architecture
+
+All NPC bot engine features, including extensions to existing behavior, must
+follow [the NPC engine architecture contract](42.21.0/NPC-ENGINE-ARCHITECTURE.md).
+Keep lifecycle/composition, behavioral policy, content providers, immutable
+commands, execution state, engine capabilities and transport/authority separate.
+Use composition and injected ports for role-specific behavior. Do not add NPC
+key checks, event/database policy or domain-specific announcements to generic
+actuators/executors. Reuse the bounded `Sequence`, `Wait` and `Say` actions for
+ordered behavior; preserve cancellation and exclusive dialogue/trade ownership.
+Keep per-execution mutable state out of reusable action/content objects. Every
+new capability must document its owner, dependencies, failure/cancellation
+semantics and production-code regression tests, and compile against the target
+build. This rule applies to all NPC features, not only speech.
+
+
+NPC profile/lifecycle changes must also follow
+[the profile and persistence-boundary contract](42.21.0/NPC-PROFILES-LIFECYCLE.md).
+Select behavior by registered `profileId`, never logical actor key or display
+name. Register immutable versioned profile data separately from allowlisted
+factories; create fresh behavior/controller state per NPC. Shared interaction
+services use the activity controller, not guide-specific states. The logical
+lifecycle owns activation independently of presentation IDs. PostgreSQL intake
+must eventually marshal validated immutable desired snapshots onto the simulation
+thread; do not persist native IDs, executors, connections or monotonic timers.
+The current refactor intentionally has no profile persistence or database writes.

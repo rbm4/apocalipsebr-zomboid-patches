@@ -1,5 +1,84 @@
 # Server telemetry (schema 3)
 
+## Optional radio/backend observation capture
+
+The opt-in [backend bridge](BACKEND-BRIDGE.md) forwards the existing captured
+`playersOnline` and `world.zombies` numbers from `ApocBRServerTelemetryLite.emit`.
+The latter is published as `loadedZombieCount`: it is the loaded-cell zombie list
+size, not the whole map's virtual population. The telemetry JSON schema and metric
+definitions remain unchanged; no extra zombie scan or network work runs in emit.
+
+## Immutable asynchronous zombie sending, 2026-10-12
+
+See [async data flow, bounds, and validation](ASYNC-ZOMBIE-SENDING.md).
+`network.zombies.dispatch` measures the full main-thread connection-send entry,
+including relay selection, retained controls, and admission checks.
+`network.zombies.snapshot` measures live-state capture inside dispatch, with
+`snapshot.authorization` for the authorization-list/hash work. Selected
+`packetPrepare` is inside snapshot, not inside the old synchronous send timer.
+`network.zombies.completions` measures nonblocking main-thread completion handling.
+`awaitAndSend` now encloses that handling; it no longer joins sending workers.
+Historical `network.zombies.send` and `workerWait` should be absent after restart.
+
+`network.zombies.async.send` is worker elapsed time, including its `async.assemble`
+and `async.transport` children. `async.queueDelay` measures time from submission
+to worker execution, not CPU work. These phases overlap main-thread/simulation
+work and cannot be summed into tick cost. `zombieJobs.submitted` now counts admitted
+immutable batches. New `zombies.async.*` counters cover snapshotBytes,
+backpressure, failed, exceptions, and packetCapacityDeferred. Backpressure delays
+new capture without consuming requests or advancing connection timers; failures
+retry retained controls and valid requests. Scope older phase descriptions below
+to the corresponding implementation revision.
+
+## Vanilla ID restoration
+
+The added registry reconciliation implementation is removed. Network-ID getter fallback and entity registration, lookup and removal use
+exact-version vanilla lazy behavior. A conservative server clean-square getter
+cache now avoids index reads when tracked inputs are unchanged. `entities.registry.*` measurements below describe historical patches and
+should be absent after rebuilding and restarting with all restored classes. Existing
+IsoObject scheduling and square-index counters remain. No scheduled reconciliation
+was added.
+
+## Player internal diagnostics, 2026-10-05
+
+Additional server timings preserve update order, authority and cadence. Human-player
+`simulation.players.internal` now exposes `networkAndMovement`, `equippedSounds`,
+`nutrition`, `fitness`, `actionGroup`, `remote`, `remoteSounds`,
+`idleAndAimingDelay`, `endurance`, `aimingStance`, and `aimingTargets`.
+`aimingTargets` measures only the calcValidTargets call from updateAimingStance;
+it is contained in aimingStance and does not cover other CombatManager callers.
+Its calls count actual aiming discovery attempts. `players.aiming.targetListEntriesAtStart`
+sums the active-list size before each attempt, not actual candidates visited or
+accepted. `players.aiming.inVehicle` counts attempts while seated in a vehicle.
+An absent aimingTargets phase means this measured path did not run in the window.
+
+`simulation.players.remote` includes existing `simulation.players.los`, even
+though LOS is not a naming child. It includes `remote.vehicleSync` when seated,
+and `remote.square` for living remote humans. The square phase contains detach,
+ensureOnTile and membership child timers, plus coordinate application and diagnostic
+bookkeeping. `players.remote.square.sameSquare` counts successful reconciliations
+whose nonnull previous and final squares are the same object. `unchangedPosition`
+compares coordinates immediately before detachment with realx/realy/realz (after
+vehicle synchronization); it does not establish that the car was stationary.
+`missingSquare` counts successful reconciliations ending with no current square.
+Use square.calls as the denominator; failed attempts can be timed without completion
+counters. `players.remote.inVehicle` counts human updateRemotePlayer invocations
+while seated, and its denominator is remote.calls.
+
+`simulation.players.movementRates` contains speed (walk and idle calculations)
+and injuries (foot and tree updates). `players.movementRates.inVehicle` counts
+seated calls, with movementRates.calls as its denominator. These diagnostics exclude
+animals. `simulation.movement.bagModifier` times calcRunSpeedModByBag for all server
+characters/callers, with `movement.bagModifier.queries` counting attempts; it is not
+exclusively player movementRates work. `inventory.contentsWeight` times every server
+ItemContainer.getContentsWeight invocation and `inventory.contentsWeight.entriesVisited`
+counts actual item visits, including a visit whose weight getter throws. Nested bags
+can recursively invoke this timer: totals are inclusive and must not be summed as
+exclusive cost. The timer can also occur outside player updates. No weight cache,
+combat spatial index, square fast path, or client-trust change is implemented here.
+Parent timings include diagnostic overhead; narrow timer totals exclude some of
+their own counter/timing publication. Compare captures with instrumentation caveats.
+
 This extends the existing server NDJSON telemetry in the 42.21.0 patch tree.
 Compile against the intended build before deployment; compilation against a local
 JAR does not establish compatibility with a differently versioned live server.
@@ -530,7 +609,7 @@ See [implementation and validation](PLAYER-ZOMBIE-PACKET-HOTSPOTS.md) and run
 
 ## Unload, sound, animal-zone and vehicle follow-up
 
-Implemented 2026-10-05 following sequences 327–336. See
+Implemented 2026-10-05 following sequences 327ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Â ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“336. See
 [review and implementation status](UNLOAD-SIMULATION-ALGORITHM-REVIEW.md) and
 [vehicle follow-up candidates](VEHICLE-UPDATE-FOLLOWUP.md).
 
@@ -672,7 +751,7 @@ or unregistration; direct changed-ID getters also use the batch repair path.
 | --- | --- |
 | `entities.registry.reconcile` | Nonempty registry validation/repair boundary, including raw-array validation; can be inside incoming packets, simulation, loading or unloading, so naming does not establish containment |
 | `entities.registry.checked` | Registered members checked in dirty or exposed square lists; not all world objects |
-| `entities.registry.rawArrayChecked` | Subset checked because a backing array remains exposed; repeats at each lookup boundary even without notification |
+| `entities.registry.rawArrayChecked` | Subset checked because a backing array remains exposed; now selected by the relevant coordinate/object boundary even without notification |
 | `entities.registry.refreshed` | Changed/pending entries subjected to getter refresh and batch map repair; includes detachment/rebinding and same-ID invalidations |
 | `entities.registry.collisions` | Batch insertion refused because an unrelated entity owns the destination key; logged rather than overwritten |
 
@@ -686,3 +765,99 @@ Client/single-player collection and ID-getter semantics remain unchanged.
 Verification: `python tools/test_iso_entity_registry.py`, shared simulation/list
 fixtures and using-player tests, plus full game-JAR dry-run compilation. Actual
 resource/crafting packet callbacks and meta persistence require multiplayer checks.
+
+### Retirement follow-up
+
+Ordinary tracked server IsoObject unregistration no longer performs global registry
+validation. It resolves the retiring object's local ID and removes only its owned
+tracked key. Survivor refresh is demand-driven: GetEntity, eligible registration,
+meta registration and changed-ID requests can still perform reconciliation.
+
+- `entities.registry.retired`: tracked objects whose owned-key/tracking retirement
+  completed; recorded before engine/component teardown, not a success count for all
+  subsequent callbacks or persistence.
+- `entities.registry.retirement`: local ID resolution and owned-key/tracking removal
+  under the registry map lock; excludes subsequent engine/component teardown.
+
+Compare these with `entities.removal.indexed` and `entities.registry.rawArrayChecked`
+during unloading. Fewer validation passes are expected when there are no actual
+consumer lookups; no fixed ratio is guaranteed if callbacks or meta offloading
+request fresh registry data. Timers can overlap unload/simulation/network parents.
+
+
+### Coordinate-scoped registry follow-up
+
+Raw-array validation now selects the requested ID coordinate, or the affected object's
+old/current square on registration and changed-ID getters. Dirty and pending mutations
+still drain globally. Unrelated exposed buckets are not repeatedly scanned solely
+because new chunks register entities. `entities.registry.bucketsChecked` counts square
+buckets selected for validation per nonempty flush; `checked` and `rawArrayChecked`
+retain their member-visit meaning. Coordinate rekeying, retirement and reset also
+maintain the new location index. Timings remain inclusive elapsed work.
+
+Verification: the registry fixture adds eligible-loading amplification, local raw-hit
+permutations, location rekeying including negative floors, and the actual vanilla
+ObjectContainer lookup branch during repeated item removal/reinsertion. See the registry
+design document for production evidence and transfer-timeout limitations.
+
+
+## Clean-square entity-ID cache counters
+
+Enabled by default; set -Dapocbr.telemetry.entityIds.enabled=false before server
+startup to disable. The counters measure
+isoObjects.entityId.cacheHits, isoObjects.entityId.vanillaChecks and
+isoObjects.entityId.rawArrayFallback. rawArrayFallback is a subset of vanillaChecks.
+cacheHits / (cacheHits + vanillaChecks) measures adoption among instrumented server
+getter calls; it is not a measured time saving. Exposed arrays and custom input
+methods retain vanilla checks. No entities.registry.* repair path is active.
+
+
+### Audited square-array readers
+
+Internal server readers in square properties/queries, chunk object-state saving,
+load-grid overlays, loot respawn and generator item traversal now use a borrowed
+array accessor that does not disable the ID cache. List mutations still advance
+versions; explicitly managed raw writes must call apocbrElementsChanged before an
+ID consumer. Public getElements remains an unsafe escape. Compare cacheHits and
+rawArrayFallback after restart; counters measure adoption, not time saved. No new
+global registry scan exists.
+
+
+## First square-array exposure attribution
+
+Enabled by default (-Dapocbr.telemetry.arrayExposure.enabled=false disables it).
+PZArrayList captures the first external Java caller when a server IsoObject list's
+current backing array first escapes through public getElements. Stack collection
+is bounded to 128 exposures for the entire process; configure maxSamples with
+-Dapocbr.telemetry.arrayExposure.maxSamples=N (clamped 0..4096). Repeated escapes
+of an already exposed array never collect another stack. Array replacement clears
+its caller annotation, while preserving the process sample budget.
+
+Counters: isoObjects.arrayExposure.firstExposures, sampledLists, unsampledLists,
+firstCaller.<class>.<method>, fallbackCaller.<class>.<method> (or unsampled), and
+auditedReads. firstCaller counts sampled exposure transitions, not mutations;
+fallbackCaller attributes subsequent cache bypasses to the retained exposure caller.
+auditedReads establishes that the new internal reader API actually runs. Callers
+are Java stack frames; a Lua/reflection bridge does not identify a specific mod.
+Absent counters cannot establish a deployed revision. The bounded sample may miss
+later workloads; report unsampled coverage instead of attributing it by guesswork.
+
+Read-only bytecode inspection of the local game installation at
+Z:/SteamLibrary/steamapps/common/ProjectZomboid showed an IsoGridSquare override
+with the old public getElements calls and a PZArrayList lacking audited-reader
+methods. This establishes a local installation mismatch, not the classpath of an
+uninspected remote server. Deploy the complete matching class set and restart;
+then inspect exposure counters to identify any genuinely remaining callers.
+
+
+## Deferred PostgreSQL login integration
+
+`database.login.continuations` measures the main-loop drain of `ApocBRAsyncLogin`,
+including lifecycle cleanup, character reconstruction, client-profile encoding and
+connection/world integration performed by completed requests. The drain starts at
+most two continuations per tick and stops starting another after two milliseconds;
+one reconstruction may exceed that budget. JDBC execution and queue wait happen
+on dedicated workers and are excluded from this phase. Compare this phase and
+packet-processing spikes under representative simultaneous logins; no measured
+runtime savings are claimed from compilation or isolated fixtures. See
+[relational login](PLAYER-RELATIONAL-LOGIN.md) for deadlines and validation.

@@ -233,7 +233,7 @@ public class NetworkZombieManager {
                     if (zombie.getOwner() != null) {
                         ZombieOwnershipIndex.Group nz = this.owns.getNetworkZombie(zombie.getOwner());
                         if (nz != null && !nz.zombies.remove(zombie)) {
-                            DebugLog.log("moveZombie: There are no zombies in nz.zombies.");
+                            // DebugLog.log("moveZombie: There are no zombies in nz.zombies.");
                         }
                         if (nz != null && nz.zombies.isEmpty()) this.owns.release(zombie.getOwner());
                     }

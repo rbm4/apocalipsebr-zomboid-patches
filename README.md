@@ -22,6 +22,8 @@ You do **not** need to know Java or programming to use these. Just follow the st
 
 ## Patches Included
 
+- Build 42.21.0: [character login origin and native lobby teleport](42.21.0/PLAYER-LOGIN-ORIGIN.md).
+
 Each version of the game will have it's own patches, this happens because the way java patching works is replacing the entire original class with our newer one, so every single patch must be done without breaking the behaviour and signature of a class while addressing the issues the patch is intended to address.
 
 ---

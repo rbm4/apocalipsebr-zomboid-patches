@@ -350,7 +350,8 @@ public class ServerMap {
             DebugType.General.printException(var3, LogSeverity.Error);
         }
 
-        Roles.save();
+        // Final captures are queued; keep persistence alive and wait before synchronous role saves.
+        zombie.savefile.ApocBRPostgresConnector.runShutdownDatabaseWork(Roles::save);
         if (PathfindNative.useNativeCode) {
             PathfindNative.instance.stop();
             PathfindNative.freeMemoryAtExit();
@@ -360,6 +361,8 @@ public class ServerMap {
         MapCollisionData.instance.stop();
         AnimalPopulationManager.getInstance().stop();
         ZombiePopulationManager.instance.stop();
+        zombie.apocalipse.events.ApocBREventControl.shutdown();
+        ApocBRBackendBridgeHooks.shutdown();
         RCONServer.shutdown();
         ServerMap.ServerCell.chunkLoader.quit();
         ServerWorldDatabase.instance.close();
@@ -368,6 +371,9 @@ public class ServerMap {
         ObjectIDManager.getInstance().checkForSaveDataFile(true);
         ImportantAreaManager.getInstance().saveDataFile();
         VehiclesDB2.instance.Reset();
+        zombie.savefile.ApocBRPlayerRelationalSync.shutdown();
+        zombie.savefile.ApocBRPostgresConnector.closePool();
+        zombie.popman.NetworkZombiePacker.getInstance().shutdown();
         GameServer.udpEngine.Shutdown();
         ServerGUI.shutdown();
         SteamUtils.shutdown();
