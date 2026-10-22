@@ -7,7 +7,14 @@ import java.util.Objects;
 public record HumanProfile(String id, int revision, String behaviorId, Map<String, Long> parameters,
                            String greetingKey, String announcementId, boolean dialogue, boolean trading, java.util.List<HumanModuleBinding> modules,
                            double perceptionRadius, int perceptionIntervalMs, boolean requireLos,
-                           java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> walkingPatterns) {
+                           java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> walkingPatterns,
+                           HumanCheats cheats,zombie.apocalipse.humans.survival.SurvivalSettings survival) {
+    public HumanProfile(String id,int revision,String behaviorId,Map<String,Long> parameters,String greetingKey,String announcementId,boolean dialogue,boolean trading,
+                        java.util.List<HumanModuleBinding> modules,double perceptionRadius,int perceptionIntervalMs,boolean requireLos,
+                        java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> walkingPatterns) {
+        this(id,revision,behaviorId,parameters,greetingKey,announcementId,dialogue,trading,modules,perceptionRadius,perceptionIntervalMs,requireLos,
+            walkingPatterns,HumanCheats.DEFAULT,zombie.apocalipse.humans.survival.SurvivalSettings.DEFAULT);
+    }
     public HumanProfile(String id,int revision,String behaviorId,Map<String,Long> parameters,String greetingKey,String announcementId,boolean dialogue,boolean trading,
                         java.util.List<HumanModuleBinding> modules,double perceptionRadius,int perceptionIntervalMs,boolean requireLos) {
         this(id,revision,behaviorId,parameters,greetingKey,announcementId,dialogue,trading,modules,perceptionRadius,perceptionIntervalMs,requireLos,
@@ -17,6 +24,7 @@ public record HumanProfile(String id, int revision, String behaviorId, Map<Strin
         this(id,revision,behaviorId,parameters,greetingKey,announcementId,dialogue,trading,java.util.List.of(),8,100,true);
     }
     public HumanProfile {
+        Objects.requireNonNull(cheats);Objects.requireNonNull(survival);
         identifier(id); identifier(behaviorId); identifier(announcementId);
         walkingPatterns=java.util.List.copyOf(walkingPatterns);
         if(walkingPatterns.size()>8||walkingPatterns.stream().map(zombie.apocalipse.humans.walking.WalkingPatternSpec::slot).distinct().count()!=walkingPatterns.size())

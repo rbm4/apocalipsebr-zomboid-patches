@@ -251,7 +251,7 @@ public final class ApocBRNpcStore {
     static List<HumanProfile> readProfiles(Connection connection)throws SQLException {
         var result=new ArrayList<HumanProfile>();
         try(var s=statement(connection,"""
-            SELECT p.profile_id,p.current_revision,r.dialogue_enabled,r.trading_enabled,r.greeting_key,r.announcement_provider,r.perception_radius,r.perception_interval_ms,r.require_los
+            SELECT p.profile_id,p.current_revision,r.dialogue_enabled,r.trading_enabled,r.greeting_key,r.announcement_provider,r.perception_radius,r.perception_interval_ms,r.require_los,r.god_mode,r.ghost_mode,r.invisible
             FROM npc_engine.profile p JOIN npc_engine.profile_revision r ON r.profile_id=p.profile_id AND r.revision=p.current_revision ORDER BY p.profile_id LIMIT 257
             """);var rows=s.executeQuery()) {
             while(rows.next()) {
@@ -268,10 +268,18 @@ public final class ApocBRNpcStore {
                         bindings.add(new HumanModuleBinding(module,mr.getInt(2),mr.getInt(3),parameters));
                     }
                 }
-                result.add(new HumanProfile(id,revision,"modules",Map.of(),rows.getString(5),rows.getString(6),rows.getBoolean(3),rows.getBoolean(4),bindings,rows.getDouble(7),rows.getInt(8),rows.getBoolean(9),readWalkingPatterns(connection,id,revision)));
+                result.add(new HumanProfile(id,revision,"modules",Map.of(),rows.getString(5),rows.getString(6),rows.getBoolean(3),rows.getBoolean(4),bindings,rows.getDouble(7),rows.getInt(8),rows.getBoolean(9),readWalkingPatterns(connection,id,revision),
+                    new zombie.apocalipse.humans.profiles.HumanCheats(rows.getBoolean(10),rows.getBoolean(11),rows.getBoolean(12)),readSurvival(connection,id,revision,bindings)));
             }
         }
         return List.copyOf(result);
+    }
+    static zombie.apocalipse.humans.survival.SurvivalSettings readSurvival(Connection connection,String profile,int revision,List<HumanModuleBinding> bindings)throws SQLException {
+        try(var s=statement(connection,"SELECT crowd_count,crowd_radius,retreat_health,reengage_health,retreat_endurance,reengage_endurance,retreat_distance,safe_distance,safe_hold_ms,minimum_retreat_ms,retry_ms,route_timeout_ms FROM npc_engine.profile_survival WHERE profile_id=? AND revision=?",profile,revision);var r=s.executeQuery()){
+            if(r.next())return new zombie.apocalipse.humans.survival.SurvivalSettings(r.getInt(1),r.getInt(2),r.getDouble(3),r.getDouble(4),r.getDouble(5),r.getDouble(6),r.getInt(7),r.getInt(8),r.getInt(9),r.getInt(10),r.getInt(11),r.getInt(12));
+            if(bindings.stream().anyMatch(b->b.moduleId().equals("survival")))throw new SQLException("Missing survival settings","22023");
+            return zombie.apocalipse.humans.survival.SurvivalSettings.DEFAULT;
+        }
     }
     static java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> readWalkingPatterns(Connection connection,String profile,int revision)throws SQLException {
         var result=new java.util.ArrayList<zombie.apocalipse.humans.walking.WalkingPatternSpec>();

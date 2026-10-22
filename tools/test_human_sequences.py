@@ -109,6 +109,7 @@ def main():
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/state").glob("*.java")))
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/movement").glob("*.java")))
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/walking").glob("*.java")))
+        sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/survival").glob("*.java")))
         args = work / "javac.args"
         args.write_text("\n".join('"' + str(p).replace("\\", "/") + '"' for p in sources), encoding="utf-8")
         output = work / "classes"

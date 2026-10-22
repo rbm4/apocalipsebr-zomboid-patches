@@ -68,9 +68,9 @@ final class ServerHuman {
         // The factory reserves names for the process lifetime to protect chat caches.
         this.player.setUsername(definition.username());
         this.player.setDisplayName(definition.displayName());
-        this.player.setGodMod(true, true);
-        this.player.setInvisible(false, true);
-        this.player.setGhostMode(false, true);
+        this.player.setGodMod(profile.cheats().godMode(), true);
+        this.player.setInvisible(profile.cheats().invisible(), true);
+        this.player.setGhostMode(profile.cheats().ghostMode(), true);
         this.player.setX(definition.x());
         this.player.setY(definition.y());
         this.player.setZ(definition.z());

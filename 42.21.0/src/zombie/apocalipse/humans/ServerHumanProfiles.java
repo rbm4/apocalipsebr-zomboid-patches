@@ -33,6 +33,12 @@ public final class ServerHumanProfiles {
             (p,b)->new zombie.apocalipse.humans.brain.WalkingModule(b.parameters().getOrDefault("pauseMs",3000L)*1000000L));
         modules.register("engage-zombies",(p,b)->HumanEngagement.Settings.fromMilliseconds(b.parameters()),
             (p,b)->new EngageZombiesModule(HumanEngagement.Settings.fromMilliseconds(b.parameters())));
+        modules.register("survival",(p,b)->{
+            if(!b.parameters().isEmpty())throw new IllegalArgumentException("Survival uses typed profile settings");
+            if(p.walkingPatterns().stream().noneMatch(s->s.slot().equals("background")))throw new IllegalArgumentException("Survival needs a background movement scope");
+            if(p.modules().stream().anyMatch(other->!other.moduleId().equals("survival")&&other.priority()<=b.priority()))
+                throw new IllegalArgumentException("Survival must precede all autonomous modules");
+        },(p,b)->new zombie.apocalipse.humans.survival.SurvivalModule(p.survival()));
         registry.registerBehavior("modules",p->{announcements(p);modules.validate(p);},modules::create);
         registry.registerBehavior("guide", p -> { GuidePolicy.from(p.parameters()); announcements(p); },
             p -> new GuideBrain(GuidePolicy.from(p.parameters()),
@@ -45,7 +51,7 @@ public final class ServerHumanProfiles {
         registry.register(modular("roaming-greeter","none",true));
         registry.register(new HumanProfile("stationary",1,"idle",Map.of(),"","none",true,false));
         registry.register(new HumanProfile("militia-patrol",1,"modules",Map.of(),"","none",false,false,
-            java.util.List.of(new HumanModuleBinding("engage-zombies",100,100,Map.of()),
+            java.util.List.of(new HumanModuleBinding("survival",10,100,Map.of()),new HumanModuleBinding("engage-zombies",100,100,Map.of()),
                 new HumanModuleBinding("walk",1000,100,Map.of())),8,100,true));
         return registry;
     }

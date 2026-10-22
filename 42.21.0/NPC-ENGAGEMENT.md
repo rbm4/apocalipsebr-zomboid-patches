@@ -1,5 +1,9 @@
 # Engagement policy and combat handoff scaffold
 
+Profiles with `survival` now place [fight/flight and recovery](NPC-SURVIVAL.md)
+before engagement. GUARD_ZOMBIES itself remains the target eligibility policy;
+survival owns whether ordinary pursuit may run and cancels it under pressure.
+
 Implemented for server Build 42.21.0. This extends
 [perception](NPC-PERCEPTION.md) through a validated combat-system entry point.
 The installed backend now implements initial Crowbar/Pistol combat, fixed test

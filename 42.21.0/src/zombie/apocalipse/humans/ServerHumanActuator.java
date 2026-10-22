@@ -10,8 +10,10 @@ import zombie.network.GameServer;
 final class ServerHumanActuator implements HumanActuator {
     static final double VISITOR_RADIUS_SQUARED = 8.0 * 8.0;
     private final ServerHuman human;
+    private final zombie.apocalipse.humans.survival.SurvivalPort survival;
 
-    ServerHumanActuator(ServerHuman human) { this.human = human; }
+    ServerHumanActuator(ServerHuman human) { this.human = human;this.survival=new ServerHumanSurvival(human); }
+    @Override public zombie.apocalipse.humans.survival.SurvivalPort survival(){return survival;}
     @Override public zombie.apocalipse.humans.brain.HumanCombat.Port combat(){return human.combat;}
 
     HumanObservation observe(long now) {

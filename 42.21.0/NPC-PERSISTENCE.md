@@ -1,5 +1,10 @@
 # NPC modules and PostgreSQL persistence (42.21.0 server)
 
+V25 is now required: [survival and protection settings](NPC-SURVIVAL.md) are
+immutable profile data hydrated by the worker. God mode remains enabled for the
+guide and Leon; ghost mode/invisibility remain disabled. Publish and reactivate
+to apply future flag changes. The manager aggregate editor includes these fields.
+
 Implemented foundation; compile and isolated tests pass. Dedicated-server validation is still required. No manager controllers, services or views are included. Migration: `apocalipsebr-manager/manager/src/main/resources/db/game-runtime-migration/V15__Create_Npc_Engine.sql`.
 
 Physical/needs state additionally requires `V20__Persist_Npc_Physical_State.sql`. See [NPC-STATE.md](NPC-STATE.md) for the single-writer reducer, native bridge and condition projection.

@@ -56,13 +56,16 @@ public class NpcStoreTest {
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V22__Describe_Npc_Weapon_Backend.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V23__Separate_Npc_Walking_Patterns.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V24__Seed_Leon_Extraction_Militia.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V25__Npc_Survival_And_Cheat_Settings.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
    var profiles=ApocBRNpcStore.readProfiles(c);check(profiles.size()==5,"seed profiles including militia scaffold");
    var militia=profiles.stream().filter(p->p.id().equals("militia-patrol")).findFirst().orElseThrow();
-   check(!militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("engage-zombies"),"database militia profile orders engagement before roaming");
-   check(militia.modules().getFirst().parameters().get("retryMs")==2000L,"engagement timing hydrated through existing typed millisecond fields");
+   check(!militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("survival"),"database militia profile orders survival before engagement");
+   check(militia.modules().stream().filter(m->m.moduleId().equals("engage-zombies")).findFirst().orElseThrow().parameters().get("retryMs")==2000L,"engagement timing hydrated through existing typed millisecond fields");
+   check(militia.survival().crowdCount()==4&&militia.survival().reengageEndurance()==.72,"typed survival thresholds hydrated");
+   check(profiles.stream().allMatch(p->p.cheats().godMode()&&!p.cheats().ghostMode()&&!p.cheats().invisible()),"migration preserves original protection flags for every actor");
    var guide=profiles.stream().filter(p->p.id().equals("lobby-guide")).findFirst().orElseThrow();
    check(guide.walkingPatterns().size()==1&&guide.walkingPatterns().getFirst().patternId().equals("indoor-wander"),"published guide has explicit immutable movement binding");
    var leon=profiles.stream().filter(p->p.id().equals("leon-militia")).findFirst().orElseThrow();
@@ -221,7 +224,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     work=Path(folder);sources=[]
     for name,content in FILES.items():
         p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content,encoding='utf-8');sources.append(p)
-    sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'savefile/ApocBRNpcDialogues.java',SRC/'apocalipse/humans/dialogue/HumanDialogueCatalog.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java']
+    sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'savefile/ApocBRNpcDialogues.java',SRC/'apocalipse/humans/dialogue/HumanDialogueCatalog.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java',SRC/'apocalipse/humans/profiles/HumanCheats.java',SRC/'apocalipse/humans/survival/SurvivalSettings.java']
     sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java')) + list((SRC/'apocalipse/humans/walking').glob('*.java'))
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
@@ -234,6 +237,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
         if '--manager-test' in sys.argv:
             manager=ROOT.parent/'apocalipsebr-manager/manager'
             env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
-            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcSurvivalMigrationTest,NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
     finally:
         run([BIN/'pg_ctl.exe','-D',work/'data','-m','immediate','-w','stop'],stdout=subprocess.DEVNULL)

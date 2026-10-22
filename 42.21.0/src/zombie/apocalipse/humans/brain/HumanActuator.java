@@ -8,6 +8,7 @@ public interface HumanActuator {
     default MotionStatus updateMovement(long now) { return MotionStatus.FAILED; }
     default void stopMoving() { }
     default HumanCombat.Port combat(){return HumanCombat.UNSUPPORTED;}
+    default zombie.apocalipse.humans.survival.SurvivalPort survival(){return zombie.apocalipse.humans.survival.SurvivalPort.UNSUPPORTED;}
     boolean face(HumanObservation.Identity visitor);
     boolean startEmote(String name);
     void stopEmote();
