@@ -163,6 +163,7 @@ public class HumanWeaponCombatTest {
   check(urgentTactics.update(gun,6,true,false,1.7,500_000_000L)!=urgentOrder,"urgent crowd pressure permits another attempt after half a second");
 
   var melee=fixture("melee-test","MELEE");long at=untilCommit(melee,STEP,1);
+  check(zombie.apocalipse.zombies.ServerZombieController.engagements>0,"production combat handoff requests reciprocal zombie authority");
   check(melee.human().player.getPrimaryHandItem().getFullType().equals(ServerHumanInventory.MELEE),"melee mode selects Crowbar through real inventory adapter");
   check(melee.human().player.getX()>100.5&&melee.human().player.getX()<106,"combat approaches rather than hitting remotely or occupying target");
   check(PlayerPacketReliable.sent.stream().anyMatch(p->(p.booleanVariables&(1<<NetworkPlayerVariables.Flags.isRunning.ordinal()))!=0),"running approach is represented by existing movement packets");

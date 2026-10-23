@@ -53,13 +53,17 @@ final class ServerZombieNativeAdapter {
             || zombie.isFakeDead() || zombie.isBeingGrappled() || zombie.isGrappling())return true;
         String state=zombie.getCurrentState()==null?"":zombie.getCurrentState().getClass().getSimpleName();
         return !(state.equals("ZombieIdleState") || state.equals("GenericDefaultState")
+            || state.equals("ZombieTurnAlerted")
             || state.equals("WalkTowardNetworkState") || state.equals("WalkTowardState")
             || state.equals("LungeNetworkState") || state.equals("LungeState") || state.equals("PathFindState"));
     }
     double distance(Victim v){return Math.hypot(x()-v.x(),y()-v.y());}
+    boolean immediate(Victim v){return distance(v)<=4.5 && visible(v);}
     boolean playerTakesPriority(Victim v){
         if(zombie.getWrappedGrappleable().getGrappledBy()!=null)return true;
         double distance=distance(v);
+        // Initial testing: acquire before the zombie reaches the NPC's attack range.
+        if(immediate(v))return false;
         for(var connection:GameServer.udpEngine.connections){
             if(!connection.isFullyConnected() || GameServer.isDelayedDisconnect(connection))continue;
             for(var player:connection.players)if(player!=null && !player.isDead() && !player.isGhostMode()

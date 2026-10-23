@@ -707,7 +707,9 @@ FILES["zombie/iso/IsoGridSquare.java"] = FILES["zombie/iso/IsoGridSquare.java"].
 FILES["zombie/apocalipse/zombies/ZombieVictimPort.java"] = (ROOT / "42.21.0/src/zombie/apocalipse/zombies/ZombieVictimPort.java").read_text(encoding="utf-8")
 FILES["zombie/apocalipse/zombies/ServerZombieController.java"] = """package zombie.apocalipse.zombies;
 public class ServerZombieController {private static final ServerZombieController I=new ServerZombieController();
-public static ServerZombieController getInstance(){return I;}public void install(ZombieVictimPort port){}}"""
+public static int engagements;
+public static ServerZombieController getInstance(){return I;}public void install(ZombieVictimPort port){}
+public boolean engage(zombie.characters.IsoZombie z,short id){engagements++;return true;}}"""
 FILES["zombie/characters/IsoPlayer.java"] = FILES["zombie/characters/IsoPlayer.java"].replace(
     "public float useChargeDelta;", "public void setAttackedBy(IsoZombie z){}public boolean isDeathDragDown(){return false;}public float useChargeDelta;")
 FILES["zombie/characters/BodyDamage/BodyDamage.java"] = FILES["zombie/characters/BodyDamage/BodyDamage.java"].replace(

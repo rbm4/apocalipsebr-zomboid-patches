@@ -50,9 +50,22 @@ committing. Sessions re-resolve the victim each frame.
 Initial acquisition requires same floor, a loaded target tile and distance below
 12 tiles. Native `LosUtil` sight qualifies; below six tiles close proximity also
 qualifies without sight and starts a native route request after acquisition.
-Contact still requires clear geometry. A closer living, visible, non-ghost real
-player prevents acquisition; an existing farther player target does not.
-An existing client owner retains its normal two-second transfer cooldown; acquisition
+Contact still requires clear geometry. For routine acquisition a closer living,
+visible, non-ghost real player prevents takeover; a visible NPC within 4.5 tiles
+instead has immediate local priority even beside a closer spectator.
+`ServerHumanCombat.begin` requests reciprocal authority after validating and
+constructing its weapon execution. This direct combat intent bypasses routine
+owner cooldown/player-distance arbitration and persists for that zombie session;
+it does not require the next perception discovery or auth scan. An existing session
+against the same NPC is promoted without resetting pursuit or pending strike timers.
+Live validated combat updates retry the request after reaction protection, retaining
+the current weapon execution rather than requiring another combat begin.
+The request is best effort: ghost/invisible/inactive victims, invalid bodies,
+native reactions, grapples and capacity still prevent it. Rejection does not cancel
+the NPC's otherwise valid weapon execution. No role/key policy lives in this handoff.
+
+Outside immediate proximity or explicit combat intent, an existing client owner
+retains its normal two-second transfer cooldown; acquisition
 runs on the first eligible auth frame thereafter without an extra sampling delay
 or eight-acquisition batch queue. Active native reactions/grapples and the 128-session
 capacity remain exceptions, rather than promises of unconditional takeover. This does not
@@ -157,6 +170,17 @@ speed/source, position, windup, strike result and release reason. A protected
 successful contact reports `would_hit_god_mode`; moving out of range reports
 `contact_lost`, delayed strikes `strike_expired`, and a weapon interruption
 `released; reason=weapon_hit`.
+
+Acquisition records distinguish `npc_target`, `npc_proximity` and `npc_combat`.
+Nearby rejected attempts log `zombie acquisition` with the reason, native state and
+position at most once per two seconds per body. Diagnostics reuse the bounded
+512-entry observation registry and expire after ten seconds without activity.
+Alert turns (`ZombieTurnAlerted` / `turnalerted`) are ordinary acquisition states,
+not protected hit reactions. The existing two-second post-hit protection remains.
+
+`FORGOTTEN` is the human sensor's three-second no-sighting retention expiry (or
+explicit body invalidation), not an ownership release. Ownership sessions resolve
+victims independently; this change does not alter visual memory or retreat policy.
 
 ## Verification
 

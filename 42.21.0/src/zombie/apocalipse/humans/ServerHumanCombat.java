@@ -25,6 +25,7 @@ final class ServerHumanCombat implements Port {
         final Execution delegate;
         try{delegate=Objects.requireNonNull(backend.begin(human.player,target,id,request,now));}
         catch(RuntimeException problem){return finished(new Result(Status.FAILED,Reason.BACKEND_FAILURE));}
+        zombie.apocalipse.zombies.ServerZombieController.getInstance().engage(target,human.player.getOnlineID());
         active=new Session(id,request,delegate,now);
         HumanLog.log(HumanLog.Level.DEBUG,()->"combat begin key="+human.definition.key()+"; execution="+id+"; target="+request.target()+"; template="+request.template());
         return active;
@@ -52,6 +53,10 @@ final class ServerHumanCombat implements Port {
             if(now-startedAt>=HumanCombat.MAX_EXECUTION_NANOS){cancel(Reason.TIMEOUT);return result;}
             Reason refusal=validate(request,now);
             if(refusal!=Reason.NONE){cancel(refusal);return result;}
+            // Retry after native reaction protection ends without restarting the
+            // weapon execution or suppressing the legitimate hit reaction.
+            var target=human.perception.resolveZombie(request.target());
+            if(target!=null)zombie.apocalipse.zombies.ServerZombieController.getInstance().engage(target,human.player.getOnlineID());
             try{result=Objects.requireNonNull(delegate.update(now));}
             catch(RuntimeException problem){
                 result=new Result(Status.FAILED,Reason.BACKEND_FAILURE);

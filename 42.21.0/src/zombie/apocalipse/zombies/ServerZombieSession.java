@@ -7,6 +7,7 @@ final class ServerZombieSession {
     enum Phase { PURSUIT, WINDUP, RECOVERY }
     final ServerZombieNativeAdapter nativeBody;
     final Victim identity;
+    boolean engaged;
     Phase phase = Phase.PURSUIT;
     long lastUpdate, phaseUntil, nextRoute, attack;
     long lastSeen, progressAt;
@@ -16,7 +17,11 @@ final class ServerZombieSession {
     String result = "pursuit";
 
     ServerZombieSession(ServerZombieNativeAdapter nativeBody, Victim target, long now) {
+        this(nativeBody,target,now,false);
+    }
+    ServerZombieSession(ServerZombieNativeAdapter nativeBody, Victim target, long now,boolean engaged) {
         this.nativeBody = nativeBody; identity = target;
+        this.engaged=engaged;
         lastUpdate = lastSeen = progressAt = now;
         progressX = nativeBody.x(); progressY = nativeBody.y();
     }
@@ -27,7 +32,7 @@ final class ServerZombieSession {
         if (victim == null || victim.body() != identity.body()) return "victim_lost";
         if (!nativeBody.valid()) return "body_removed_or_dead";
         if (nativeBody.interrupted()) return "native_reaction";
-        if (nativeBody.playerTakesPriority(victim)) return "player_priority";
+        if (!engaged && nativeBody.playerTakesPriority(victim)) return "player_priority";
         if (nativeBody.distance(victim) > 24 || nativeBody.z() != victim.z()) return "out_of_scope";
         if (nativeBody.visible(victim) || nativeBody.distance(victim)<6 && routeReady) lastSeen = now;
         if (now-lastSeen > 5_000_000_000L) return "target_memory_expired";
