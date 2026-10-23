@@ -32,6 +32,7 @@ public final class ServerHumanFactory {
     private final Map<String, HumanLifecycle> instances = new LinkedHashMap<>();
     private final Map<String, ServerHuman> humans = new LinkedHashMap<>();
     private final Map<Short, ServerHuman> byId = new HashMap<>();
+    private final ServerHumanZombieVictims zombieVictims = new ServerHumanZombieVictims();
     private final zombie.apocalipse.humans.traversal.TraversalWorld traversalWorld = new zombie.apocalipse.humans.traversal.TraversalWorld();
     private final Set<String> reservedNames = new HashSet<>();
     private Thread owner;
@@ -62,6 +63,7 @@ public final class ServerHumanFactory {
         if (!GameServer.server || GameServer.udpEngine == null
             || IsoWorld.instance == null || IsoWorld.instance.currentCell == null) return;
         INSTANCE.tick(System.nanoTime());
+        zombie.apocalipse.zombies.ServerZombieController.getInstance().install(INSTANCE.zombieVictims);
     }
 
     void tick(long now) {
@@ -308,6 +310,18 @@ public final class ServerHumanFactory {
     static java.util.Collection<ServerHuman> dialogueHumans() {
         INSTANCE.requireOwner();
         return java.util.List.copyOf(INSTANCE.humans.values());
+    }
+
+    static java.util.Collection<ServerHuman> activeZombieVictims() {
+        if (INSTANCE.owner == null || !INSTANCE.acceptMutations || INSTANCE.persistencePaused) return java.util.List.of();
+        INSTANCE.requireOwner();
+        return java.util.List.copyOf(INSTANCE.humans.values());
+    }
+
+    static ServerHuman activeZombieVictim(short id) {
+        if (INSTANCE.owner == null || !INSTANCE.acceptMutations || INSTANCE.persistencePaused) return null;
+        INSTANCE.requireOwner();
+        return INSTANCE.byId.get(id);
     }
 
     /** Trusted simulation-thread entry point. Network adapters must validate sender/target before calling. */

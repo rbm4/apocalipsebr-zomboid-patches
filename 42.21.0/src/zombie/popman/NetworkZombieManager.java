@@ -5,6 +5,7 @@ import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import zombie.ai.State;
+import zombie.apocalipse.zombies.ServerZombieController;
 import zombie.ApocBRServerTelemetryLite;
 import zombie.ai.states.GenericDefaultState;
 import zombie.ai.states.ZombieEatBodyState;
@@ -89,6 +90,7 @@ public class NetworkZombieManager {
 
     void updateAuth(IsoZombie zombie, long now) {
         if (GameServer.server) {
+            if (ServerZombieController.getInstance().retainOrAcquire(zombie)) return;
             if (!this.authGridBuilt) {
                 this.beginAuthUpdate();
             }
@@ -201,6 +203,7 @@ public class NetworkZombieManager {
     }
 
     public void moveZombie(IsoZombie zombie, UdpConnection to, IsoPlayer player) {
+        if (to != null && ServerZombieController.getInstance().controls(zombie)) return;
         if (zombie.isDead()) {
             if (zombie.getOwner() == null && zombie.getOwnerPlayer() == null) {
                 zombie.die();

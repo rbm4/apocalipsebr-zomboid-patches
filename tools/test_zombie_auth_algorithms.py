@@ -180,6 +180,11 @@ public class ZombieAuthAlgorithmsTest {
 }
 """
 
+STUBS["zombie/apocalipse/zombies/ServerZombieController.java"] = """package zombie.apocalipse.zombies;
+public class ServerZombieController {private static final ServerZombieController I=new ServerZombieController();
+public static ServerZombieController getInstance(){return I;}public boolean retainOrAcquire(zombie.characters.IsoZombie z){return false;}
+public boolean controls(zombie.characters.IsoZombie z){return false;}}"""
+
 def main():
     with tempfile.TemporaryDirectory(prefix="apocbr-auth-tests-") as directory:
         work = Path(directory)

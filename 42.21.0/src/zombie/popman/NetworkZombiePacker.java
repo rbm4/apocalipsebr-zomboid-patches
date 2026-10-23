@@ -2,6 +2,7 @@
 package zombie.popman;
 
 import zombie.ApocBRServerTelemetryLite;
+import zombie.apocalipse.zombies.ServerZombieController;
 
 import java.nio.BufferOverflowException;
 import java.nio.ByteBuffer;
@@ -101,6 +102,7 @@ public class NetworkZombiePacker {
                 }
 
                 this.applyZombie(zombie);
+                ServerZombieController.getInstance().received(zombie, this.packet);
                 zombie.lastRemoteUpdate = 0;
                 if (!IsoWorld.instance.currentCell.getZombieList().contains(zombie)) {
                     IsoWorld.instance.currentCell.getZombieList().add(zombie);
@@ -156,6 +158,7 @@ public class NetworkZombiePacker {
     }
 
     public void shutdown() {
+        ServerZombieController.getInstance().reset();
         for (ConnectionState state : this.connectionStates.values()) state.lane.close();
         this.asyncSender.shutdown();
         this.awaitWorkers();
@@ -174,6 +177,7 @@ public class NetworkZombiePacker {
             this.zombiesProcessing.addAll(this.zombiesReceived);
             this.zombiesReceived.clear();
         }
+        ServerZombieController.getInstance().addRelays(this.zombiesProcessing);
         this.rebuildZombiesProcessingGrid();
         synchronized (this.zombiesDeleted) {
             this.zombiesDeletedForSending.clear();
@@ -232,6 +236,7 @@ public class NetworkZombiePacker {
 
     private void updateAuth() {
         ArrayList<IsoZombie> zombies = IsoWorld.instance.currentCell.getZombieList();
+        ServerZombieController.getInstance().beginFrame();
         NetworkZombieManager.getInstance().beginAuthUpdate();
         this.packetPreparation.beginFrame();
         long ownershipNanos = 0L, bookkeepingNanos = 0L;
@@ -289,7 +294,7 @@ public class NetworkZombiePacker {
 
     private boolean isRelayRelevant(UdpConnection connection, IsoZombie zombie) {
         return zombie.onlineId != -1 && ServerMap.instance.zombieMap.get(zombie.onlineId) == zombie
-            && zombie.getOwner() != null && zombie.getOwner() != connection
+            && (zombie.getOwner() != null || ServerZombieController.getInstance().controls(zombie)) && zombie.getOwner() != connection
             && connection.RelevantTo(zombie.getX(), zombie.getY(), (connection.getRelevantRange() - 2) * 10);
     }
 
@@ -309,7 +314,7 @@ public class NetworkZombiePacker {
                 break;
             }
 
-            if (zombie.getOwner() != null
+            if ((zombie.getOwner() != null || ServerZombieController.getInstance().controls(zombie))
                 && zombie.getOwner() != connection
                 && connection.RelevantTo(zombie.getX(), zombie.getY(), (connection.getRelevantRange() - 2) * 10)
                 && zombie.onlineId != -1) {
@@ -350,7 +355,7 @@ public class NetworkZombiePacker {
     private void rebuildZombiesProcessingGrid() {
         this.zombiesProcessingByCell.clear();
         for (IsoZombie zombie : this.zombiesProcessing) {
-            if (zombie.getOwner() != null && zombie.onlineId != -1) {
+            if ((zombie.getOwner() != null || ServerZombieController.getInstance().controls(zombie)) && zombie.onlineId != -1) {
                 this.zombiesProcessingByCell.computeIfAbsent(key(cellFor(zombie.getX()), cellFor(zombie.getY())), ignored -> new ArrayList<>()).add(zombie);
             }
         }

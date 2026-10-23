@@ -6,6 +6,10 @@ outgoing zombie-combat implementation with a fixed test inventory adapter.
 It requires live dedicated-server validation; fixture results are not a claim
 that native client animation impact timing is already calibrated.
 
+Incoming zombie pursuit/attacks now have a separate temporary server-authority
+controller. It yields to native weapon hit reactions and keeps persisted NPC
+god-mode protection. See [server zombie interactions](NPC-ZOMBIE-CONTROL.md).
+
 ## Owners and execution
 
 | Component | Responsibility |

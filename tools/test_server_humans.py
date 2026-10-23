@@ -243,6 +243,10 @@ public class FactoryTest {
   PlayerPacketReliable packet=last();IsoPlayer actor=packet.id.player;
   check(actor.getUsername().equals("__guide"),"wire username has no numeric suffix");
   check(actor.remote&&actor.playerIndex==-1&&actor.god&&!actor.invisible&&!actor.ghost,"visible remote protected actor");
+  var victims=new ServerHumanZombieVictims();var victim=victims.resolve(id);
+  check(victim!=null&&victim.body()==actor,"visible protected NPC is eligible zombie prey");
+  check(victims.strike(victim,new IsoZombie(),1).equals("would_hit_god_mode")&&actor.getHealth()==1,"persisted god mode suppresses incoming damage");
+  check(victims.strike(new zombie.apocalipse.zombies.ZombieVictimPort.Victim(id,null,0,0,0),new IsoZombie(),1).equals("victim_lost"),"victim identity validated before damage");
   check(actor.detached&&actor.getDescriptor().instance==actor,"descriptor retained but square detached");
   check(packet.id.index==-1&&actor.id==id,"online identity uses remote sentinel");
   check(packet.prediction.x==100.5f&&packet.prediction.y==200.75f&&packet.prediction.z==0,"exact configured packet position");
@@ -267,6 +271,20 @@ public class FactoryTest {
   check(!f.remove("guide")&&!ServerHumanFactory.handleDataRequest(id,a),"removed actor no longer resolves");
   rejects(()->f.spawn(new ServerHumanDefinition("replacement","__guide","Guide",1,2,0,IsoDirections.N,false,"Tourist")),"removed name stays reserved to protect native speech cache");
   short next=f.spawn(def("next",1));check(next>id,"removed online IDs not recycled");f.remove("next");
+  var base=ServerHumanProfiles.registry().require("stationary");
+  for(String name:java.util.List.of("vulnerable","ghost","hidden")){
+   var cheats=new zombie.apocalipse.humans.profiles.HumanCheats(false,name.equals("ghost"),name.equals("hidden"));
+   ServerHumanProfiles.registry().register(new zombie.apocalipse.humans.profiles.HumanProfile(name,1,base.behaviorId(),base.parameters(),base.greetingKey(),base.announcementId(),base.dialogue(),base.trading(),base.modules(),base.perceptionRadius(),base.perceptionIntervalMs(),base.requireLos(),base.walkingPatterns(),cheats,base.survival()));
+   short testId=f.spawn(new ServerHumanDefinition(name,name,name,1,2,0,IsoDirections.N,false,"Tourist",name));
+   var testVictim=victims.resolve(testId);
+   if(name.equals("vulnerable")){
+    check(testVictim!=null,"vulnerable NPC resolves");
+    check(victims.strike(testVictim,new IsoZombie(),2).startsWith("native_damage="),"vulnerable NPC uses native damage boundary");
+    check(Math.abs(f.state(name).vitals().health()-.9f)<.0001,"native damage imported to logical state once");
+    check(Math.abs(testVictim.body().getHealth()-.9f)<.0001,"native health projected after strike");
+   }else check(testVictim==null,"persisted concealment excludes NPC from prey");
+   f.remove(name);check(victims.resolve(testId)==null,"deactivated victim immediately disappears");
+  }
   int count=0;while(true){try{String key="n"+count;f.spawn(def(key,1));f.remove(key);count++;}catch(IllegalStateException expected){break;}}
   check(count>0&&count<64,"ID budget exhausted safely without touching live-player slots");
   GameServer.server=false;rejects(()->f.remove("missing"),"client cannot operate factory");
@@ -685,6 +703,15 @@ FILES["zombie/iso/IsoGridSquare.java"] = FILES["zombie/iso/IsoGridSquare.java"].
  public IsoObject getHoppableTo(IsoGridSquare b){IsoObject e=edge(b);return e!=null&&e.getClass()==IsoObject.class?e:null;}
  public boolean isPlayerAbleToHopWallTo(IsoDirections d,IsoGridSquare b){return !hopBlocked;}
  public Set<String> blockedEdges""")
+
+FILES["zombie/apocalipse/zombies/ZombieVictimPort.java"] = (ROOT / "42.21.0/src/zombie/apocalipse/zombies/ZombieVictimPort.java").read_text(encoding="utf-8")
+FILES["zombie/apocalipse/zombies/ServerZombieController.java"] = """package zombie.apocalipse.zombies;
+public class ServerZombieController {private static final ServerZombieController I=new ServerZombieController();
+public static ServerZombieController getInstance(){return I;}public void install(ZombieVictimPort port){}}"""
+FILES["zombie/characters/IsoPlayer.java"] = FILES["zombie/characters/IsoPlayer.java"].replace(
+    "public float useChargeDelta;", "public void setAttackedBy(IsoZombie z){}public boolean isDeathDragDown(){return false;}public float useChargeDelta;")
+FILES["zombie/characters/BodyDamage/BodyDamage.java"] = FILES["zombie/characters/BodyDamage/BodyDamage.java"].replace(
+    "private float health=100;", "private float health=100;public void calculateOverallHealth(){}public boolean AddRandomDamageFromZombie(zombie.characters.IsoZombie z,String reaction,int part){health-=10;return true;}")
 
 def main():
     # Preserve the entire vanilla request handler after the one intentional fallback.

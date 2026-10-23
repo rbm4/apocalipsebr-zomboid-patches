@@ -1,5 +1,6 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie.characters;
+import zombie.apocalipse.zombies.ServerZombieController;
 
 import fmod.fmod.FMOD_STUDIO_PARAMETER_DESCRIPTION;
 import fmod.fmod.IFMODParameterUpdater;
@@ -6928,6 +6929,8 @@ public abstract class IsoGameCharacter
     }
 
     public void hitConsequences(HandWeapon weapon, IsoGameCharacter wielder, boolean bIgnoreDamage, float damage, boolean bRemote) {
+        if (GameServer.server && this instanceof IsoZombie zombie)
+            ServerZombieController.getInstance().hit(zombie);
         if (!bIgnoreDamage) {
             damage = CombatManager.getInstance().applyGlobalDamageReductionMultipliers(weapon, damage);
             CombatManager.getInstance().applyDamage(this, damage);
