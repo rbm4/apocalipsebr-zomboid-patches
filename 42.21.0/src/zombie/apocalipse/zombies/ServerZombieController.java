@@ -6,7 +6,6 @@ import java.util.List;
 import zombie.apocalipse.zombies.ZombieVictimPort.Victim;
 import zombie.apocalipse.humans.HumanLog;
 import zombie.characters.IsoZombie;
-import zombie.iso.Vector2;
 import zombie.network.GameServer;
 import zombie.network.ServerMap;
 import zombie.network.NetworkVariables.ZombieState;
@@ -26,6 +25,7 @@ public final class ServerZombieController {
     private boolean releasing;
     private static final class Motion {
         int instance;short id;float x,y,speed;long at,first,last,blockedUntil,nextDiagnostic;
+        final ServerZombiePace pace=new ServerZombiePace();
     }
     private ServerZombieController() { }
     public static ServerZombieController getInstance(){return INSTANCE;}
@@ -81,6 +81,7 @@ public final class ServerZombieController {
         float pace=speed(zombie,motion);
         var adapter=new ServerZombieNativeAdapter(zombie,pace);
         if(!adapter.valid())return rejected(zombie,"invalid_body",stamp);
+        if(adapter.needsNativeTraversal())return rejected(zombie,"native_stairs",stamp);
         if(adapter.interrupted())return rejected(zombie,"native_reaction_or_state",stamp);
         Victim choice=null;double nearest=12;
         String refusal="no_sight_or_proximity";
@@ -106,7 +107,7 @@ public final class ServerZombieController {
         NetworkZombieManager.getInstance().moveZombie(zombie,null,null);
         adapter.target(choice);adapter.present(false,false);
         adapter.diagnostic("acquired",(engaged?"npc_combat":immediate?"npc_proximity":"npc_target")+"; target="+choice.id()+"; speed="+pace
-            +"; speedSource="+(motion!=null && motion.speed>0?"owner_sample":"native_walk_fallback"));
+            +"; speedSource="+(motion!=null && motion.pace.usable(stamp)?"filtered_owner_sample":"native_walk_fallback"));
         return true;
     }
     private boolean rejected(IsoZombie zombie,String reason,long stamp){
@@ -148,7 +149,10 @@ public final class ServerZombieController {
             float measured=(float)(Math.hypot(packet.realX-sample.x,packet.realY-sample.y)/(elapsed/1_000_000_000.0));
             if(elapsed<=1_500_000_000L && measured>=.1F && measured<=4F
                 && (packet.realState==ZombieState.WalkToward || packet.realState==ZombieState.PathFind || packet.realState==ZombieState.Lunge
-                    || packet.realState==ZombieState.WalkTowardNetwork || packet.realState==ZombieState.LungeNetwork))sample.speed=measured;
+                    || packet.realState==ZombieState.WalkTowardNetwork || packet.realState==ZombieState.LungeNetwork)){
+                sample.pace.sample(measured,ServerZombiePace.nativeSpeed(zombie),stamp);
+                sample.speed=sample.pace.usable(stamp)?measured:0;
+            }
             sample.x=packet.realX;sample.y=packet.realY;sample.at=stamp;
         }
         sample.last=stamp;
@@ -161,12 +165,8 @@ public final class ServerZombieController {
             sample.blockedUntil=Math.max(sample.blockedUntil,stamp+750_000_000L);
     }
     private float speed(IsoZombie zombie,Motion sample){
-        if(sample!=null && sample.instance==zombie.getID() && sample.id==zombie.onlineId && sample.speed>0)return sample.speed;
-        // Native walk-speed helper retains per-zombie speedMod, inactive and sprinter rules.
-        boolean running=zombie.running;
-        Vector2 step=new Vector2(1,0);
-        try{zombie.getZombieWalkTowardSpeed(.025F,1,step);return Math.clamp(step.getLength()*30F,.1F,4F);}
-        finally{zombie.running=running;}
+        if(sample!=null && sample.instance==zombie.getID() && sample.id==zombie.onlineId)return sample.pace.speed(zombie,System.nanoTime());
+        return ServerZombiePace.nativeSpeed(zombie);
     }
     /** Native weapon damage owns reactions. Cancel our strike before native consequences run. */
     public void hit(IsoZombie zombie){if(GameServer.server && controls(zombie))release(zombie,"weapon_hit",System.nanoTime());}
@@ -178,7 +178,7 @@ public final class ServerZombieController {
         var sample=observations.get(zombie);
         if(sample==null && observations.size()<MAX_OBSERVATIONS){sample=new Motion();sample.instance=zombie.getID();sample.id=zombie.onlineId;observations.put(zombie,sample);}
         if(sample!=null){sample.blockedUntil=stamp+2_000_000_000L;sample.last=stamp;}
-        if(zombie.target==session.identity.body())zombie.setTarget(null);
+        if(!reason.equals("native_stairs") && zombie.target==session.identity.body())zombie.setTarget(null);
         zombie.getNetworkCharacterAI().resetSpeedLimiter();
         zombie.lastChangeOwner=0; // A release must not wait for the ordinary transfer cooldown.
         if(ServerMap.instance.zombieMap.get(zombie.onlineId)==zombie){

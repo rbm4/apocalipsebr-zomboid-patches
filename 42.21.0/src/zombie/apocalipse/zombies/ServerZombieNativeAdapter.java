@@ -6,7 +6,6 @@ import zombie.apocalipse.zombies.ZombieVictimPort.Victim;
 import zombie.characters.IsoPlayer;
 import zombie.characters.IsoZombie;
 import zombie.characters.NetworkZombieVariables;
-import zombie.iso.Vector2;
 import zombie.iso.IsoGridSquare;
 import zombie.iso.IsoWorld;
 import zombie.iso.LosUtil;
@@ -21,30 +20,28 @@ final class ServerZombieNativeAdapter {
     final IsoZombie zombie;
     final short onlineId;
     final int instanceId;
-    private final float speed, originalSpeedMod;
-    private final boolean running;
+    private final float paceScale;
+    private boolean running;
     private final ServerZombiePath navigation;
     private List<ServerZombiePath.Point> route = List.of();
     private int waypoint;
     private boolean moving, attacking;
     private boolean routeDirty;
+    private boolean nativeTraversal;
     private float goalX, goalY, velocityX, velocityY, goalRadius, predictionSeconds=.2F;
     private static final float MAX_PREDICTION_DISTANCE = .6F;
 
     ServerZombieNativeAdapter(IsoZombie zombie, float speed) {
         this.zombie=zombie; onlineId=zombie.onlineId; instanceId=zombie.getID();
         navigation=new ServerZombiePath(zombie);
-        this.speed=speed; originalSpeedMod=Math.max(.01F,zombie.getSpeedMod());
-        boolean previous=zombie.running;
-        try{
-            zombie.running=false;
-            zombie.getZombieWalkTowardSpeed(.025F,1,new Vector2(1,0));
-            running=zombie.running;
-        }finally{zombie.running=previous;}
+        var motion=ServerZombiePace.nativeMotion(zombie);
+        paceScale=speed/motion.speed();running=motion.running();
     }
     float x(){return zombie.getX();}
     float y(){return zombie.getY();}
     int z(){return zombie.getZi();}
+    boolean needsNativeTraversal(){return nativeTraversal || navigation.needsNativeTraversal()
+        || zombie.getCurrentSquare()!=null && zombie.getCurrentSquare().HasStairs();}
     boolean valid(){return zombie.onlineId==onlineId && zombie.getID()==instanceId && !zombie.isDead()
         && ServerMap.instance.zombieMap.get(onlineId)==zombie && zombie.getCurrentSquare()!=null;}
     boolean interrupted(){
@@ -110,35 +107,45 @@ final class ServerZombieNativeAdapter {
             // its root; never round fractional polygon waypoints to tile centres.
             if(route.size()>1)waypoint=1;
         }
-        float tx=v.x(),ty=v.y();
-        if(!route.isEmpty()){
-            while(waypoint<route.size() && Math.hypot(route.get(waypoint).x()-x(),route.get(waypoint).y()-y())<.03)waypoint++;
-            if(waypoint<route.size()){tx=route.get(waypoint).x();ty=route.get(waypoint).y();}
-        }else if(navigation.pending() || blocked(x(),y(),tx,ty)){
-            return false;
+        if(route.isEmpty() && (navigation.pending() || blocked(x(),y(),v.x(),v.y())))return false;
+        var motion=ServerZombiePace.nativeMotion(zombie);
+        float pace=motion.speed()*paceScale;
+        running=motion.running();
+        float remaining=pace*Math.clamp(seconds,0,.15F);
+        boolean moved=false;
+        // Spend one travel budget across short polygon segments. Dropping the
+        // remainder at each corner makes speed depend on path node spacing.
+        for(int work=0;remaining>.00001F && work<32;work++){
+            while(waypoint<route.size() && Math.hypot(route.get(waypoint).x()-x(),route.get(waypoint).y()-y())<.001)waypoint++;
+            boolean following=waypoint<route.size();
+            float tx=following?route.get(waypoint).x():v.x(),ty=following?route.get(waypoint).y():v.y();
+            double dx=tx-x(),dy=ty-y(),length=Math.hypot(dx,dy);
+            float distance=(float)Math.max(0,length-(following?0:.65F));
+            float step=Math.min(.1F,Math.min(distance,remaining));
+            if(length<.001 || step<=.00001F)break;
+            float nx=x()+(float)(dx/length)*step,ny=y()+(float)(dy/length)*step;
+            var to=square((int)Math.floor(nx),(int)Math.floor(ny));var from=zombie.getCurrentSquare();
+            if(to!=null && to.HasStairs()){nativeTraversal=true;break;}
+            if(to==null || !to.TreatAsSolidFloor() || blocked(x(),y(),nx,ny)
+                || from==null || from.isSomethingTo(to) || to.isSomethingTo(from)){routeDirty=true;break;}
+            if(!moved){zombie.setLastX(x());zombie.setLastY(y());}
+            zombie.setX(nx);zombie.setY(ny);zombie.setNextX(nx);zombie.setNextY(ny);zombie.setCurrentSquare(to);
+            zombie.setMovingSquareNow();
+            zombie.realx=nx;zombie.realy=ny;zombie.realz=(byte)z();
+            moved=true;remaining-=step;
         }
-        double dx=tx-x(),dy=ty-y(),length=Math.hypot(dx,dy);
-        float pace=speed*zombie.getSpeedMod()/originalSpeedMod;
-        float step=(float)Math.min(length, pace*seconds);
-        if(length<.001 || step<=0)return false;
-        float nx=x()+(float)(dx/length)*step,ny=y()+(float)(dy/length)*step;
-        var to=square((int)Math.floor(nx),(int)Math.floor(ny));var from=zombie.getCurrentSquare();
-        if(to==null || !to.TreatAsSolidFloor() || to.HasStairs() || blocked(x(),y(),nx,ny)
-            || from==null || from.isSomethingTo(to) || to.isSomethingTo(from)){routeDirty=true;return false;}
-        // Preserve world membership: the zombie stays a normal native moving object.
-        zombie.setLastX(x());zombie.setLastY(y());
-        zombie.setX(nx);zombie.setY(ny);zombie.setNextX(nx);zombie.setNextY(ny);zombie.setCurrentSquare(to);
-        zombie.setMovingSquareNow();
-        zombie.realx=nx;zombie.realy=ny;zombie.realz=(byte)z();
-        zombie.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy,dx)));
-        goalX=tx;goalY=ty;
-        goalRadius=route.isEmpty() || waypoint>=route.size() ? .65F : 0;
-        velocityX=(float)(dx/length)*pace;velocityY=(float)(dy/length)*pace;
+        while(waypoint<route.size() && Math.hypot(route.get(waypoint).x()-x(),route.get(waypoint).y()-y())<.001)waypoint++;
+        boolean following=waypoint<route.size();
+        goalX=following?route.get(waypoint).x():v.x();goalY=following?route.get(waypoint).y():v.y();
+        goalRadius=following?0:.65F;
+        double dx=goalX-x(),dy=goalY-y(),length=Math.hypot(dx,dy);
+        velocityX=length>.001?(float)(dx/length)*pace:0;velocityY=length>.001?(float)(dy/length)*pace:0;
+        if(moved && length>.001)zombie.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy,dx)));
         // Relay once per auth frame; cover two frames without unbounded prediction
         // when the server stalls. Async backpressure still retains the newest state.
         predictionSeconds=Math.clamp(seconds*2,.1F,.3F);
-        IsoWorld.instance.currentCell.getPlayerSpatialQueries().invalidateZombies();
-        return true;
+        if(moved)IsoWorld.instance.currentCell.getPlayerSpatialQueries().invalidateZombies();
+        return moved;
     }
     void present(boolean moving,boolean attacking){
         this.moving=moving;this.attacking=attacking;

@@ -31,6 +31,7 @@ final class ServerZombieSession {
         lastUpdate = now;
         if (victim == null || victim.body() != identity.body()) return "victim_lost";
         if (!nativeBody.valid()) return "body_removed_or_dead";
+        if (nativeBody.needsNativeTraversal()) return "native_stairs";
         if (nativeBody.interrupted()) return "native_reaction";
         if (!engaged && nativeBody.playerTakesPriority(victim)) return "player_priority";
         if (nativeBody.distance(victim) > 24 || nativeBody.z() != victim.z()) return "out_of_scope";
@@ -75,6 +76,7 @@ final class ServerZombieSession {
             return now-progressAt >= 10_000_000_000L ? "route_unavailable" : null;
         }
         boolean moved = nativeBody.move(victim, seconds);
+        if(nativeBody.needsNativeTraversal())return "native_stairs";
         nativeBody.present(moved, false);
         float dx=nativeBody.x()-progressX, dy=nativeBody.y()-progressY;
         if (dx*dx+dy*dy >= .04F) {

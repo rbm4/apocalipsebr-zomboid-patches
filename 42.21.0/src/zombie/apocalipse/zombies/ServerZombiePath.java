@@ -21,11 +21,13 @@ final class ServerZombiePath implements Mover {
     private boolean pending, nativeBackend;
     private List<Point> points=List.of();
     private float targetX,targetY;
+    private boolean nativeTraversal;
     ServerZombiePath(IsoZombie body){this.body=body;instance=body.getID();onlineId=body.onlineId;}
     public int getID(){return instance;}
     public int getPathFindIndex(){return -1;}
     boolean pending(){return pending;}
     List<Point> points(){return points;}
+    boolean needsNativeTraversal(){return nativeTraversal;}
     void request(float x,float y){
         if(pending || !points.isEmpty() && Math.hypot(x-targetX,y-targetY)<1)return;
         targetX=x;targetY=y;
@@ -41,8 +43,11 @@ final class ServerZombiePath implements Mover {
                 if(path.size()>256){points=List.of();diagnostic("node_limit");return;}
                 for(int n=0;n<path.size();n++){
                     var p=path.getNode(n);
-                    if(!Float.isFinite(p.x)||!Float.isFinite(p.y)||!Float.isFinite(p.z)
-                        ||(int)Math.floor(p.z)!=body.getZi()){points=List.of();diagnostic("unsupported_floor_or_coordinate");return;}
+                    if(!Float.isFinite(p.x)||!Float.isFinite(p.y)||!Float.isFinite(p.z)){points=List.of();diagnostic("invalid_coordinate");return;}
+                    var square=body.getCell().getGridSquare((int)Math.floor(p.x),(int)Math.floor(p.y),(int)Math.floor(p.z));
+                    if((int)Math.floor(p.z)!=body.getZi() || square!=null && square.HasStairs()){
+                        nativeTraversal=true;points=List.of();diagnostic("native_stairs");return;
+                    }
                     copy.add(new Point(p.x,p.y));
                 }
                 // Native result objects are pooled immediately after this callback.
@@ -62,7 +67,7 @@ final class ServerZombiePath implements Mover {
             if(nativeBackend)PathfindNative.instance.cancelRequest(this);
             else PolygonalMap2.instance.cancelRequest(this);
         }
-        pending=false;points=List.of();
+        pending=false;points=List.of();nativeTraversal=false;
     }
     /** Dedicated server does not run IngameState's path-result pump. */
     static void update(){

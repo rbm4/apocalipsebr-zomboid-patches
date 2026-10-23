@@ -7,7 +7,7 @@ Enabled by default; `-Dapocbr.npc.zombieControl=false` disables acquisition on s
 
 ## Ownership
 
-`zombie.apocalipse.zombies` contains four concrete classes and one NPC port:
+`zombie.apocalipse.zombies` contains five concrete classes and one NPC port:
 
 | Component | Owns |
 | --- | --- |
@@ -15,6 +15,7 @@ Enabled by default; `-Dapocbr.npc.zombieControl=false` disables acquisition on s
 | `ServerZombieSession` | One zombie incarnation/target, pursuit progress, windup, one strike commitment and recovery. |
 | `ServerZombieNativeAdapter` | Loaded geometry, collision checks, movement integration, native square membership and synthesized zombie packet fields. |
 | `ServerZombiePath` | Asynchronous game polygon-path requests, main-thread result pump, copied fractional corners and cancellation. |
+| `ServerZombiePace` | Bounded calibration of accepted owner movement against the per-body native speed reference. |
 | `ZombieVictimPort` | NPC eligibility, current actor resolution and incoming strike boundary. |
 | `ServerHumanZombieVictims` | Human adapter: persisted cheat policy, identity validation, native bite damage and logical health projection. |
 
@@ -90,15 +91,29 @@ square membership and the player spatial-query cache are updated with position.
 There is no teleport through furniture or doors. Per-update travel is capped at
 150 ms of elapsed movement; delayed ticks do not catch up with a large jump.
 
-Pace prefers measured real-position displacement from accepted nearby owner
-packets in ordinary walking/pathfinding/lunge states. Sampling does not delay
-ownership takeover. Teleports, excessive gaps and reaction movement
-are excluded. Without a usable sample, the initial fallback uses the native
+Pace calibrates measured real-position displacement from accepted nearby owner
+packets in ordinary walking/pathfinding/lunge states. Three consecutive consistent
+measurements are required; calibration expires after two seconds. Ratios below
+.5 or above 1.25 of the native reference, inconsistent samples, excessive gaps
+and reaction movement do not establish a gait. These bounds are conservative
+tuning limits, not measured animation parity. Sampling does not delay ownership
+takeover. Without a usable calibration, the fallback uses the native
 `getZombieWalkTowardSpeed(.025, 1, ...)` helper at a 30 Hz reference rate; this
 retains speedMod/inactivity/sprinter selection, but is not a claim of exact
 animation-root-motion parity. Native speedMod and walk type are not overwritten.
-Subsequent speedMod changes scale the captured pace. Acquisition diagnostics
-identify the pace and its source; live comparison is required to tune the fallback.
+The native helper is reevaluated during movement, retaining per-body gait changes
+and sprinter selection instead of multiplying captured sprinter speed by speedMod
+again. Acquisition diagnostics distinguish `filtered_owner_sample` from fallback.
+Vanilla `PathFindBehavior2` consumes `getDeferredMovement()` animation-root distance;
+without an animation player that method returns zero. This server-only adapter
+therefore uses filtered owner displacement as its root-motion measurement and the
+helper as a reference fallback, not as proof of exact client-animation parity.
+
+Movement spends one distance budget over up to 32 collision-checked .1-tile
+substeps, carrying remaining distance across polygon corners. It stops .65 tiles
+short of the final victim position. Short path nodes no longer discard a frame's
+remaining movement or change the effective gait. Prediction remains clipped to
+the next corner and does not extrapolate through stairs or missing floor.
 
 Active sessions remain relay candidates every auth frame, subject to existing
 async backpressure, relevance and packet budgets. Moving packets use native
@@ -164,6 +179,13 @@ It does not execute zombie fence/window climbs, closed-door thumping or stairs;
 blocked routes release to ordinary simulation. Crawling/prone/reaction actors
 remain native. This keeps their current handling intact while the standing NPC
 pursuit/attack path is validated.
+
+Current stairs, a stair-containing native route, a floor-changing route or an
+attempted step onto stairs yield `native_stairs` immediately instead of waiting
+for the ten-second pursuit stall. This release preserves the NPC target and
+restores ordinary client authority. Acquisition refuses a body currently on
+stairs. Native stair completion and two-observer handoff still require live
+validation; this does not implement server-side stair height/animation simulation.
 
 Use `-Dapocbr.npc.logLevel=DEBUG` for `zombie control` records: acquisition target,
 speed/source, position, windup, strike result and release reason. A protected

@@ -42,9 +42,9 @@ public static final ServerMap instance=new ServerMap();public final java.util.Ma
 "zombie/iso/Vector2.java": """package zombie.iso;public class Vector2 {float x,y;public Vector2(float x,float y){this.x=x;this.y=y;}
 public void setLength(float v){x=v;y=0;}public float getLength(){return (float)Math.hypot(x,y);}}""",
 "zombie/iso/IsoGridSquare.java": """package zombie.iso;public class IsoGridSquare {
-public final int x,y;public boolean free=true;public final java.util.List<Object> bodies=new java.util.ArrayList<>();
+public final int x,y;public boolean free=true,stairs;public final java.util.List<Object> bodies=new java.util.ArrayList<>();
 public IsoGridSquare(int x,int y){this.x=x;this.y=y;}public boolean TreatAsSolidFloor(){return true;}
-public boolean isFree(boolean players){return free;}public boolean HasStairs(){return false;}
+public boolean isFree(boolean players){return free;}public boolean HasStairs(){return stairs;}
 public boolean isSomethingTo(IsoGridSquare other){return other==null||!other.free;}
 public java.util.List<Object> getMovingObjects(){return bodies;}}""",
 "zombie/iso/IsoCell.java": """package zombie.iso;public class IsoCell {
@@ -149,6 +149,7 @@ public class ControlTest {
   check(Math.abs(runner.x-10.74f)<.001 && Math.abs(prediction.x-runner.x-.48f)<.001
    && (prediction.booleanVariables&4)!=0,"sprinter pace and running presentation match prediction");
   runner.speedMod*=2;runnerAdapter.move(runnerVictim,.15f);runnerAdapter.packet(prediction);
+  check(Math.abs(runner.x-11.1f)<.001,"native sprinter pace does not multiply speedMod twice");
   check(prediction.x-runner.x<=.601f,"speed changes and delayed frames keep prediction spatially bounded");
   var shortGoal=victim(runner.x+.02f,runner.y);runnerAdapter.move(shortGoal,.001f);runnerAdapter.packet(prediction);
   check(prediction.x<=shortGoal.x()+.0001f,"prediction stops at pursuit goal");
@@ -253,6 +254,23 @@ public class ControlTest {
   provoked.grapple.other=new Object();controller.beginFrame();
   check(!controller.controls(provoked),"native grapple still preempts provoked control");
   check(!controller.engage(body(32,.5f,.5f),(short)999),"unknown victim cannot provoke acquisition");
+  controller.reset();controller.install(port);controller.beginFrame();
+  var stairBody=body(33,8.95f,6.5f);var stairVictim=victim(12,6.5f);port.victim=stairVictim;
+  cell.getGridSquare(9,6,0).stairs=true;
+  var stairAdapter=new ServerZombieNativeAdapter(stairBody,1);
+  var stairSession=new ServerZombieSession(stairAdapter,stairVictim,0);
+  check(stairSession.update(stairVictim,port,100_000_000L).equals("native_stairs"),"approaching stairs yields before ten-second stall");
+  check(stairBody.x<9,"standing integrator never projects onto stairs");
+  check(controller.engage(stairBody,stairVictim.id()),"flat stair approach can initially acquire NPC target");
+  zombie.pathfind.PolygonalMap2.instance.blocked=true;controller.beginFrame();
+  var stairPath=new zombie.pathfind.Path();stairPath.addNode(8.95f,6.5f,0);stairPath.addNode(9.5f,6.5f,0);
+  zombie.pathfind.nativeCode.PathfindNative.instance.complete(stairPath);
+  zombie.pathfind.PolygonalMap2.instance.blocked=false;controller.beginFrame();
+  check(!controller.controls(stairBody)&&stairBody.getOwner()==connection&&stairBody.target==stairVictim.body(),
+   "native stair handoff restores client authority and preserves NPC target");
+  var onStairs=body(34,9.5f,6.5f);
+  check(!controller.engage(onStairs,stairVictim.id()),"stairs cannot be immediately reacquired by combat handoff");
+  cell.getGridSquare(9,6,0).stairs=false;
   controller.reset();GameServer.server=false;check(!controller.controls(z),"client execution cannot claim authority");
   var service=zombie.pathfind.nativeCode.PathfindNative.instance;
   var pathBody=body(25,15.5f,5.5f);var request=new ServerZombiePath(pathBody);
@@ -277,6 +295,21 @@ public class ControlTest {
   fallback.request(18,5);var wrongFloor=new zombie.pathfind.Path();wrongFloor.addNode(18,5,1);
   service.complete(wrongFloor);check(!fallback.pending() && fallback.points().isEmpty(),"unsupported floor route is rejected");
   fallback.cancel();zombie.pathfind.nativeCode.PathfindNative.useNativeCode=true;
+  var normal=body(40,10.5f,1.5f);var metrics=new ServerZombiePace();float nativePace=ServerZombiePace.nativeSpeed(normal);
+  metrics.sample(nativePace*1.1f,nativePace,200_000_000L);
+  check(!metrics.usable(200_000_000L),"single owner correction cannot establish pace");
+  metrics.sample(nativePace*1.1f,nativePace,400_000_000L);metrics.sample(nativePace*1.1f,nativePace,600_000_000L);
+  check(metrics.usable(600_000_000L)&&Math.abs(metrics.speed(normal,600_000_000L)-nativePace*1.1f)<.001,"three consistent owner root-motion samples calibrate native pace");
+  check(Math.abs(metrics.speed(normal,3_000_000_001L)-nativePace)<.001,"stale calibration falls back to native pace");
+  metrics.sample(1.7f,nativePace,800_000_000L);check(!metrics.usable(800_000_000L),"correction burst rejected rather than permanent acceleration");
+  metrics.sample(.1f,nativePace,1_000_000_000L);check(!metrics.usable(1_000_000_000L),"obstruction creep rejected rather than permanent slow gait");
+  var budgetAdapter=new ServerZombieNativeAdapter(normal,1);var budgetVictim=victim(14.5f,1.5f);
+  cell.getGridSquare(11,1,0).free=false;budgetAdapter.route(budgetVictim);
+  var smallNodes=new zombie.pathfind.Path();smallNodes.addNode(10.5f,1.5f,0);
+  for(int n=1;n<=8;n++)smallNodes.addNode(10.5f,1.5f-n*.04f,0);
+  service.complete(smallNodes);check(budgetAdapter.move(budgetVictim,.15f),"short-node route advances");
+  check(Math.abs(normal.y-1.35f)<.001,"one frame spends full movement budget across polygon nodes");
+  cell.getGridSquare(11,1,0).free=true;
   System.out.println("Passed "+checks+" server-zombie controller assertions.");
  }
 }
