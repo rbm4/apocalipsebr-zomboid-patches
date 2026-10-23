@@ -15,6 +15,7 @@ import zombie.apocalipse.humans.movement.*;
 import zombie.apocalipse.humans.movement.MovementGrid.Tile;
 import zombie.characters.*;
 import zombie.iso.*;
+import zombie.pathfind.PolygonalMap2;
 import zombie.network.*;
 import zombie.network.packets.*;
 import zombie.network.packets.hit.*;
@@ -58,6 +59,32 @@ public class HumanWeaponCombatTest {
  static long untilCommit(Fixture f,long start,int desired){
   for(long now=start;now<start+15*S;now+=STEP){f.factory().tick(now);if(PlayerHitZombiePacket.localProcesses>=desired)return now;}
   throw new AssertionError("Combat never reached native commit");
+ }
+ static void attackLines()throws Exception{
+  var f=fixture("attack-lines","RANGED");var human=f.human();var target=f.target();var actor=human.player;
+  var weapon=human.inventory.weapons().stream().filter(HumanCombatInventory.Weapon::ranged).findFirst().orElseThrow();human.inventory.equip(weapon.itemId());
+  var approach=new ServerHumanCombatApproach(human,target,()->0);
+  PolygonalMap2.instance.blocked=true;LosUtil.result=LosUtil.TestResults.Clear;
+  check(approach.update(weapon,0)==HumanActuator.MotionStatus.SUCCEEDED&&approach.clearAttack(new Tile(100,200)),"ranged placement uses the same shooting rule across furniture");
+  check(!approach.clear(actor.x,actor.y,false),"melee still rejects the physical obstruction");
+  var health=target.health;int hits=target.nativeHits;
+  for(var obstruction:List.of(LosUtil.TestResults.Blocked,LosUtil.TestResults.ClearThroughClosedDoor)){
+   LosUtil.result=obstruction;
+   check(!ServerHumanAttackLine.clear(human,target,actor.x,actor.y,true),"wall or closed door blocks ranged line independently of movement geometry");
+   check(!ServerHumanCombatNetwork.commit(human,target,weapon.itemId(),1,1,STEP),"final commitment revalidates obstruction after planning");
+   check(target.health==health&&target.nativeHits==hits,"blocked final hit produces no native damage");
+  }
+  LosUtil.result=LosUtil.TestResults.ClearThroughWindow;
+  check(ServerHumanAttackLine.clear(human,target,actor.x,actor.y,true),"native clear-through-window visibility permits a shot");
+  LosUtil.result=LosUtil.TestResults.Clear;PolygonalMap2.instance.blocked=false;
+  var body=new IsoPlayer(actor.getCell(),new SurvivorDesc(false),0,0,0);body.x=103.5f;body.y=200.5f;
+  var square=body.getCurrentSquare();square.moving.add(body);
+  check(!ServerHumanAttackLine.clear(human,target,actor.x,actor.y,true),"living intervening body still blocks a firearm lane");square.moving.remove(body);
+  var cell=actor.getCell();cell.strict=true;var removed=cell.tiles.remove("103,200,0");
+  check(!ServerHumanAttackLine.clear(human,target,actor.x,actor.y,true),"missing loaded segment refuses shooting rather than trusting permissive native LOS");cell.tiles.put("103,200,0",removed);
+  target.z=1;check(!ServerHumanAttackLine.clear(human,target,actor.x,actor.y,true),"same-floor contract still enforced");target.z=0;
+  check(ServerHumanAttackLine.clear(human,target,actor.x,actor.y,false),"clear physical melee line remains usable");
+  f.factory().deactivate("attack-lines");
  }
  static void damageCalibration()throws Exception{
   for(boolean ranged:List.of(false,true)){
@@ -172,11 +199,16 @@ public class HumanWeaponCombatTest {
   check(miss.target().nativeHits==0&&((zombie.inventory.types.HandWeapon)miss.human().player.getPrimaryHandItem()).getCurrentAmmoCount()==13,"miss spends a round despite empty native hit list");
   miss.factory().deactivate("miss-test");zombie.core.random.Rand.roll=0;System.clearProperty("apocbr.npc.combat.testWeapon");
 
-  var blocked=fixture("blocked-test","RANGED");zombie.pathfind.PolygonalMap2.instance.blocked=true;
+  var furniture=fixture("furniture-test","RANGED");zombie.pathfind.PolygonalMap2.instance.blocked=true;
+  untilCommit(furniture,STEP,1);
+  check(PlayerHitZombiePacket.localProcesses==1&&furniture.human().player.getX()==100.5f,
+    "movement-blocking furniture with clear visibility permits firing without walking around it");
+  furniture.factory().deactivate("furniture-test");zombie.pathfind.PolygonalMap2.instance.blocked=false;
+  var blocked=fixture("blocked-test","RANGED");LosUtil.result=LosUtil.TestResults.Blocked;
   for(long now=STEP;now<4*S;now+=STEP)blocked.factory().tick(now);
   check(PlayerHitZombiePacket.localProcesses==0&&blocked.human().inventory.weapons().stream().filter(HumanCombatInventory.Weapon::ranged).findFirst().orElseThrow().rounds()==15,
-    "blocked geometry causes bounded route failure without damage or ammunition expenditure");
-  blocked.factory().deactivate("blocked-test");zombie.pathfind.PolygonalMap2.instance.blocked=false;
+    "opaque wall blocks ranged engagement without damage or ammunition expenditure");
+  blocked.factory().deactivate("blocked-test");LosUtil.result=LosUtil.TestResults.Clear;
   var pressure=fixture("pressure-test","RANGED");
   for(long now=STEP;now<=6*STEP;now+=STEP)pressure.factory().tick(now);
   pressure.human().state.dispatch(new zombie.apocalipse.humans.state.HumanMutation.Mobility(false,true));pressure.factory().tick(7*STEP);
@@ -257,7 +289,7 @@ public class HumanWeaponCombatTest {
    public boolean clearAttack(Tile tile){rays.incrementAndGet();return false;}
   };
   check(CombatRoutePlanner.plan(limited,new Tile(0,0),0,0,15).isEmpty()&&rays.get()==16,"route search bounds expensive attack-line probes independently of visited nodes");
-  damageCalibration();
+  attackLines();damageCalibration();
   System.out.println("Passed "+checks+" weapon phase, inventory, native bridge, movement and replication assertions.");
  }
 }
@@ -267,6 +299,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='apocbr-weapon-tests-') as directory:
         work=Path(directory);fixture=dict(FILES);sources=[]
         fixture['zombie/apocalipse/humans/HumanWeaponCombatTest.java']=HARNESS
+        fixture['zombie/iso/LosUtil.java']=fixture['zombie/iso/LosUtil.java'].replace('Clear,Blocked,ClearThroughClosedDoor','Clear,Blocked,ClearThroughClosedDoor,ClearThroughWindow')
         for name,content in fixture.items():
             path=work/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding='utf-8');sources.append(path)
         sources.extend(sorted((ROOT/'42.21.0/src/zombie/apocalipse/humans').rglob('*.java')))

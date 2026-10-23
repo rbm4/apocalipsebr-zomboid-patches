@@ -83,6 +83,26 @@ inventory availability and execution are separate concerns.
 
 ## Approach and pacing
 
+`ServerHumanAttackLine` owns weapon-specific obstruction checks on the simulation
+thread. Melee retains the polygon movement-collision query. Ranged uses native
+42.21.0 `CombatManager` target-visibility semantics (`LosUtil.lineClear`), rejecting
+Blocked and ClearThroughClosedDoor while allowing clear visibility over furniture
+and native clear-through-window results. It also verifies loaded same-floor
+segments and preserves intervening living-character checks. This does not add
+projectile penetration, window destruction or a full ballistic simulation.
+
+Approach/footwork, candidate firing positions, windup and the final hit commit
+use this shared rule with the selected weapon type. Physical navigation still
+uses collision geometry: permitting a shot over a table never permits walking
+through it. A new obstruction prevents the hit from committing; ordinary approach,
+failure and cancellation rules remain in control. No profile, migration, protection
+flag or client protocol change is required. The weapon fixture covers ranged fire
+across movement-only obstruction, melee refusal, opaque walls, closed doors,
+windows, intervening characters, unloaded squares and final-hit revalidation.
+The native reference is `decompiled/zombie/CombatManager.java` target LOS handling;
+no vanilla replacement baseline was introduced. Live testing remains necessary
+for the exact sprites and furniture used by the server map.
+
 The approach planner searches at most 256 visited tiles, 32 route depth and 16 expensive
 attack-line probes. It selects a reachable tile center inside a preferred spacing band with
 a clear attack lane. All route tiles/edges must remain inside the loaded home

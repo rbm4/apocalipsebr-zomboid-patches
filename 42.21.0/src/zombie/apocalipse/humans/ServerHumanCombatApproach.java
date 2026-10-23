@@ -4,7 +4,6 @@ import zombie.apocalipse.humans.brain.*;
 import zombie.apocalipse.humans.movement.*;
 import zombie.apocalipse.humans.movement.MovementGrid.Tile;
 import zombie.characters.IsoZombie;
-import zombie.pathfind.PolygonalMap2;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.DoubleSupplier;
 
@@ -19,24 +18,25 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
     private final HumanCombatTactics tactics;
     private boolean retreating;
     private long retreatDeadline;
+    private boolean ranged;
     ServerHumanCombatApproach(ServerHuman human,IsoZombie target){this(human,target,()->ThreadLocalRandom.current().nextDouble());}
     ServerHumanCombatApproach(ServerHuman human,IsoZombie target,DoubleSupplier random){this.human=human;this.target=target;tactics=new HumanCombatTactics(random);}
     double distance(){return Math.hypot(target.getX()-human.player.getX(),target.getY()-human.player.getY());}
-    boolean clear(float x,float y){
-        return !PolygonalMap2.instance.lineClearCollide(x,y,target.getX(),target.getY(),human.player.getZi(),null,false,true)
-            &&ServerHumanCombatNetwork.clearBodies(human,target,x,y);
+    boolean clear(float x,float y,boolean ranged){
+        return ServerHumanAttackLine.clear(human,target,x,y,ranged);
     }
     HumanActuator.MotionStatus update(HumanCombatInventory.Weapon weapon,long now){
         return update(weapon,now,true,false);
     }
     HumanActuator.MotionStatus update(HumanCombatInventory.Weapon weapon,long now,boolean allowClose,boolean recovering){
+        ranged=weapon.ranged();
         // Crossing owns movement until it settles; target motion/tactics must not restart it every repath interval.
         if(human.movement.traversing()){
             var result=human.movement.update(now);
             if(result==HumanActuator.MotionStatus.FAILED){failures++;routeActive=false;}
             return failures>=3?HumanActuator.MotionStatus.FAILED:HumanActuator.MotionStatus.RUNNING;
         }
-        boolean lane=clear(human.player.getX(),human.player.getY());
+        boolean lane=clear(human.player.getX(),human.player.getY(),ranged);
         double nearest=human.perception.awareness().contacts().stream()
             .filter(c->c.identity().kind()==HumanSenses.Kind.ZOMBIE&&now>=c.lastSeenNanos()&&now-c.lastSeenNanos()<=2_000_000_000L)
             // A melee opponent inside weapon reach is expected; extra attackers take priority.
@@ -78,7 +78,7 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
         var motion=human.movement.update(now);
         if(motion!=HumanActuator.MotionStatus.RUNNING)routeActive=false;
         if(motion==HumanActuator.MotionStatus.FAILED){failures++;human.movement.stop();}
-        if(distance()<=order.maximum()&&clear(human.player.getX(),human.player.getY())){human.movement.stop();routeActive=false;return HumanActuator.MotionStatus.SUCCEEDED;}
+        if(distance()<=order.maximum()&&clear(human.player.getX(),human.player.getY(),ranged)){human.movement.stop();routeActive=false;return HumanActuator.MotionStatus.SUCCEEDED;}
         return failures>=3?HumanActuator.MotionStatus.FAILED:HumanActuator.MotionStatus.RUNNING;
     }
     private HumanCombatTactics.Order lastRetreatOrder;
@@ -106,5 +106,5 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
         &&human.movement.bodyClear(from.x()==human.player.getXi()&&from.y()==human.player.getYi()?human.player.getX():from.x()+.5F,
             from.x()==human.player.getXi()&&from.y()==human.player.getYi()?human.player.getY():from.y()+.5F,to.x()+.5F,to.y()+.5F);}
     @Override public int traversalCost(Tile from,Tile to){return connected(from,to)?human.movement.traversalCost(from,to):0;}
-    public boolean clearAttack(Tile from){return clear(from.x()+.5F,from.y()+.5F);}
+    public boolean clearAttack(Tile from){return clear(from.x()+.5F,from.y()+.5F,ranged);}
 }

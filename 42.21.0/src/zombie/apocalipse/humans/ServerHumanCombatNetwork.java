@@ -43,6 +43,7 @@ final class ServerHumanCombatNetwork {
         HandWeapon weapon=human.inventory.item(itemId);
         if(weapon==null||human.player.getPrimaryHandItem()!=weapon||weapon.getCondition()<=0||target.isDead()||human.movement.traversing())return false;
         var actor=human.player;
+        if(!ServerHumanAttackLine.clear(human,target,actor.getX(),actor.getY(),weapon.isRanged()))return false;
         actor.setUseHandWeapon(weapon);actor.setDoShove(false);actor.setAimAtFloor(target.isOnFloor());
         actor.setAttackType(weapon.isRanged()?AttackType.SHOT:target.isOnFloor()?AttackType.MELEE_TO_FLOOR:AttackType.MELEE_SWING);
         actor.useChargeDelta=2;

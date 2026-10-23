@@ -32,7 +32,7 @@ final class ServerHumanWeaponBackend implements ServerHumanCombat.Backend {
                 if(human.actuator.intent().guarded()&&!human.movement.traversing())face();
                 return moving;
             }
-            public boolean clearAttackLine(HumanCombatInventory.Weapon weapon){return !human.movement.traversing()&&approach.clear(actor.getX(),actor.getY())&&ServerHumanCombatNetwork.clearBodies(human,target);}
+            public boolean clearAttackLine(HumanCombatInventory.Weapon weapon){return !human.movement.traversing()&&approach.clear(actor.getX(),actor.getY(),weapon.ranged());}
             private void posture(boolean guarded){
                 var intent=human.actuator.intent();
                 human.actuator.tactical(new TacticalIntent(intent.objective(),guarded?TacticalIntent.Posture.GUARDED:TacticalIntent.Posture.RELAXED,request.target(),intent.elevatedExposure()));
