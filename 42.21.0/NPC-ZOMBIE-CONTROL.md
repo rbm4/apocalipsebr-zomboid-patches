@@ -177,6 +177,9 @@ position at most once per two seconds per body. Diagnostics reuse the bounded
 512-entry observation registry and expire after ten seconds without activity.
 Alert turns (`ZombieTurnAlerted` / `turnalerted`) are ordinary acquisition states,
 not protected hit reactions. The existing two-second post-hit protection remains.
+A null local Java AI state is also permitted: client-simulated zombies may lack
+that server state. Explicit physical reaction/grapple checks still run first, and
+the existing replicated-packet reaction cooldown remains in force.
 
 `FORGOTTEN` is the human sensor's three-second no-sighting retention expiry (or
 explicit body invalidation), not an ownership release. Ownership sessions resolve

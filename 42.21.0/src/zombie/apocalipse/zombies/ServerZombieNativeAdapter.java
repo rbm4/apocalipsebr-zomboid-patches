@@ -51,7 +51,11 @@ final class ServerZombieNativeAdapter {
         if(zombie.isCrawling() || zombie.isReanimatedForGrappleOnly() || zombie.isUseless() || !zombie.isCanWalk()
             || zombie.isKnockedDown() || zombie.isOnFloor() || zombie.isRagdoll() || zombie.isStaggerBack()
             || zombie.isFakeDead() || zombie.isBeingGrappled() || zombie.isGrappling())return true;
-        String state=zombie.getCurrentState()==null?"":zombie.getCurrentState().getClass().getSimpleName();
+        // Client-simulated zombies may have no local Java AI state on the server.
+        // Absence alone is not a reaction; explicit physical protections above win.
+        var current=zombie.getCurrentState();
+        if(current==null)return false;
+        String state=current.getClass().getSimpleName();
         return !(state.equals("ZombieIdleState") || state.equals("GenericDefaultState")
             || state.equals("ZombieTurnAlerted")
             || state.equals("WalkTowardNetworkState") || state.equals("WalkTowardState")

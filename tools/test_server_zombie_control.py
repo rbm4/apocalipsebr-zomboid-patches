@@ -172,6 +172,9 @@ public class ControlTest {
   check(session.result.equals("strike_expired")&&port.strikes==0,"late frame cannot land stale attack");
   check(session.update(victim(2.5f,.5f),port,3_100_000_000L).equals("victim_lost"),"same id new body cannot inherit attack");
   z.crawling=true;check(adapter.interrupted(),"crawlers keep native execution");z.crawling=false;
+  z.state=null;check(!adapter.interrupted(),"missing server AI state alone permits control");
+  z.knocked=true;check(adapter.interrupted(),"null AI state cannot bypass knockdown protection");z.knocked=false;
+  z.grapple.other=new Object();check(adapter.interrupted(),"null AI state cannot bypass grapple protection");z.grapple.other=null;
   LosUtil.result=LosUtil.TestResults.ClearThroughClosedDoor;check(!adapter.contact(port.victim),"closed door blocks contact");LosUtil.result=LosUtil.TestResults.Clear;
   cell.getGridSquare(1,1,0).free=false;var around=body(2,.5f,1.5f);var nav=new ServerZombieNativeAdapter(around,1);
   check(nav.route(new Victim(port.victim.id(),port.victim.body(),2.5f,1.5f,0)),"bounded path routes around furniture");
@@ -209,6 +212,7 @@ public class ControlTest {
   var connection=new zombie.core.raknet.UdpConnection();var viewer=new IsoPlayer();viewer.x=10;connection.players[0]=viewer;GameServer.udpEngine.connections.add(connection);
   NetworkZombieManager.getInstance().beginAuthUpdate();NetworkZombieManager.getInstance().moveZombie(z,connection,viewer);
   check(z.getOwner()==connection,"ordinary native owner before acquisition");
+  check(z.state==null,"acquisition fixture retains missing server AI state");
   LosUtil.result=LosUtil.TestResults.Blocked;
   check(!controller.retainOrAcquire(z),"native two-second ownership cooldown respected");
   z.lastChangeOwner=System.currentTimeMillis()-2000;
