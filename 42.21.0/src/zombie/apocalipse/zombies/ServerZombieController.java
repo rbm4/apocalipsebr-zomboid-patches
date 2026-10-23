@@ -16,13 +16,12 @@ import zombie.popman.NetworkZombieManager;
 public final class ServerZombieController {
     private static final ServerZombieController INSTANCE=new ServerZombieController();
     private static final boolean ENABLED=Boolean.parseBoolean(System.getProperty("apocbr.npc.zombieControl","true"));
-    private static final int MAX_SESSIONS=128, MAX_ACQUIRES=8, MAX_OBSERVATIONS=512;
+    private static final int MAX_SESSIONS=128, MAX_OBSERVATIONS=512;
     private final IdentityHashMap<IsoZombie,ServerZombieSession> sessions=new IdentityHashMap<>();
     private final IdentityHashMap<IsoZombie,Motion> observations=new IdentityHashMap<>();
     private ZombieVictimPort victims;
     private List<Victim> targets=List.of();
     private long now, nextTargets;
-    private int acquires;
     private boolean releasing;
     private static final class Motion {
         int instance;short id;float x,y,speed;long at,first,last,blockedUntil;
@@ -37,8 +36,9 @@ public final class ServerZombieController {
     }
     /** Once per packer auth frame, before per-zombie ownership reassessment. */
     public void beginFrame(){
-        now=System.nanoTime();acquires=0;
+        now=System.nanoTime();
         if(victims==null || !ENABLED)return;
+        ServerZombiePath.update();
         if(now>=nextTargets){targets=List.copyOf(victims.snapshot());nextTargets=now+100_000_000L;}
         for(var entry:new ArrayList<>(sessions.entrySet())){
             var session=entry.getValue();
@@ -51,23 +51,27 @@ public final class ServerZombieController {
     public boolean retainOrAcquire(IsoZombie zombie){
         if(releasing)return false;
         if(controls(zombie))return true;
-        if(!ENABLED || now==0 || victims==null || targets.isEmpty() || acquires>=MAX_ACQUIRES || sessions.size()>=MAX_SESSIONS
+        if(!ENABLED || now==0 || victims==null || targets.isEmpty() || sessions.size()>=MAX_SESSIONS
             || zombie.isDead() || zombie.onlineId==-1)return false;
         boolean nearby=false;
         for(var candidate:targets)if(candidate.z()==zombie.getZi()
             && Math.hypot(candidate.x()-zombie.getX(),candidate.y()-zombie.getY())<12){nearby=true;break;}
         if(!nearby)return false;
+        if(zombie.getOwner()!=null && System.currentTimeMillis()-zombie.lastChangeOwner<2000L)return false;
         var motion=observations.get(zombie);
         if(motion!=null && motion.instance==zombie.getID() && motion.id==zombie.onlineId && now<motion.blockedUntil)return false;
-        // Give a moving owner a short sampling window before taking over its usual pace.
-        if(motion!=null && motion.speed==0 && now-motion.first<500_000_000L)return false;
+        // Take the best existing sample or native fallback; sampling must not add
+        // another delay after the native two-second ownership interval.
         float pace=speed(zombie,motion);
         var adapter=new ServerZombieNativeAdapter(zombie,pace);
         if(!adapter.valid() || adapter.interrupted())return false;
         Victim choice=null;double nearest=12;
         for(var candidate:targets){
             double distance=adapter.distance(candidate);
-            if(candidate.z()!=adapter.z() || distance>=nearest || adapter.playerTakesPriority(candidate) || !adapter.visible(candidate))continue;
+            if(candidate.z()!=adapter.z() || distance>=nearest || adapter.playerTakesPriority(candidate))continue;
+            // Close proximity can trigger a native route request even behind furniture.
+            // It does not authorize an attack or movement through a blocked segment.
+            if(!adapter.visible(candidate) && distance>=6)continue;
             choice=candidate;nearest=distance;
         }
         if(choice==null)return false;
@@ -79,7 +83,6 @@ public final class ServerZombieController {
         adapter.target(choice);adapter.present(false,false);
         adapter.diagnostic("acquired","npc_target; target="+choice.id()+"; speed="+pace
             +"; speedSource="+(motion!=null && motion.speed>0?"owner_sample":"native_walk_fallback"));
-        acquires++;
         return true;
     }
     /** Observe accepted owner packets only; use real positions rather than predicted goals. */
@@ -127,6 +130,7 @@ public final class ServerZombieController {
     public void hit(IsoZombie zombie){if(GameServer.server && controls(zombie))release(zombie,"weapon_hit",System.nanoTime());}
     private void release(IsoZombie zombie,String reason,long stamp){
         var session=sessions.remove(zombie);if(session==null)return;
+        session.nativeBody.close();
         session.nativeBody.diagnostic("released",reason);
         if(zombie.getID()!=session.nativeBody.instanceId || zombie.onlineId!=session.nativeBody.onlineId)return;
         var sample=observations.get(zombie);

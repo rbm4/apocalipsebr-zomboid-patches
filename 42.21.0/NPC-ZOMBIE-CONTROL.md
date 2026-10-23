@@ -7,13 +7,14 @@ Enabled by default; `-Dapocbr.npc.zombieControl=false` disables acquisition on s
 
 ## Ownership
 
-`zombie.apocalipse.zombies` contains three concrete classes and one NPC port:
+`zombie.apocalipse.zombies` contains four concrete classes and one NPC port:
 
 | Component | Owns |
 | --- | --- |
 | `ServerZombieController` | Simulation-thread session registry, bounded acquisition, release, owner motion observations and native integration hooks. |
 | `ServerZombieSession` | One zombie incarnation/target, pursuit progress, windup, one strike commitment and recovery. |
 | `ServerZombieNativeAdapter` | Loaded geometry, collision checks, movement integration, native square membership and synthesized zombie packet fields. |
+| `ServerZombiePath` | Asynchronous game polygon-path requests, main-thread result pump, copied fractional corners and cancellation. |
 | `ZombieVictimPort` | NPC eligibility, current actor resolution and incoming strike boundary. |
 | `ServerHumanZombieVictims` | Human adapter: persisted cheat policy, identity validation, native bite damage and logical health projection. |
 
@@ -34,7 +35,7 @@ The packer's ordinary relevance grid includes active controller sessions, even
 without incoming client updates. `ServerZombiePacketPreparation` prepares native
 fields once per frame and overlays the controller position and Idle/WalkToward/
 Attack state before immutable async snapshots are created. All relevant clients
-receive the same authoritative sampled position. Packet flags preserve the
+receive the same authoritative real position and collision-checked prediction. Packet flags preserve the
 native field layout; stale client path goals are cleared. Clients relinquish
 local simulation through the existing authorization-list protocol.
 
@@ -46,29 +47,57 @@ does not exclude prey: protected actors still exercise pursuit and attack timing
 Targets are sampled every 100 ms. Acquisition re-resolves actor identity before
 committing. Sessions re-resolve the victim each frame.
 
-Initial acquisition requires same floor, a loaded target tile, sight through
-native `LosUtil`, and distance below 12 tiles. Closed doors and opaque walls block
-sight. An existing real-player target wins; a closer living, non-ghost real
-player also prevents acquisition. Native grapple ownership wins. This does not
+Initial acquisition requires same floor, a loaded target tile and distance below
+12 tiles. Native `LosUtil` sight qualifies; below six tiles close proximity also
+qualifies without sight and starts a native route request after acquisition.
+Contact still requires clear geometry. A closer living, visible, non-ghost real
+player prevents acquisition; an existing farther player target does not.
+An existing client owner retains its normal two-second transfer cooldown; acquisition
+runs on the first eligible auth frame thereafter without an extra sampling delay
+or eight-acquisition batch queue. Active native reactions/grapples and the 128-session
+capacity remain exceptions, rather than promises of unconditional takeover. This does not
 give zombies the NPC survival system's obstacle-independent awareness.
 
-Pursuit remembers an occluded target for five seconds, releases beyond 24 tiles,
-and uses the shared bounded cardinal A* (256 expansions, depth 64) when direct
-movement is obstructed. Routes refresh at most every 750 ms. Every movement
+Pursuit remembers an occluded target for five seconds (refreshed by close-range
+proximity awareness), releases beyond 24 tiles,
+and uses the game's asynchronous `PathfindNative` service (or configured Java
+`PolygonalMap2` backend) when direct movement is obstructed. A separate walk-only
+`Mover` request identity avoids stealing or cancelling the native character AI's
+request slot. The controller pumps main-thread completions on the dedicated server.
+Results are copied before native pool reuse, capped at 256 nodes, and rejected
+for nonfinite coordinates or different floors. Pending requests stop motion until
+a usable path exists; no synchronous tile-A* substitute is used.
+
+Routes refresh at most every 750 ms; unchanged goals retain their path, pending
+requests are not restarted, and moved targets/blocked segments can request a new
+path. Fractional polygon corners remain fractional instead of being rounded to
+tile centres. Every movement
 segment rechecks loaded floor, static collision and tile edges. Native moving
 square membership and the player spatial-query cache are updated with position.
 There is no teleport through furniture or doors. Per-update travel is capped at
 150 ms of elapsed movement; delayed ticks do not catch up with a large jump.
 
 Pace prefers measured real-position displacement from accepted nearby owner
-packets in ordinary walking/pathfinding/lunge states. A short observation window
-allows sampling before takeover. Teleports, excessive gaps and reaction movement
+packets in ordinary walking/pathfinding/lunge states. Sampling does not delay
+ownership takeover. Teleports, excessive gaps and reaction movement
 are excluded. Without a usable sample, the initial fallback uses the native
 `getZombieWalkTowardSpeed(.025, 1, ...)` helper at a 30 Hz reference rate; this
 retains speedMod/inactivity/sprinter selection, but is not a claim of exact
 animation-root-motion parity. Native speedMod and walk type are not overwritten.
 Subsequent speedMod changes scale the captured pace. Acquisition diagnostics
 identify the pace and its source; live comparison is required to tune the fallback.
+
+Active sessions remain relay candidates every auth frame, subject to existing
+async backpressure, relevance and packet budgets. Moving packets use native
+prediction type 1 with a horizon of two measured simulation steps, clamped to
+100–300 ms and at most .6 tiles. Real coordinates remain authoritative; prediction
+stops at the next waypoint or .65 tiles short of the victim and validates loaded
+floor, stair exclusion, tile edges and static collision in .05-tile increments.
+Idle, windup and recovery packets have no prediction. The native walk-speed helper
+also determines the packet running flag for sprinters without mutating the native
+flag or overwriting other boolean flags. Client-reported square membership uses
+real coordinates, never the predicted destination, avoiding transient invalidation
+of living perception contacts when prediction crosses a tile boundary.
 
 ## Attacks and native hit reactions
 
@@ -106,13 +135,16 @@ those physiology and presentation paths are evaluated separately.
 
 ## Limits, cancellation and diagnostics
 
-There are at most 128 sessions, eight acquisitions per auth frame and 512 motion
+There are at most 128 sessions and 512 motion
 observations. Unused observations expire after ten seconds. There is no extra
 population scan or native simulation worker. A session releases on invalid body
 or incarnation, victim loss, player priority, native reaction, scope/memory loss,
-unavailable route or 2.5 seconds without movement progress. Normal owner selection
+ten seconds without pursuit progress (including repeated unavailable routes).
+Temporary route failure stops presentation and retries every 750 ms while retaining
+authority. Windup/recovery reset the pursuit progress clock. Normal owner selection
 resumes, bypassing transfer cooldown. Release imposes a short retry delay.
-Packer shutdown releases sessions and clears controller state.
+Packer shutdown releases sessions and clears controller state. Release also cancels
+the owned path request; generation and incarnation checks reject stale callbacks.
 
 The initial navigation coverage is loaded, ordinary walkable tiles on one floor.
 It does not execute zombie fence/window climbs, closed-door thumping or stairs;
@@ -129,12 +161,21 @@ successful contact reports `would_hit_god_mode`; moving out of range reports
 ## Verification
 
 `tools/test_server_zombie_control.py` compiles the actual controller, session,
-native adapter, shared planner, native ownership manager and packet-preparation
+native adapter/path-request lifecycle, native ownership manager and packet-preparation
 service against isolated engine fixtures. It covers physical movement and square
 membership, routing around furniture, windup/recovery, missed/expired/interrupted
 strikes, identity changes, client authorization revocation, transfer rejection,
 ownerless relay inclusion and handoff on hits. Source checks cover packer ingress
-ordering and native hit-hook ordering.
+ordering and native hit-hook ordering. Async service fixtures supply explicit polygon
+results; they verify fractional-corner retention, pending/result/cancel transitions,
+pool reuse and Java-backend selection, not the native solver's live geometry.
+
+Native `PlayerHitZombie` events already apply `WeaponHit` damage on clients as
+well as reactions. The ordinary movement decoder initializes health when creating
+a zombie but does not overwrite an existing client's health each update. Therefore
+adding another damage event risks duplicate damage; exact health reconciliation
+requires a separate authority design. This routing change does not fix stale
+owner health reports overwriting server health after handoff.
 
 `test_server_humans.py` covers the production NPC victim adapter, persisted god/
 ghost/invisible policy, stale actor rejection and native-to-logical damage.

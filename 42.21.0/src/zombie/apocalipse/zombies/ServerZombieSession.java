@@ -12,6 +12,7 @@ final class ServerZombieSession {
     long lastSeen, progressAt;
     float progressX, progressY;
     boolean committed;
+    boolean routeReady;
     String result = "pursuit";
 
     ServerZombieSession(ServerZombieNativeAdapter nativeBody, Victim target, long now) {
@@ -28,16 +29,18 @@ final class ServerZombieSession {
         if (nativeBody.interrupted()) return "native_reaction";
         if (nativeBody.playerTakesPriority(victim)) return "player_priority";
         if (nativeBody.distance(victim) > 24 || nativeBody.z() != victim.z()) return "out_of_scope";
-        if (nativeBody.visible(victim)) lastSeen = now;
+        if (nativeBody.visible(victim) || nativeBody.distance(victim)<6 && routeReady) lastSeen = now;
         if (now-lastSeen > 5_000_000_000L) return "target_memory_expired";
         nativeBody.target(victim);
 
         if (phase == Phase.RECOVERY) {
+            resetProgress(now);
             nativeBody.present(false, false);
             if (now >= phaseUntil) phase = Phase.PURSUIT;
             return null;
         }
         if (phase == Phase.WINDUP) {
+            resetProgress(now);
             nativeBody.present(false, true);
             // A late tick must not turn a long-finished animation into a delayed bite.
             if (!committed && now >= phaseUntil) {
@@ -60,7 +63,11 @@ final class ServerZombieSession {
         }
         if (now >= nextRoute) {
             nextRoute = now + 750_000_000L;
-            if (!nativeBody.route(victim)) return "route_unavailable";
+            routeReady=nativeBody.route(victim);
+        }
+        if(!routeReady){
+            nativeBody.present(false, false);
+            return now-progressAt >= 10_000_000_000L ? "route_unavailable" : null;
         }
         boolean moved = nativeBody.move(victim, seconds);
         nativeBody.present(moved, false);
@@ -68,7 +75,10 @@ final class ServerZombieSession {
         if (dx*dx+dy*dy >= .04F) {
             progressX=nativeBody.x(); progressY=nativeBody.y(); progressAt=now;
         }
-        if (now-progressAt >= 2_500_000_000L) return "pursuit_stalled";
+        if (now-progressAt >= 10_000_000_000L) return "pursuit_stalled";
         return null;
+    }
+    private void resetProgress(long now) {
+        progressAt=now;progressX=nativeBody.x();progressY=nativeBody.y();
     }
 }

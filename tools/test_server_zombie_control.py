@@ -11,6 +11,27 @@ SRC = ROOT / "42.21.0/src"
 STUBS = dict(AUTH_STUBS)
 STUBS.pop("zombie/apocalipse/zombies/ServerZombieController.java")
 STUBS.update({
+"zombie/ai/astar/Mover.java": """package zombie.ai.astar;public interface Mover {int getID();int getPathFindIndex();}""",
+"zombie/pathfind/IPathfinder.java": """package zombie.pathfind;public interface IPathfinder {
+void Succeeded(Path p,zombie.ai.astar.Mover m);void Failed(zombie.ai.astar.Mover m);}""",
+"zombie/pathfind/Path.java": """package zombie.pathfind;public class Path {
+public static class Node {public float x,y,z;Node(float x,float y,float z){this.x=x;this.y=y;this.z=z;}}
+public final java.util.List<Node> nodes=new java.util.ArrayList<>();
+public int size(){return nodes.size();}public Node getNode(int n){return nodes.get(n);}
+public void addNode(float x,float y,float z){nodes.add(new Node(x,y,z));}}""",
+"zombie/pathfind/nativeCode/PathfindNative.java": """package zombie.pathfind.nativeCode;
+public class PathfindNative {
+public static boolean useNativeCode=true;public static final PathfindNative instance=new PathfindNative();
+public record Job(zombie.pathfind.IPathfinder finder,zombie.ai.astar.Mover mover){}
+public final java.util.Map<zombie.ai.astar.Mover,Job> jobs=new java.util.IdentityHashMap<>();
+public int requests,cancels,pumps;
+public void addRequest(zombie.pathfind.IPathfinder f,zombie.ai.astar.Mover m,float x,float y,float z,float a,float b,float c){requests++;jobs.put(m,new Job(f,m));}
+public void cancelRequest(zombie.ai.astar.Mover m){cancels++;jobs.remove(m);}
+public void updateMain(){pumps++;}
+public void complete(zombie.pathfind.Path path){for(var job:new java.util.ArrayList<>(jobs.values())){jobs.remove(job.mover());job.finder().Succeeded(path,job.mover());}}
+}""",
+"zombie/characters/NetworkZombieVariables.java": """package zombie.characters;public class NetworkZombieVariables {
+public enum Flag {IsFakeDead,IsLunger,IsRunning}}""",
 "zombie/apocalipse/humans/HumanLog.java": """package zombie.apocalipse.humans;
 public class HumanLog {public enum Level{DEBUG}public static void log(Level l,java.util.function.Supplier<String> s){}}""",
 "zombie/network/NetworkVariables.java": """package zombie.network;public class NetworkVariables {
@@ -38,7 +59,10 @@ public static class Queries {public void invalidateZombies(){}}public Queries ge
 public enum TestResults{Clear,Blocked,ClearThroughClosedDoor}public static TestResults result=TestResults.Clear;
 public static TestResults lineClear(IsoCell c,int x,int y,int z,int a,int b,int d,boolean windows){return result;}}""",
 "zombie/pathfind/PolygonalMap2.java": """package zombie.pathfind;public class PolygonalMap2 {
-public static final PolygonalMap2 instance=new PolygonalMap2();public boolean blocked;
+public static final PolygonalMap2 instance=new PolygonalMap2();public boolean blocked;public int requests;
+public void addRequest(IPathfinder f,zombie.ai.astar.Mover m,float x,float y,float z,float a,float b,float c){requests++;zombie.pathfind.nativeCode.PathfindNative.instance.addRequest(f,m,x,y,z,a,b,c);}
+public void cancelRequest(zombie.ai.astar.Mover m){zombie.pathfind.nativeCode.PathfindNative.instance.cancelRequest(m);}
+public void updateMain(){zombie.pathfind.nativeCode.PathfindNative.instance.updateMain();}
 public boolean lineClearCollide(float x,float y,float a,float b,int z,Object o,boolean d,boolean w){
  if(blocked)return true;
  int steps=Math.max(1,(int)(Math.hypot(a-x,b-y)*20));
@@ -49,7 +73,7 @@ import zombie.core.raknet.UdpConnection;
 public class IsoZombie {
  public float x,y,realx,realy,speedMod=.6f,health=1;public byte realz;public int id,dies;public short onlineId=1;
  public long lastChangeOwner;public IsoPlayer target,ownerPlayer;public UdpConnection owner;
- public boolean dead,reanimated,running,knocked,floor,stagger;public zombie.ai.State state=zombie.ai.states.ZombieIdleState.instance();
+ public boolean dead,reanimated,running,sprinter,knocked,floor,stagger;public zombie.ai.State state=zombie.ai.states.ZombieIdleState.instance();
  public zombie.iso.IsoGridSquare square,movingSquare;
  public zombie.network.NetworkVariables.ZombieState realState=zombie.network.NetworkVariables.ZombieState.Idle;
  public final zombie.network.packets.character.ZombiePacket zombiePacket=new zombie.network.packets.character.ZombiePacket();
@@ -69,14 +93,14 @@ public class IsoZombie {
  public boolean isKnockedDown(){return knocked;}public boolean isOnFloor(){return floor;}public boolean isRagdoll(){return false;}
  public boolean isStaggerBack(){return stagger;}public boolean isFakeDead(){return false;}public boolean isBeingGrappled(){return grapple.other!=null;}
  public boolean isGrappling(){return false;}public boolean isNoTeeth(){return false;}public float getSpeedMod(){return speedMod;}
- public void getZombieWalkTowardSpeed(float base,float distance,zombie.iso.Vector2 out){out.setLength(base*speedMod+.006f);}
+ public void getZombieWalkTowardSpeed(float base,float distance,zombie.iso.Vector2 out){out.setLength(sprinter?.08f:base*speedMod+.006f);if(sprinter)running=true;}
  public void setDirectionAngle(float angle){}public void faceThisObject(IsoPlayer p){}public float timeSinceSeenFlesh;
  public static class AI{public void resetSpeedLimiter(){}}public final AI ai=new AI();public AI getNetworkCharacterAI(){return ai;}
  public void die(){dies++;}public void removeFromWorld(){}public void removeFromSquare(){}
 }
 """,
 "zombie/network/packets/character/ZombiePacket.java": """package zombie.network.packets.character;public class ZombiePacket {
-public short id,health,target;public float x,y,realX,realY;public byte z,realZ,update,predictionType;
+public short id,health,target,booleanVariables;public float x,y,realX,realY;public byte z,realZ,update,predictionType;
 public zombie.network.NetworkVariables.ZombieState realState=zombie.network.NetworkVariables.ZombieState.Idle;
 public static class Pfb{public void reset(){}}public final Pfb pfb=new Pfb();
 public void prepareFrame(zombie.characters.IsoZombie body){id=body.onlineId;}
@@ -89,7 +113,7 @@ STUBS["zombie/characters/IsoPlayer.java"] = STUBS["zombie/characters/IsoPlayer.j
 
 HARNESS = r"""package zombie.apocalipse.zombies;
 import java.util.*;
-import zombie.characters.*;import zombie.iso.*;import zombie.network.*;import zombie.popman.*;
+import zombie.characters.*;import zombie.iso.*;import zombie.network.*;import zombie.popman.*;import zombie.core.math.PZMath;
 import zombie.apocalipse.zombies.ZombieVictimPort.Victim;
 public class ControlTest {
  static int checks;static void check(boolean ok,String what){checks++;if(!ok)throw new AssertionError(what);}
@@ -110,6 +134,26 @@ public class ControlTest {
    check(!disabled.retainOrAcquire(z),"startup flag disables acquisition");System.out.println("Passed disabled-controller assertion.");return;}
   check(session.update(port.victim,port,100_000_000L)==null,"pursuit active");
   check(Math.abs(z.x-.62f)<.0001,"native sampled speed applied with elapsed time");
+  var prediction=new zombie.network.packets.character.ZombiePacket();adapter.packet(prediction);
+  check(prediction.predictionType==1 && Math.abs(prediction.x-z.x-.24f)<.001 && prediction.realX==z.x,
+   "moving packet predicts two 100ms frames while preserving real position");
+  zombie.pathfind.PolygonalMap2.instance.blocked=true;adapter.packet(prediction);
+  check(prediction.predictionType==0 && prediction.x==z.x,"collision suppresses prediction");
+  zombie.pathfind.PolygonalMap2.instance.blocked=false;
+  adapter.present(false,false);adapter.packet(prediction);
+  check(prediction.predictionType==0,"idle never inherits moving prediction");
+  var runner=body(20,10.5f,4.5f);runner.sprinter=true;
+  var runnerAdapter=new ServerZombieNativeAdapter(runner,2.4f);var runnerVictim=victim(20.5f,4.5f);
+  check(!runner.running,"presentation does not mutate native running flag");
+  check(runnerAdapter.move(runnerVictim,.1f),"sprinter moves");runnerAdapter.present(true,false);runnerAdapter.packet(prediction);
+  check(Math.abs(runner.x-10.74f)<.001 && Math.abs(prediction.x-runner.x-.48f)<.001
+   && (prediction.booleanVariables&4)!=0,"sprinter pace and running presentation match prediction");
+  runner.speedMod*=2;runnerAdapter.move(runnerVictim,.15f);runnerAdapter.packet(prediction);
+  check(prediction.x-runner.x<=.601f,"speed changes and delayed frames keep prediction spatially bounded");
+  var shortGoal=victim(runner.x+.02f,runner.y);runnerAdapter.move(shortGoal,.001f);runnerAdapter.packet(prediction);
+  check(prediction.x<=shortGoal.x()+.0001f,"prediction stops at pursuit goal");
+  runnerAdapter.present(false,true);runnerAdapter.packet(prediction);
+  check(prediction.predictionType==0 && (prediction.booleanVariables&4)==0,"attack removes prediction and running flag");
   var start=cell.getGridSquare(0,0,0);z.x=.98f;session.update(port.victim,port,200_000_000L);
   check(z.square==cell.getGridSquare(1,0,0)&&!start.bodies.contains(z)&&z.square.bodies.contains(z),"native moving-square membership follows movement");
   z.x=2;session.update(port.victim,port,300_000_000L);check(session.phase==ServerZombieSession.Phase.WINDUP,"contact begins windup");
@@ -131,13 +175,44 @@ public class ControlTest {
   LosUtil.result=LosUtil.TestResults.ClearThroughClosedDoor;check(!adapter.contact(port.victim),"closed door blocks contact");LosUtil.result=LosUtil.TestResults.Clear;
   cell.getGridSquare(1,1,0).free=false;var around=body(2,.5f,1.5f);var nav=new ServerZombieNativeAdapter(around,1);
   check(nav.route(new Victim(port.victim.id(),port.victim.body(),2.5f,1.5f,0)),"bounded path routes around furniture");
+  check(!nav.move(port.victim,.1f),"pending native route cannot move directly through furniture");
+  var path=new zombie.pathfind.Path();path.addNode(.5f,1.5f,0);path.addNode(.5f,.5f,0);path.addNode(2.5f,.5f,0);path.addNode(2.5f,1.5f,0);
+  zombie.pathfind.nativeCode.PathfindNative.instance.complete(path);
   for(int n=0;n<15;n++)check(nav.move(port.victim,.1f),"route advances without static collision");
   check(around.square.free,"route never enters appliance square");
+  var replan=body(21,.9f,1.5f);var replanner=new ServerZombieNativeAdapter(replan,1);
+  var detour=victim(2.5f,1.5f);check(replanner.route(detour),"detour planned from off-centre start");
+  zombie.pathfind.nativeCode.PathfindNative.instance.complete(path);
+  float oldY=replan.y;replanner.move(detour,.1f);
+  check(replan.y!=oldY,"detour advances toward next tile rather than root centre");
+  oldY=replan.y;replanner.route(detour);replanner.move(detour,.1f);
+  check(Math.abs(replan.y-1.5f)>Math.abs(oldY-1.5f),"replan continues detour without reversing to root");
+  var recovering=body(22,2,.5f);var recovery=new ServerZombieSession(new ServerZombieNativeAdapter(recovering,1),port.victim,0);
+  recovery.update(port.victim,port,1);recovery.update(port.victim,port,550_000_001L);
+  recovery.update(port.victim,port,12_000_000_001L);
+  check(recovery.update(new Victim(port.victim.id(),port.victim.body(),8,.5f,0),port,12_100_000_001L)==null,
+   "attack and recovery time do not count as pursuit stall");
+  var waiting=body(23,.5f,5.5f);var waitingVictim=victim(8,5.5f);
+  var waitingSession=new ServerZombieSession(new ServerZombieNativeAdapter(waiting,1),waitingVictim,0);
+  zombie.pathfind.PolygonalMap2.instance.blocked=true;
+  check(waitingSession.update(waitingVictim,port,100_000_000L)==null,"unavailable route retains session");
+  check(waitingSession.update(waitingVictim,port,3_000_000_000L)==null && waiting.x==.5f,
+   "temporary blockage does not hand off or fall back to stale direct movement");
+  check(waitingSession.update(waitingVictim,port,10_100_000_000L).equals("pursuit_stalled"),"uncompleted native route eventually releases");
+  zombie.pathfind.PolygonalMap2.instance.blocked=false;
+  var incoming=new zombie.network.packets.character.ZombiePacket();incoming.realX=.5f;incoming.realY=.5f;incoming.x=2.5f;incoming.y=1.5f;
+  check(incomingSquare(incoming)==cell.getGridSquare(0,0,0),"production incoming square follows real position across prediction boundary");
+  incoming.realX=-.25f;
+  check(incomingSquare(incoming)==cell.getGridSquare(-1,0,0),"incoming real square floors negative coordinates");
   var controller=ServerZombieController.getInstance();controller.install(port);controller.beginFrame();
   var connection=new zombie.core.raknet.UdpConnection();var viewer=new IsoPlayer();viewer.x=10;connection.players[0]=viewer;GameServer.udpEngine.connections.add(connection);
   NetworkZombieManager.getInstance().beginAuthUpdate();NetworkZombieManager.getInstance().moveZombie(z,connection,viewer);
   check(z.getOwner()==connection,"ordinary native owner before acquisition");
-  check(controller.retainOrAcquire(z)&&z.getOwner()==null&&controller.controls(z),"explicit session pins null owner");
+  check(!controller.retainOrAcquire(z),"native two-second ownership cooldown respected");
+  z.lastChangeOwner=System.currentTimeMillis()-2000;
+  LosUtil.result=LosUtil.TestResults.Blocked;
+  check(controller.retainOrAcquire(z)&&z.getOwner()==null&&controller.controls(z),"close reachable NPC acquires without direct sight and pins null owner");
+  LosUtil.result=LosUtil.TestResults.Clear;
   NetworkZombieManager.getInstance().updateAuth(z);check(z.getOwner()==null,"ordinary auth traversal cannot reassign controlled zombie");
   NetworkZombieManager.getInstance().moveZombie(z,connection,viewer);check(z.getOwner()==null,"direct transfer cannot steal active session");
   var auth=new zombie.network.packets.character.ZombieListPacket();NetworkZombieManager.getInstance().getZombieAuth(connection,auth);
@@ -149,11 +224,36 @@ public class ControlTest {
   check(!controller.retainOrAcquire(z),"hit handoff has reacquisition cooldown");
   int hits=port.strikes;controller.beginFrame();check(port.strikes==hits,"released windup cannot commit damage");
   controller.reset();check(!controller.controls(z),"shutdown clears sessions");
-  controller.install(port);controller.beginFrame();z.target=viewer;check(!controller.retainOrAcquire(z),"real player target retains priority");z.target=null;
+  controller.install(port);controller.beginFrame();z.target=viewer;z.lastChangeOwner=0;
+  check(controller.retainOrAcquire(z),"closer NPC takes priority over farther existing player target");
+  controller.reset();controller.install(port);controller.beginFrame();z.target=null;z.lastChangeOwner=0;
   viewer.x=z.x;viewer.y=z.y;check(!controller.retainOrAcquire(z),"closer real player prevents acquisition");viewer.x=10;
   check(controller.retainOrAcquire(z),"reacquire after fresh controller lifecycle");
   z.id++;check(!controller.controls(z),"pooled incarnation cannot inherit authority");controller.beginFrame();
   controller.reset();GameServer.server=false;check(!controller.controls(z),"client execution cannot claim authority");
+  var service=zombie.pathfind.nativeCode.PathfindNative.instance;
+  var pathBody=body(25,15.5f,5.5f);var request=new ServerZombiePath(pathBody);
+  request.request(18.5f,5.5f);check(request.pending(),"native request remains pending until main-thread callback");
+  int requestCount=service.requests;request.request(18.5f,5.5f);
+  check(service.requests==requestCount,"pending path request is not restarted each refresh");
+  var fractional=new zombie.pathfind.Path();fractional.addNode(15.5f,5.5f,0);fractional.addNode(16.25f,5.125f,0);fractional.addNode(18.5f,5.5f,0);
+  service.complete(fractional);fractional.nodes.clear();
+  check(!request.pending() && request.points().get(1).x()==16.25f && request.points().get(1).y()==5.125f,
+   "fractional polygon corners copied before native result pool reuse");
+  request.request(18.5f,5.5f);check(service.requests==requestCount,"unchanged target retains completed path without root reversal");
+  request.request(20.5f,5.5f);var cancelled=service.jobs.get(request);request.cancel();
+  cancelled.finder().Succeeded(path,cancelled.mover());
+  check(!request.pending() && request.points().isEmpty(),"cancelled callback cannot revive released route");
+  request.request(20.5f,5.5f);var stale=service.jobs.get(request);pathBody.id++;
+  stale.finder().Succeeded(path,stale.mover());check(request.points().isEmpty(),"pooled body rejects old path callback");request.cancel();
+  zombie.pathfind.nativeCode.PathfindNative.useNativeCode=false;
+  var fallback=new ServerZombiePath(pathBody);int fallbackBefore=zombie.pathfind.PolygonalMap2.instance.requests;
+  fallback.request(18,5);check(zombie.pathfind.PolygonalMap2.instance.requests==fallbackBefore+1,"configured Java polygon backend is supported");
+  var failedJob=service.jobs.get(fallback);failedJob.finder().Failed(failedJob.mover());
+  check(!fallback.pending() && fallback.points().isEmpty(),"solver failure clears pending state without direct-line fallback");
+  fallback.request(18,5);var wrongFloor=new zombie.pathfind.Path();wrongFloor.addNode(18,5,1);
+  service.complete(wrongFloor);check(!fallback.pending() && fallback.points().isEmpty(),"unsupported floor route is rejected");
+  fallback.cancel();zombie.pathfind.nativeCode.PathfindNative.useNativeCode=true;
   System.out.println("Passed "+checks+" server-zombie controller assertions.");
  }
 }
@@ -165,12 +265,15 @@ def main():
     assert packer.index("if (zombie.getOwner() != connection)") < packer.index("this.applyZombie(zombie)")
     assert "ServerZombieController.getInstance().addRelays(this.zombiesProcessing)" in packer
     assert packer.count("ServerZombieController.getInstance().controls(zombie)") == 3
+    apply_body = packer[packer.index("private void applyZombie("):]
+    lookup = apply_body.split("IsoGridSquare g =", 1)[1].split(";", 1)[0].replace("this.packet", "packet")
+    harness = HARNESS.replace(" public static void main", " static IsoGridSquare incomingSquare(zombie.network.packets.character.ZombiePacket packet){return " + lookup + ";}\n public static void main")
     native = (SRC / "zombie/characters/IsoGameCharacter.java").read_text(encoding="utf-8")
     hit = native[native.index("public void hitConsequences("):]
     assert hit.index("ServerZombieController.getInstance().hit(zombie)") < hit.index("applyDamage(this, damage)")
     with tempfile.TemporaryDirectory(prefix="apocbr-zombie-control-") as directory:
         work = Path(directory)
-        files = STUBS | {"zombie/apocalipse/zombies/ControlTest.java": HARNESS}
+        files = STUBS | {"zombie/apocalipse/zombies/ControlTest.java": harness}
         sources = []
         for relative, content in files.items():
             path = work / relative

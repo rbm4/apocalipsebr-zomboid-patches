@@ -534,7 +534,7 @@ public class NetworkZombiePacker {
     private void applyZombie(IsoZombie zombie) {
         IsoGridSquare g = IsoWorld.instance
             .currentCell
-            .getGridSquare(PZMath.fastfloor(this.packet.x), PZMath.fastfloor(this.packet.y), PZMath.fastfloor((float)this.packet.z));
+            .getGridSquare(PZMath.fastfloor(this.packet.realX), PZMath.fastfloor(this.packet.realY), PZMath.fastfloor((float)this.packet.realZ));
         zombie.setLastX(zombie.setNextX(zombie.setX(this.packet.realX)));
         zombie.setLastY(zombie.setNextY(zombie.setY(this.packet.realY)));
         zombie.setLastZ(zombie.setZ(this.packet.realZ));
