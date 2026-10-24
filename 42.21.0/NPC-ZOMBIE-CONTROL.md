@@ -143,12 +143,31 @@ revocation/release and native hit packets retain their existing immediate paths.
 The capture's 4000 ms upload interval is deliberately not used: server-controlled
 NPC interactions use the nearby-viewer 200 ms interval.
 
-Moving packets retain native prediction type 1. The captured gait uses vanilla
-extrapolation's fixed **500 ms** horizon, decoupled from the server tick. Unsampled
-gaits retain two measured simulation steps clamped to 100–300 ms. Both are bounded
-to .6 tiles. Real coordinates remain authoritative; prediction
-stops at the next waypoint or .65 tiles short of the victim and validates loaded
-floor, stair exclusion, tile edges and static collision in .05-tile increments.
+Moving packets use vanilla destination semantics: Walk **7**, or **8** for a
+halfway destination when a direct goal is over five tiles away; Lunge **5/6**
+uses the corresponding full/halfway goal. Polygon routes publish only the next
+corner with Walk 7. Native `NetworkZombieAI.setUsingWalkTowardState` and
+`setUsingLungeState` are the reference, rather than generic extrapolation type 1.
+The goal is independent of frame duration and remains stable during a short
+straight approach. Goals are capped at 12 tiles and validate loaded floor, stair
+exclusion, tile edges and static collision in .05-tile increments. Checks cover
+adjacent segments rather than repeatedly tracing the growing prefix. Physical
+server motion still stops .65 tiles short; client destinations use the actual
+target like vanilla, followed by the existing immediate attack/stop update.
+
+This avoids a reproducible animation-contract mismatch: `IsoZombie`'s
+`bMovingNetwork` becomes false within .5 Manhattan tiles of the predicted goal.
+The vanilla action-group XML then transitions walktoward-network to idle and
+back when the next packet moves the goal. The former .52–.6-tile prediction left
+almost no walking distance before that threshold, allowing an idle/walk restart
+within each 200 ms interval. Longer native destinations keep the movement state
+active during continuous pursuit; ordinary stops, close contact and short corners
+still have their native transitions. This explains a likely cause of the reported
+restarting animation; live visual confirmation remains necessary.
+
+Real coordinates remain authoritative. State, prediction and boolean-variable
+presence flags are recomputed after the overlay, so the serialized fields match
+the synthesized state (including running flags); stale client path goals clear.
 Idle, windup and recovery packets have no prediction. The native walk-speed helper
 also determines the packet running flag for sprinters without mutating the native
 flag or overwriting other boolean flags. Client-reported square membership uses
@@ -237,7 +256,7 @@ victims independently; this change does not alter visual memory or retreat polic
 
 ## Verification
 
-Captured-gait/cadence checks: 123 controller assertions plus the disabled-controller
+Captured-gait/cadence/destination checks: 127 controller assertions plus the disabled-controller
 case, 3037 authorization assertions and 45359 packet assertions pass. The real-JAR
 `42.21.0/patchApocalipseBr.ps1 -DryRun` compiles 254 sources / 788 classes without
 deployment. Compare one captured-variant zombie walking and lunging beside a

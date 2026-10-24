@@ -137,26 +137,36 @@ public class ControlTest {
   check(session.update(port.victim,port,100_000_000L)==null,"pursuit active");
   check(Math.abs(z.x-.62f)<.0001,"native sampled speed applied with elapsed time");
   var prediction=new zombie.network.packets.character.ZombiePacket();adapter.packet(prediction);
-  check(prediction.predictionType==1 && Math.abs(prediction.x-z.x-.24f)<.001 && prediction.realX==z.x,
-   "moving packet predicts two 100ms frames while preserving real position");
+  check(prediction.predictionType==7 && Math.abs(prediction.x-2.5f)<.001 && prediction.realX==z.x,
+   "walking packet sends native destination while preserving real position");
+  float previousGoal=prediction.x;
+  adapter.move(port.victim,.1f);adapter.packet(prediction);
+  check(prediction.x==previousGoal && prediction.realX==z.x && prediction.realX>.62f,
+   "successive updates keep short walk destination stable as authoritative position advances");
+  check(prediction.x-z.x>1.2f*.2f+.5f,
+   "destination remains outside native idle threshold for the whole 200ms packet interval");
   zombie.pathfind.PolygonalMap2.instance.blocked=true;adapter.packet(prediction);
   check(prediction.predictionType==0 && prediction.x==z.x,"collision suppresses prediction");
   zombie.pathfind.PolygonalMap2.instance.blocked=false;
   adapter.present(false,false);adapter.packet(prediction);
-  check(prediction.predictionType==0,"idle never inherits moving prediction");
+  check(prediction.predictionType==0 && (prediction.update&(1|4|16))==0,
+   "idle never inherits moving prediction or stale state/path presence flags");
   var runner=body(20,10.5f,4.5f);runner.sprinter=true;
   var runnerAdapter=new ServerZombieNativeAdapter(runner,2.4f);var runnerVictim=victim(20.5f,4.5f);
   check(!runner.running,"presentation does not mutate native running flag");
   check(runnerAdapter.move(runnerVictim,.1f),"sprinter moves");runnerAdapter.present(true,false);runnerAdapter.packet(prediction);
-  check(Math.abs(runner.x-10.74f)<.001 && Math.abs(prediction.x-runner.x-.48f)<.001
-   && (prediction.booleanVariables&4)!=0,"sprinter pace and running presentation match prediction");
+  check(Math.abs(runner.x-10.74f)<.001 && Math.abs(prediction.x-(runner.x+runnerVictim.x())*.5f)<.001
+   && prediction.predictionType==8
+   && (prediction.booleanVariables&4)!=0 && (prediction.update&8)!=0,
+   "sprinter pace and running presentation match prediction and running flag is serialized");
   runner.speedMod*=2;runnerAdapter.move(runnerVictim,.15f);runnerAdapter.packet(prediction);
   check(Math.abs(runner.x-11.1f)<.001,"native sprinter pace does not multiply speedMod twice");
-  check(prediction.x-runner.x<=.601f,"speed changes and delayed frames keep prediction spatially bounded");
+  check(prediction.x-runner.x<=12.001f,"distant native half-goal remains spatially bounded");
   var shortGoal=victim(runner.x+.02f,runner.y);runnerAdapter.move(shortGoal,.001f);runnerAdapter.packet(prediction);
   check(prediction.x<=shortGoal.x()+.0001f,"prediction stops at pursuit goal");
   runnerAdapter.present(false,true);runnerAdapter.packet(prediction);
-  check(prediction.predictionType==0 && (prediction.booleanVariables&4)==0,"attack removes prediction and running flag");
+  check(prediction.predictionType==0 && (prediction.booleanVariables&4)==0 && (prediction.update&(4|8))==0,
+   "attack removes prediction and running flag, including native field presence bits");
   var start=cell.getGridSquare(0,0,0);z.x=.98f;session.update(port.victim,port,200_000_000L);
   check(z.square==cell.getGridSquare(1,0,0)&&!start.bodies.contains(z)&&z.square.bodies.contains(z),"native moving-square membership follows movement");
   z.x=2;session.update(port.victim,port,300_000_000L);check(session.phase==ServerZombieSession.Phase.WINDUP,"contact begins windup");
@@ -186,6 +196,9 @@ public class ControlTest {
   zombie.pathfind.nativeCode.PathfindNative.instance.complete(path);
   for(int n=0;n<15;n++)check(nav.move(port.victim,.1f),"route advances without static collision");
   check(around.square.free,"route never enters appliance square");
+  nav.present(true,false);nav.packet(prediction);
+  check(prediction.predictionType==7 && Math.abs(prediction.x-2.5f)<.001 && Math.abs(prediction.y-.5f)<.001,
+   "route prediction ends at the next fractional segment corner rather than beyond the turn");
   var replan=body(21,.9f,1.5f);var replanner=new ServerZombieNativeAdapter(replan,1);
   var detour=victim(2.5f,1.5f);check(replanner.route(detour),"detour planned from off-centre start");
   zombie.pathfind.nativeCode.PathfindNative.instance.complete(path);
@@ -323,8 +336,9 @@ public class ControlTest {
   for(int n=0;n<10;n++)measuredAdapter.move(distant,.1f);
   measuredAdapter.present(true,false);measuredAdapter.packet(prediction);
   check(Math.abs(captured.x-11.5475f)<.0002,"one second walking matches captured distance");
-  check(prediction.realState==NetworkVariables.ZombieState.WalkToward && Math.abs(prediction.x-captured.x-.52375f)<.001,
-   "measured walking uses fixed 500ms prediction independent of server frame time");
+  check(prediction.realState==NetworkVariables.ZombieState.WalkToward && prediction.predictionType==8
+   && Math.abs(prediction.x-(captured.x+distant.x())*.5f)<.001,
+   "distant measured walking uses native half-goal independent of server frame time");
   var fasterTicks=body(51,10.5f,2.5f);fasterTicks.walkType="2";fasterTicks.speedMod=1;
   var fasterAdapter=new ServerZombieNativeAdapter(fasterTicks,ServerZombiePace.WALK_2_SPEED);
   for(int n=0;n<20;n++)fasterAdapter.move(victim(25.5f,2.5f),.05f);
@@ -333,6 +347,9 @@ public class ControlTest {
   measuredAdapter.move(close,.1f);measuredAdapter.present(true,false);measuredAdapter.packet(prediction);
   check(Math.abs(captured.x-walked-.15227f)<.0001 && prediction.realState==NetworkVariables.ZombieState.Lunge,
    "clear close pursuit uses captured lunge displacement and native lunge presentation");
+  check(prediction.predictionType==5 && Math.abs(prediction.x-close.x())<.001
+   && prediction.x-captured.x>1.5227f*.2f+.5f,
+   "native lunge destination keeps locomotion active between 200ms updates");
   check((prediction.booleanVariables&4)==0,"measured lunge does not become a sprinter");
   float lunged=captured.x;measuredAdapter.move(distant,.05f);measuredAdapter.packet(prediction);
   check(Math.abs(captured.x-lunged-.052375f)<.0001 && prediction.realState==NetworkVariables.ZombieState.WalkToward,

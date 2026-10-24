@@ -32,8 +32,10 @@ final class ServerZombieNativeAdapter {
     private static final long RELAY_INTERVAL=200_000_000L;
     private boolean routeDirty;
     private boolean nativeTraversal;
-    private float goalX, goalY, velocityX, velocityY, goalRadius, predictionSeconds=.2F;
-    private static final float MAX_PREDICTION_DISTANCE = .6F;
+    private float goalX, goalY, velocityX, velocityY;
+    private boolean followingCorner;
+    // Sessions release beyond 24 tiles; native half-goals then fit within 12.
+    private static final float MAX_GOAL_DISTANCE = 12F;
 
     ServerZombieNativeAdapter(IsoZombie zombie, float speed) {
         this.zombie=zombie; onlineId=zombie.onlineId; instanceId=zombie.getID();
@@ -145,13 +147,10 @@ final class ServerZombieNativeAdapter {
         while(waypoint<route.size() && Math.hypot(route.get(waypoint).x()-x(),route.get(waypoint).y()-y())<.001)waypoint++;
         boolean following=waypoint<route.size();
         goalX=following?route.get(waypoint).x():v.x();goalY=following?route.get(waypoint).y():v.y();
-        goalRadius=following?0:.65F;
+        followingCorner=following;
         double dx=goalX-x(),dy=goalY-y(),length=Math.hypot(dx,dy);
         velocityX=length>.001?(float)(dx/length)*pace:0;velocityY=length>.001?(float)(dy/length)*pace:0;
         if(moved && length>.001)zombie.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy,dx)));
-        // Native extrapolation uses 500 ms, independent of the simulation frame.
-        // Retain the old fallback horizon for gaits not yet captured.
-        predictionSeconds=ServerZombiePace.measured(zombie)?.5F:Math.clamp(seconds*2,.1F,.3F);
         if(moved)IsoWorld.instance.currentCell.getPlayerSpatialQueries().invalidateZombies();
         return moved;
     }
@@ -178,29 +177,41 @@ final class ServerZombieNativeAdapter {
         packet.realX=x();packet.realY=y();packet.realZ=(byte)z();
         packet.predictionType=0;
         if(moving && !attacking){
-            float pace=(float)Math.hypot(velocityX,velocityY);
-            float distance=(float)Math.min(Math.max(0,Math.hypot(goalX-x(),goalY-y())-goalRadius),
-                Math.min(pace*predictionSeconds,MAX_PREDICTION_DISTANCE));
-            // Stop at the current waypoint: never extrapolate around a corner.
+            // NetworkZombieAI sends destinations (Walk=7/8, Lunge=5/6), not
+            // tiny per-packet steps. bMovingNetwork becomes false within .5
+            // Manhattan tiles, so short extrapolation repeatedly restarts gait.
+            double length=Math.hypot(goalX-x(),goalY-y());
+            boolean half=!followingCorner && length>5;
+            float distance=(float)Math.min(length*(half?.5:1),MAX_GOAL_DISTANCE);
+            float dx=length>.001?(float)((goalX-x())/length):0;
+            float dy=length>.001?(float)((goalY-y())/length):0;
+            // Stop at the current waypoint: never predict around a corner.
             // Sample every segment as well as the full collision line to respect
             // missing floors, stairs and unloaded squares.
             float px=x(),py=y();
-            for(float travel=.05F;pace>0 && distance>0;travel+=.05F){
+            for(float travel=.05F;length>.001 && distance>0;travel+=.05F){
                 float advance=Math.min(travel,distance);
-                float nx=x()+velocityX/pace*advance,ny=y()+velocityY/pace*advance;
+                float nx=x()+dx*advance,ny=y()+dy*advance;
                 var from=square((int)Math.floor(px),(int)Math.floor(py));
                 var to=square((int)Math.floor(nx),(int)Math.floor(ny));
                 if(from==null || to==null || !to.TreatAsSolidFloor() || to.HasStairs()
-                    || from.isSomethingTo(to) || to.isSomethingTo(from) || blocked(x(),y(),nx,ny))break;
+                    || from.isSomethingTo(to) || to.isSomethingTo(from) || blocked(px,py,nx,ny))break;
                 px=nx;py=ny;
                 if(advance>=distance)break;
             }
-            if(Math.hypot(px-x(),py-y())>.001){packet.x=px;packet.y=py;packet.predictionType=1;}
+            if(Math.hypot(px-x(),py-y())>.001){
+                packet.x=px;packet.y=py;
+                packet.predictionType=(byte)(lunging?(half?6:5):(half?8:7));
+            }
         }
         packet.realState=attacking?ZombieState.Attack: moving?(lunging?ZombieState.Lunge:ZombieState.WalkToward):ZombieState.Idle;
         int runningMask=1<<NetworkZombieVariables.Flag.IsRunning.ordinal();
         packet.booleanVariables=(short)(running && moving ? packet.booleanVariables|runningMask : packet.booleanVariables&~runningMask);
-        packet.update=(byte)((packet.update | 1 | 4) & ~16); // No stale client path goal.
+        // Native fields were prepared before this overlay. Rebuild their presence
+        // bits too, including VARIABLES when we supply a sprinter's running flag.
+        packet.update=(byte)((packet.update & ~(1|4|8|16))
+            | (packet.realState==ZombieState.Idle?0:1)
+            | (packet.predictionType==0?0:4) | (packet.booleanVariables==0?0:8));
         packet.pfb.reset();
     }
     void diagnostic(String phase,String reason){HumanLog.log(HumanLog.Level.DEBUG,()->"zombie control id="+onlineId
