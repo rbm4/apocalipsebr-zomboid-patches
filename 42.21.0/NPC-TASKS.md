@@ -84,8 +84,40 @@ reanimates an `IsoDeadBody` as a grapple-only zombie and depends on the native
 animation/grapple lifecycle, which these detached server actors do not run.
 No body item conversion, teleport to the destination or client-side timer is used.
 Climb/fence/window traversal while hauling fails safely instead of pulling a body
-through the obstacle. Route rejection, failure, unloading and the 120-second
-per-route deadline release ownership and terminate with an explicit task reason.
+through the obstacle. Each route attempt has a 120-second deadline. Cleanup is
+retained as intent across route rejection/failure and temporary unloading, rather
+than failing the assignment on the first obstruction.
+
+Pickup tries body-relative head-end, feet-end, side and center tiles derived
+from the native corpse angle, subject to the same scope and clear cardinal
+body-movement edge. These are tile-level grab approaches, not new grapple
+animations. A failed approach or delivery route releases the claim, waits one
+second and replans; there are five attempts per body. After five failures the
+native adapter defers that exact corpse for five real-time minutes, then discovery selects
+another available body. A dropped body already outside the original source
+radius remains tracked for later delivery. Removed/reanimated bodies are pruned
+without recreation. Transient retry memory is bounded to 128 bodies per actor;
+exhausting that bound reports `cleanup_deferral_limit` rather than allocating
+without limit.
+
+If only deferred bodies remain, the assignment stays active and yields the
+runtime to routine modules until the earliest retry is due. The original source
+and dialogue-authored destination stay fixed while background behavior moves the
+NPC. Return routes also retry: five short attempts, then a five-minute backoff,
+without abandoning the intent. Temporary scope/loading loss waits one second.
+`cleanup_completed` is emitted only after no eligible/deferred work remains and
+the NPC has returned to the source. A new order or `RESUME_ROUTINE` can still
+replace/cancel this intent at any time.
+
+The executor owns attempts and phase timing; `HumanCorpsePort` supplies approach
+points, deferred discovery and retry diagnostics. `ServerHumanCorpses` keys its
+cooldowns by native object identity and the original search/destination context;
+it never puts native objects in brain observations. `AssignedTaskModule` owns the
+assignment and makes it scheduler-eligible when the next attempt is due. DEBUG
+`corpse retry` reports body token, attempt count, failure reason and monotonic
+retry deadline; task reasons expose approaching, hauling, retrying, returning and
+waiting phases. No new client packet, SQL migration or dialogue metadata field
+is needed for this policy update.
 
 Defense/dialogue/trade suspension stops the route and releases its body claim,
 leaving the corpse at its last reached tile. Resumption revalidates/reclaims that
@@ -110,8 +142,8 @@ Commands replace the current assignment after dialogue suspension has cancelled
 its current action. Survival/combat interruption cancels the route and retains
 intent; subsequent selection replans from the current position. Task status is
 `ASSIGNED`, `RUNNING`, `SUSPENDED`, then `SUCCEEDED`, `FAILED` or `CANCELLED`.
-`RESUME_ROUTINE` and actor shutdown cancel. Failed routes terminate rather than
-retrying each tick; a new order may retry. Debug logs report acceptance and
+`RESUME_ROUTINE` and actor shutdown cancel. Ordinary move/follow routes terminate
+on failure; corpse cleanup uses the bounded retry policy above. Debug logs report acceptance and
 execution transitions, including `route_rejected`, `route_failed`,
 `outside_movement_scope` and `target_unavailable`.
 
@@ -163,12 +195,21 @@ moving-object collision separately. See [occupancy diagnostics](NPC-MOVEMENT.md#
 Manually validate two clients giving orders, follow movement near doors/obstacles,
 target disconnect/death, task replacement, defense preemption and actor reactivation.
 
-Cleanup verification: `test_human_corpses.py` passed 48 assertions; tasks (29),
+Cleanup verification: `test_human_corpses.py` passed 72 assertions; tasks (29),
 dialogue (66 plus PTBR/EN runs), walking (32), profiles (56), brain (72), survival
 (101), server humans (92) and engagement (52) passed. Disposable PostgreSQL/JDBC
 checks passed 69 assertions as the engine role; the manager suite passed 41 tests
 including destination editing, source validation and immutable publication. Five
 editor tests passed. The target 42.21.0 game-JAR dry compilation passed (261
-sources, 803 classes). No live migration or game deployment was performed.
+sources, 804 classes). No live migration or game deployment was performed.
 Multiplayer corpse replication, inventory access while hauling, doorway behavior
 and visual presentation still need dedicated-server validation.
+
+Intent retry regression coverage includes alternate endpoints after a blocked
+approach, no replanning during backoff, five-failure deferral, processing another
+body during cooldown, automatic expiry/retry, blocked dump and return routes,
+scheduler handoff to routine and back, native rotated head/feet endpoints,
+in-flight deferred bodies outside the source radius and claim release. The
+current intent update passed corpse (72), tasks (29), dialogue (66 plus language),
+survival (101) and roaming (571) checks and the target-JAR dry compilation above.
+Five-minute delays use monotonic real time, not accelerated world time.

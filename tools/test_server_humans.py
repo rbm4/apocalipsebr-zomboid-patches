@@ -750,7 +750,8 @@ FILES.update({
  public static Object get(ObjectID id){return objects.get(id);}public static void add(ObjectID id,Object b){objects.put(id,b);}public static void remove(ObjectID id){objects.remove(id);}}""",
  "zombie/iso/objects/IsoDeadBody.java": """package zombie.iso.objects;
  public class IsoDeadBody extends zombie.iso.IsoMovingObject {
- public final zombie.network.id.ObjectID id=new zombie.network.id.ObjectID();public float x,y,z;public boolean animal,fake;
+ public final zombie.network.id.ObjectID id=new zombie.network.id.ObjectID();public float x,y,z,angle;public boolean animal,fake;
+ public float getAngle(){return angle;}
  public zombie.iso.IsoGridSquare square;public Object inventory=new Object();
  public boolean isAnimal(){return animal;}public boolean isFakeDead(){return fake;}
  public zombie.network.id.ObjectID getObjectID(){return id;}

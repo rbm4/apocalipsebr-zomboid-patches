@@ -18,13 +18,17 @@ final class ServerHumanCorpses implements HumanCorpsePort {
     private boolean scanUnloaded;
     private Point searchCenter,searchDestination;
     private int searchRadius;
+    private record Deferred(long until,Point source,int radius,Point destination) { }
+    private final IdentityHashMap<IsoDeadBody,Deferred> deferred=new IdentityHashMap<>();
+    private long scanRetryAt=Long.MAX_VALUE;
+    private int deferredCount;
     private int scannedObjects,scannedCorpses,invalidCorpses,outsideScope,atDropOff,claimedElsewhere;
-    private void resetScan(){scanTile=scanBody=0;scanUnloaded=false;scannedObjects=scannedCorpses=invalidCorpses=outsideScope=atDropOff=claimedElsewhere=0;}
+    private void resetScan(){scanTile=scanBody=0;scanUnloaded=false;scannedObjects=scannedCorpses=invalidCorpses=outsideScope=atDropOff=claimedElsewhere=deferredCount=0;scanRetryAt=Long.MAX_VALUE;}
     private void reportScan(String result,Body selected){
         HumanLog.log(HumanLog.Level.DEBUG,()->"corpse search key="+human.definition.key()+"; source="+searchCenter
             +"; radius="+searchRadius+"; destination="+searchDestination+"; result="+result+"; selected="+selected
             +"; objects="+scannedObjects+"; corpses="+scannedCorpses+"; invalid="+invalidCorpses
-            +"; outsideScope="+outsideScope+"; atDropOff="+atDropOff+"; claimedElsewhere="+claimedElsewhere+"; loaded="+!scanUnloaded);
+            +"; outsideScope="+outsideScope+"; atDropOff="+atDropOff+"; claimedElsewhere="+claimedElsewhere+"; deferred="+deferredCount+"; loaded="+!scanUnloaded);
     }
     ServerHumanCorpses(ServerHuman human){this.human=human;}
     public String movementSlot(){return human.profile.walkingPatterns().stream().anyMatch(p->p.slot().equals("corpse-cleanup"))?"corpse-cleanup":"background";}
@@ -39,10 +43,25 @@ final class ServerHumanCorpses implements HumanCorpsePort {
     }
     private Point position(IsoDeadBody body){return new Point(body.getXi(),body.getYi(),body.getZi());}
     public Search find(Point center,int radius,Point destination){
+        return find(center,radius,destination,System.nanoTime());
+    }
+    public Search find(Point center,int radius,Point destination,long now){
         if(radius<0||radius>2)throw new IllegalArgumentException("Invalid corpse search radius");
         if(observed!=null&&claims.get(observed)==this&&valid(observed))return new Search(new Body(token,position(observed)),false,true);
         if(!center.equals(searchCenter)||!destination.equals(searchDestination)||radius!=searchRadius){
             searchCenter=center;searchDestination=destination;searchRadius=radius;resetScan();
+        }
+        var waiting=deferred.entrySet().iterator();
+        while(waiting.hasNext()){
+            var entry=waiting.next();var corpse=entry.getKey();var retry=entry.getValue();
+            if(!valid(corpse)||position(corpse).equals(destination)){waiting.remove();continue;}
+            boolean same=retry.source().equals(center)&&retry.radius()==radius&&retry.destination().equals(destination);
+            if(!same){if(now>=retry.until())waiting.remove();continue;}
+            if(now>=retry.until()&&permitted(position(corpse))&&(!claims.containsKey(corpse)||claims.get(corpse)==this)){
+                waiting.remove();observed=corpse;token=++sequence;var selected=new Body(token,position(corpse));
+                reportScan("deferred_ready",selected);resetScan();return new Search(selected,false,true);
+            }
+            scanRetryAt=Math.min(scanRetryAt,now<retry.until()?retry.until():now+1_000_000_000L);
         }
         int width=2*radius+1,total=width*width,visited=0;
         while(scanTile<total&&visited<128){
@@ -57,6 +76,8 @@ final class ServerHumanCorpses implements HumanCorpsePort {
                 if(object instanceof IsoDeadBody body){
                     scannedCorpses++;
                     if(!valid(body)){invalidCorpses++;continue;}
+                    var delay=deferred.get(body);
+                    if(delay!=null&&now<delay.until()){deferredCount++;scanRetryAt=Math.min(scanRetryAt,delay.until());continue;}
                     if(position(body).equals(destination)){atDropOff++;continue;}
                     if(!permitted(position(body))){outsideScope++;continue;}
                     if(claims.containsKey(body)&&claims.get(body)!=this){claimedElsewhere++;continue;}
@@ -67,9 +88,9 @@ final class ServerHumanCorpses implements HumanCorpsePort {
             }
             if(scanBody>=objects.size()){scanTile++;scanBody=0;}
         }
-        boolean complete=scanTile>=total,loaded=!scanUnloaded;
+        boolean complete=scanTile>=total,loaded=!scanUnloaded;long retryAt=scanRetryAt;
         if(complete){reportScan("complete",null);resetScan();}
-        return new Search(null,complete,loaded);
+        return new Search(null,complete,loaded,retryAt);
     }
     public Body resolve(long id){return id==token&&valid(observed)?new Body(id,position(observed)):null;}
     public boolean claim(long id){
@@ -93,4 +114,25 @@ final class ServerHumanCorpses implements HumanCorpsePort {
         return true;
     }
     public void release(long id){if(id==token&&claims.get(observed)==this)claims.remove(observed);}
+    public java.util.List<Point> approaches(long id){
+        if(resolve(id)==null)return java.util.List.of();
+        var point=position(observed);double angle=observed.getAngle(),cx=Math.cos(angle),cy=Math.sin(angle);
+        int dx=Math.abs(cx)>=Math.abs(cy)?(cx>=0?1:-1):0,dy=dx==0?(cy>=0?1:-1):0;
+        var result=new java.util.ArrayList<Point>();
+        for(int[] offset:new int[][]{{dx,dy},{-dx,-dy},{-dy,dx},{dy,-dx},{0,0}}){
+            long x=(long)point.x()+offset[0],y=(long)point.y()+offset[1];
+            if(x<0||y<0||x>=Integer.MAX_VALUE||y>=Integer.MAX_VALUE)continue;
+            var candidate=new Point((int)x,(int)y,point.z());if(permitted(candidate))result.add(candidate);
+        }
+        return java.util.List.copyOf(result);
+    }
+    public boolean defer(long id,long until){
+        if(resolve(id)==null)return true; // Disappeared bodies need no retry record.
+        if(searchCenter==null||deferred.size()>=128&&!deferred.containsKey(observed))return false;
+        release(id);deferred.put(observed,new Deferred(until,searchCenter,searchRadius,searchDestination));return true;
+    }
+    public void retry(long id,int attempts,String reason,long retryAt){
+        HumanLog.log(HumanLog.Level.DEBUG,()->"corpse retry key="+human.definition.key()+"; token="+id+"; attempts="+attempts
+            +"; reason="+reason+"; retryAtNanos="+retryAt);
+    }
 }

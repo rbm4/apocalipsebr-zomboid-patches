@@ -27,14 +27,29 @@ public class CorpsesTest {
  static class Port implements HumanActuator,HumanTaskWorld,HumanCorpsePort {
   Point here=p(100),goal;Map<Long,Point> bodies=new LinkedHashMap<>();Set<Long> held=new HashSet<>();
   int moves,stops;boolean loaded=true,reject,fail;
+  Map<Long,Long> deferred=new LinkedHashMap<>();List<Point> alternatives=List.of(),routes=new ArrayList<>();Set<Point> rejectedGoals=new HashSet<>();
+  int retries;
   public HumanTaskWorld taskWorld(){return this;}public HumanCorpsePort corpses(){return this;}
   public Point position(){return here;}public Point locate(HumanObservation.Identity id){return null;}public boolean permitted(Point p){return p!=null&&p.z()==0;}
   public String movementSlot(){return "background";}
   public Search find(Point source,int radius,Point dest){return new Search(bodies.entrySet().stream().filter(e->!e.getValue().equals(dest)&&Math.abs(e.getValue().x()-source.x())<=radius).map(e->new Body(e.getKey(),e.getValue())).findFirst().orElse(null),true,loaded);}
+  public Search find(Point source,int radius,Point dest,long now){
+   long next=Long.MAX_VALUE;
+   for(var entry:bodies.entrySet()){
+    if(entry.getValue().equals(dest))continue;
+    long until=deferred.getOrDefault(entry.getKey(),Long.MIN_VALUE);
+    if(until>now){next=Math.min(next,until);continue;}
+    if(deferred.containsKey(entry.getKey())||Math.abs(entry.getValue().x()-source.x())<=radius){deferred.remove(entry.getKey());return new Search(new Body(entry.getKey(),entry.getValue()),true,loaded);}
+   }
+   return new Search(null,true,loaded,next);
+  }
+  public List<Point> approaches(long token){return alternatives.isEmpty()?List.of(resolve(token).position()):alternatives;}
+  public boolean defer(long token,long until){deferred.put(token,until);held.remove(token);return true;}
+  public void retry(long token,int count,String reason,long until){retries++;}
   public Body resolve(long token){var point=bodies.get(token);return point==null?null:new Body(token,point);}
   public boolean claim(long token){return held.add(token);}public void release(long token){held.remove(token);}
   public boolean move(long token,Point point){if(!held.contains(token)||!bodies.containsKey(token))return false;bodies.put(token,point);moves++;return true;}
-  public boolean startMovement(MovementRequest r,long now){goal=((MovementRequest.To)r).destination();return !reject;}
+  public boolean startMovement(MovementRequest r,long now){goal=((MovementRequest.To)r).destination();routes.add(goal);return !reject&&!rejectedGoals.contains(goal);}
   public MotionStatus updateMovement(long now){if(fail)return MotionStatus.FAILED;here=p(here.x()+Integer.signum(goal.x()-here.x()));return here.equals(goal)?MotionStatus.SUCCEEDED:MotionStatus.RUNNING;}
   public void stopMoving(){stops++;}public boolean face(HumanObservation.Identity i){return true;}public boolean startEmote(String s){return true;}public void stopEmote(){}public boolean say(String s){return true;}public boolean returnHome(){return true;}
  }
@@ -54,17 +69,17 @@ public class CorpsesTest {
   check(port.held.isEmpty(),"completion leaves no corpse claims");
   check(port.here.equals(p(100)),"completion returns to captured source before routine resumes outside cleanup scope");
   task=new AssignedTaskModule();port=new Port();port.loaded=false;task.assign(order(105),null,p(100));task.update(o(1),port);
-  check(task.snapshot().reason().equals("cleanup_area_unloaded"),"missing source squares fail explicitly");
+  check(task.active()&&task.snapshot().reason().equals("cleanup_waiting_area")&&!task.eligible(o(2)),"unloaded source retains intent and yields until a bounded retry");
   task=new AssignedTaskModule();port=new Port();port.bodies.put(1L,p(101));port.reject=true;task.assign(order(105),null,p(100));task.update(o(1),port);
-  check(task.snapshot().reason().equals("cleanup_route_rejected")&&port.bodies.get(1L).equals(p(101))&&port.held.isEmpty(),"route rejection leaves body intact and releases claim");
+  check(task.active()&&task.snapshot().reason().equals("cleanup_retrying")&&port.bodies.get(1L).equals(p(101))&&port.held.isEmpty(),"route rejection retains intent, leaves body intact and releases claim");
   task=new AssignedTaskModule();port=new Port();port.bodies.put(1L,p(101));task.assign(order(105),null,p(100));task.update(o(1),port);port.bodies.remove(1L);task.update(o(2),port);task.update(o(3),port);
   check(task.snapshot().status()==AssignedTaskModule.Status.SUCCEEDED&&port.bodies.isEmpty(),"removed or reanimated body is not recreated");
   task=new AssignedTaskModule();port=new Port();port.bodies.put(1L,p(101));task.assign(order(105),null,p(100));task.update(o(1),port);task.stop(2,port);
   check(port.held.isEmpty()&&port.bodies.size()==1&&!task.active(),"shutdown drops claim and retains corpse");
   task=new AssignedTaskModule();port=new Port();port.bodies.put(1L,p(101));port.fail=true;task.assign(order(105),null,p(100));task.update(o(1),port);
-  check(task.snapshot().reason().equals("cleanup_route_failed")&&port.held.isEmpty(),"failed route releases ownership without deleting the body");
+  check(task.active()&&task.snapshot().reason().equals("cleanup_retrying")&&port.held.isEmpty(),"failed route retries and releases ownership without deleting the body");
   task=new AssignedTaskModule();port=new Port();port.bodies.put(1L,p(102));task.assign(order(105),null,p(100));task.update(o(1),port);task.update(o(121_000_000_001L),port);
-  check(task.snapshot().reason().equals("cleanup_route_timeout")&&port.held.isEmpty(),"stalled cleanup route has a bounded lifetime");
+  check(task.active()&&task.snapshot().reason().equals("cleanup_retrying")&&port.held.isEmpty(),"stalled route has a bounded attempt lifetime without cancelling intent");
  }
  static HumanProfile profile(){
   var specs=List.of(new WalkingPatternSpec("background","area-wander",16,List.of(),new WalkingPatternSpec.Area(100,200,102,202)),
@@ -73,6 +88,57 @@ public class CorpsesTest {
    List.of(new HumanModuleBinding("assigned-task",200,100,Map.of()),new HumanModuleBinding("walk",1000,100,Map.of())),8,100,true,specs);
   ServerHumanProfiles.registry().register(profile);return profile;
  }
+ static void intentRetries(){
+  var port=new Port();port.here=p(99);port.bodies.put(1L,p(101));port.alternatives=List.of(p(102),p(100));port.rejectedGoals.add(p(102));
+  var task=new AssignedTaskModule();task.assign(order(105),null,p(99));task.update(o(1),port);
+  check(task.active()&&port.retries==1&&port.held.isEmpty(),"blocked head approach retains intent and releases ownership");
+  check(!task.eligible(o(500_000_001L)),"retry backoff yields the scheduler without losing the assignment");
+  task.update(o(500_000_001L),port);check(port.routes.size()==1,"no route churn inside retry backoff");
+  long now=1_000_000_001L;task.update(o(now),port);
+  check(port.routes.size()==2&&port.routes.get(1).equals(p(100)),"next attempt selects opposite body endpoint");
+  for(int n=0;n<35&&task.active();n++)task.update(o(now+=100_000_000),port);
+  check(task.snapshot().status()==AssignedTaskModule.Status.SUCCEEDED&&port.bodies.get(1L).equals(p(105)),"alternate approach recovers a transient obstruction without a new dialogue order");
+
+  port=new Port();port.bodies.put(1L,p(101));port.bodies.put(2L,p(99));port.rejectedGoals.add(p(101));
+  task=new AssignedTaskModule();task.assign(order(105),null,p(100));now=1;
+  for(int n=0;n<CorpseCleanupExecution.MAX_ATTEMPTS;n++){task.update(o(now),port);if(n+1<CorpseCleanupExecution.MAX_ATTEMPTS)now+=CorpseCleanupExecution.RETRY_NANOS;}
+  long due=now+CorpseCleanupExecution.DEFER_NANOS;
+  check(port.deferred.get(1L)==due&&port.retries==CorpseCleanupExecution.MAX_ATTEMPTS&&port.held.isEmpty(),"exactly five failures defer only that corpse for five minutes");
+  for(int n=0;n<35;n++)task.update(o(now+=100_000_000),port);
+  check(port.bodies.get(2L).equals(p(105))&&port.bodies.get(1L).equals(p(101)),"other corpses are delivered while blocked corpse cools down");
+  check(task.active()&&!task.eligible(o(due-1))&&task.snapshot().reason().equals("cleanup_waiting_deferred"),"all-deferred search remains pending and yields routine until the timer expires");
+  port.rejectedGoals.clear();now=due;
+  for(int n=0;n<50&&task.active();n++)task.update(o(now+=100_000_000),port);
+  check(task.snapshot().status()==AssignedTaskModule.Status.SUCCEEDED&&port.bodies.get(1L).equals(p(105)),"deferred corpse is retried automatically after expiry");
+
+  port=new Port();port.bodies.put(1L,p(101));port.rejectedGoals.add(p(105));task=new AssignedTaskModule();task.assign(order(105),null,p(100));now=1;
+  for(int n=0;n<100&&!port.deferred.containsKey(1L);n++)task.update(o(now+=1_000_000_000L),port);
+  check(port.deferred.containsKey(1L)&&task.active()&&port.held.isEmpty(),"blocked dump route also retries and defers instead of cancelling cleanup");
+  port.rejectedGoals.clear();long retry=port.deferred.get(1L);
+  for(int n=0;n<50&&task.active();n++)task.update(o(retry+=100_000_000),port);
+  check(task.snapshot().status()==AssignedTaskModule.Status.SUCCEEDED&&port.bodies.get(1L).equals(p(105)),"dump access recovery completes the retained assignment");
+
+  port=new Port();port.here=p(105);port.rejectedGoals.add(p(100));task=new AssignedTaskModule();task.assign(order(105),null,p(100));now=1;
+  for(int n=0;n<CorpseCleanupExecution.MAX_ATTEMPTS;n++){task.update(o(now),port);if(n+1<CorpseCleanupExecution.MAX_ATTEMPTS)now+=CorpseCleanupExecution.RETRY_NANOS;}
+  check(task.active()&&!task.eligible(o(now+CorpseCleanupExecution.DEFER_NANOS-1)),"blocked return route retains intent with bounded retry rounds");
+  port.rejectedGoals.clear();now+=CorpseCleanupExecution.DEFER_NANOS;
+  for(int n=0;n<20&&task.active();n++)task.update(o(now+=100_000_000),port);
+  check(task.snapshot().status()==AssignedTaskModule.Status.SUCCEEDED&&port.here.equals(p(100)),"return route recovers after a long obstruction");
+  port=new Port();port.bodies.put(1L,p(101));port.reject=true;task=new AssignedTaskModule();task.assign(order(105),null,p(100));
+  var backgroundUpdates=new java.util.concurrent.atomic.AtomicInteger();
+  HumanModule background=new HumanModule(){
+   public boolean available(){return true;}public boolean eligible(HumanObservation o){return true;}
+   public void update(HumanObservation o,HumanActuator a){backgroundUpdates.incrementAndGet();}
+   public void interrupt(long n,HumanActuator a){}public void suspend(long n,HumanActuator a){}public void resume(HumanObservation.Identity i,long n,HumanActuator a){}public void stop(long n,HumanActuator a){}
+  };
+  var runtime=new HumanModuleRuntime(List.of(new HumanModuleRuntime.Entry("assigned-task",100,100,task),new HumanModuleRuntime.Entry("background",1000,100,background)));
+  runtime.update(o(1),port);runtime.update(o(100_000_001L),port);
+  check("background".equals(runtime.selectedModule())&&backgroundUpdates.get()==1&&task.active(),"production scheduler runs routine during retry backoff while retaining intent");
+  port.reject=false;runtime.update(o(1_000_000_001L),port);
+  check("assigned-task".equals(runtime.selectedModule())&&task.active(),"scheduled intent takes control back when its retry becomes due");
+  port=new Port();port.bodies.put(1L,p(101));task=new AssignedTaskModule();task.assign(order(105),null,p(100));task.update(o(-10_000_000_000L),port);
+  check(port.routes.size()==1&&task.active(),"initial intent also executes under a negative monotonic clock origin");task.stop(-9_000_000_000L,port);
+ }
  static IsoDeadBody body(IsoCell cell,int x,int y){var b=new IsoDeadBody();b.x=x+.5f;b.y=y+.5f;b.square=cell.getGridSquare(x,y,0);b.square.addCorpse(b,true);return b;}
  static void nativeAdapter(HumanProfile profile){
   var cell=new IsoCell();var actor=new ServerHuman(new ServerHumanDefinition("corpse-native","CorpseNative","Native",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1200,cell);
@@ -80,6 +146,9 @@ public class CorpsesTest {
   var outside=body(cell,103,200);var animal=body(cell,99,200);animal.animal=true;var fake=body(cell,100,201);fake.fake=true;
   var search=adapter.find(p(100),2,p(109));check(search.body()!=null&&search.body().position().equals(new Point(102,202,0)),"square radius includes two-tile diagonal; animals/fake-dead/outside radius skipped");
   long token=search.body().token();check(adapter.claim(token),"native corpse claim accepted");
+  check(adapter.approaches(token).get(0).equals(new Point(103,202,0))&&adapter.approaches(token).get(1).equals(new Point(101,202,0)),"native head and feet approaches follow corpse orientation");
+  b.angle=(float)(Math.PI/2);
+  check(adapter.approaches(token).get(0).equals(new Point(102,203,0))&&adapter.approaches(token).get(1).equals(new Point(102,201,0)),"rotating corpse rotates its approach endpoints");b.angle=0;
   check(adapter.find(p(100),2,p(109)).body().token()==token,"discovery cannot invalidate an owned body token");
   var other=new ServerHuman(new ServerHumanDefinition("corpse-other","CorpseOther","Other",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1201,cell);
   check(other.actuator.corpses().find(p(100),2,p(109)).body()==null,"another bot cannot acquire the same corpse");
@@ -92,6 +161,17 @@ public class CorpsesTest {
   check(adapter.permitted(p(109))&&!actor.walking.permitted(new zombie.apocalipse.humans.movement.MovementGrid.Tile(109,200)),"cleanup scope does not widen patrol scope");
   b.square.removeCorpse(b,false);check(adapter.resolve(token)==null,"world removal invalidates native corpse token");
   actor.dispose();other.dispose();
+  var cooldown=new ServerHuman(new ServerHumanDefinition("corpse-cooldown","CorpseCooldown","Cooldown",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1204,cell);
+  var delayed=body(cell,100,200);var cp=cooldown.actuator.corpses();var selected=cp.find(p(100),0,p(109),1).body();
+  check(cp.claim(selected.token()),"in-flight body is owned before a delivery obstruction");cooldown.player.setX(101.5f);
+  check(cp.move(selected.token(),p(101)),"body can leave original search radius before delivery is deferred");
+  check(cp.defer(selected.token(),300_000_000_001L),"native adapter records cooldown by corpse identity");
+  var pending=cp.find(p(100),0,p(109),2);
+  check(pending.body()==null&&pending.retryAtNanos()==300_000_000_001L,"native discovery skips deferred corpse and reports exact wake-up time");
+  var ready=cp.find(p(100),0,p(109),300_000_000_001L);
+  check(ready.body()!=null&&ready.body().position().equals(p(101))&&cp.resolve(ready.body().token())!=null,"native corpse outside original radius becomes eligible at cooldown boundary");
+  check(cp.claim(ready.body().token()),"cooldown does not retain a stale claim");cp.release(ready.body().token());
+  delayed.square.removeCorpse(delayed,false);cooldown.dispose();
   var bounded=new ServerHuman(new ServerHumanDefinition("corpse-bounded","CorpseBounded","Bounded",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1202,cell);
   for(int n=0;n<130;n++)body(cell,100,200).animal=true;
   body(cell,100,200);
@@ -144,7 +224,7 @@ public class CorpsesTest {
   check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("corpse search key=")&&s.contains("result=selected")&&s.contains("corpses=")),"corpse discovery emits selected-body diagnostics independently of movement failures");
   check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("corpse search key=")&&s.contains("result=complete")&&s.contains("source=")),"empty/completed search reports the actual source and scan result");
  }
- public static void main(String[]args){execution();var profile=profile();nativeAdapter(profile);dialogue(profile);movementOccupancy(profile);System.out.println("Passed "+checks+" corpse cleanup execution, native and dialogue assertions.");}
+ public static void main(String[]args){execution();intentRetries();var profile=profile();nativeAdapter(profile);dialogue(profile);movementOccupancy(profile);System.out.println("Passed "+checks+" corpse cleanup execution, native and dialogue assertions.");}
 }
 '''
 

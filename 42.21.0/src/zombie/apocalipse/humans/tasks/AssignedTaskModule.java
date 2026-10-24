@@ -33,7 +33,7 @@ public final class AssignedTaskModule implements HumanModule {
         status=value.kind()==HumanTaskCommand.Kind.RESUME_ROUTINE?Status.CANCELLED:Status.ASSIGNED;
         reason=value.kind()==HumanTaskCommand.Kind.RESUME_ROUTINE?"routine_resumed":"accepted";
     }
-    public boolean eligible(HumanObservation observation){return !stopped&&!suspended&&active();}
+    public boolean eligible(HumanObservation observation){return !stopped&&!suspended&&active()&&(cleanup==null||cleanup.ready(observation.nowNanos()));}
     public boolean available(){return !stopped;}
     public void update(HumanObservation observation,HumanActuator actuator) {
         var before=snapshot();tick(observation,actuator);
@@ -48,6 +48,7 @@ public final class AssignedTaskModule implements HumanModule {
                 cleanup=new CorpseCleanupExecution(cleanupSource,command.destination(),command.radiusTiles());
             }
             var outcome=cleanup.update(now,actuator);
+            if(outcome==null)reason=cleanup.reason();
             if(outcome!=null)finish(outcome.equals("cleanup_completed")?Status.SUCCEEDED:Status.FAILED,outcome,actuator);
             return;
         }
