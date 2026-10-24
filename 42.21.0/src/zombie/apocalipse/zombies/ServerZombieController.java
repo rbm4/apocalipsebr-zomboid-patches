@@ -107,7 +107,8 @@ public final class ServerZombieController {
         NetworkZombieManager.getInstance().moveZombie(zombie,null,null);
         adapter.target(choice);adapter.present(false,false);
         adapter.diagnostic("acquired",(engaged?"npc_combat":immediate?"npc_proximity":"npc_target")+"; target="+choice.id()+"; speed="+pace
-            +"; speedSource="+(motion!=null && motion.pace.usable(stamp)?"filtered_owner_sample":"native_walk_fallback"));
+            +"; speedSource="+(ServerZombiePace.measured(zombie)?"captured_walk_2"
+                :motion!=null && motion.pace.usable(stamp)?"filtered_owner_sample":"native_walk_fallback"));
         return true;
     }
     private boolean rejected(IsoZombie zombie,String reason,long stamp){
@@ -191,7 +192,7 @@ public final class ServerZombieController {
         if(controls(zombie))sessions.get(zombie).nativeBody.packet(packet);
     }
     public void addRelays(java.util.Collection<IsoZombie> output){
-        for(var entry:sessions.entrySet())if(controls(entry.getKey()))output.add(entry.getKey());
+        for(var entry:sessions.entrySet())if(controls(entry.getKey()) && entry.getValue().nativeBody.relayDue(now))output.add(entry.getKey());
     }
     public void reset(){
         for(var zombie:new ArrayList<>(sessions.keySet()))release(zombie,"shutdown",System.nanoTime());

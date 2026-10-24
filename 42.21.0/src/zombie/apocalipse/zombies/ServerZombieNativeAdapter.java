@@ -25,7 +25,11 @@ final class ServerZombieNativeAdapter {
     private final ServerZombiePath navigation;
     private List<ServerZombiePath.Point> route = List.of();
     private int waypoint;
-    private boolean moving, attacking;
+    private boolean moving, attacking, lunging;
+    private long nextRelay;
+    private boolean published, publishedMoving, publishedAttacking, publishedLunging, publishedRunning;
+    private float publishedVelocityX, publishedVelocityY;
+    private static final long RELAY_INTERVAL=200_000_000L;
     private boolean routeDirty;
     private boolean nativeTraversal;
     private float goalX, goalY, velocityX, velocityY, goalRadius, predictionSeconds=.2F;
@@ -108,8 +112,12 @@ final class ServerZombieNativeAdapter {
             if(route.size()>1)waypoint=1;
         }
         if(route.isEmpty() && (navigation.pending() || blocked(x(),y(),v.x(),v.y())))return false;
-        var motion=ServerZombiePace.nativeMotion(zombie);
-        float pace=motion.speed()*paceScale;
+        // Native blunge starts within 3.5 tiles on a clear direct segment. Detours
+        // retain the walking gait; collision and attack contact checks still win.
+        lunging=ServerZombiePace.measured(zombie) && waypoint>=route.size()
+            && distance(v)<=3.5 && visible(v) && !blocked(x(),y(),v.x(),v.y());
+        var motion=ServerZombiePace.motion(zombie,lunging);
+        float pace=motion.speed()*(ServerZombiePace.measured(zombie)?1:paceScale);
         running=motion.running();
         float remaining=pace*Math.clamp(seconds,0,.15F);
         boolean moved=false;
@@ -141,15 +149,29 @@ final class ServerZombieNativeAdapter {
         double dx=goalX-x(),dy=goalY-y(),length=Math.hypot(dx,dy);
         velocityX=length>.001?(float)(dx/length)*pace:0;velocityY=length>.001?(float)(dy/length)*pace:0;
         if(moved && length>.001)zombie.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy,dx)));
-        // Relay once per auth frame; cover two frames without unbounded prediction
-        // when the server stalls. Async backpressure still retains the newest state.
-        predictionSeconds=Math.clamp(seconds*2,.1F,.3F);
+        // Native extrapolation uses 500 ms, independent of the simulation frame.
+        // Retain the old fallback horizon for gaits not yet captured.
+        predictionSeconds=ServerZombiePace.measured(zombie)?.5F:Math.clamp(seconds*2,.1F,.3F);
         if(moved)IsoWorld.instance.currentCell.getPlayerSpatialQueries().invalidateZombies();
         return moved;
     }
     void present(boolean moving,boolean attacking){
         this.moving=moving;this.attacking=attacking;
         if(attacking && zombie.target!=null)zombie.faceThisObject(zombie.target);
+    }
+    /** Once per packer frame, before fan-out; pending per-viewer relays retain backpressure. */
+    boolean relayDue(long now){
+        double length=Math.hypot(velocityX,velocityY)*Math.hypot(publishedVelocityX,publishedVelocityY);
+        boolean turned=moving && publishedMoving && length>0
+            && (velocityX*publishedVelocityX+velocityY*publishedVelocityY)/length<.8660254;
+        boolean changed=!published || moving!=publishedMoving || attacking!=publishedAttacking
+            || moving && (lunging!=publishedLunging || running!=publishedRunning || turned);
+        if(!changed && now<nextRelay)return false;
+        published=true;publishedMoving=moving;publishedAttacking=attacking;
+        publishedLunging=lunging;publishedRunning=running;
+        publishedVelocityX=velocityX;publishedVelocityY=velocityY;
+        nextRelay=now+RELAY_INTERVAL; // No catch-up bursts after a delayed frame.
+        return true;
     }
     void packet(ZombiePacket packet){
         packet.x=x();packet.y=y();packet.z=(byte)z();
@@ -175,7 +197,7 @@ final class ServerZombieNativeAdapter {
             }
             if(Math.hypot(px-x(),py-y())>.001){packet.x=px;packet.y=py;packet.predictionType=1;}
         }
-        packet.realState=attacking?ZombieState.Attack: moving?ZombieState.WalkToward:ZombieState.Idle;
+        packet.realState=attacking?ZombieState.Attack: moving?(lunging?ZombieState.Lunge:ZombieState.WalkToward):ZombieState.Idle;
         int runningMask=1<<NetworkZombieVariables.Flag.IsRunning.ordinal();
         packet.booleanVariables=(short)(running && moving ? packet.booleanVariables|runningMask : packet.booleanVariables&~runningMask);
         packet.update=(byte)((packet.update | 1 | 4) & ~16); // No stale client path goal.

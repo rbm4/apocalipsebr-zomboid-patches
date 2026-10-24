@@ -1,5 +1,9 @@
 # Server-controlled zombie interactions
 
+Native client gait, correction and packet timing can be measured using the
+[opt-in diagnostic client sampler](CLIENT-ZOMBIE-SAMPLER.md). It does not change
+the production server controller or require a patch on ordinary clients.
+
 Implemented for the 42.21.0 dedicated server. Requires live multiplayer validation,
 especially attack animation transitions, movement pace and ownership handoff under latency.
 No client Java patch, new wire format, database migration or deployment is included.
@@ -15,7 +19,7 @@ Enabled by default; `-Dapocbr.npc.zombieControl=false` disables acquisition on s
 | `ServerZombieSession` | One zombie incarnation/target, pursuit progress, windup, one strike commitment and recovery. |
 | `ServerZombieNativeAdapter` | Loaded geometry, collision checks, movement integration, native square membership and synthesized zombie packet fields. |
 | `ServerZombiePath` | Asynchronous game polygon-path requests, main-thread result pump, copied fractional corners and cancellation. |
-| `ServerZombiePace` | Bounded calibration of accepted owner movement against the per-body native speed reference. |
+| `ServerZombiePace` | Captured animation gait selection and bounded owner-motion calibration for unsampled gaits. |
 | `ZombieVictimPort` | NPC eligibility, current actor resolution and incoming strike boundary. |
 | `ServerHumanZombieVictims` | Human adapter: persisted cheat policy, identity validation, native bite damage and logical health projection. |
 
@@ -34,7 +38,7 @@ late updates from the former owner are refused.
 
 The packer's ordinary relevance grid includes active controller sessions, even
 without incoming client updates. `ServerZombiePacketPreparation` prepares native
-fields once per frame and overlays the controller position and Idle/WalkToward/
+fields once per frame and overlays the controller position and Idle/WalkToward/Lunge/
 Attack state before immutable async snapshots are created. All relevant clients
 receive the same authoritative real position and collision-checked prediction. Packet flags preserve the
 native field layout; stale client path goals are cleared. Clients relinquish
@@ -91,7 +95,19 @@ square membership and the player spatial-query cache are updated with position.
 There is no teleport through furniture or doors. Per-update travel is capped at
 150 ms of elapsed movement; delayed ticks do not catch up with a large jump.
 
-Pace calibrates measured real-position displacement from accepted nearby owner
+The first captured gait applies only to standing, active `walkType="2"`,
+`speedType=2`, `speedMod=1` zombies without a native sprint override. Unobstructed
+root/requested motion in `zombies-2026-10-24T00-56-19.046381200Z-511321780964200.ndjson`
+measured **1.0475 tiles/s walking** and **1.5227 tiles/s lunging**. These rates use
+elapsed real time; packet receipt timing and invisible-animation catch-up frames
+do not increase them. Calibration cannot rescale this captured gait. Clear,
+visible direct pursuit within 3.5 tiles selects the lunge speed and native Lunge
+presentation, following vanilla `IsoZombie`'s `blunge` entry distance. Polygon
+detours keep walking. This is a bounded proximity selection, not a full replica
+of the native six-second lunge timer, turn/animation graph or animation blending.
+All existing physical collision, contact, reaction and cancellation checks remain.
+
+For unsampled gaits, pace calibrates measured real-position displacement from accepted nearby owner
 packets in ordinary walking/pathfinding/lunge states. Three consecutive consistent
 measurements are required; calibration expires after two seconds. Ratios below
 .5 or above 1.25 of the native reference, inconsistent samples, excessive gaps
@@ -101,13 +117,14 @@ takeover. Without a usable calibration, the fallback uses the native
 `getZombieWalkTowardSpeed(.025, 1, ...)` helper at a 30 Hz reference rate; this
 retains speedMod/inactivity/sprinter selection, but is not a claim of exact
 animation-root-motion parity. Native speedMod and walk type are not overwritten.
-The native helper is reevaluated during movement, retaining per-body gait changes
+Gait selection is reevaluated during movement, retaining per-body gait changes
 and sprinter selection instead of multiplying captured sprinter speed by speedMod
-again. Acquisition diagnostics distinguish `filtered_owner_sample` from fallback.
+again. Acquisition diagnostics distinguish `captured_walk_2`, `filtered_owner_sample` and fallback.
 Vanilla `PathFindBehavior2` consumes `getDeferredMovement()` animation-root distance;
 without an animation player that method returns zero. This server-only adapter
-therefore uses filtered owner displacement as its root-motion measurement and the
-helper as a reference fallback, not as proof of exact client-animation parity.
+therefore uses the captured constants for the supported gait, filtered owner
+displacement otherwise, and the helper as a reference fallback. A single capture
+does not establish animation parity for other variants, speed modifiers or sprinters.
 
 Movement spends one distance budget over up to 32 collision-checked .1-tile
 substeps, carrying remaining distance across polygon corners. It stops .65 tiles
@@ -115,10 +132,21 @@ short of the final victim position. Short path nodes no longer discard a frame's
 remaining movement or change the effective gait. Prediction remains clipped to
 the next corner and does not extrapolate through stairs or missing floor.
 
-Active sessions remain relay candidates every auth frame, subject to existing
-async backpressure, relevance and packet budgets. Moving packets use native
-prediction type 1 with a horizon of two measured simulation steps, clamped to
-100–300 ms and at most .6 tiles. Real coordinates remain authoritative; prediction
+Active sessions become routine relay candidates every **200 ms**, independent of
+movement integration. Acquisition, moving/stopped transitions, attack start/end,
+gait/running changes and turns over 30 degrees publish on the next packer frame
+without waiting for that interval. A late frame queues one current update; it does
+not replay missed intervals. Scheduling happens once before viewer fan-out; the
+packer's per-viewer pending queues retain existing backpressure and relevance rules.
+This is an enqueue cadence, not a guarantee of transport latency. Ownership
+revocation/release and native hit packets retain their existing immediate paths.
+The capture's 4000 ms upload interval is deliberately not used: server-controlled
+NPC interactions use the nearby-viewer 200 ms interval.
+
+Moving packets retain native prediction type 1. The captured gait uses vanilla
+extrapolation's fixed **500 ms** horizon, decoupled from the server tick. Unsampled
+gaits retain two measured simulation steps clamped to 100–300 ms. Both are bounded
+to .6 tiles. Real coordinates remain authoritative; prediction
 stops at the next waypoint or .65 tiles short of the victim and validates loaded
 floor, stair exclusion, tile edges and static collision in .05-tile increments.
 Idle, windup and recovery packets have no prediction. The native walk-speed helper
@@ -208,6 +236,13 @@ explicit body invalidation), not an ownership release. Ownership sessions resolv
 victims independently; this change does not alter visual memory or retreat policy.
 
 ## Verification
+
+Captured-gait/cadence checks: 123 controller assertions plus the disabled-controller
+case, 3037 authorization assertions and 45359 packet assertions pass. The real-JAR
+`42.21.0/patchApocalipseBr.ps1 -DryRun` compiles 254 sources / 788 classes without
+deployment. Compare one captured-variant zombie walking and lunging beside a
+protected NPC at runtime; check acquisition, turns, contact, hits and release from
+two unpatched viewers. Client-visible smoothing and latency still need that test.
 
 `tools/test_server_zombie_control.py` compiles the actual controller, session,
 native adapter/path-request lifecycle, native ownership manager and packet-preparation

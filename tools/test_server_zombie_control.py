@@ -73,7 +73,9 @@ import zombie.core.raknet.UdpConnection;
 public class IsoZombie {
  public float x,y,realx,realy,speedMod=.6f,health=1;public byte realz;public int id,dies;public short onlineId=1;
  public long lastChangeOwner;public IsoPlayer target,ownerPlayer;public UdpConnection owner;
- public boolean dead,reanimated,running,sprinter,knocked,floor,stagger;public zombie.ai.State state=zombie.ai.states.ZombieIdleState.instance();
+ public boolean dead,reanimated,running,sprinter,knocked,floor,stagger,inactive;public int speedType=2;public String walkType="1";
+ public String getWalkType(){return walkType;}public int getSpeedType(){return speedType;}
+ public zombie.ai.State state=zombie.ai.states.ZombieIdleState.instance();
  public zombie.iso.IsoGridSquare square,movingSquare;
  public zombie.network.NetworkVariables.ZombieState realState=zombie.network.NetworkVariables.ZombieState.Idle;
  public final zombie.network.packets.character.ZombiePacket zombiePacket=new zombie.network.packets.character.ZombiePacket();
@@ -310,6 +312,49 @@ public class ControlTest {
   service.complete(smallNodes);check(budgetAdapter.move(budgetVictim,.15f),"short-node route advances");
   check(Math.abs(normal.y-1.35f)<.001,"one frame spends full movement budget across polygon nodes");
   cell.getGridSquare(11,1,0).free=true;
+  var captured=body(50,10.5f,3.5f);captured.walkType="2";captured.speedMod=1;
+  check(ServerZombiePace.measured(captured),"captured fast shambler selects measured gait");
+  var captureMetrics=new ServerZombiePace();
+  for(int n=1;n<=3;n++)captureMetrics.sample(1.0475f*1.2f,1.0475f,n*200_000_000L);
+  check(captureMetrics.usable(600_000_000L) && Math.abs(captureMetrics.speed(captured,600_000_000L)-1.0475f)<.0001,
+   "owner receipt timing cannot rescale captured root motion");
+  var measuredAdapter=new ServerZombieNativeAdapter(captured,ServerZombiePace.WALK_2_SPEED);
+  var distant=victim(25.5f,3.5f);
+  for(int n=0;n<10;n++)measuredAdapter.move(distant,.1f);
+  measuredAdapter.present(true,false);measuredAdapter.packet(prediction);
+  check(Math.abs(captured.x-11.5475f)<.0002,"one second walking matches captured distance");
+  check(prediction.realState==NetworkVariables.ZombieState.WalkToward && Math.abs(prediction.x-captured.x-.52375f)<.001,
+   "measured walking uses fixed 500ms prediction independent of server frame time");
+  var fasterTicks=body(51,10.5f,2.5f);fasterTicks.walkType="2";fasterTicks.speedMod=1;
+  var fasterAdapter=new ServerZombieNativeAdapter(fasterTicks,ServerZombiePace.WALK_2_SPEED);
+  for(int n=0;n<20;n++)fasterAdapter.move(victim(25.5f,2.5f),.05f);
+  check(Math.abs(fasterTicks.x-captured.x)<.0002,"measured one-second displacement is independent of frame rate");
+  float walked=captured.x;var close=victim(captured.x+3,captured.y);
+  measuredAdapter.move(close,.1f);measuredAdapter.present(true,false);measuredAdapter.packet(prediction);
+  check(Math.abs(captured.x-walked-.15227f)<.0001 && prediction.realState==NetworkVariables.ZombieState.Lunge,
+   "clear close pursuit uses captured lunge displacement and native lunge presentation");
+  check((prediction.booleanVariables&4)==0,"measured lunge does not become a sprinter");
+  float lunged=captured.x;measuredAdapter.move(distant,.05f);measuredAdapter.packet(prediction);
+  check(Math.abs(captured.x-lunged-.052375f)<.0001 && prediction.realState==NetworkVariables.ZombieState.WalkToward,
+   "long pursuit returns to measured walking with elapsed-time scaling");
+  check(measuredAdapter.relayDue(0),"acquisition presentation publishes immediately");
+  check(!measuredAdapter.relayDue(199_999_999L),"steady motion does not publish before 200ms");
+  check(measuredAdapter.relayDue(200_000_000L),"steady motion publishes at 200ms");
+  check(!measuredAdapter.relayDue(200_000_000L),"same frame cannot enqueue duplicate relay");
+  measuredAdapter.present(false,true);
+  check(measuredAdapter.relayDue(210_000_000L),"attack starts without waiting for cadence");
+  measuredAdapter.present(false,false);
+  check(measuredAdapter.relayDue(220_000_000L),"attack completion publishes immediately");
+  measuredAdapter.move(distant,.05f);measuredAdapter.present(true,false);
+  check(measuredAdapter.relayDue(230_000_000L),"movement restart publishes immediately");
+  measuredAdapter.move(victim(captured.x,7.5f),.05f);
+  check(measuredAdapter.relayDue(240_000_000L),"sharp turn publishes immediately");
+  check(measuredAdapter.relayDue(5_000_000_000L) && !measuredAdapter.relayDue(5_000_000_001L),
+   "delayed frame sends current presentation once without catch-up burst");
+  captured.inactive=true;check(!ServerZombiePace.measured(captured),"inactive gait remains unsampled");captured.inactive=false;
+  captured.speedMod=.8f;check(!ServerZombiePace.measured(captured),"different speedMod keeps fallback");captured.speedMod=1;
+  captured.sprinter=true;check(!ServerZombiePace.measured(captured),"native sprint override keeps fallback");captured.sprinter=false;
+  captured.walkType="3";check(!ServerZombiePace.measured(captured),"unsampled walk variant keeps fallback");
   System.out.println("Passed "+checks+" server-zombie controller assertions.");
  }
 }
