@@ -103,13 +103,15 @@ final class ServerHumanPerception {
         boolean indexed=human.player.getCell().getObjectList() instanceof ServerMovingObjectSet;
         Coverage zc=!originLoaded||!indexed?Coverage.UNAVAILABLE
             :close.complete()&&outer.complete()&&close.loaded()&&outer.loaded()&&!truncated&&zombies.size()<=ZOMBIE_RAYS?Coverage.COMPLETE:Coverage.PARTIAL;
-        frame=memory.update(now,sightings,invalid,originLoaded?pc:Coverage.UNAVAILABLE,zc,truncated,
+        var relevant=new HashSet<Identity>();
+        for(var b:bindings.values())if(!invalid.contains(b.identity())&&distance(b.body())<=awarenessRadius*awarenessRadius)relevant.add(b.identity());
+        frame=memory.update(now,sightings,invalid,relevant,originLoaded?pc:Coverage.UNAVAILABLE,zc,truncated,
             new Work(checked,close.tiles()+outer.tiles(),close.bodies()+outer.bodies(),zombies.size(),playerChecks+zombieChecks));
         // Local crowd awareness shares discovery budgets; attack authorization retains visual rays.
         var nearby=new ArrayList<Sighting>();
         for(var candidate:zombies){var body=candidate.body();var binding=bind(body);
             nearby.add(new Sighting(binding.identity(),body.getX(),body.getY(),body.getZ(),candidate.distance()));}
-        awareness=awarenessMemory.update(now,nearby,invalid,Coverage.UNAVAILABLE,zc,truncated,frame.work());
+        awareness=awarenessMemory.update(now,nearby,invalid,relevant,Coverage.UNAVAILABLE,zc,truncated,frame.work());
         // Retained positions are last-known; distances follow the observer's current position.
         awareness=new Frame(true,now,awareness.contacts().stream().map(c->{double dx=c.x()-human.player.getX(),dy=c.y()-human.player.getY();
             return new Contact(c.identity(),c.x(),c.y(),c.z(),dx*dx+dy*dy,c.firstSeenNanos(),c.lastSeenNanos(),c.visible());}).toList(),

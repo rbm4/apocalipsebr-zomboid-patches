@@ -35,6 +35,13 @@ public class HumanPerceptionTest {
   check(memory.update(3_000_000_000L,List.of(),Set.of(),Coverage.COMPLETE,Coverage.UNAVAILABLE,false,work).contacts().isEmpty(),"memory expires at bounded age even while sensing unavailable");
   memory.update(0,List.of(new Sighting(id,0,0,0,0)),Set.of(),Coverage.COMPLETE,Coverage.COMPLETE,false,work);
   check(memory.update(STEP,List.of(),Set.of(id),Coverage.COMPLETE,Coverage.COMPLETE,false,work).contacts().isEmpty(),"explicit invalidation removes a contact without waiting for expiry");
+  memory.update(0,List.of(new Sighting(id,1,2,0,4)),Set.of(),Coverage.COMPLETE,Coverage.COMPLETE,false,work);
+  var retained=memory.update(10_000_000_000L,List.of(),Set.of(),Set.of(id),Coverage.COMPLETE,Coverage.PARTIAL,false,work);
+  check(retained.contacts().size()==1&&!retained.contacts().getFirst().visible()&&retained.contacts().getFirst().lastSeenNanos()==0,"nearby relevance retains last-seen facts without granting vision");
+  check(memory.update(12_999_999_999L,List.of(),Set.of(),Coverage.COMPLETE,Coverage.PARTIAL,false,work).contacts().size()==1,"contact keeps grace after leaving relevant area");
+  check(memory.update(13_000_000_000L,List.of(),Set.of(),Coverage.COMPLETE,Coverage.PARTIAL,false,work).contacts().isEmpty(),"contact evicts at grace boundary after leaving area");
+  memory.update(0,List.of(new Sighting(id,1,2,0,4)),Set.of(),Coverage.COMPLETE,Coverage.COMPLETE,false,work);
+  check(memory.update(10_000_000_000L,List.of(new Sighting(id,1,2,0,4)),Set.of(),Coverage.COMPLETE,Coverage.COMPLETE,false,work).contacts().getFirst().firstSeenNanos()==0,"current sighting refreshes before eviction without resetting encounter age");
   var many=new ArrayList<Sighting>();for(int n=0;n<180;n++)many.add(new Sighting(new Identity(Kind.ZOMBIE,(short)n,n,n),0,0,0,n));
   var limited=memory.update(2*STEP,many,Set.of(),Coverage.COMPLETE,Coverage.PARTIAL,false,work);
   check(limited.contacts().size()==128&&limited.contactsTruncated(),"retention is bounded and truncation explicit");
@@ -42,6 +49,7 @@ public class HumanPerceptionTest {
 
   GameServer.Players.clear();GameServer.IDToPlayerMap.clear();GameServer.udpEngine.connections.clear();
   var cell=new IsoCell();var bot=actor(cell,"roaming-greeter");var z=zombie(cell,101.5f,200.5f,0);
+  z.square.moving.add(new zombie.iso.objects.IsoZombieGiblets());
   var first=bot.actuator.observe(0);var contact=one(first.senses());
   check(contact.visible()&&first.visitors().isEmpty(),"zombie is a sensor contact, never a player visitor");
   check(first.senses().zombies()==Coverage.PARTIAL,"a partial spatial sweep does not report full coverage");bounded(first.senses());
@@ -58,6 +66,15 @@ public class HumanPerceptionTest {
   check(!one(bot.actuator.observe(3*STEP).senses()).visible(),"closed door blocks sensing");
   LosUtil.result=LosUtil.TestResults.ClearThroughWindow;
   check(one(bot.actuator.observe(4*STEP).senses()).visible(),"clear window permits sight without asserting reachability");
+  var rememberedCell=new IsoCell();var rememberingBot=actor(rememberedCell,"roaming-greeter");var nearbyBody=zombie(rememberedCell,101.5f,200.5f,0);
+  var nearbyFirst=one(rememberingBot.actuator.observe(0).senses());
+  LosUtil.result=LosUtil.TestResults.Blocked;
+  var nearbyMemory=one(rememberingBot.actuator.observe(10_000_000_000L).senses());
+  check(nearbyMemory.identity().equals(nearbyFirst.identity())&&!nearbyMemory.visible()&&nearbyMemory.lastSeenNanos()==0,"native nearby living contact survives long occlusion with same identity and stale visual facts");
+  check(rememberingBot.perception.resolveZombie(nearbyMemory.identity())==null,"remembered nearby contact cannot authorize attack through wall");
+  nearbyBody.square.moving.remove(nearbyBody);nearbyBody.x=150.5f;nearbyBody.square=rememberedCell.getGridSquare(150,200,0);nearbyBody.square.moving.add(nearbyBody);
+  check(rememberingBot.actuator.observe(13_000_000_000L).senses().contacts().isEmpty(),"native contact leaves relevant radius and evicts after grace");
+  rememberingBot.dispose();LosUtil.result=LosUtil.TestResults.ClearThroughWindow;
   z.dead=true;
   check(bot.actuator.observe(5*STEP).senses().contacts().isEmpty(),"dead contact invalidated immediately on next sample");
   z.dead=false;z.square.moving.remove(z);z.x=101.5f;z.square=cell.getGridSquare(101,200,0);z.square.moving.add(z);

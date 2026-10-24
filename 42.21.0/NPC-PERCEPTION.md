@@ -66,7 +66,7 @@ Per sample, per actor:
 | Player visibility checks | 32, rotating |
 | Zombie visibility checks | 16: nearest-contact reservation plus rotation |
 | Contacts retained | 128 |
-| Unseen memory age | 3 real seconds, measured with monotonic simulation time |
+| Memory after leaving relevance radius | 3 real seconds since last relevant sample or sighting |
 
 Known, valid in-range zombie contacts are also offered for visibility refresh
 without waiting for discovery to revisit their tile. This avoids unnecessary
@@ -132,9 +132,17 @@ A contact carries last-observed position/distance, first-seen time, last-seen
 time and `visible`. Each new sample marks unchecked/occluded contacts remembered;
 visible sightings refresh them. Hidden movement never updates their last-known
 position. Dead, removed, unloaded or otherwise invalid bound entities are removed
-at the next sample; otherwise unseen contacts expire after three seconds. Memory
-does not last indefinitely when coverage is unavailable. New visible and recently
-seen contacts take precedence if the memory capacity is reached.
+immediately on the next heartbeat. Valid living bindings inside the local
+awareness radius remain remembered even when LOS or a sampling budget omits
+them. Relevance refreshes a private retention timestamp, never the visual
+position, last-seen time or visible flag. After leaving that radius, a contact
+expires three real seconds after its last relevant sample/sighting. A fresh
+sighting is applied before eviction, preserving encounter first-seen time.
+The capacity remains 128: visible and recently seen contacts take precedence
+under pressure. Disposal/reactivation clears all activation-local memory.
+`resolveZombie` still requires current visual contact and native revalidation;
+remembered nearby targets cannot authorize attacks through a wall.
+`IsoZombieGiblets` are neither living contacts nor corpse-task candidates.
 
 Cached frames keep their actual `sampledAtNanos`; `HumanObservation.nowNanos`
 remains the current decision time, and its physical-state snapshot remains fresh.

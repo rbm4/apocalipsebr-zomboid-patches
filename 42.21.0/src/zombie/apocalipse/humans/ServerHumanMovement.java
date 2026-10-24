@@ -285,19 +285,9 @@ final class ServerHumanMovement implements MovementGrid {
     }
 
     private boolean blocksMovement(zombie.iso.IsoMovingObject body){
-        if(body==human.player||body instanceof zombie.iso.objects.IsoDeadBody)return false;
-        return !(body instanceof zombie.characters.IsoGameCharacter c)||!c.isDead()&&c.getHealth()>0;
+        return BodyOccupancy.blocks(body,human.player);
     }
-    /** Native isFree(true) counts every moving object, including self and unretired dead actors. */
-    private boolean freeOfBlockingBodies(IsoGridSquare square){
-        if(!square.isFree(false))return false;
-        if(square.isFree(true))return true;
-        var bodies=square.getMovingObjects();
-        // Unknown occupancy stays blocked; only observed nonblocking bodies may relax the native result.
-        if(bodies.isEmpty()||bodies.size()>64)return false;
-        for(var body:bodies)if(blocksMovement(body))return false;
-        return true;
-    }
+    boolean freeOfBlockingBodies(IsoGridSquare square){return BodyOccupancy.free(square,human.player);}
     boolean occupancyAllows(float x,float y,float nx,float ny) {
         var destination=square((int)Math.floor(nx),(int)Math.floor(ny));
         if(destination==null)return false;

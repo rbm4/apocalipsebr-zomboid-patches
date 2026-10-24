@@ -49,7 +49,7 @@ execution because a valid planned edge can become blocked or unloaded.
 Vanilla `IsoGridSquare.isFree(true)` rejects any nonempty moving-object list,
 including the NPC itself and dead/zero-health characters awaiting native removal.
 The movement adapter relaxes that result only when all observed occupants are
-self, actual `IsoDeadBody` objects or dead/zero-health game characters. Static
+self, actual `IsoDeadBody` objects, `IsoZombieGiblets` debris or dead/zero-health game characters. Static
 geometry remains mandatory; live characters, unknown objects, unexplained
 occupancy and lists over 64 objects remain blocked. The same interpretation
 controls normal route steps, origin centering and prediction. Tactical body
@@ -331,3 +331,10 @@ late viewer load and interruption by greeting, dialogue and trade.
 
 Related: [architecture](NPC-ENGINE-ARCHITECTURE.md),
 [physical capability investigation](docs/npc-physical-capabilities-and-combat.md).
+
+`traversal/BodyOccupancy` owns the common native-body predicate and bounded
+square occupancy check. Ordinary movement, prediction, combat clearance,
+survival planning and traversal landing use it, so giblets cannot become targets
+or physical occupants. Static geometry and live/unknown moving objects retain
+their checks. The existing 64-object safety budget still fails closed when a
+square cannot be fully classified within that budget.

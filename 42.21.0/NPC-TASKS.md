@@ -65,9 +65,16 @@ participant after acceptance does not move the search center. Optional fixed
 source coordinates must be provided together. Source/destination must be inside
 the profile's loaded cleanup scope. The destination tile is excluded from the
 search, even if it overlaps the source area.
-After the area is clear, the NPC returns to the captured source through the
-cleanup scope before completing, so its ordinary patrol can resume inside its
-original movement area. Return route failure is reported explicitly.
+The cleanup order remains assigned until `RESUME_ROUTINE` (the existing
+"go back to normal" dialogue option), another replacement order, or actor shutdown.
+It lasts for the current activation only; restart/reactivation starts the normal
+routine. Clearing the area does not succeed/finish this task. After hauling, the
+NPC returns to the captured source once, then waits with reason
+`cleanup_waiting_corpses`. Empty and deferred-only searches poll at most every
+two seconds so newly fallen bodies can be collected without another order.
+During those waits the scheduler may run the routine; idle scans do not repeatedly
+recall the actor to the source. The search center remains the original captured
+NPC tile. Return-route failure retains intent and retries.
 
 `AssignedTaskModule` delegates this objective to one `CorpseCleanupExecution`.
 `HumanCorpsePort` is the injected capability; `ServerHumanCorpses` owns bounded
@@ -175,9 +182,9 @@ the new profile revision. Runtime performs no JDBC calls in dialogue or task tic
 With `-Dapocbr.npc.logLevel=DEBUG`, native discovery emits `corpse search` on
 selection and completed scans: source, radius, destination, selected body token
 and tile, object/corpse counts, invalid/scope/drop-off/other-claim skip counts,
-and loading status. It does not log each discovery tick. `cleanup_completed` can
-mean the captured search area had no eligible bodies; it does not by itself
-prove any corpse was hauled. `movement failed ... body_occupied` describes
+and loading status. It does not log each discovery tick. A completed search means
+only that the bounded scan reached the end, not that the order has finished or
+that any corpse was hauled. `cleanup_waiting_corpses` retains the order. `movement failed ... body_occupied` describes
 moving-object collision separately. See [occupancy diagnostics](NPC-MOVEMENT.md#moving-object-occupancy).
 
 - `python tools/test_human_tasks.py`: production parameter validation, task
@@ -213,3 +220,17 @@ in-flight deferred bodies outside the source radius and claim release. The
 current intent update passed corpse (72), tasks (29), dialogue (66 plus language),
 survival (101) and roaming (571) checks and the target-JAR dry compilation above.
 Five-minute delays use monotonic real time, not accelerated world time.
+
+Continuous-order regression coverage checks new corpses after an empty scan,
+explicit resume cancellation, no repeated idle return routes, and discovery
+while another body is deferred. Native corpse discovery remains a separate
+bounded `HumanCorpsePort` capability rather than mixing corpses into the living
+player/zombie contact memory. It uses the fixed cleanup source, which can be far
+from the NPC's moving visual-perception origin during delivery.
+
+Current activation-only continuous cleanup verification: corpse cleanup (81),
+perception (166), task lifecycle (29), dialogue (66 plus PTBR/EN), survival (101),
+traversal (93), server-human lifecycle (92), engagement (52) and roaming (571)
+assertions passed. Target-JAR dry compilation passed with 262 sources and 805
+class files. No live deployment was performed; dedicated-server validation is
+still needed for the actual corpse replication and presentation.

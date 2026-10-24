@@ -7,27 +7,26 @@ import zombie.apocalipse.humans.walking.WalkingPatternSpec.Point;
 /** Persistent activation-local intent: approach alternatives, bounded attempts and timed body deferral. */
 public final class CorpseCleanupExecution {
     public static final int MAX_ATTEMPTS=5;
-    public static final long RETRY_NANOS=1_000_000_000L, DEFER_NANOS=300_000_000_000L;
+    public static final long IDLE_NANOS=2_000_000_000L, RETRY_NANOS=1_000_000_000L, DEFER_NANOS=300_000_000_000L;
     private final Point source,destination;
     private final int radius;
     private HumanCorpsePort.Body body;
-    private boolean hauling,moving,claimed,returning;
+    private boolean hauling,moving,claimed,returning,needsReturn=true;
     private Point goal;
     private long deadline,retryAt=Long.MIN_VALUE;
     private int attempts,returnAttempts;
-    private String result,reason="cleanup_searching";
+    private String reason="cleanup_searching";
     public CorpseCleanupExecution(Point source,Point destination,int radius){
         this.source=java.util.Objects.requireNonNull(source);this.destination=java.util.Objects.requireNonNull(destination);this.radius=radius;
         if(radius<0||radius>2||source.z()!=destination.z())throw new IllegalArgumentException("Invalid corpse cleanup area");
     }
     public String reason(){return reason;}
-    public boolean ready(long now){return result==null&&now>=retryAt;}
+    public boolean ready(long now){return now>=retryAt;}
     /** Null while intent is live, including retries and five-minute deferrals. */
     public String update(long now,HumanActuator actuator){
-        if(result!=null)return result;
         if(now<retryAt)return null;
         var port=actuator.corpses();var here=actuator.taskWorld().position();
-        if(!port.supported()||here==null)return finish("cleanup_unavailable",actuator);
+        if(!port.supported()||here==null){reason="cleanup_waiting_available";retryAt=now+RETRY_NANOS;return null;}
         if(!port.permitted(source)||!port.permitted(destination)){
             interrupt(actuator);
             reason="cleanup_waiting_scope";retryAt=now+RETRY_NANOS;return null;
@@ -39,10 +38,11 @@ public final class CorpseCleanupExecution {
             if(!found.loaded()){reason="cleanup_waiting_area";retryAt=now+RETRY_NANOS;return null;}
             if(found.body()==null){
                 if(!found.complete())return null;
-                if(found.retryAtNanos()!=Long.MAX_VALUE){reason="cleanup_waiting_deferred";retryAt=found.retryAtNanos();return null;}
-                returning=true;return returnToSource(now,actuator);
+                if(found.retryAtNanos()!=Long.MAX_VALUE){reason="cleanup_waiting_deferred";retryAt=Math.min(found.retryAtNanos(),now+IDLE_NANOS);return null;}
+                if(needsReturn){returning=true;return returnToSource(now,actuator);}
+                return idle(now,actuator);
             }
-            body=found.body();attempts=0;hauling=false;moving=false;
+            body=found.body();attempts=0;hauling=false;moving=false;needsReturn=true;
         }
         var current=port.resolve(body.token());
         if(current==null||!current.position().equals(body.position())){clear(actuator);return null;}
@@ -64,7 +64,7 @@ public final class CorpseCleanupExecution {
             if(!hauling){
                 // Head/feet are adjacent route endpoints. Pull at most one clear cardinal tile to the actor.
                 if(!port.move(body.token(),here))return retryBody("cleanup_grab_blocked",now,actuator);
-                body=new HumanCorpsePort.Body(body.token(),here);hauling=true;goal=null;return null;
+                body=new HumanCorpsePort.Body(body.token(),here);hauling=true;needsReturn=true;goal=null;return null;
             }
             port.release(body.token());body=null;hauling=false;claimed=false;attempts=0;reason="cleanup_searching";return null;
         }
@@ -92,7 +92,7 @@ public final class CorpseCleanupExecution {
         retryAt=now+RETRY_NANOS;reason="cleanup_retrying";
         if(attempts>=MAX_ATTEMPTS){
             long until=now+DEFER_NANOS;
-            if(!port.defer(token,until))return finish("cleanup_deferral_limit",actuator);
+            if(!port.defer(token,until)){reason="cleanup_waiting_deferral_capacity";retryAt=until;attempts=0;return null;}
             port.retry(token,attempts,why,until);
             body=null;attempts=0;reason="cleanup_searching";
             // Continue with other bodies on the next tick; the deferred body has its own timer.
@@ -102,7 +102,7 @@ public final class CorpseCleanupExecution {
     }
     private String returnToSource(long now,HumanActuator actuator){
         reason="cleanup_returning";
-        if(source.equals(actuator.taskWorld().position()))return finish("cleanup_completed",actuator);
+        if(source.equals(actuator.taskWorld().position()))return idle(now,actuator);
         if(!moving){
             if(!actuator.startMovement(new MovementRequest.To(source,actuator.corpses().movementSlot()),now))return retryReturn("cleanup_return_rejected",now,actuator);
             moving=true;deadline=now+120_000_000_000L;
@@ -113,8 +113,14 @@ public final class CorpseCleanupExecution {
         if(motion==HumanActuator.MotionStatus.SUCCEEDED){
             moving=false;
             if(!source.equals(actuator.taskWorld().position()))return retryReturn("cleanup_destination_not_reached",now,actuator);
-            return finish("cleanup_completed",actuator);
+            return idle(now,actuator);
         }
+        return null;
+    }
+    private String idle(long now,HumanActuator actuator){
+        if(moving)actuator.stopMoving();moving=false;
+        returning=false;needsReturn=false;returnAttempts=0;
+        reason="cleanup_waiting_corpses";retryAt=now+IDLE_NANOS;
         return null;
     }
     private String retryReturn(String why,long now,HumanActuator actuator){
@@ -130,5 +136,4 @@ public final class CorpseCleanupExecution {
         claimed=false;hauling=false;goal=null;
     }
     private void clear(HumanActuator actuator){interrupt(actuator);body=null;attempts=0;goal=null;}
-    private String finish(String why,HumanActuator actuator){clear(actuator);reason=result=why;return why;}
 }

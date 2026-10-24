@@ -134,7 +134,7 @@ public final class HumanTraversal implements TraversalExecution.Port {
         IsoGridSquare b = square(edge.to());
         if (!walkable(edge.to()) || !PolygonalMap2.instance.canStandAt(edge.to().x()+.5F, edge.to().y()+.5F, z, null, false, true))
             return TraversalExecution.Landing.BLOCKED;
-        if (!b.isFree(true) || world.occupied(player, b)) return TraversalExecution.Landing.OCCUPIED;
+        if (!BodyOccupancy.free(b,player) || world.occupied(player, b)) return TraversalExecution.Landing.OCCUPIED;
         return TraversalExecution.Landing.CLEAR;
     }
     @Override public boolean prepare(TraversalEdge edge) {

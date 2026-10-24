@@ -26,7 +26,7 @@ final class ServerHumanSurvival implements SurvivalPort {
         var planning=new zombie.apocalipse.humans.movement.MovementGrid(){
             public boolean available(){return scope.available();}
             public boolean walkable(Tile tile){var square=human.movement.square(tile.x(),tile.y());
-                return scope.walkable(tile)&&square!=null&&(tile.equals(start)||square.isFree(true)
+                return scope.walkable(tile)&&square!=null&&(tile.equals(start)||human.movement.freeOfBlockingBodies(square)
                     ||elevated&&human.movement.bodyClear(tile.x()+.5F,tile.y()+.5F,tile.x()+.5F,tile.y()+.5F));}
             public boolean connected(Tile from,Tile to){return traversalCost(from,to)>0;}
             public int traversalCost(Tile from,Tile to){
@@ -34,7 +34,7 @@ final class ServerHumanSurvival implements SurvivalPort {
                 if(elevated&&!human.movement.bodyClear(from.equals(start)?human.player.getX():from.x()+.5F,
                     from.equals(start)?human.player.getY():from.y()+.5F,to.x()+.5F,to.y()+.5F))return 0;
                 int cost=scope.traversalCost(from,to);
-                return cost<=0?0:cost+(elevated&&!human.movement.square(to.x(),to.y()).isFree(true)?4:0);
+                return cost<=0?0:cost+(elevated&&!human.movement.freeOfBlockingBodies(human.movement.square(to.x(),to.y()))?4:0);
             }
         };
         var route=RetreatPlanner.plan(planning,start,positions,settings.retreatDistance(),elevated);

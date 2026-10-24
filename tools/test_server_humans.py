@@ -763,5 +763,12 @@ FILES.update({
  }""",
 })
 
+
+FILES["zombie/iso/objects/IsoZombieGiblets.java"] = """package zombie.iso.objects;
+public class IsoZombieGiblets extends zombie.iso.IsoMovingObject {
+ public float getX(){return 0;}public float getY(){return 0;}public float getZ(){return 0;}
+ public int getID(){return -1;}public zombie.iso.IsoGridSquare getCurrentSquare(){return null;}
+}"""
+
 if __name__ == "__main__":
     main()
