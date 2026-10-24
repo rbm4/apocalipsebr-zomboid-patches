@@ -104,6 +104,32 @@ public class HumanWeaponCombatTest {
   near(f.target().health,.6f,"critical multiplier is applied exactly once to calibrated weapon damage");
   f.factory().deactivate("critical-test");zombie.core.random.Rand.roll=0;
  }
+ static void hitReactions()throws Exception{
+  for(boolean ranged:List.of(false,true)){
+   var f=fixture("reaction-"+ranged,ranged?"RANGED":"MELEE");
+   var weapon=f.human().inventory.weapons().stream().filter(w->w.ranged()==ranged).findFirst().orElseThrow();
+   check(f.human().inventory.equip(weapon.itemId()),"reaction fixture equips actual native weapon");
+   f.human().viewers.add(new UdpConnection());zombie.core.random.Rand.roll=49;
+   check(ServerHumanCombatNetwork.commit(f.human(),f.target(),weapon.itemId(),1,1,STEP),"reaction hit commits");
+   var packet=PlayerHitZombiePacket.sent.getLast();
+   check(packet.victimReaction.equals(ranged?"ShotChestL":"HeadLeft"),
+    "packet snapshots a playable victim reaction before native local processing");
+   check(f.target().reaction.equals(packet.victimReaction),"server and transmitted victim reactions agree");
+   check(!packet.critical,"reaction selection preserves already rolled noncritical result");
+   if(ranged){
+    f.target().floor=true;zombie.core.random.Rand.roll=0;
+    check(ServerHumanCombatNetwork.commit(f.human(),f.target(),weapon.itemId(),1,2,2*STEP),"prone firearm hit commits");
+    packet=PlayerHitZombiePacket.sent.getLast();
+    check(packet.victimReaction.equals("Floor") && packet.critical,"prone shot keeps floor reaction and existing critical outcome");
+    int hits=PlayerHitZombiePacket.sent.size();String previous=f.target().reaction;
+    zombie.core.random.Rand.roll=99;
+    check(ServerHumanCombatNetwork.commit(f.human(),f.target(),weapon.itemId(),1,3,3*STEP),"miss follows ordinary packet path");
+    check(PlayerHitZombiePacket.sent.size()==hits && f.target().reaction.equals(previous),"miss cannot install a new victim hit reaction");
+   }
+   f.factory().deactivate("reaction-"+ranged);
+  }
+  zombie.core.random.Rand.roll=0;
+ }
  public static void main(String[] ignored)throws Exception{
   var inventory=new Inventory();var operations=new Operations();var phase=new HumanWeaponCombat(inventory,operations,HumanWeaponCombat.Mode.RANGED,()->.5);
   phase.update(0);check(inventory.equips==1&&operations.aim,"equip phase calls inventory port and aim intent");
@@ -290,7 +316,7 @@ public class HumanWeaponCombatTest {
    public boolean clearAttack(Tile tile){rays.incrementAndGet();return false;}
   };
   check(CombatRoutePlanner.plan(limited,new Tile(0,0),0,0,15).isEmpty()&&rays.get()==16,"route search bounds expensive attack-line probes independently of visited nodes");
-  attackLines();damageCalibration();
+  attackLines();damageCalibration();hitReactions();
   System.out.println("Passed "+checks+" weapon phase, inventory, native bridge, movement and replication assertions.");
  }
 }

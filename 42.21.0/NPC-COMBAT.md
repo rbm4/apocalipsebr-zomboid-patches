@@ -276,6 +276,35 @@ bypass, player-map insertion or fabricated `UdpConnection` is introduced.
 `GameServer.sendHitCharacter` expects a real originating connection, so the
 outbound loop uses `sendToClient` instead of passing a fake/null sender to it.
 
+### Concrete firearm victim reactions
+
+The attacker retains `ZombieHitReaction="Shot"`, the ordinary firearm attack
+marker. The victim must carry a **resolved** animation: the current bridge uses
+`ShotChestL` for a standing firearm victim and `Floor` for a prone firearm victim.
+Melee retains `HeadLeft`. This is presentation owned by `ServerHumanCombatNetwork`,
+not a new zombie-controller timeout or reaction override.
+
+Vanilla `CombatManager.processHit` resolves the generic `Shot` marker before
+`PlayerHitZombiePacket` snapshots its victim. Our synthetic bridge previously
+placed the unresolved marker directly on the victim. The native `ShotDefault.xml`
+is an inheritance template without an animation clip, while `Shot/ShotChestL.xml`
+selects `Zombie_ShotChestL`. Hit-reaction transitions depend on
+`ActiveAnimFinishing`; a missing playable clip can leave the visible pose stuck.
+Both pre/post-processing of the hit packet reapply its captured victim reaction,
+so resolution must happen before packet construction.
+
+This fix deliberately chooses an existing non-fall standing animation without
+calling vanilla's full firearm resolver, which rerolls critical chance using
+client lighting/ballistics. Damage, critical outcome, hit/miss selection, ammunition
+and native hit/release ownership remain unchanged. It does not reproduce the
+native direction/body-part reaction distribution or introduce a new forced fall.
+Repeated shots and prone targets use the same native packet and cancellation path.
+
+Regression: `tools/test_human_weapon_combat.py` has 116 assertions, including
+packet-time reaction capture, standing/prone firearm hits, retained critical
+outcomes, unchanged melee reactions and no victim reaction on misses. Live
+unpatched-client confirmation of reaction completion remains required.
+
 Native server `PlayerHit.attack()` normally triggers `OnWeaponSwingHitPoint`
 for ranged hits, which vanilla Lua uses to spend ammo. Our server-only packet
 builders suppress that callback because the inventory port has already spent

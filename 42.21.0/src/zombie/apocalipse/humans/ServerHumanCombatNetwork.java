@@ -64,7 +64,11 @@ final class ServerHumanCombatNetwork {
         var hits=new ArrayList<WeaponHit>();
         if(hit){
             actor.setVariable("ZombieHitReaction",weapon.isRanged()?"Shot":"HeadLeft");
-            target.setHitReaction(weapon.isRanged()?"Shot":"HeadLeft");
+            // "Shot" is the attacker's unresolved marker, not a playable victim
+            // clip. Vanilla CombatManager.processHit resolves it before packing.
+            // Use a concrete non-fall reaction here without rerolling criticals
+            // through the client-only lighting/ballistics path on this NPC.
+            target.setHitReaction(weapon.isRanged()?(target.isOnFloor()?"Floor":"ShotChestL"):"HeadLeft");
             float rolled=Rand.Next(weapon.getMinDamage(),weapon.getMaxDamage());
             if(!weapon.isRanged())rolled*=weapon.getDamageMod(actor)*actor.getHittingMod();
             // Let native code resolve hit force/modifiers first; calibration must not inflate knockback.

@@ -567,8 +567,8 @@ FILES.update({
  public abstract class IsoGameCharacter extends zombie.iso.IsoMovingObject {public abstract boolean isDead();public abstract float getHealth();}""",
  "zombie/characters/IsoZombie.java": """package zombie.characters;
  public class IsoZombie extends IsoGameCharacter {
-  public int nativeHits;public String reaction;
-  public boolean isOnFloor(){return false;}public float getHitForce(){return .5f;}
+  public int nativeHits;public String reaction;public boolean floor;
+  public boolean isOnFloor(){return floor;}public float getHitForce(){return .5f;}
   public void setHitReaction(String value){reaction=value;}
   public float processHitDamage(zombie.inventory.types.HandWeapon weapon,IsoPlayer owner,float damage,boolean ignore,float range){return damage*.3f*(owner.isCriticalHit()?weapon.getCriticalDamageMultiplier():1);}
   public void Hit(float damage){nativeHits++;health-=damage;if(health<=0)dead=true;}
@@ -627,8 +627,8 @@ FILES.update({
  import java.util.*;import zombie.network.fields.hit.*;import zombie.characters.*;import zombie.inventory.types.HandWeapon;
  public class PlayerHitZombiePacket implements HitCharacter {
   protected final Fall fall=new Fall();public IsoZombie target;public List<WeaponHit> hits;public IsoPlayer actor;public HandWeapon weapon;
-  public static final List<PlayerHitZombiePacket> sent=new ArrayList<>();public boolean critical;public static int localProcesses,serverAttackCallbacks;
-  public void set(IsoPlayer actor,HandWeapon weapon,boolean critical,List<?> tracers,List<WeaponHit> hits,IsoZombie target,boolean helmet){this.critical=critical;this.actor=actor;this.weapon=weapon;this.target=target;this.hits=List.copyOf(hits);}
+  public static final List<PlayerHitZombiePacket> sent=new ArrayList<>();public boolean critical;public String victimReaction;public static int localProcesses,serverAttackCallbacks;
+  public void set(IsoPlayer actor,HandWeapon weapon,boolean critical,List<?> tracers,List<WeaponHit> hits,IsoZombie target,boolean helmet){this.critical=critical;this.actor=actor;this.weapon=weapon;this.target=target;this.hits=List.copyOf(hits);this.victimReaction=target.reaction;}
   public void sendToClient(zombie.network.PacketTypes.PacketType type,zombie.core.raknet.UdpConnection connection){sent.add(this);}
   public void processClient(Object connection){localProcesses++;for(var hit:hits)target.Hit(hit.damage*(weapon.isRanged()?1:.15f));attack();}
   public void attack(){serverAttackCallbacks++;}
