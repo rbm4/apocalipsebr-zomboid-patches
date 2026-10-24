@@ -770,5 +770,81 @@ public class IsoZombieGiblets extends zombie.iso.IsoMovingObject {
  public int getID(){return -1;}public zombie.iso.IsoGridSquare getCurrentSquare(){return null;}
 }"""
 
+
+# Native dependencies for the production grapple adapter. Conversion/animation are
+# explicit engine doubles; the session, claims, packet builder and authority are production code.
+FILES["zombie/apocalipse/zombies/ServerCorpseDragAuthority.java"] = (ROOT / "42.21.0/src/zombie/apocalipse/zombies/ServerCorpseDragAuthority.java").read_text(encoding="utf-8")
+FILES["zombie/iso/Vector2.java"] = "package zombie.iso;public class Vector2 {public float x,y;public Vector2(float x,float y){this.x=x;this.y=y;}}"
+FILES["zombie/network/ServerMap.java"] = """package zombie.network;
+public class ServerMap {public static final ServerMap instance=new ServerMap();public final java.util.Map<Short,zombie.characters.IsoZombie> zombieMap=new java.util.HashMap<>();}"""
+FILES["zombie/popman/NetworkZombieManager.java"] = """package zombie.popman;
+public class NetworkZombieManager {static final NetworkZombieManager INSTANCE=new NetworkZombieManager();public static NetworkZombieManager getInstance(){return INSTANCE;}
+public void moveZombie(zombie.characters.IsoZombie body,Object connection,Object player){body.owner=connection;}}"""
+FILES["zombie/network/packets/character/ZombiePacket.java"] = """package zombie.network.packets.character;
+public class ZombiePacket {public float x,y,realX,realY;public byte z,realZ,predictionType,update;public short target;}"""
+FILES["zombie/ai/states/PlayerDraggingCorpse.java"] = """package zombie.ai.states;
+public class PlayerDraggingCorpse {static final PlayerDraggingCorpse INSTANCE=new PlayerDraggingCorpse();public static PlayerDraggingCorpse instance(){return INSTANCE;}}"""
+FILES["zombie/characters/IsoGameCharacter.java"] = FILES["zombie/characters/IsoGameCharacter.java"].replace("{public abstract boolean", """{
+ public IsoGameCharacter grapplingTarget,grappledBy;public boolean continued;public String sharedGrappleType;
+ public IsoGameCharacter getGrapplingTarget(){return grapplingTarget;}public IsoGameCharacter getGrappledBy(){return grappledBy;}
+ public boolean isGrappling(){return grapplingTarget!=null;}public boolean isBeingGrappled(){return grappledBy!=null;}
+ public float grappleBearing;public float getBearingFromGrappledTarget(){return grappleBearing;}
+ public void setDoContinueGrapple(boolean value){continued=value;}
+ public void setSharedGrappleType(String type){sharedGrappleType=type;if(grapplingTarget!=null)grapplingTarget.sharedGrappleType=type;}
+ public void resetGrappleStateToDefault(String reason){grapplingTarget=null;continued=false;}
+ public void LetGoOfGrappled(String result){var target=grapplingTarget;grapplingTarget=null;continued=false;if(target instanceof IsoZombie z){z.grappledBy=null;z.die();}}
+ public abstract boolean""")
+FILES["zombie/characters/IsoPlayer.java"] = FILES["zombie/characters/IsoPlayer.java"].replace("public class IsoPlayer extends IsoGameCharacter {", """public class IsoPlayer extends IsoGameCharacter {
+ public boolean rejectCorpseGrab;public static short nextCorpseZombie=2000;
+ public zombie.iso.Vector2 getForwardDirection(){return new zombie.iso.Vector2((float)Math.cos(angle),(float)Math.sin(angle));}
+ public void pickUpCorpse(zombie.iso.objects.IsoDeadBody body,String type){
+  if(rejectCorpseGrab)return;
+  var helper=new IsoZombie();helper.cell=cell;helper.inventory=body.inventory;helper.grapple=true;helper.instanceId=++nextCorpseZombie;helper.online=helper.onlineId=nextCorpseZombie;
+  helper.x=body.x;helper.y=body.y;helper.z=body.z;helper.square=body.square;
+  body.square.removeCorpse(body,false);body.inventory=null;helper.square.moving.add(helper);cell.objects.add(helper);
+  zombie.network.ServerMap.instance.zombieMap.put(helper.onlineId,helper);grapplingTarget=helper;helper.grappledBy=this;setSharedGrappleType(type);
+ }
+""")
+FILES["zombie/characters/IsoZombie.java"] = FILES["zombie/characters/IsoZombie.java"].replace("public class IsoZombie extends IsoGameCharacter {", """public class IsoZombie extends IsoGameCharacter {
+ public short onlineId;public Object owner,inventory;public zombie.iso.IsoCell cell;
+ public interface DeathListener {void onDied(IsoGameCharacter sender,zombie.iso.objects.IsoDeadBody body);}
+ private final java.util.List<DeathListener> deathListeners=new java.util.ArrayList<>();
+ public void addOnDiedListener(DeathListener listener,boolean once){deathListeners.add(listener);}
+ public void die(){if(dead)return;dead=true;
+  var corpse=new zombie.iso.objects.IsoDeadBody();corpse.x=x;corpse.y=y;corpse.z=z;corpse.inventory=inventory;inventory=null;
+  if(square!=null){square.moving.remove(this);square.addCorpse(corpse,true);}
+  zombie.network.ServerMap.instance.zombieMap.remove(onlineId);if(cell!=null)cell.objects.remove(this);
+  for(var listener:new java.util.ArrayList<>(deathListeners))listener.onDied(this,corpse);deathListeners.clear();
+ }
+ public void setX(float value){x=value;}public void setY(float value){y=value;}public void setZ(float value){z=value;}
+ public void setCurrent(zombie.iso.IsoGridSquare value){if(square!=null)square.moving.remove(this);square=value;}
+ public void setMovingSquareNow(){if(square!=null&&!square.moving.contains(this))square.moving.add(this);}
+ public void setForwardDirection(zombie.iso.Vector2 direction){}public void setTarget(Object value){}
+""")
+FILES["zombie/iso/objects/IsoDeadBody.java"] = FILES["zombie/iso/objects/IsoDeadBody.java"].replace("public class IsoDeadBody extends zombie.iso.IsoMovingObject {", """public class IsoDeadBody extends zombie.iso.IsoMovingObject {
+ private final se.krka.kahlua.vm.KahluaTable modData=new se.krka.kahlua.vm.KahluaTable();
+ public se.krka.kahlua.vm.KahluaTable getModData(){return modData;}
+""")
+
+
+FILES["zombie/characters/IsoPlayer.java"] = FILES["zombie/characters/IsoPlayer.java"].replace(" public boolean rejectCorpseGrab;", """
+ public void setDoGrapple(boolean value){}public float calculateGrappleEffectivenessFromTraits(){return 1;}
+ public zombie.inventory.types.HandWeapon getAttackingWeapon(){return null;}
+ public boolean rejectCorpseGrab;""")
+FILES["zombie/characters/IsoZombie.java"] = FILES["zombie/characters/IsoZombie.java"].replace(" public short onlineId;", """
+ public void setReanimatedForGrappleOnly(boolean value){grapple=value;}public void setFakeDead(boolean value){}public void setCrawler(boolean value){}
+ public boolean isFallOnFront(){return false;}public void setDoRender(boolean value){}public void addFootstepParametersIfNeeded(){}public void setDirectionAngle(float value){}
+ public void setOnFloor(boolean value){floor=value;}public void setOnKillDone(boolean value){}public void setHealth(float value){health=value;}
+ public void Grappled(IsoPlayer actor,zombie.inventory.types.HandWeapon weapon,float effectiveness,String type){if(actor.rejectCorpseGrab)return;grappledBy=actor;actor.grapplingTarget=this;actor.setSharedGrappleType(type);}
+ public short onlineId;""")
+FILES["zombie/iso/objects/IsoDeadBody.java"] = FILES["zombie/iso/objects/IsoDeadBody.java"].replace(" private final se.krka", """
+ public boolean getDoRender(){return true;}
+ public zombie.characters.IsoGameCharacter reanimate(){
+  var helper=new zombie.characters.IsoZombie();helper.inventory=inventory;helper.instanceId=++zombie.characters.IsoPlayer.nextCorpseZombie;helper.online=helper.onlineId=zombie.characters.IsoPlayer.nextCorpseZombie;
+  helper.x=x;helper.y=y;helper.z=z;helper.square=square;var old=square;old.removeCorpse(this,false);inventory=null;old.moving.add(helper);
+  zombie.network.ServerMap.instance.zombieMap.put(helper.onlineId,helper);return helper;
+ }
+ private final se.krka""")
+
 if __name__ == "__main__":
     main()

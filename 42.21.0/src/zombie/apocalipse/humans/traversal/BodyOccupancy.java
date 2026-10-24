@@ -11,6 +11,8 @@ public final class BodyOccupancy {
     private BodyOccupancy() { }
     public static boolean blocks(IsoMovingObject body,IsoMovingObject self){
         if(body==self||body instanceof IsoDeadBody||body instanceof IsoZombieGiblets)return false;
+        if(body instanceof zombie.characters.IsoZombie z&&z.isReanimatedForGrappleOnly()
+            &&self instanceof IsoGameCharacter actor&&actor.getGrapplingTarget()==z&&z.getGrappledBy()==actor)return false;
         return !(body instanceof IsoGameCharacter c)||!c.isDead()&&c.getHealth()>0;
     }
     public static boolean free(IsoGridSquare square,IsoMovingObject self){

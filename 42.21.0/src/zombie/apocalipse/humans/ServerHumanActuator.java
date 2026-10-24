@@ -34,6 +34,9 @@ final class ServerHumanActuator implements HumanActuator {
     }
     @Override public zombie.apocalipse.humans.brain.HumanCombat.Port combat(){return human.combat;}
 
+    void updateCorpseDrag(long now){corpses.tick(now);}
+    void announceCorpseDrag(UdpConnection viewer){corpses.announce(viewer);}
+    void closeCorpses(){corpses.close();}
     HumanObservation observe(long now) {
         return human.perception.observe(now);
     }

@@ -176,7 +176,20 @@ public class ZombieAuthAlgorithmsTest {
         manager.getZombieAuth(a,packet);check(packet.zombiesAuth.isEmpty(),"disconnect cleanup removes old indexed authorization");
         manager.getZombieAuth(b,packet);check(z.owner==b&&z.target==null&&packet.zombiesAuth.equals(List.of(z.onlineId)),"disconnect reassignment retains new ownership membership");
     }
-    public static void main(String[] args){ownership();coverage();cadence();System.out.println("Passed "+assertions+" zombie authorization assertions.");}
+    static void dragAuthority(){
+        reset();var viewer=connection(0,0);var manager=new NetworkZombieManager();manager.beginAuthUpdate();var z=zombie(200);
+        manager.moveZombie(z,viewer,viewer.players[0]);
+        zombie.apocalipse.zombies.ServerCorpseDragAuthority.bodies.add(z);
+        manager.updateAuth(z,System.currentTimeMillis());
+        check(z.owner==null,"drag authority revokes an existing spectator owner");
+        manager.moveZombie(z,viewer,viewer.players[0]);check(z.owner==null,"drag lease rejects direct transfer to spectator");
+        ServerOptions.instance.switchZombiesOwnershipEachUpdate.value=true;manager.updateAuth(z,System.currentTimeMillis());
+        check(z.owner==null,"debug ownership rotation cannot override native corpse drag authority");
+        zombie.apocalipse.zombies.ServerCorpseDragAuthority.bodies.remove(z);z.lastChangeOwner=0;
+        ServerOptions.instance.switchZombiesOwnershipEachUpdate.value=false;manager.updateAuth(z,System.currentTimeMillis());
+        check(z.owner==viewer,"releasing drag lease restores ordinary ownership policy");
+    }
+    public static void main(String[] args){ownership();coverage();cadence();dragAuthority();System.out.println("Passed "+assertions+" zombie authorization assertions.");}
 }
 """
 
@@ -184,6 +197,12 @@ STUBS["zombie/apocalipse/zombies/ServerZombieController.java"] = """package zomb
 public class ServerZombieController {private static final ServerZombieController I=new ServerZombieController();
 public static ServerZombieController getInstance(){return I;}public boolean retainOrAcquire(zombie.characters.IsoZombie z){return false;}
 public boolean controls(zombie.characters.IsoZombie z){return false;}}"""
+
+STUBS["zombie/apocalipse/zombies/ServerCorpseDragAuthority.java"] = """package zombie.apocalipse.zombies;
+public class ServerCorpseDragAuthority {
+ public static final java.util.Set<zombie.characters.IsoZombie> bodies=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+ public static boolean controls(zombie.characters.IsoZombie body){return bodies.contains(body);}
+}"""
 
 def main():
     with tempfile.TemporaryDirectory(prefix="apocbr-auth-tests-") as directory:

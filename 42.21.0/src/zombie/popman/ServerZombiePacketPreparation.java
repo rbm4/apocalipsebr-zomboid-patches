@@ -6,6 +6,7 @@ import java.util.Set;
 import zombie.ApocBRServerTelemetryLite;
 import zombie.characters.IsoZombie;
 import zombie.apocalipse.zombies.ServerZombieController;
+import zombie.apocalipse.zombies.ServerCorpseDragAuthority;
 
 /** Main-thread auth-frame lifetime; connection workers never mutate packet fields. */
 public final class ServerZombiePacketPreparation {
@@ -26,6 +27,7 @@ public final class ServerZombiePacketPreparation {
         if (!bookkeeping.contains(zombie) || zombie.zombiePacket.id != zombie.onlineId) bookkeep(zombie);
         zombie.zombiePacket.setPrepared(zombie);
         ServerZombieController.getInstance().prepare(zombie, zombie.zombiePacket);
+        ServerCorpseDragAuthority.prepare(zombie,zombie.zombiePacket);
         prepared.add(zombie);
         ApocBRServerTelemetryLite.recordPhase("network.zombies.packetPrepare", System.nanoTime() - started);
         ApocBRServerTelemetryLite.count("zombies.packet.prepared", 1);

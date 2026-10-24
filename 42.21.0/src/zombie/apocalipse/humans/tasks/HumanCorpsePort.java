@@ -4,6 +4,11 @@ import zombie.apocalipse.humans.walking.WalkingPatternSpec.Point;
 
 /** Simulation-thread corpse mechanics. Tokens are activation-local, never dialogue/client identifiers. */
 public interface HumanCorpsePort {
+    enum DragStatus { PICKING_UP, DRAGGING, DROPPING, RELEASED, FAILED }
+    /** Legacy/custom ports may implement relocation; native NPCs override with an animated conversion session. */
+    default DragStatus beginDrag(long token,Point actor,long now){return move(token,actor)?DragStatus.DRAGGING:DragStatus.FAILED;}
+    default DragStatus updateDrag(long token,Point actor,long now){return move(token,actor)?DragStatus.DRAGGING:DragStatus.FAILED;}
+    default DragStatus endDrag(long token,long now){release(token);return DragStatus.RELEASED;}
     record Body(long token,Point position) { }
     record Search(Body body,boolean complete,boolean loaded,long retryAtNanos) {
         public Search(Body body,boolean complete,boolean loaded){this(body,complete,loaded,Long.MAX_VALUE);}

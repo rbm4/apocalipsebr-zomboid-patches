@@ -243,6 +243,68 @@ public class CorpsesTest {
   check(!bounded.actuator.corpses().find(p(100),0,p(109)).complete(),"corpse discovery respects 128-object budget");
   check(bounded.actuator.corpses().find(p(100),0,p(109)).body()!=null,"bounded scan resumes instead of starving deep body piles");bounded.dispose();
  }
+ static void nativeDragging(HumanProfile profile){
+  var cell=new IsoCell();var actor=new ServerHuman(new ServerHumanDefinition("native-drag","NativeDrag","Drag",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1250,cell);
+  var viewer=new zombie.core.raknet.UdpConnection();actor.viewers.add(viewer);
+  actor.player.grappleBearing=120;var port=actor.actuator.corpses();var original=body(cell,101,200);var inventory=original.inventory;
+  long token=port.find(p(100),2,p(109),0).body().token();check(port.claim(token),"native drag reserves original body");
+  check(port.beginDrag(token,p(100),0)==HumanCorpsePort.DragStatus.PICKING_UP,"native conversion begins a timed pickup before movement");
+  var helper=(zombie.characters.IsoZombie)actor.player.getGrapplingTarget();
+  check(helper!=null&&helper.isReanimatedForGrappleOnly()&&original.square==null&&helper.inventory==inventory,"pickup replaces corpse with grapple-only native body and transfers inventory custody");
+  check(port.resolve(token)!=null&&port.resolve(token).position().equals(p(100)),"logical corpse token survives native conversion");
+  check(zombie.apocalipse.zombies.ServerCorpseDragAuthority.controls(helper)&&helper.owner==null,"drag helper has separate server authority without client ownership");
+  check(!zombie.apocalipse.humans.traversal.BodyOccupancy.blocks(helper,actor.player),"own paired body cannot block actor movement");
+  var stranger=new zombie.characters.IsoPlayer(cell,new zombie.characters.SurvivorDesc(false),0,0,0);
+  check(zombie.apocalipse.humans.traversal.BodyOccupancy.blocks(helper,stranger),"other actors do not globally ignore positive-health zombies");
+  var packet=zombie.network.packets.actions.StatePacket.sent.getLast();
+  check(packet.parameters().get("grappling_target")==helper&&"BwdDrag".equals(packet.parameters().get("grappling_type"))&&!packet.sub(),"pickup sends native player drag state with helper identity");
+  int sent=zombie.network.packets.actions.StatePacket.sent.size();actor.actuator.updateCorpseDrag(100_000_000L);
+  check(zombie.network.packets.actions.StatePacket.sent.size()==sent,"state replay is bounded, not emitted each simulation tick");
+  actor.actuator.updateCorpseDrag(ServerHumanCorpseDrag.PICKUP_NANOS);
+  check(port.beginDrag(token,p(100),ServerHumanCorpseDrag.PICKUP_NANOS)==HumanCorpsePort.DragStatus.DRAGGING,"pickup transitions to dragging after bounded phase time");
+  check(!helper.floor&&"BwdDragHead".equals(zombie.network.packets.actions.StatePacket.sent.getLast().parameters().get("grappling_type")),"head bearing selects native head drag and releases floor flag required by paired animation");
+  var late=new zombie.core.raknet.UdpConnection();actor.actuator.announceCorpseDrag(late);
+  check(zombie.network.packets.actions.StatePacket.sent.getLast().parameters().get("grappling_target")==helper,"late viewers receive active drag relationship");
+  actor.movement.refresh(ServerHumanCorpseDrag.PICKUP_NANOS);
+  check(actor.movement.resolved().speed()<=1.6F,"dragging constrains actual movement speed");
+  check(actor.movement.start(List.of(new zombie.apocalipse.humans.movement.MovementGrid.Tile(101,200)),ServerHumanCorpseDrag.PICKUP_NANOS),"native dragging can use checked walking route");
+  actor.movement.update(ServerHumanCorpseDrag.PICKUP_NANOS+100_000_000L);actor.actuator.updateCorpseDrag(ServerHumanCorpseDrag.PICKUP_NANOS+100_000_000L);
+  check(actor.player.getX()>100.5f&&Math.cos(actor.player.getDirectionAngleRadians())<-.9&&Math.cos(actor.movement.travelDirection())>.9,"drag route moves backward while prediction retains travel direction");
+  actor.movement.stop();long now=2_000_000_000L;
+  check(port.endDrag(token,now)==HumanCorpsePort.DragStatus.DROPPING&&actor.player.isGrappling(),"normal drop has a laydown phase rather than immediate deletion");
+  check(port.endDrag(token,now+ServerHumanCorpseDrag.DROP_NANOS-1)==HumanCorpsePort.DragStatus.DROPPING,"drop phase retains body until its boundary");
+  check(port.endDrag(token,now+ServerHumanCorpseDrag.DROP_NANOS)==HumanCorpsePort.DragStatus.RELEASED&&!actor.player.isGrappling(),"drop releases native grapple at bounded deadline");
+  check(!zombie.apocalipse.zombies.ServerCorpseDragAuthority.controls(helper)&&helper.isDead(),"drop removes helper authority and native helper body");
+  var returned=port.resolve(token);check(returned!=null,"replacement corpse keeps original logical handle");
+  final Object firstInventory=inventory;
+  var replacement=(IsoDeadBody)cell.getGridSquare(returned.position().x(),returned.position().y(),0).statics.stream().filter(b->b instanceof IsoDeadBody d&&d.inventory==firstInventory).findFirst().orElseThrow();
+  check(replacement!=original&&replacement.inventory==inventory,"drop callback binds exact replacement corpse with unchanged inventory custody");
+  port.release(token);port.release(token);check(replacement.square!=null,"duplicate release never creates or deletes another corpse");
+  long second=port.find(p(100),2,p(109),now+ServerHumanCorpseDrag.DROP_NANOS).body().token();check(port.claim(second),"replacement corpse can be selected again after release");
+  check(port.beginDrag(second,p(100),4_000_000_000L)==HumanCorpsePort.DragStatus.PICKING_UP,"replacement can enter another native pickup");
+  port.release(second);check(!actor.player.isGrappling()&&port.resolve(second)!=null,"emergency interruption during pickup immediately recovers corpse handle");
+  actor.player.rejectCorpseGrab=true;long rejected=port.find(p(100),2,p(109),5_000_000_000L).body().token();port.claim(rejected);
+  check(port.beginDrag(rejected,p(100),5_000_000_000L)==HumanCorpsePort.DragStatus.FAILED&&port.resolve(rejected)!=null&&!actor.player.isGrappling(),"rejected grapple rolls converted helper back to a tracked corpse");
+  actor.player.rejectCorpseGrab=false;port.release(rejected);actor.dispose();
+
+  cell=new IsoCell();actor=new ServerHuman(new ServerHumanDefinition("drag-executor","DragExecutor","Drag",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1251,cell);
+  original=body(cell,101,200);inventory=original.inventory;
+  var task=new AssignedTaskModule();task.assign(order(109),null,p(100));
+  for(int n=0;n<300;n++){long time=n*100_000_000L;task.update(o(time),actor.actuator);actor.actuator.updateCorpseDrag(time);actor.movement.refresh(time);}
+  final Object expectedInventory=inventory;
+  check(cell.getGridSquare(109,200,0).statics.stream().anyMatch(b->b instanceof IsoDeadBody d&&d.inventory==expectedInventory),"production cleanup executor completes phased native pickup, haul and drop at metadata destination");
+  check(task.active()&&!actor.player.isGrappling(),"native delivery retains passive cleanup intent and settles grapple");actor.dispose();
+  cell=new IsoCell();actor=new ServerHuman(new ServerHumanDefinition("drag-abort","DragAbort","Drag",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1252,cell);
+  original=body(cell,101,200);inventory=original.inventory;task=new AssignedTaskModule();task.assign(order(109),null,p(100));long stamp=0;
+  for(int n=0;n<30&&!actor.player.isGrappling();n++){task.update(o(stamp+=100_000_000L),actor.actuator);actor.actuator.updateCorpseDrag(stamp);}
+  helper=(zombie.characters.IsoZombie)actor.player.getGrapplingTarget();check(helper!=null,"production task reaches native pickup before preemption");
+  task.interrupt(stamp,actor.actuator);
+  check(!actor.player.isGrappling()&&helper.isDead()&&task.active()&&actor.actuator.corpses().resolve(1)!=null,"task preemption releases native body and updates handle to replacement corpse");
+  for(int n=0;n<30&&!actor.player.isGrappling();n++){task.update(o(stamp+=100_000_000L),actor.actuator);actor.actuator.updateCorpseDrag(stamp);}
+  helper=(zombie.characters.IsoZombie)actor.player.getGrapplingTarget();check(helper!=null,"interrupted task can reclaim its replacement corpse");
+  actor.dispose();check(!actor.player.isGrappling()&&helper.isDead()&&!zombie.apocalipse.zombies.ServerCorpseDragAuthority.controls(helper),"actor disposal immediately releases native session even if task was driven outside activity runtime");
+
+ }
  static void dialogue(HumanProfile profile){
   var factory=ServerHumanFactory.getInstance();factory.tick(0);var player=DialogueTest.visitor((short)1);player.x=102;player.y=200;
   var option=new HashMap<String,Object>(DialogueTest.choice("cleanup","root"));option.put("close",true);option.put("task",order(109));
@@ -296,7 +358,7 @@ public class CorpsesTest {
   check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("corpse search key=")&&s.contains("result=selected")&&s.contains("corpses=")),"corpse discovery emits selected-body diagnostics independently of movement failures");
   check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("corpse search key=")&&s.contains("result=complete")&&s.contains("source=")),"empty/completed search reports the actual source and scan result");
  }
- public static void main(String[]args){execution();intentRetries();passiveIntent();var profile=profile();nativeAdapter(profile);dialogue(profile);movementOccupancy(profile);System.out.println("Passed "+checks+" corpse cleanup execution, native and dialogue assertions.");}
+ public static void main(String[]args){execution();intentRetries();passiveIntent();var profile=profile();nativeAdapter(profile);nativeDragging(profile);dialogue(profile);movementOccupancy(profile);System.out.println("Passed "+checks+" corpse cleanup execution, native and dialogue assertions.");}
 }
 '''
 

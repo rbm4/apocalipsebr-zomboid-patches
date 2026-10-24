@@ -26,6 +26,7 @@ final class ServerHumanTransport {
         // Also clear a previously interrupted emote when a known client reloads.
         emote(human, connection, human.emote != null);
         human.movement.announceTraversal(connection);
+        human.actuator.announceCorpseDrag(connection);
     }
 
     static void idle(ServerHuman human, UdpConnection connection) {

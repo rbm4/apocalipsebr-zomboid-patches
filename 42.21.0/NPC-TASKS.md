@@ -52,6 +52,11 @@ an engine capability. Quest rewards are not implemented here.
 
 ## Corpse cleanup (V27)
 
+Native pickup/drag animation compatibility is assessed separately in
+[NPC corpse grapple compatibility](docs/npc-corpse-grapple-compatibility.md).
+The native runtime now uses [phased grapple dragging](NPC-CORPSE-GRAPPLE.md);
+the assessment records the original investigation.
+
 Destination coordinates are dialogue metadata, not engine constants. Example:
 
 ```json
@@ -91,16 +96,19 @@ native discovery (25 squares, 128 static objects per call), transient body token
 cross-NPC claims and native corpse relocation. Discovery resumes through deep
 piles instead of rescanning the first 128 objects forever. Removed/reanimated
 bodies invalidate their tokens and are never reconstructed. Animal/fake-dead
-bodies are excluded. Corpses and their inventories remain world-owned; movement
-uses the same corpse object and native remove/add replication at reached tiles.
+bodies are excluded. Inventory custody remains native-owned; a logical body token
+survives conversion to a grapple-only zombie and back to a replacement corpse.
 
-This first implementation is tile-by-tile hauling alongside the walking actor,
-not the player's full native grapple/drag animation. Vanilla `pickUpCorpse`
-reanimates an `IsoDeadBody` as a grapple-only zombie and depends on the native
-animation/grapple lifecycle, which these detached server actors do not run.
-No body item conversion, teleport to the destination or client-side timer is used.
-Climb/fence/window traversal while hauling fails safely instead of pulling a body
-through the obstacle. Each route attempt has a 120-second deadline. Cleanup is
+The native implementation now uses phased pickup, attached dragging and laydown.
+`ServerHumanCorpseDrag` owns conversion and release behind `HumanCorpsePort`;
+`ServerCorpseDragAuthority` retains owner-null replication separately from combat.
+The executor waits for pickup/drop statuses and immediately releases on defense
+or cancellation. Legacy/custom ports retain relocation defaults. Paired client
+animation and streaming still require dedicated-server validation. See
+[NPC-CORPSE-GRAPPLE.md](NPC-CORPSE-GRAPPLE.md) for ownership, native behavior,
+phase timing, packet replay, physical limits and verification.
+Climb/fence/window traversal remains unsupported while dragging.
+Each route attempt has a 120-second deadline. Cleanup is
 retained as intent across route rejection/failure and temporary unloading, rather
 than failing the assignment on the first obstruction.
 

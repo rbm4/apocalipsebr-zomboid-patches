@@ -13,7 +13,7 @@ public final class CorpseCleanupExecution {
     private final boolean followActor;
     private final int radius;
     private HumanCorpsePort.Body body;
-    private boolean hauling,moving,claimed,returning,needsReturn;
+    private boolean hauling,moving,claimed,returning,needsReturn,pickingUp;
     private Point goal;
     private long deadline,retryAt=Long.MIN_VALUE;
     private int attempts,returnAttempts;
@@ -65,7 +65,7 @@ public final class CorpseCleanupExecution {
             if(!port.claim(body.token()))return retryBody("cleanup_claim_busy",now,actuator);
             claimed=true;
         }
-        if(!moving){
+        if(!moving&&!pickingUp){
             if(hauling)goal=destination;
             else {
                 var approaches=port.approaches(body.token());
@@ -77,10 +77,17 @@ public final class CorpseCleanupExecution {
         if(here.equals(goal)){
             if(moving)actuator.stopMoving();moving=false;
             if(!hauling){
-                // Head/feet are adjacent route endpoints. Pull at most one clear cardinal tile to the actor.
-                if(!port.move(body.token(),here))return retryBody("cleanup_grab_blocked",now,actuator);
-                body=new HumanCorpsePort.Body(body.token(),here);hauling=true;needsReturn=true;goal=null;return null;
+                var grab=port.beginDrag(body.token(),here,now);
+                if(grab==HumanCorpsePort.DragStatus.FAILED)return retryBody("cleanup_grab_blocked",now,actuator);
+                var grabbed=port.resolve(body.token());
+                if(grabbed==null)return retryBody("cleanup_grab_lost",now,actuator);
+                body=grabbed;
+                if(grab==HumanCorpsePort.DragStatus.PICKING_UP){pickingUp=true;reason="cleanup_picking_up";return null;}
+                pickingUp=false;hauling=true;needsReturn=true;goal=null;return null;
             }
+            var drop=port.endDrag(body.token(),now);
+            if(drop==HumanCorpsePort.DragStatus.FAILED)return retryBody("cleanup_drop_failed",now,actuator);
+            if(drop!=HumanCorpsePort.DragStatus.RELEASED){reason="cleanup_putting_down";return null;}
             port.release(body.token());body=null;hauling=false;claimed=false;attempts=0;reason="cleanup_searching";return null;
         }
         if(!moving){
@@ -91,7 +98,7 @@ public final class CorpseCleanupExecution {
         var motion=actuator.updateMovement(now);
         if(hauling){
             var reached=actuator.taskWorld().position();
-            if(reached==null||!port.move(body.token(),reached))return retryBody("cleanup_haul_blocked",now,actuator);
+            if(reached==null||port.updateDrag(body.token(),reached,now)==HumanCorpsePort.DragStatus.FAILED)return retryBody("cleanup_haul_blocked",now,actuator);
             body=new HumanCorpsePort.Body(body.token(),reached);
         }
         if(motion==HumanActuator.MotionStatus.FAILED)return retryBody("cleanup_route_failed",now,actuator);
@@ -147,8 +154,8 @@ public final class CorpseCleanupExecution {
     }
     public void interrupt(HumanActuator actuator){
         if(moving)actuator.stopMoving();moving=false;
-        if(body!=null)actuator.corpses().release(body.token());
-        claimed=false;hauling=false;goal=null;
+        if(body!=null){actuator.corpses().release(body.token());var dropped=actuator.corpses().resolve(body.token());if(dropped!=null)body=dropped;}
+        claimed=false;hauling=false;pickingUp=false;goal=null;
     }
     private void clear(HumanActuator actuator){interrupt(actuator);body=null;attempts=0;goal=null;}
 }

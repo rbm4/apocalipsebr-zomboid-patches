@@ -13,6 +13,7 @@ final class ServerHumanCorpses implements HumanCorpsePort {
     private static final IdentityHashMap<IsoDeadBody,ServerHumanCorpses> claims=new IdentityHashMap<>();
     private final ServerHuman human;
     private IsoDeadBody observed;
+    private ServerHumanCorpseDrag drag;
     private long sequence,token;
     private int scanTile,scanBody;
     private boolean scanUnloaded;
@@ -47,6 +48,7 @@ final class ServerHumanCorpses implements HumanCorpsePort {
     }
     public Search find(Point center,int radius,Point destination,long now){
         if(radius<0||radius>2)throw new IllegalArgumentException("Invalid corpse search radius");
+        if(drag!=null&&drag.live())return new Search(resolve(token),false,true);
         if(observed!=null&&claims.get(observed)==this&&valid(observed))return new Search(new Body(token,position(observed)),false,true);
         if(!center.equals(searchCenter)||!destination.equals(searchDestination)||radius!=searchRadius){
             searchCenter=center;searchDestination=destination;searchRadius=radius;resetScan();
@@ -93,14 +95,43 @@ final class ServerHumanCorpses implements HumanCorpsePort {
         if(complete){reportScan("complete",null);resetScan();}
         return new Search(null,complete,loaded,retryAt);
     }
-    public Body resolve(long id){return id==token&&valid(observed)?new Body(id,position(observed)):null;}
+    public Body resolve(long id){
+        if(id!=token)return null;
+        if(drag!=null&&drag.live())return new Body(id,new Point(human.player.getXi(),human.player.getYi(),human.player.getZi()));
+        return valid(observed)?new Body(id,position(observed)):null;
+    }
+    public DragStatus beginDrag(long id,Point actor,long now){
+        if(id!=token)return DragStatus.FAILED;
+        if(drag!=null)return drag.status(now);
+        if(resolve(id)==null||claims.get(observed)!=this||!actor.equals(new Point(human.player.getXi(),human.player.getYi(),human.player.getZi())))return DragStatus.FAILED;
+        var from=position(observed);
+        if(!from.equals(actor)&&(Math.abs((long)from.x()-actor.x())+Math.abs((long)from.y()-actor.y())!=1
+            ||human.movement.traversalCost(new Tile(from.x(),from.y()),new Tile(actor.x(),actor.y()))!=zombie.apocalipse.humans.traversal.TraversalEdge.Kind.WALK.cost()))return DragStatus.FAILED;
+        var original=observed;
+        drag=new ServerHumanCorpseDrag(human,corpse->{
+            boolean owned=claims.remove(original)==this;
+            deferred.remove(original);observed=corpse;
+            if(owned)claims.put(corpse,this);
+        });
+        try{if(drag.start(original,now))return drag.status(now);}
+        catch(RuntimeException failure){HumanLog.log(HumanLog.Level.WARN,()->"corpse drag pickup failed key="+human.definition.key()+"; reason="+failure);}
+        drag.release();drag=null;return DragStatus.FAILED;
+    }
+    public DragStatus updateDrag(long id,Point actor,long now){
+        if(id!=token||drag==null)return DragStatus.FAILED;
+        drag.tick(now);return drag.status(now);
+    }
+    public DragStatus endDrag(long id,long now){return id==token&&drag!=null?drag.drop(now):DragStatus.FAILED;}
+    void tick(long now){if(drag!=null)drag.tick(now);}
+    void announce(zombie.core.raknet.UdpConnection viewer){if(drag!=null)drag.announce(viewer);}
+    void close(){if(drag!=null)drag.release();if(claims.get(observed)==this)claims.remove(observed);drag=null;deferred.clear();}
     public boolean claim(long id){
         if(resolve(id)==null)return false;
         var owner=claims.get(observed);if(owner!=null&&owner!=this)return false;
         claims.put(observed,this);return true;
     }
     public boolean move(long id,Point point){
-        if(resolve(id)==null||claims.get(observed)!=this||!permitted(point)
+        if(drag!=null||resolve(id)==null||claims.get(observed)!=this||!permitted(point)
             ||point.x()!=human.player.getXi()||point.y()!=human.player.getYi())return false;
         var from=observed.getSquare();var to=human.player.getCell().getGridSquare(point.x(),point.y(),point.z());
         if(to==null)return false;
@@ -114,7 +145,11 @@ final class ServerHumanCorpses implements HumanCorpsePort {
         to.addCorpse(observed,true);GameServer.sendCorpse(observed);
         return true;
     }
-    public void release(long id){if(id==token&&claims.get(observed)==this)claims.remove(observed);}
+    public void release(long id){
+        if(id!=token)return;
+        try{if(drag!=null)drag.release();}
+        finally{drag=null;if(claims.get(observed)==this)claims.remove(observed);}
+    }
     public java.util.List<Point> approaches(long id){
         if(resolve(id)==null)return java.util.List.of();
         var point=position(observed);double angle=observed.getAngle(),cx=Math.cos(angle),cy=Math.sin(angle);

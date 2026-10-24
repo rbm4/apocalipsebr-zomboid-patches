@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "42.21.0/src"
 STUBS = dict(AUTH_STUBS)
 STUBS.pop("zombie/apocalipse/zombies/ServerZombieController.java")
+STUBS.pop("zombie/apocalipse/zombies/ServerCorpseDragAuthority.java")
 STUBS.update({
 "zombie/ai/astar/Mover.java": """package zombie.ai.astar;public interface Mover {int getID();int getPathFindIndex();}""",
 "zombie/pathfind/IPathfinder.java": """package zombie.pathfind;public interface IPathfinder {
@@ -90,7 +91,7 @@ public class IsoZombie {
  public IsoPlayer getOwnerPlayer(){return ownerPlayer;}public void setOwnerPlayer(IsoPlayer p){ownerPlayer=p;}
  public void setTarget(IsoPlayer p){target=p;}public boolean isRemoteZombie(){return owner==null;}public boolean isDead(){return dead;}
  public zombie.ai.State getCurrentState(){return state;}public boolean isReanimatedPlayer(){return reanimated;}
- public boolean crawling;public boolean isCrawling(){return crawling;}public boolean isReanimatedForGrappleOnly(){return false;}
+ public boolean crawling;public boolean isCrawling(){return crawling;}public boolean grappleOnly;public boolean isReanimatedForGrappleOnly(){return grappleOnly;}
  public boolean isUseless(){return false;}public boolean isCanWalk(){return true;}
  public boolean isKnockedDown(){return knocked;}public boolean isOnFloor(){return floor;}public boolean isRagdoll(){return false;}
  public boolean isStaggerBack(){return stagger;}public boolean isFakeDead(){return false;}public boolean isBeingGrappled(){return grapple.other!=null;}
@@ -98,6 +99,7 @@ public class IsoZombie {
  public void getZombieWalkTowardSpeed(float base,float distance,zombie.iso.Vector2 out){out.setLength(sprinter?.08f:base*speedMod+.006f);if(sprinter)running=true;}
  public void setDirectionAngle(float angle){}public void faceThisObject(IsoPlayer p){}public float timeSinceSeenFlesh;
  public static class AI{public void resetSpeedLimiter(){}}public final AI ai=new AI();public AI getNetworkCharacterAI(){return ai;}
+ public void setHealth(float value){health=value;}public IsoPlayer getGrappledBy(){return grapple.other instanceof IsoPlayer p?p:null;}
  public void die(){dies++;}public void removeFromWorld(){}public void removeFromSquare(){}
 }
 """,
@@ -110,7 +112,7 @@ public void setPrepared(zombie.characters.IsoZombie body){id=body.onlineId;healt
 """,
 })
 STUBS["zombie/characters/IsoPlayer.java"] = STUBS["zombie/characters/IsoPlayer.java"].replace(
-    "public float x,y;", "public int getZi(){return 0;}public boolean isGhostMode(){return false;}public float x,y;").replace(
+    "public float x,y;", "public void LetGoOfGrappled(String reason){}public int getZi(){return 0;}public boolean isGhostMode(){return false;}public float x,y;").replace(
     "public short getOnlineID(){return 1;}", "public short getOnlineID(){return 1024;}")
 
 HARNESS = r"""package zombie.apocalipse.zombies;
@@ -372,6 +374,14 @@ public class ControlTest {
   captured.speedMod=.8f;check(!ServerZombiePace.measured(captured),"different speedMod keeps fallback");captured.speedMod=1;
   captured.sprinter=true;check(!ServerZombiePace.measured(captured),"native sprint override keeps fallback");captured.sprinter=false;
   captured.walkType="3";check(!ServerZombiePace.measured(captured),"unsampled walk variant keeps fallback");
+  GameServer.server=true;var dragged=new IsoZombie();dragged.onlineId=300;dragged.id=300;dragged.grappleOnly=true;dragged.grapple.other=new IsoPlayer();ServerMap.instance.zombieMap.put((short)300,dragged);
+  check(ServerCorpseDragAuthority.acquire(dragged)&&ServerCorpseDragAuthority.controls(dragged),"native drag lease is separate from combat acquisition");
+  var relayed=new ArrayList<IsoZombie>();ServerCorpseDragAuthority.addRelays(relayed);
+  check(relayed.contains(dragged),"owner-null dragged corpse is explicitly scheduled for relay");
+  var dragPacket=new zombie.network.packets.character.ZombiePacket();dragPacket.update=(byte)0xff;dragPacket.predictionType=3;dragPacket.target=7;
+  dragged.x=15;dragged.y=23;ServerCorpseDragAuthority.prepare(dragged,dragPacket);
+  check(dragPacket.realX==15&&dragPacket.realY==23&&dragPacket.predictionType==0&&dragPacket.target==-1&&(dragPacket.update&128)!=0,"drag packet keeps grapple flags and replaces stale prediction with server position");
+  dragged.id++;check(!ServerCorpseDragAuthority.controls(dragged),"recycled native instance cannot inherit drag authority");ServerCorpseDragAuthority.release(dragged);
   System.out.println("Passed "+checks+" server-zombie controller assertions.");
  }
 }
@@ -383,6 +393,10 @@ def main():
     assert packer.index("if (zombie.getOwner() != connection)") < packer.index("this.applyZombie(zombie)")
     assert "ServerZombieController.getInstance().addRelays(this.zombiesProcessing)" in packer
     assert packer.count("ServerZombieController.getInstance().controls(zombie)") == 3
+    assert packer.count("ServerCorpseDragAuthority.controls(zombie)") == 3
+    assert "ServerCorpseDragAuthority.addRelays(this.zombiesProcessing)" in packer
+    manager = (SRC / "zombie/popman/NetworkZombieManager.java").read_text(encoding="utf-8")
+    assert manager.index("if(ServerCorpseDragAuthority.controls(zombie))") < manager.index("retainOrAcquire(zombie)")
     apply_body = packer[packer.index("private void applyZombie("):]
     lookup = apply_body.split("IsoGridSquare g =", 1)[1].split(";", 1)[0].replace("this.packet", "packet")
     harness = HARNESS.replace(" public static void main", " static IsoGridSquare incomingSquare(zombie.network.packets.character.ZombiePacket packet){return " + lookup + ";}\n public static void main")

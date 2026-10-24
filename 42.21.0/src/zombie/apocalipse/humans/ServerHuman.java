@@ -100,6 +100,7 @@ final class ServerHuman {
         disposed = true;
         activity.stop(System.nanoTime(), actuator);
         combat.stop();
+        actuator.closeCorpses();
         ServerHumanDialogue.close(this, "removed");
         ServerHumanTrading.close(this);
         movement.close();

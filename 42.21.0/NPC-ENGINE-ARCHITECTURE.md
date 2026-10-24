@@ -190,3 +190,8 @@ suspension and shutdown stop monitoring as well as selected execution.
 `CorpseCleanupExecution.poll`, independently of walking ownership. Only actual
 ready work enters normal priority arbitration; defense retains priority.
 The selected module alone executes routes and claims/releases the selected body.
+
+Native corpse dragging keeps the same ownership boundaries: logical task phases
+consume `HumanCorpsePort` statuses, `ServerHumanCorpseDrag` owns native conversion
+and release, and `ServerCorpseDragAuthority` owns helper relay/ownership separately
+from combat pursuit. See [native corpse dragging](NPC-CORPSE-GRAPPLE.md).

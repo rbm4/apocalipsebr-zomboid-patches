@@ -170,6 +170,7 @@ public final class ServerHumanFactory {
             ServerHumanTrading.update(human, now);
             ServerHumanDialogue.update(human, now);
             human.activity.update(now, human.actuator::observe, human.actuator,human.state.snapshot());
+            human.actuator.updateCorpseDrag(now);
             human.movement.refresh(now);
             // Simulate at 10 Hz, but publish routine motion only on the 2 Hz heartbeat.
             // Turns and gait/speed/animation changes replace stale client prediction immediately.

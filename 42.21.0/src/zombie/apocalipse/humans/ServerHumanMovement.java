@@ -37,7 +37,7 @@ final class ServerHumanMovement implements MovementGrid {
         double dx=facingX-human.player.getX(),dy=facingY-human.player.getY();
         if(dx*dx+dy*dy>.000001)human.player.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy,dx)));
     }}
-    float travelDirection(){return guarded()?travelDirection:human.player.getDirectionAngleRadians();}
+    float travelDirection(){return guarded()||dragging?travelDirection:human.player.getDirectionAngleRadians();}
     private final ServerHuman human;
     private final HumanTraversal traversal;
     private MovementGrid policy;
@@ -126,6 +126,9 @@ final class ServerHumanMovement implements MovementGrid {
         lastResolution = Math.max(lastResolution, now);
         traversal.clock(lastResolution);
         resolved = MovementModifiers.resolve(requestedPace, conditions, settings, lastResolution, rhythmOrigin);
+        if(dragging&&resolved.speed()>0){
+            resolved=new Resolved(Pace.WALK,Math.min(resolved.speed(),settings.speeds().walk()*.8F),resolved.animation(),resolved.reason());
+        }
         if(guarded()&&resolved.speed()>0){
             float ratio=Math.min(1,1.3F/resolved.speed());var animation=resolved.animation();
             resolved=new Resolved(Pace.WALK,resolved.speed()*ratio,
@@ -194,6 +197,7 @@ final class ServerHumanMovement implements MovementGrid {
             boolean centering = false;
             if (!source.equals(target)) {
                 TraversalEdge edge = traversal.inspect(source, target);
+                if (dragging&&edge.kind()!=TraversalEdge.Kind.WALK&&edge.kind()!=TraversalEdge.Kind.DOOR)return fail("drag_traversal_unsupported");
                 if (!edge.usable() || !edgeAllowed(source, target)) return fail("edge_blocked");
                 if (edge.kind() != TraversalEdge.Kind.WALK) {
                     float cx = source.x()+.5F, cy = source.y()+.5F;
@@ -227,7 +231,7 @@ final class ServerHumanMovement implements MovementGrid {
             human.player.realx = nx;
             human.player.realy = ny;
             travelDirection=(float)Math.atan2(dy,dx);
-            if(guarded())faceTarget();else human.player.setDirectionAngle((float)Math.toDegrees(travelDirection));
+            if(guarded())faceTarget();else human.player.setDirectionAngle((float)Math.toDegrees(travelDirection+(dragging?Math.PI:0)));
             moving = true;
             applyPresentation();
             remaining -= step;
@@ -284,6 +288,8 @@ final class ServerHumanMovement implements MovementGrid {
         human.postY = human.player.getY();
     }
 
+    private boolean dragging;
+    void dragging(boolean value){dragging=value;}
     private boolean blocksMovement(zombie.iso.IsoMovingObject body){
         return BodyOccupancy.blocks(body,human.player);
     }
