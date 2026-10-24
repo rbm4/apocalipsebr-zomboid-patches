@@ -25,6 +25,8 @@ public final class HumanModuleRuntime implements HumanBehavior {
     public void update(HumanObservation observation,HumanActuator actuator) {
         if(stopped||suspended)return;
         long now=observation.nowNanos();
+        // Passive intents must be sampled without preempting the module that owns movement.
+        for(Entry entry:entries)if(entry.module().available())entry.module().monitor(observation,actuator);
         Entry winner=null;
         for(Entry entry:entries) {
             if(entry==selected) {

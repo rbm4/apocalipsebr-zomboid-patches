@@ -72,8 +72,14 @@ routine. Clearing the area does not succeed/finish this task. After hauling, the
 NPC returns to the captured source once, then waits with reason
 `cleanup_waiting_corpses`. Empty and deferred-only searches poll at most every
 two seconds so newly fallen bodies can be collected without another order.
-During those waits the scheduler may run the routine; idle scans do not repeatedly
-recall the actor to the source. The search center remains the original captured
+During those waits the routine keeps its existing ownership and roaming timer.
+Bounded discovery runs through the passive `HumanModule.monitor` hook before
+arbitration: empty, partial, unavailable and deferred-only scans never select
+`assigned-task`, cancel the walk, or restart its pause. Only a concrete body
+approach/haul, a due retry, or a return after actual work competes for movement.
+The intent never requests an initial return merely because an empty area was
+checked while the actor was roaming away from its source. Idle scans do not
+repeatedly recall the actor to the source. The search center remains the original captured
 NPC tile. Return-route failure retains intent and retries.
 
 `AssignedTaskModule` delegates this objective to one `CorpseCleanupExecution`.
@@ -104,23 +110,24 @@ native adapter defers that exact corpse for five real-time minutes, then discove
 another available body. A dropped body already outside the original source
 radius remains tracked for later delivery. Removed/reanimated bodies are pruned
 without recreation. Transient retry memory is bounded to 128 bodies per actor;
-exhausting that bound reports `cleanup_deferral_limit` rather than allocating
-without limit.
+exhausting that bound waits with `cleanup_waiting_deferral_capacity` and releases
+the claim rather than allocating without limit or terminating the order.
 
 If only deferred bodies remain, the assignment stays active and yields the
-runtime to routine modules until the earliest retry is due. The original source
+runtime to routine modules while polling for new work and the earliest due retry. The original source
 and dialogue-authored destination stay fixed while background behavior moves the
 NPC. Return routes also retry: five short attempts, then a five-minute backoff,
 without abandoning the intent. Temporary scope/loading loss waits one second.
-`cleanup_completed` is emitted only after no eligible/deferred work remains and
-the NPC has returned to the source. A new order or `RESUME_ROUTINE` can still
-replace/cancel this intent at any time.
+An empty search emits `cleanup_waiting_corpses`; the order does not complete.
+A new order or `RESUME_ROUTINE` can replace/cancel this intent at any time.
 
 The executor owns attempts and phase timing; `HumanCorpsePort` supplies approach
 points, deferred discovery and retry diagnostics. `ServerHumanCorpses` keys its
 cooldowns by native object identity and the original search/destination context;
 it never puts native objects in brain observations. `AssignedTaskModule` owns the
-assignment and makes it scheduler-eligible when the next attempt is due. DEBUG
+assignment and passively samples discovery. Eligibility remains pure and only
+becomes true for ready physical work. The runtime polls intents without
+selecting them; higher-priority defense still wins arbitration. DEBUG
 `corpse retry` reports body token, attempt count, failure reason and monotonic
 retry deadline; task reasons expose approaching, hauling, retrying, returning and
 waiting phases. No new client packet, SQL migration or dialogue metadata field
@@ -234,3 +241,9 @@ traversal (93), server-human lifecycle (92), engagement (52) and roaming (571)
 assertions passed. Target-JAR dry compilation passed with 262 sources and 805
 class files. No live deployment was performed; dedicated-server validation is
 still needed for the actual corpse replication and presentation.
+
+Passive-intent regression reproduces a roaming pause longer than the two-second
+scan interval using the production `WalkingModule` and `HumanModuleRuntime`.
+Repeated empty and partial scans preserve walking selection and actual movement;
+finding a body switches to cleanup, defense preempts/releases it, and ending
+defense resumes cleanup. Resume-routine cancels future monitoring too.

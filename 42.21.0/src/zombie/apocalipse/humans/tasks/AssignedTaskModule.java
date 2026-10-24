@@ -33,9 +33,18 @@ public final class AssignedTaskModule implements HumanModule {
         status=value.kind()==HumanTaskCommand.Kind.RESUME_ROUTINE?Status.CANCELLED:Status.ASSIGNED;
         reason=value.kind()==HumanTaskCommand.Kind.RESUME_ROUTINE?"routine_resumed":"accepted";
     }
-    public boolean eligible(HumanObservation observation){return !stopped&&!suspended&&active()&&(cleanup==null||cleanup.ready(observation.nowNanos()));}
+    public boolean eligible(HumanObservation observation){return !stopped&&!suspended&&active()&&(cleanup==null||cleanup.ready(observation.nowNanos())&&cleanup.hasWork());}
     public boolean available(){return !stopped;}
+    @Override public void monitor(HumanObservation observation,HumanActuator actuator){
+        if(stopped||suspended||!active()||command.kind()!=HumanTaskCommand.Kind.CLEAR_CORPSES||cleanupSource==null)return;
+        var before=snapshot();
+        if(cleanup==null)cleanup=new CorpseCleanupExecution(cleanupSource,command.destination(),command.radiusTiles());
+        cleanup.poll(observation.nowNanos(),actuator.corpses(),actuator.taskWorld().position());
+        reason=cleanup.reason();
+        if(!before.equals(snapshot()))actuator.taskWorld().changed(snapshot());
+    }
     public void update(HumanObservation observation,HumanActuator actuator) {
+        monitor(observation,actuator);
         var before=snapshot();tick(observation,actuator);
         if(!before.equals(snapshot()))actuator.taskWorld().changed(snapshot());
     }

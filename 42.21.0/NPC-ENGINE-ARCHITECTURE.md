@@ -178,3 +178,15 @@ may keep a competing mutable health/endurance copy. Native body/stats are an
 observation/projection boundary, and workers receive detached checkpoints only.
 See [NPC-STATE.md](NPC-STATE.md) for CAS/activation validation, inbox bounds,
 condition projection, V20 persistence, failure semantics and validation.
+
+### Passive intent monitoring
+
+`HumanModuleRuntime` invokes the default-no-op `HumanModule.monitor` hook before
+arbitration while the runtime is active. Each implementation must bound and time
+its own sensing, retain pure `eligible` checks, and never actuate movement,
+claim a body or cancel another module's action from that hook. Dialogue/trade
+suspension and shutdown stop monitoring as well as selected execution.
+`AssignedTaskModule` uses this hook to poll `HumanCorpsePort` discovery through
+`CorpseCleanupExecution.poll`, independently of walking ownership. Only actual
+ready work enters normal priority arbitration; defense retains priority.
+The selected module alone executes routes and claims/releases the selected body.

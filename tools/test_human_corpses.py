@@ -130,8 +130,10 @@ public class CorpsesTest {
   for(int n=0;n<50&&task.active();n++)task.update(o(retry+=100_000_000),port);
   check(task.active()&&port.bodies.get(1L).equals(p(105)),"dump access recovery delivers body while retaining assignment");
 
-  port=new Port();port.here=p(105);port.rejectedGoals.add(p(100));task=new AssignedTaskModule();task.assign(order(105),null,p(100));now=1;
-  for(int n=0;n<CorpseCleanupExecution.MAX_ATTEMPTS;n++){task.update(o(now),port);if(n+1<CorpseCleanupExecution.MAX_ATTEMPTS)now+=CorpseCleanupExecution.RETRY_NANOS;}
+  port=new Port();port.bodies.put(1L,p(101));port.rejectedGoals.add(p(100));task=new AssignedTaskModule();task.assign(order(105),null,p(100));now=1;
+  for(int n=0;n<40&&port.retries==0;n++)task.update(o(now+=100_000_000),port);
+  check(port.bodies.get(1L).equals(p(105))&&port.retries==1,"return retry begins only after actual cleanup work");
+  for(int n=1;n<CorpseCleanupExecution.MAX_ATTEMPTS;n++)task.update(o(now+=CorpseCleanupExecution.RETRY_NANOS),port);
   check(task.active()&&!task.eligible(o(now+CorpseCleanupExecution.DEFER_NANOS-1)),"blocked return route retains intent with bounded retry rounds");
   port.rejectedGoals.clear();now+=CorpseCleanupExecution.DEFER_NANOS;
   for(int n=0;n<20&&task.active();n++)task.update(o(now+=100_000_000),port);
@@ -154,6 +156,46 @@ public class CorpsesTest {
   check("assigned-task".equals(runtime.selectedModule())&&task.active(),"scheduled intent takes control back when its retry becomes due");
   port=new Port();port.bodies.put(1L,p(101));task=new AssignedTaskModule();task.assign(order(105),null,p(100));task.update(o(-10_000_000_000L),port);
   check(port.routes.size()==1&&task.active(),"initial intent also executes under a negative monotonic clock origin");task.stop(-9_000_000_000L,port);
+ }
+ static void passiveIntent(){
+  class RoamingPort extends Port {
+   int searches,roamStarts;boolean partial;
+   List<String> selected=new ArrayList<>();
+   public Search find(Point source,int radius,Point dest,long now){searches++;return partial?new Search(null,false,true):super.find(source,radius,dest,now);}
+   public boolean startMovement(MovementRequest request,long now){
+    if(request instanceof MovementRequest.Pattern){roamStarts++;goal=p(here.x()+20);return true;}
+    return super.startMovement(request,now);
+   }
+   public void moduleChanged(String previous,String next){selected.add(next);}
+  }
+  var port=new RoamingPort();port.here=p(110);
+  var task=new AssignedTaskModule();task.assign(order(105),null,p(100));
+  var threatened=new java.util.concurrent.atomic.AtomicBoolean();
+  HumanModule defense=new HumanModule(){
+   public boolean available(){return true;}public boolean eligible(HumanObservation o){return threatened.get();}
+   public void update(HumanObservation o,HumanActuator a){}
+   public void interrupt(long n,HumanActuator a){}public void suspend(long n,HumanActuator a){}public void resume(HumanObservation.Identity i,long n,HumanActuator a){}public void stop(long n,HumanActuator a){}
+  };
+  var runtime=new HumanModuleRuntime(List.of(new HumanModuleRuntime.Entry("defense",10,100,defense),new HumanModuleRuntime.Entry("assigned-task",100,100,task),new HumanModuleRuntime.Entry("walk",1000,100,new WalkingModule(3_000_000_000L))));
+  long now=1;
+  for(int n=0;n<120;n++)runtime.update(o(now+=100_000_000),port);
+  check(port.searches>=5&&port.selected.equals(List.of("walk")),"repeated empty scans never preempt the real walking module");
+  check(port.roamStarts>0&&port.here.x()>110&&task.active(),"roaming pause can finish and NPC physically roams while cleanup intent stays assigned");
+  check(port.routes.isEmpty(),"empty intent never routes back to captured source before any work");
+  port.partial=true;int before=port.here.x();
+  for(int n=0;n<60;n++)runtime.update(o(now+=100_000_000),port);
+  check(port.here.x()>before&&"walk".equals(runtime.selectedModule()),"partial bounded discovery also leaves roaming in control");
+  port.partial=false;port.bodies.put(1L,p(101));
+  for(int n=0;n<30&&port.held.isEmpty();n++)runtime.update(o(now+=100_000_000),port);
+  check("assigned-task".equals(runtime.selectedModule())&&!port.held.isEmpty(),"discovered corpse activates cleanup without another dialogue command");
+  threatened.set(true);runtime.update(o(now+=100_000_000),port);
+  check("defense".equals(runtime.selectedModule())&&port.held.isEmpty()&&task.active(),"defense overrides cleanup and releases the corpse while preserving intent");
+  threatened.set(false);runtime.update(o(now+=100_000_000),port);
+  check("assigned-task".equals(runtime.selectedModule())&&!port.held.isEmpty(),"cleanup reclaims body after defense ends");
+  task.interrupt(now,port);task.assign(new HumanTaskCommand(HumanTaskCommand.Kind.RESUME_ROUTINE,Map.of()),null,port.here);
+  int scanned=port.searches;
+  for(int n=0;n<50;n++)runtime.update(o(now+=100_000_000),port);
+  check(!task.active()&&"walk".equals(runtime.selectedModule())&&port.searches==scanned,"resume routine removes passive intent as well as active cleanup");
  }
  static IsoDeadBody body(IsoCell cell,int x,int y){var b=new IsoDeadBody();b.x=x+.5f;b.y=y+.5f;b.square=cell.getGridSquare(x,y,0);b.square.addCorpse(b,true);return b;}
  static void nativeAdapter(HumanProfile profile){
@@ -244,7 +286,7 @@ public class CorpsesTest {
   check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("corpse search key=")&&s.contains("result=selected")&&s.contains("corpses=")),"corpse discovery emits selected-body diagnostics independently of movement failures");
   check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("corpse search key=")&&s.contains("result=complete")&&s.contains("source=")),"empty/completed search reports the actual source and scan result");
  }
- public static void main(String[]args){execution();intentRetries();var profile=profile();nativeAdapter(profile);dialogue(profile);movementOccupancy(profile);System.out.println("Passed "+checks+" corpse cleanup execution, native and dialogue assertions.");}
+ public static void main(String[]args){execution();intentRetries();passiveIntent();var profile=profile();nativeAdapter(profile);dialogue(profile);movementOccupancy(profile);System.out.println("Passed "+checks+" corpse cleanup execution, native and dialogue assertions.");}
 }
 '''
 

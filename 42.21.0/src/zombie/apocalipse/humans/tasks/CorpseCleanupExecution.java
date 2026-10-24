@@ -11,7 +11,7 @@ public final class CorpseCleanupExecution {
     private final Point source,destination;
     private final int radius;
     private HumanCorpsePort.Body body;
-    private boolean hauling,moving,claimed,returning,needsReturn=true;
+    private boolean hauling,moving,claimed,returning,needsReturn;
     private Point goal;
     private long deadline,retryAt=Long.MIN_VALUE;
     private int attempts,returnAttempts;
@@ -22,28 +22,36 @@ public final class CorpseCleanupExecution {
     }
     public String reason(){return reason;}
     public boolean ready(long now){return now>=retryAt;}
+    public boolean hasWork(){return body!=null||returning;}
+    /** Discovery only: may run alongside roaming/defense, never claims a body or touches physical movement. */
+    public void poll(long now,HumanCorpsePort port,Point here){
+        if(now<retryAt||hasWork())return;
+        if(!port.supported()||here==null){reason="cleanup_waiting_available";retryAt=now+RETRY_NANOS;return;}
+        if(!port.permitted(source)||!port.permitted(destination)){
+            reason="cleanup_waiting_scope";retryAt=now+RETRY_NANOS;return;
+        }
+        reason="cleanup_searching";
+        var found=port.find(source,radius,destination,now);
+        if(!found.loaded()){reason="cleanup_waiting_area";retryAt=now+RETRY_NANOS;return;}
+        if(found.body()!=null){
+            body=found.body();attempts=0;hauling=false;moving=false;needsReturn=true;return;
+        }
+        if(!found.complete()){retryAt=now+100_000_000L;return;}
+        if(found.retryAtNanos()!=Long.MAX_VALUE){
+            reason="cleanup_waiting_deferred";retryAt=Math.min(found.retryAtNanos(),now+IDLE_NANOS);return;
+        }
+        if(needsReturn&&!source.equals(here)){returning=true;reason="cleanup_returning";return;}
+        needsReturn=false;reason="cleanup_waiting_corpses";retryAt=now+IDLE_NANOS;
+    }
     /** Null while intent is live, including retries and five-minute deferrals. */
     public String update(long now,HumanActuator actuator){
-        if(now<retryAt)return null;
         var port=actuator.corpses();var here=actuator.taskWorld().position();
-        if(!port.supported()||here==null){reason="cleanup_waiting_available";retryAt=now+RETRY_NANOS;return null;}
-        if(!port.permitted(source)||!port.permitted(destination)){
-            interrupt(actuator);
-            reason="cleanup_waiting_scope";retryAt=now+RETRY_NANOS;return null;
+        poll(now,port,here);
+        if(now<retryAt||!hasWork())return null;
+        if(!port.supported()||here==null||!port.permitted(source)||!port.permitted(destination)){
+            interrupt(actuator);reason="cleanup_waiting_scope";retryAt=now+RETRY_NANOS;return null;
         }
         if(returning)return returnToSource(now,actuator);
-        if(body==null){
-            reason="cleanup_searching";
-            var found=port.find(source,radius,destination,now);
-            if(!found.loaded()){reason="cleanup_waiting_area";retryAt=now+RETRY_NANOS;return null;}
-            if(found.body()==null){
-                if(!found.complete())return null;
-                if(found.retryAtNanos()!=Long.MAX_VALUE){reason="cleanup_waiting_deferred";retryAt=Math.min(found.retryAtNanos(),now+IDLE_NANOS);return null;}
-                if(needsReturn){returning=true;return returnToSource(now,actuator);}
-                return idle(now,actuator);
-            }
-            body=found.body();attempts=0;hauling=false;moving=false;needsReturn=true;
-        }
         var current=port.resolve(body.token());
         if(current==null||!current.position().equals(body.position())){clear(actuator);return null;}
         if(!claimed){
