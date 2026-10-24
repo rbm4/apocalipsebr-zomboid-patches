@@ -127,7 +127,12 @@ final class ServerHumanMovement implements MovementGrid {
         traversal.clock(lastResolution);
         resolved = MovementModifiers.resolve(requestedPace, conditions, settings, lastResolution, rhythmOrigin);
         if(dragging&&resolved.speed()>0){
-            resolved=new Resolved(Pace.WALK,Math.min(resolved.speed(),settings.speeds().walk()*.8F),resolved.animation(),resolved.reason());
+            // Hauling uses half the condition-adjusted walk pace. Preserve slower
+            // injury/fatigue effects even when a profile normally requests running.
+            float speed=Math.min(resolved.speed(),settings.speeds().walk())*.5F;
+            var animation=resolved.animation();float ratio=speed/resolved.speed();
+            resolved=new Resolved(Pace.WALK,speed,
+                new Animation(animation.walkInjury(),animation.walkSpeed()*ratio,animation.runSpeed()*ratio,false),resolved.reason());
         }
         if(guarded()&&resolved.speed()>0){
             float ratio=Math.min(1,1.3F/resolved.speed());var animation=resolved.animation();
@@ -289,7 +294,7 @@ final class ServerHumanMovement implements MovementGrid {
     }
 
     private boolean dragging;
-    void dragging(boolean value){dragging=value;}
+    void dragging(boolean value){dragging=value;if(lastResolution!=Long.MIN_VALUE)refresh(lastResolution);}
     private boolean blocksMovement(zombie.iso.IsoMovingObject body){
         return BodyOccupancy.blocks(body,human.player);
     }

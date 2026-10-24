@@ -36,7 +36,7 @@ public enum Flag {IsFakeDead,IsLunger,IsRunning}}""",
 "zombie/apocalipse/humans/HumanLog.java": """package zombie.apocalipse.humans;
 public class HumanLog {public enum Level{DEBUG}public static void log(Level l,java.util.function.Supplier<String> s){}}""",
 "zombie/network/NetworkVariables.java": """package zombie.network;public class NetworkVariables {
-public enum ZombieState {Idle,WalkToward,WalkTowardNetwork,PathFind,Lunge,LungeNetwork,Attack,OnGround,HitReaction}}
+public enum ZombieState {Idle,WalkToward,WalkTowardNetwork,PathFind,Lunge,LungeNetwork,Attack,OnGround,HitReaction,Grappled}}
 """,
 "zombie/network/ServerMap.java": """package zombie.network;public class ServerMap {
 public static final ServerMap instance=new ServerMap();public final java.util.Map<Short,zombie.characters.IsoZombie> zombieMap=new java.util.HashMap<>();}""",
@@ -381,6 +381,7 @@ public class ControlTest {
   var dragPacket=new zombie.network.packets.character.ZombiePacket();dragPacket.update=(byte)0xff;dragPacket.predictionType=3;dragPacket.target=7;
   dragged.x=15;dragged.y=23;ServerCorpseDragAuthority.prepare(dragged,dragPacket);
   check(dragPacket.realX==15&&dragPacket.realY==23&&dragPacket.predictionType==0&&dragPacket.target==-1&&(dragPacket.update&128)!=0,"drag packet keeps grapple flags and replaces stale prediction with server position");
+  check(dragPacket.realState==NetworkVariables.ZombieState.Grappled&&(dragPacket.update&1)!=0&&(dragPacket.update&16)==0&&(dragPacket.update&4)!=0,"drag relay serializes grapple state and retains real position payload without stale path");
   dragged.id++;check(!ServerCorpseDragAuthority.controls(dragged),"recycled native instance cannot inherit drag authority");ServerCorpseDragAuthority.release(dragged);
   System.out.println("Passed "+checks+" server-zombie controller assertions.");
  }

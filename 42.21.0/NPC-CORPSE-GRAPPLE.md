@@ -13,7 +13,7 @@ metadata change is introduced.
 | `HumanCorpsePort` | Explicit `beginDrag`, `updateDrag`, `endDrag` statuses. Default implementations preserve relocation semantics for legacy/custom ports. |
 | `ServerHumanCorpses` | Discovery, claims, logical-token rebinding, deferral and native session composition. The same token can resolve an original corpse, an attached body at the actor's tile, then its replacement corpse. |
 | `ServerHumanCorpseDrag` | One native conversion, timed pickup/laydown, authoritative continuous placement, native death callback and immediate emergency release. |
-| `ServerHumanDragPacket` / transport | Explicit native `PlayerDraggingCorpse` state parameters; replay to new/relevant viewers and bounded state refresh. No `StatePacket.setData` or fake local player. |
+| `ServerHumanDragPacket` / transport | Explicit native `PlayerDraggingCorpse` phase parameters; replay to new/relevant viewers, continuation flags in movement packets. No `StatePacket.setData` or fake local player. |
 | `ServerCorpseDragAuthority` | Up to 128 identity-checked helper leases, separate from combat pursuit, owner-null relay admission and packet position correction. |
 | `ServerHumanMovement` | Drag pace cap, backward-facing travel with independent prediction heading, unsupported-edge rejection and own-body clearance. |
 
@@ -48,7 +48,10 @@ flag, as required by the paired drag animation conditions. Placement uses native
 drag asset offsets: 0.3 tiles for head/back, head/front and legs/back, 0.7 for
 legs/front; head/front and legs/back reverse body yaw. Movement faces backward
 while the prediction vector continues to point along the actual route. Dragging
-caps physical pace at 80% of configured walking speed and cannot run/sprint.
+uses half the resolved physical speed (capped to walking before halving), scales
+ordinary stride modifiers accordingly, and cannot run/sprint or sneak. At the
+default healthy walking speed this is 1 tile/second. Injury/fatigue reductions
+still apply; this is an NPC hauling policy, not a measured vanilla player speed.
 Presentation timing, stride and transitions still need in-game calibration.
 
 Normal completion requests laydown, then normalizes the body to the actor's drop
@@ -70,13 +73,18 @@ owner rotation. Direct transfers to viewers are refused while the lease is live.
 The existing receive-side owner check continues to reject spectator zombie
 updates. Helpers are explicitly admitted to relay/request snapshots despite having
 no client owner; relays run at most every 100ms. Packet preparation preserves
-native corpse/grapple flags and replaces stale client-style prediction with the
-authoritative server position.
+native corpse/grapple flags and real-position payload, replaces stale client-style
+prediction with the authoritative server position, removes stale path data, and
+explicitly serializes the `Grappled` state instead of the server animator's state.
 
-Native state is replayed on relevance announcement and refreshed at most every
-250ms during a live session. This permits recovery when the first state packet
-references a helper not yet created on a client; it is not an acknowledgement
-protocol or a proof against all packet-loss/reordering cases. Exit messages omit
+Native state is sent on pickup/haul/laydown transitions and relevance announcement.
+It must not be used as a heartbeat: native `PlayerDraggingCorpse.setParams` calls
+`AcceptGrapple`, resetting the paired animation on every application. Regular
+movement packets carry `isDoContinueGrapple` throughout pickup/haul and clear it
+for laydown; otherwise each heartbeat instructs the client to release the body.
+Native helper creation also binds the grappler when available. These paths are
+not an acknowledgement protocol or proof against all packet-loss/reordering cases,
+especially when a helper arrives before its player. Exit messages omit
 the now-dead helper reference. A presentation-send failure cannot skip native
 release. Two-client late-viewer/reconnect/reordering checks remain required.
 

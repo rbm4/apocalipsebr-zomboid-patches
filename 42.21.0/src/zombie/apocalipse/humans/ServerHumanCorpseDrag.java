@@ -18,7 +18,8 @@ final class ServerHumanCorpseDrag {
     private IsoZombie target;
     private int instance;private short online;
     private boolean released,dropping,failed;
-    private long readyAt,dropAt,nextState=Long.MIN_VALUE;
+    private long readyAt,dropAt;
+    private boolean stateChanged=true;
     private String type="BwdDrag",dragType;
     private float bearing,bodyOffset=.3F;
     private boolean reverseBody;
@@ -63,14 +64,14 @@ final class ServerHumanCorpseDrag {
     }
     DragStatus drop(long now){
         if(!live())return released?DragStatus.RELEASED:DragStatus.FAILED;
-        if(!dropping){dropping=true;dropAt=now+DROP_NANOS;human.player.setDoContinueGrapple(false);nextState=Long.MIN_VALUE;log("dropping");}
+        if(!dropping){dropping=true;dropAt=now+DROP_NANOS;human.player.setDoContinueGrapple(false);stateChanged=true;log("dropping");}
         tick(now);return status(now);
     }
     void tick(long now){
         if(released)return;
         if(!live()){failed=true;release();return;}
         if(!dropping&&now>=readyAt&&!type.equals(dragType)){
-            type=dragType;target.setOnFloor(false);human.player.setSharedGrappleType(type);nextState=Long.MIN_VALUE;log("dragging");
+            type=dragType;target.setOnFloor(false);human.player.setSharedGrappleType(type);stateChanged=true;log("dragging");
         }
         if(now>=readyAt)target.setOnFloor(false);
         // Match native drag XML offsets; actor's checked route remains authoritative.
@@ -81,7 +82,9 @@ final class ServerHumanCorpseDrag {
         if(!from.equals(to)&&human.movement.traversalCost(from,to)!=zombie.apocalipse.humans.traversal.TraversalEdge.Kind.WALK.cost()){x=human.player.getX();y=human.player.getY();}
         if(now>=readyAt)place(x,y);
         if(dropping&&now>=dropAt){release();return;}
-        if(now>=nextState){nextState=now+250_000_000L;for(var viewer:human.viewers)if(human.isRelevant(viewer))announce(viewer);}
+        // Native PlayerDraggingCorpse.setParams calls AcceptGrapple, resetting the
+        // paired animation. State packets describe transitions, never a heartbeat.
+        if(stateChanged){stateChanged=false;for(var viewer:human.viewers)if(human.isRelevant(viewer))announce(viewer);}
     }
     void announce(UdpConnection viewer){if(live())send(viewer,true);}
     private void send(UdpConnection viewer,boolean entering){

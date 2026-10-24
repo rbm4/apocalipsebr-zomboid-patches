@@ -339,7 +339,8 @@ public class NetworkPlayerAI {public float walkSpeed=1,runSpeed=1;private byte s
 """,
     "zombie/characters/NetworkPlayerVariables.java": """package zombie.characters;
 public class NetworkPlayerVariables {public enum Flags {
- isSneaking,isOnFire,isAsleep,isRunning,isSprinting,isCharging,isChargingLT,isDoShove,hasDeferredMovement}}
+ isSneaking,isOnFire,isAsleep,isRunning,isSprinting,isCharging,isChargingLT,isDoShove,hasDeferredMovement,
+ isOnFloor,isCheatMode,isDebugMode,isDoGrapple,isDoContinueGrapple,isAutoDrinkEnabled,isPerformingAction}}
 """,
     "zombie/iso/LosUtil.java": """package zombie.iso;
 public class LosUtil {
@@ -781,7 +782,8 @@ FILES["zombie/popman/NetworkZombieManager.java"] = """package zombie.popman;
 public class NetworkZombieManager {static final NetworkZombieManager INSTANCE=new NetworkZombieManager();public static NetworkZombieManager getInstance(){return INSTANCE;}
 public void moveZombie(zombie.characters.IsoZombie body,Object connection,Object player){body.owner=connection;}}"""
 FILES["zombie/network/packets/character/ZombiePacket.java"] = """package zombie.network.packets.character;
-public class ZombiePacket {public float x,y,realX,realY;public byte z,realZ,predictionType,update;public short target;}"""
+public class ZombiePacket {public float x,y,realX,realY;public byte z,realZ,predictionType,update;public short target;public zombie.network.NetworkVariables.ZombieState realState;}"""
+FILES["zombie/network/NetworkVariables.java"] = "package zombie.network;public class NetworkVariables {public enum ZombieState {Idle,Grappled}}"
 FILES["zombie/ai/states/PlayerDraggingCorpse.java"] = """package zombie.ai.states;
 public class PlayerDraggingCorpse {static final PlayerDraggingCorpse INSTANCE=new PlayerDraggingCorpse();public static PlayerDraggingCorpse instance(){return INSTANCE;}}"""
 FILES["zombie/characters/IsoGameCharacter.java"] = FILES["zombie/characters/IsoGameCharacter.java"].replace("{public abstract boolean", """{
@@ -790,6 +792,7 @@ FILES["zombie/characters/IsoGameCharacter.java"] = FILES["zombie/characters/IsoG
  public boolean isGrappling(){return grapplingTarget!=null;}public boolean isBeingGrappled(){return grappledBy!=null;}
  public float grappleBearing;public float getBearingFromGrappledTarget(){return grappleBearing;}
  public void setDoContinueGrapple(boolean value){continued=value;}
+ public boolean isDoContinueGrapple(){return continued;}
  public void setSharedGrappleType(String type){sharedGrappleType=type;if(grapplingTarget!=null)grapplingTarget.sharedGrappleType=type;}
  public void resetGrappleStateToDefault(String reason){grapplingTarget=null;continued=false;}
  public void LetGoOfGrappled(String result){var target=grapplingTarget;grapplingTarget=null;continued=false;if(target instanceof IsoZombie z){z.grappledBy=null;z.die();}}

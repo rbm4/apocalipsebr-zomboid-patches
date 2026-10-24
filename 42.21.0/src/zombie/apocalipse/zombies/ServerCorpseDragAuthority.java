@@ -3,6 +3,7 @@ package zombie.apocalipse.zombies;
 import java.util.*;
 import zombie.characters.IsoZombie;
 import zombie.network.GameServer;
+import zombie.network.NetworkVariables;
 import zombie.network.ServerMap;
 import zombie.network.packets.character.ZombiePacket;
 
@@ -31,7 +32,10 @@ public final class ServerCorpseDragAuthority {
     public static void prepare(IsoZombie body,ZombiePacket packet){
         if(!controls(body))return;
         packet.x=packet.realX=body.getX();packet.y=packet.realY=body.getY();packet.z=packet.realZ=(byte)body.getZi();
-        packet.predictionType=0;packet.target=-1;packet.update=(byte)(packet.update&~6);
+        // Dedicated-server animator state is not the client's paired animation.
+        // OnGround/Idle here makes a dragged body play death poses and snap behind.
+        packet.realState=NetworkVariables.ZombieState.Grappled;
+        packet.predictionType=0;packet.target=-1;packet.update=(byte)((packet.update&~(2|16))|1);
     }
     public static void reset(){
         for(var body:new ArrayList<>(bodies.keySet())){

@@ -59,6 +59,10 @@ final class ServerHumanTransport {
             packet.booleanVariables |= (short)(1 << NetworkPlayerVariables.Flags.isSprinting.ordinal());
         if (motion.animation().sneaking())
             packet.booleanVariables |= (short)(1 << NetworkPlayerVariables.Flags.isSneaking.ordinal());
+        // Every movement update replaces these native flags on the receiving player.
+        // Omitting continuation makes the client lay down an otherwise valid grapple.
+        if (human.player.isDoContinueGrapple())
+            packet.booleanVariables |= (short)(1 << NetworkPlayerVariables.Flags.isDoContinueGrapple.ordinal());
         packet.disconnected = false;
         packet.variables.set(human.player);
         packet.sendToClient(PacketTypes.PacketType.PlayerUpdateReliable, connection);
