@@ -209,7 +209,29 @@ public class SurvivalTest {
   check("movement_stalled".equals(actor.actuator.survival().routeProblem(3*SECOND)),"production adapter detects no positional progress independently of route deadline");
   actor.dispose();
  }
- public static void main(String[]args){lifecycle();arbitration();failedFlight();coordinated();relieved();routes();flags();adapter();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
+ static void emergencyMonitoring(){
+  var port=new Port();var guard=new EngageZombiesModule(HumanEngagement.Settings.DEFAULT);
+  var survival=new SurvivalModule(SurvivalSettings.DEFAULT);
+  var runtime=new HumanModuleRuntime(List.of(new HumanModuleRuntime.Entry("survival",0,100,survival),new HumanModuleRuntime.Entry("engage-zombies",100,100,guard)));
+  var safe=observe(0,HumanState.INITIAL,0,9,Coverage.COMPLETE);
+  var threat=observe(0,HumanState.INITIAL,1,9,Coverage.COMPLETE);
+  runtime.suspend(0,port);
+  check(!runtime.emergency(safe)&&runtime.emergency(threat)&&runtime.emergency(threat),"suspended runtime detects guard threat with pure repeatable checks");
+  check(port.begins==0&&port.escapes==0&&runtime.selectedModule()==null&&!guard.eligible(threat),"monitor never actuates or unsuspends modules");
+  var stale=new HumanObservation(SECOND,List.of(),true,HumanState.INITIAL,threat.senses(),threat.territory());
+  check(!runtime.emergency(stale),"stale guard sighting does not interrupt conversation");
+  var outside=new HumanObservation(0,List.of(),true,HumanState.INITIAL,threat.senses(),HumanTerritory.UNAVAILABLE);
+  check(!runtime.emergency(outside),"guard emergency respects territory policy");
+  var players=threat.senses().contacts().stream().map(c->new Contact(new Identity(Kind.PLAYER,(short)1,1,1),c.x(),c.y(),c.z(),c.distanceSquared(),0,0,true)).toList();
+  var frame=new Frame(true,0,players,Coverage.COMPLETE,Coverage.COMPLETE,false,new Work(0,0,0,0,0));
+  check(!runtime.emergency(new HumanObservation(0,List.of(),true,HumanState.INITIAL,frame,threat.territory())),"player proximity is not implicitly hostile");
+  var crowd=observe(0,HumanState.INITIAL,4,9,Coverage.PARTIAL);
+  check(survival.emergency(crowd)&&survival.phase()==SurvivalModule.Phase.SAFE,"suspended survival detects known pressure without phase mutation");
+  runtime.resume(null,0,port);runtime.update(crowd,port);
+  check("survival".equals(runtime.selectedModule())&&port.escapes==1,"emergency release preserves normal runtime priority");
+  runtime.stop(0,port);check(!runtime.emergency(crowd),"stopped runtime cannot request emergency takeover");
+ }
+ public static void main(String[]args){lifecycle();arbitration();failedFlight();coordinated();relieved();routes();flags();adapter();emergencyMonitoring();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
 }
 '''
 

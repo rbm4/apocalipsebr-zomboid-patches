@@ -60,6 +60,9 @@ unrelated role flags inside `GuideBrain` or put gameplay policy into transport.
 
 ## Generic action composition
 
+Dialogue-assigned runtime objectives use typed commands, a per-actor task module
+and injected native queries. See [NPC task ownership and lifecycle](NPC-TASKS.md).
+
 Movement follows this pattern: behavioral modules decide when to roam,
 the profile-selected `WalkingPattern` supplies destinations and scope through `ServerHumanWalking`, and
 `ServerHumanMovement` executes it. Transport consumes the movement engine's

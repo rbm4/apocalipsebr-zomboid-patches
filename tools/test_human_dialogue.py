@@ -90,7 +90,55 @@ public class DialogueTest {
   ((JavaFunction)api.rawget("arrive")).call(invalid,3);
   check(Boolean.FALSE.equals(invalid.result),"Lua bridge rejects invalid actor ID");
   graphTests(factory,other,now);
+  emergencyTests(factory,other);
   System.out.println("Passed "+checks+" dialogue authority, lifecycle and bridge assertions.");
+ }
+ static void emergencyTests(ServerHumanFactory factory,IsoPlayer p) {
+  var base=ServerHumanProfiles.registry().require("militia-patrol");
+  var profile=new zombie.apocalipse.humans.profiles.HumanProfile("dialogue-guard",1,base.behaviorId(),base.parameters(),
+    base.greetingKey(),base.announcementId(),true,false,base.modules(),base.perceptionRadius(),base.perceptionIntervalMs(),
+    base.requireLos(),base.walkingPatterns(),base.cheats(),base.survival());
+  ServerHumanProfiles.registry().register(profile);
+  short id=factory.spawn(new ServerHumanDefinition("emergency","Emergency NPC","Emergency",100,200,0,IsoDirections.E,false,"Tourist",profile.id()));
+  var h=ServerHumanFactory.tradingHuman(id);p.x=101;p.y=200;p.z=0;
+  long now=System.nanoTime();
+  int first=token(ServerHumanDialogue.begin(p,id,now));
+  h.state.dispatch(new zombie.apocalipse.humans.state.HumanMutation.Adjust(zombie.apocalipse.humans.state.HumanState.Stat.ENDURANCE,-.9f));
+  int closed=java.util.Collections.frequency(LuaEventManager.events,"OnApocBRHumanDialogueClosed");
+  factory.tick(now);
+  check(h.activity.mode()==HumanActivityController.Mode.AUTONOMOUS,"emergency cancels approach before arrival");
+  check(!ServerHumanDialogue.arrive(p,id,first,now),"emergency invalidates approach token");
+  check(java.util.Collections.frequency(LuaEventManager.events,"OnApocBRHumanDialogueClosed")==closed+1,"emergency closes lease exactly once");
+  check(ServerHumanDialogue.begin(p,id,now).rawget("error")!=null,"emergency blocks immediate re-reservation");
+  check("survival".equals(((HumanModuleRuntime)h.activity.behavior()).selectedModule()),"runtime executes emergency module in the same update");
+  // A fresh actor isolates a later, already-open conversation from recovery hysteresis.
+  factory.remove("emergency");
+  id=factory.spawn(new ServerHumanDefinition("emergency-open","Emergency Open NPC","Emergency",100,200,0,IsoDirections.E,false,"Tourist",profile.id()));
+  h=ServerHumanFactory.tradingHuman(id);now=System.nanoTime();
+  int opened=token(ServerHumanDialogue.begin(p,id,now));
+  check(ServerHumanDialogue.arrive(p,id,opened,now)&&ServerHumanDialogue.react(p,id,opened,"hello","wavehi",now),"safe guard can open dialogue and emote");
+  h.state.dispatch(new zombie.apocalipse.humans.state.HumanMutation.Adjust(zombie.apocalipse.humans.state.HumanState.Stat.ENDURANCE,-.9f));
+  check(!ServerHumanDialogue.react(p,id,opened,"unsafe response",null,now),"request path detects emergency before executing speech");
+  check(h.emote==null&&h.activity.mode()==HumanActivityController.Mode.AUTONOMOUS,"emergency stops dialogue emote and releases activity");
+  check(ServerHumanDialogue.graphView(p,id,opened,now).rawget("error")!=null,"old graph token cannot survive emergency closure");
+  h.state.dispatch(new zombie.apocalipse.humans.state.HumanMutation.Adjust(zombie.apocalipse.humans.state.HumanState.Stat.ENDURANCE,1));
+  int recovered=token(ServerHumanDialogue.begin(p,id,now));
+  check(recovered!=opened&&ServerHumanDialogue.arrive(p,id,recovered,now),"resolved emergency permits a fresh conversation, never the old token");
+  factory.remove("emergency-open");
+  var cell=IsoWorld.instance.currentCell;var building=new BuildingDef();
+  cell.getGridSquare(100,200,0).building=building;cell.getGridSquare(101,200,0).building=building;
+  id=factory.spawn(new ServerHumanDefinition("emergency-zombie","Emergency Zombie NPC","Emergency",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()));
+  h=ServerHumanFactory.tradingHuman(id);now=System.nanoTime();
+  int guardToken=token(ServerHumanDialogue.begin(p,id,now));
+  check(ServerHumanDialogue.arrive(p,id,guardToken,now),"guard conversation starts before zombie arrives");
+  var zombie=new IsoZombie();zombie.x=101.5f;zombie.y=200.5f;zombie.online=33;zombie.instanceId=333;
+  zombie.square=cell.getGridSquare(101,200,0);zombie.square.moving.add(zombie);cell.objects.add(zombie);
+  now+=200_000_000L;factory.tick(now);
+  check(h.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&"engage-zombies".equals(((HumanModuleRuntime)h.activity.behavior()).selectedModule()),"factory senses zombie during dialogue and runs combat in the same tick");
+  check(!ServerHumanDialogue.react(p,id,guardToken,"stale speech",null,now)&&ServerHumanDialogue.begin(p,id,now).rawget("error")!=null,"zombie danger prevents replay and conversation spam");
+  zombie.dead=true;
+  check(ServerHumanDialogue.begin(p,id,now).rawget("error")==null,"confirmed zombie death allows a new conversation without waiting for sample expiry");
+  cell.objects.remove(zombie);zombie.square.moving.remove(zombie);factory.remove("emergency-zombie");
  }
  static java.util.Map<String,Object> text(String title,String speech) {return java.util.Map.of("title",title,"description","details","response",title,"speech",speech);}
  static java.util.Map<String,Object> choice(String id,String next) {return java.util.Map.of("id",id,"nextNode",next,"texts",java.util.Map.of("EN",text("English","English speech"),"PTBR",text("Portuguese","Portuguese speech")),"close",false);}

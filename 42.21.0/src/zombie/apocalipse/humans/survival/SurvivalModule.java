@@ -19,8 +19,11 @@ public final class SurvivalModule implements HumanModule {
     public SurvivalModule(SurvivalSettings settings){this.settings=java.util.Objects.requireNonNull(settings);}
     public Phase phase(){return phase;}
     public boolean available(){return !stopped;}
+    public boolean emergency(HumanObservation o){
+        return !stopped&&!o.state().dead()&&(phase!=Phase.SAFE||ThreatAssessment.assess(o,settings).pressured());
+    }
     public boolean eligible(HumanObservation o){
-        return !stopped&&!suspended&&!o.state().dead()&&(phase!=Phase.SAFE||ThreatAssessment.assess(o,settings).pressured());
+        return !suspended&&emergency(o);
     }
     private void transition(Phase value,String reason,ThreatAssessment facts,HumanActuator actuator){
         if(phase==value)return;phase=value;actuator.survival().transition(value.name(),reason,facts.nearby());

@@ -17,6 +17,10 @@ public final class HumanActivityController {
     }
     public Mode mode() { return mode; }
     public HumanBehavior behavior() { return behavior; }
+    /** The interaction authority must release its lease before resuming autonomous actions. */
+    public boolean emergency(HumanObservation observation) {
+        return mode != Mode.STOPPED && !blocked && behavior.emergency(observation);
+    }
     public void update(long now, java.util.function.LongFunction<HumanObservation> perceive, HumanActuator actuator) {
         update(now,perceive,actuator,zombie.apocalipse.humans.state.HumanState.INITIAL);
     }

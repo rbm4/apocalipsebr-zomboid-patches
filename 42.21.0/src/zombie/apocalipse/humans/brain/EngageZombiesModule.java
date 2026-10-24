@@ -25,6 +25,10 @@ public final class EngageZombiesModule implements HumanModule {
         return (!backingOff||observation.nowNanos()>=retryAt||urgent&&observation.nowNanos()>=urgentRetryAt)&&next.choice()!=Choice.IGNORE;
     }
     public boolean available(){return !stopped;}
+    public boolean emergency(HumanObservation observation){
+        // Suspension and attack retry timers must not suppress threat monitoring.
+        return !stopped&&selector.preview(observation,policy,settings).choice()==Choice.ENGAGE;
+    }
     public HumanSenses.Identity target(){return selector.target();}
     public Result lastResult(){return lastResult;}
     public void update(HumanObservation observation,HumanActuator actuator){

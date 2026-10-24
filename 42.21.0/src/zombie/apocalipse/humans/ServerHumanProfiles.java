@@ -33,6 +33,12 @@ public final class ServerHumanProfiles {
             (p,b)->new zombie.apocalipse.humans.brain.WalkingModule(b.parameters().getOrDefault("pauseMs",3000L)*1000000L));
         modules.register("engage-zombies",(p,b)->HumanEngagement.Settings.fromMilliseconds(b.parameters()),
             (p,b)->new EngageZombiesModule(HumanEngagement.Settings.fromMilliseconds(b.parameters())));
+        modules.register("assigned-task",(p,b)->{
+            if(!b.parameters().isEmpty())throw new IllegalArgumentException("Tasks use per-command typed parameters");
+            if(p.walkingPatterns().stream().noneMatch(s->s.slot().equals("background")))throw new IllegalArgumentException("Tasks require a movement scope");
+            if(p.modules().stream().anyMatch(other->(other.moduleId().equals("survival")||other.moduleId().equals("engage-zombies"))&&other.priority()>=b.priority()
+                ||other.moduleId().equals("walk")&&other.priority()<=b.priority()))throw new IllegalArgumentException("Tasks must follow combat and precede background walking");
+        },(p,b)->new zombie.apocalipse.humans.tasks.AssignedTaskModule());
         modules.register("survival",(p,b)->{
             if(!b.parameters().isEmpty())throw new IllegalArgumentException("Survival uses typed profile settings");
             if(p.walkingPatterns().stream().noneMatch(s->s.slot().equals("background")))throw new IllegalArgumentException("Survival needs a background movement scope");

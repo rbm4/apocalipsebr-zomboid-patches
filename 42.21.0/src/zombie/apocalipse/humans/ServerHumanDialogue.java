@@ -149,9 +149,12 @@ public final class ServerHumanDialogue {
         if(choice==null)return rejected("unavailable");
         String speech=(String)choice.text().get("speech"),emote=(String)choice.option().get("emote");
         if(speech==null||speech.length()>256||emote!=null&&!emote.matches("[A-Za-z0-9_]{1,40}"))return rejected("unavailable");
+        var task=choice.option().get("task") instanceof zombie.apocalipse.humans.tasks.HumanTaskCommand command?command:null;
+        if(task!=null&&(!Boolean.TRUE.equals(choice.option().get("close"))||!ServerHumanTasks.accepts(s.human,task,p)))return rejected("unavailable");
         Object flag=choice.option().get("setFlag");
         if(flag!=null&&!remember(p,id,token,s.graph.id(),flag))return rejected("unavailable");
         if(!react(p,id,token,speech.isBlank()?null:speech,emote,now))return rejected("unavailable");
+        if(task!=null)ServerHumanTasks.apply(s.human,task,p);
         s.graph.advance(choice);s.nextChoice=now+500_000_000L;
         var result=LuaManager.platform.newTable();result.rawset("dialogue",luaValue(s.graph.view(flags(p,s.human,s.graph))));
         result.rawset("sequence",(double)sequence);result.rawset("option",selected);
@@ -243,6 +246,7 @@ public final class ServerHumanDialogue {
         ServerHuman h = human(id);
         if (h == null || !h.profile.dialogue() || !owned(p)) return rejected("unavailable");
         if (sessions.containsKey((short)id) || sessions.values().stream().anyMatch(s -> s.visitor == p)) return rejected("busy");
+        if (h.activity.emergency(h.actuator.observe(now))) return rejected("unavailable");
         if (!near(h, p, 8)) return rejected("unavailable");
         if (!h.activity.beginDialogue(new HumanObservation.Identity(p.getOnlineID(), p.getID()), now, h.actuator)) return rejected("busy");
         // Tokens only need process-lifetime uniqueness within this bounded lease registry.
@@ -256,6 +260,9 @@ public final class ServerHumanDialogue {
         if (id < 0 || id > Short.MAX_VALUE) return null;
         Session s = sessions.get((short)id);
         if (s == null || s.visitor != p || s.token != token) return null;
+        if (s.human.activity.emergency(s.human.actuator.observe(now))) {
+            close(s.human, "threat", now); return null;
+        }
         if (now >= s.deadline || !owned(p) || GameServer.getConnectionFromPlayer(p) != s.connection) {
             close(s.human, "expired"); return null;
         }
@@ -294,9 +301,12 @@ public final class ServerHumanDialogue {
         if (s.emoteUntil != 0 && now >= s.emoteUntil) { h.actuator.stopEmote(); s.emoteUntil = 0; }
     }
     static void close(ServerHuman h, String reason) {
+        close(h,reason,System.nanoTime());
+    }
+    private static void close(ServerHuman h, String reason, long now) {
         Session s = sessions.remove(h.player.getOnlineID());
         if (s == null) return;
-        h.actuator.stopEmote(); h.activity.finishDialogue(System.nanoTime(), h.actuator);
+        h.actuator.stopEmote(); h.activity.finishDialogue(now, h.actuator);
         KahluaTable t = description(h); t.rawset("token", (double)s.token); t.rawset("reason", reason);
         LuaEventManager.triggerEvent("OnApocBRHumanDialogueClosed", s.visitor, t);
     }

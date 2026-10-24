@@ -66,6 +66,11 @@ public final class ApocBRNpcDialogues {
                         option.put("id",cr.getString(1));option.put("nextNode",cr.getString(2));
                         for(int i=3;i<=6;i++)if(cr.getString(i)!=null)option.put(new String[]{"requiredFlag","forbiddenFlag","setFlag","emote"}[i-3],cr.getString(i));
                         option.put("close",cr.getBoolean(7));
+                        var task=task(c,id,revision,cr.getString(1));
+                        if(task!=null){
+                            if(!cr.getBoolean(7))throw new SQLException("Task choices must close dialogue","22023");
+                            option.put("task",task);
+                        }
                         Map<String,Object> translations=new LinkedHashMap<>();
                         try(var t=query(c,"SELECT locale,title,description,response,speech FROM npc_engine.dialogue_choice_text WHERE dialogue_id=? AND revision=? AND choice_id=? ORDER BY locale LIMIT 5",id,revision,cr.getString(1));var tr=t.executeQuery()) {
                             while(tr.next()) {
@@ -90,5 +95,19 @@ public final class ApocBRNpcDialogues {
         var s=c.prepareStatement(sql);
         try {s.setQueryTimeout(2);for(int i=0;i<args.length;i++)s.setObject(i+1,args[i]);return s;}
         catch(SQLException failure){s.close();throw failure;}
+    }
+    private static zombie.apocalipse.humans.tasks.HumanTaskCommand task(Connection c,String id,int revision,String choice)throws SQLException {
+        try(var s=query(c,"SELECT behavior_id FROM npc_engine.dialogue_choice_behavior WHERE dialogue_id=? AND revision=? AND choice_id=?",id,revision,choice);var rows=s.executeQuery()){
+            if(!rows.next())return null;
+            Map<String,String> parameters=new LinkedHashMap<>();
+            try(var p=query(c,"SELECT parameter_key,parameter_value FROM npc_engine.dialogue_behavior_parameter WHERE dialogue_id=? AND revision=? AND choice_id=? ORDER BY parameter_key LIMIT 17",id,revision,choice);var values=p.executeQuery()){
+                while(values.next()){
+                    if(parameters.size()>=16)throw new SQLException("Task parameter limit","22023");
+                    parameters.put(values.getString(1),values.getString(2));
+                }
+            }
+            try{return new zombie.apocalipse.humans.tasks.HumanTaskCommand(zombie.apocalipse.humans.tasks.HumanTaskCommand.Kind.valueOf(rows.getString(1)),parameters);}
+            catch(IllegalArgumentException invalid){throw new SQLException("Invalid NPC task command","22023",invalid);}
+        }
     }
 }

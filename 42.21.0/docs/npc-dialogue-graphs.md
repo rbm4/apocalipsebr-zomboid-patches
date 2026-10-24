@@ -1,5 +1,49 @@
 # Cached NPC dialogue graphs (42.21.0)
 
+## Emergency interruption
+
+`HumanBehavior.emergency(observation)` is a pure safety query, valid even while
+the behavior is suspended. `HumanModuleRuntime` asks its configured modules
+without selecting a module, advancing its cycle timers or executing actions.
+`EngageZombiesModule` reports a currently engageable territory zombie, using the
+existing freshness/visibility/territory policy independently of attack retry
+timers. `SurvivalModule` reports crowd/vital pressure or an unfinished recovery.
+Other behaviors default to no emergency; this does not introduce player
+hostility or add combat capabilities to profiles that lack them.
+
+The factory continues bounded perception sampling during dialogue. On its next
+simulation update, `ServerHumanDialogue` checks emergency policy before its
+ordinary range/emote handling. It removes the session, stops the dialogue emote,
+resumes the activity controller and emits `OnApocBRHumanDialogueClosed` with
+reason `threat`. Normal runtime arbitration then runs in the same factory tick,
+so configured survival priority still precedes engagement. The existing Lua
+close-event relay sends the client its ordinary close notification.
+
+Begin rejects a new lease while emergency policy is active. Token-based requests
+also recheck policy before speech, graph effects or arrival, preventing requests
+between factory updates from retaining an unsafe lease. An interrupted token and
+graph cursor cannot be resumed; a later conversation requires a new lease once
+policy permits it. No timers, graph cursors or emergency checks are persisted.
+Trade ownership is unchanged. Future player threats must be introduced through
+server-authoritative sensing and an explicit policy before they can interrupt.
+
+Regression coverage executes production factory/perception/dialogue/runtime code
+for a zombie arriving during conversation and same-tick combat takeover; approach
+and open-session cancellation on survival pressure; emote cleanup, token replay,
+re-reservation refusal and recovery. Pure module tests cover suspended monitoring,
+stale sightings, territory limits, neutral players, priority and stopped runtime.
+Live multiplayer UI closure and native combat playback still require validation.
+
+Verification: `test_human_dialogue.py` (66 assertions plus PTBR/EN language runs),
+`test_human_survival.py` (101), `test_human_engagement.py` (52),
+`test_server_humans.py` (92), `test_human_brain.py` (72), `test_human_tasks.py`
+(29), and `test_human_trading.py` (538) passed. The 42.21.0 server `-DryRun`
+compiled 258 sources / 797 class files against the installed game JAR. No game
+deployment was performed. The standalone brain fixture now includes the task
+package required by the current shared actuator contract.
+
+## Graph authority and persistence
+
 The NPC worker reads V17's published graph catalog, V18 labels and scoped account facts before
 publishing its startup snapshot. `ApocBRNpcDialogues` owns JDBC mapping;
 `HumanDialogueCatalog` owns immutable detached content. `ApocBRNpcStore` owns

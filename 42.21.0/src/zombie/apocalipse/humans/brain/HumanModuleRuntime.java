@@ -19,6 +19,9 @@ public final class HumanModuleRuntime implements HumanBehavior {
     }
     public boolean needsPerception(){return !entries.isEmpty();}
     public boolean available(){return !stopped;}
+    public boolean emergency(HumanObservation observation){
+        return !stopped&&entries.stream().anyMatch(entry->entry.module().emergency(observation));
+    }
     public void update(HumanObservation observation,HumanActuator actuator) {
         if(stopped||suspended)return;
         long now=observation.nowNanos();
@@ -39,6 +42,10 @@ public final class HumanModuleRuntime implements HumanBehavior {
         if(selected!=null)selected.module().update(observation,actuator);
     }
     public String selectedModule(){return selected==null?null:selected.id();}
+    /** Capability discovery at composition/command boundaries, never an actor-key lookup. */
+    public <T extends HumanModule> T module(Class<T> type){
+        return entries.stream().map(Entry::module).filter(type::isInstance).map(type::cast).findFirst().orElse(null);
+    }
     public void suspend(long now,HumanActuator actuator) {
         if(stopped||suspended)throw new IllegalStateException("Runtime cannot suspend");
         suspended=true;

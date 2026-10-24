@@ -57,12 +57,23 @@ public class NpcStoreTest {
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V23__Separate_Npc_Walking_Patterns.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V24__Seed_Leon_Extraction_Militia.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V25__Npc_Survival_And_Cheat_Settings.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V26__Npc_Dialogue_Behavior_Commands.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
    var profiles=ApocBRNpcStore.readProfiles(c);check(profiles.size()==5,"seed profiles including militia scaffold");
    var militia=profiles.stream().filter(p->p.id().equals("militia-patrol")).findFirst().orElseThrow();
-   check(!militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("survival"),"database militia profile orders survival before engagement");
+   check(militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("survival"),"database militia profile enables orders and retains survival priority");
+   check(militia.modules().stream().anyMatch(m->m.moduleId().equals("assigned-task")),"militia task capability loaded");
+   var orders=ApocBRNpcDialogues.read(c);
+   var ordersGraph=(Map<?,?>)orders.get("leon-militia");
+   var orderNode=(Map<?,?>)((Map<?,?>)ordersGraph.get("nodes")).get("orders");
+   var follow=(Map<?,?>)((List<?>)orderNode.get("options")).get(1);
+   var command=(zombie.apocalipse.humans.tasks.HumanTaskCommand)follow.get("task");
+   check(command.kind()==zombie.apocalipse.humans.tasks.HumanTaskCommand.Kind.FOLLOW_PLAYER&&command.distanceTiles()==2,"JDBC hydrates typed command and parameters");
+   c.commit();
+   invalid(c,"UPDATE npc_engine.dialogue_behavior_parameter SET parameter_value='3' WHERE dialogue_id='militia-orders'");
+   invalid(c,"INSERT INTO npc_engine.dialogue_choice_behavior VALUES('militia-orders',1,'orders','EXECUTE_LUA')");
    check(militia.modules().stream().filter(m->m.moduleId().equals("engage-zombies")).findFirst().orElseThrow().parameters().get("retryMs")==2000L,"engagement timing hydrated through existing typed millisecond fields");
    check(militia.survival().crowdCount()==4&&militia.survival().reengageEndurance()==.72,"typed survival thresholds hydrated");
    check(profiles.stream().allMatch(p->p.cheats().godMode()&&!p.cheats().ghostMode()&&!p.cheats().invisible()),"migration preserves original protection flags for every actor");
@@ -225,6 +236,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     for name,content in FILES.items():
         p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content,encoding='utf-8');sources.append(p)
     sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'savefile/ApocBRNpcDialogues.java',SRC/'apocalipse/humans/dialogue/HumanDialogueCatalog.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java',SRC/'apocalipse/humans/profiles/HumanCheats.java',SRC/'apocalipse/humans/survival/SurvivalSettings.java']
+    sources += [SRC/'apocalipse/humans/tasks/HumanTaskCommand.java']
     sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java')) + list((SRC/'apocalipse/humans/walking').glob('*.java'))
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
