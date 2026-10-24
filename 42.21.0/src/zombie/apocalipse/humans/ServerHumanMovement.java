@@ -102,7 +102,7 @@ final class ServerHumanMovement implements MovementGrid {
         // Preserve ordinary centering/prediction. In an occupied origin, do not first
         // recenter toward an overlapping body before attempting to separate.
         var origin=square(human.player.getXi(),human.player.getYi());
-        waypoint=copy.size()>1&&origin!=null&&!origin.isFree(true)
+        waypoint=copy.size()>1&&origin!=null&&!freeOfBlockingBodies(origin)
             &&copy.getFirst().equals(new Tile(human.player.getXi(),human.player.getYi()))?1:0;
         this.policy = policy;
         lastStep = now;
@@ -217,7 +217,7 @@ final class ServerHumanMovement implements MovementGrid {
             if (!allowed(target) || !allowed(new Tile((int)Math.floor(nx), (int)Math.floor(ny)))) return fail("scope_rejected");
             if(destination==null)return fail("square_unloaded");
             if(!destination.isFree(false))return fail("static_obstacle");
-            if(!occupancyAllows(x,y,nx,ny))return fail("body_occupied");
+            if(!occupancyAllows(x,y,nx,ny))return fail("body_occupied",new Tile((int)Math.floor(nx),(int)Math.floor(ny)));
             Tile current = new Tile((int)Math.floor(x), (int)Math.floor(y));
             Tile next = new Tile((int)Math.floor(nx), (int)Math.floor(ny));
             if(!current.equals(next)&&!edgeAllowed(current,next))return fail("edge_changed");
@@ -265,7 +265,7 @@ final class ServerHumanMovement implements MovementGrid {
         double projected = units / 8.0;
         float nx = (float)(x + headingX * projected), ny = (float)(y + headingY * projected);
         IsoGridSquare destination = square((int)Math.floor(nx), (int)Math.floor(ny));
-        if (destination == null || !destination.isFree(true)
+        if (destination == null || !freeOfBlockingBodies(destination)
             || !allowed(new Tile((int)Math.floor(nx), (int)Math.floor(ny)))
             || blocked(x, y, nx, ny)) return 0;
         return units;
@@ -284,17 +284,31 @@ final class ServerHumanMovement implements MovementGrid {
         human.postY = human.player.getY();
     }
 
+    private boolean blocksMovement(zombie.iso.IsoMovingObject body){
+        if(body==human.player||body instanceof zombie.iso.objects.IsoDeadBody)return false;
+        return !(body instanceof zombie.characters.IsoGameCharacter c)||!c.isDead()&&c.getHealth()>0;
+    }
+    /** Native isFree(true) counts every moving object, including self and unretired dead actors. */
+    private boolean freeOfBlockingBodies(IsoGridSquare square){
+        if(!square.isFree(false))return false;
+        if(square.isFree(true))return true;
+        var bodies=square.getMovingObjects();
+        // Unknown occupancy stays blocked; only observed nonblocking bodies may relax the native result.
+        if(bodies.isEmpty()||bodies.size()>64)return false;
+        for(var body:bodies)if(blocksMovement(body))return false;
+        return true;
+    }
     boolean occupancyAllows(float x,float y,float nx,float ny) {
         var destination=square((int)Math.floor(nx),(int)Math.floor(ny));
         if(destination==null)return false;
         if(occupiedGaps||guarded())return (destination.isFree(true)||!destination.getMovingObjects().isEmpty())&&bodyClear(x,y,nx,ny);
-        if(destination.isFree(true))return true;
+        if(freeOfBlockingBodies(destination))return true;
         // Permit separation from existing overlap, never entering another occupied tile.
         if((int)Math.floor(x)!=destination.x||(int)Math.floor(y)!=destination.y)return false;
         var bodies=destination.getMovingObjects();
         if(bodies.isEmpty()||bodies.size()>64)return false;
         for(var body:bodies){
-            if(body==human.player)continue;
+            if(!blocksMovement(body))continue;
             if(!(body instanceof zombie.characters.IsoGameCharacter character))return false;
             double before=Math.hypot(x-character.getX(),y-character.getY());
             double after=Math.hypot(nx-character.getX(),ny-character.getY());
@@ -321,6 +335,7 @@ final class ServerHumanMovement implements MovementGrid {
             for(var body:square.getMovingObjects()){
                 if(!seen.add(body)||body==human.player)continue;
                 if(++inspected>64)return false;
+                if(!blocksMovement(body))continue;
                 if(!(body instanceof zombie.characters.IsoGameCharacter c))return false;
                 if(c.isDead()||c.getHealth()<=0)continue;
                 double dx=nx-x,dy=ny-y,before=Math.hypot(x-c.getX(),y-c.getY()),after=Math.hypot(nx-c.getX(),ny-c.getY());
@@ -333,16 +348,29 @@ final class ServerHumanMovement implements MovementGrid {
         return true;
     }
     private HumanActuator.MotionStatus fail(String reason) {
+        return fail(reason,null);
+    }
+    private HumanActuator.MotionStatus fail(String reason,Tile occupancyTile) {
         Tile from=new Tile(human.player.getXi(),human.player.getYi());
         Tile to=waypoint<route.size()?route.get(waypoint):from;
         lastFailure=new Failure(reason,from,to,human.player.getX(),human.player.getY());
         var failure=lastFailure;
-        var tile=square(to.x(),to.y());int occupants=tile==null?-1:tile.getMovingObjects().size();
+        var tile=occupancyTile==null?square(to.x(),to.y()):square(occupancyTile.x(),occupancyTile.y());int occupants=tile==null?-1:tile.getMovingObjects().size();
         HumanLog.log(HumanLog.Level.DEBUG,()->"movement failed key="+human.definition.key()+"; reason="+failure.reason()
             +"; from="+failure.from()+"; to="+failure.to()+"; x="+failure.x()+"; y="+failure.y()
-            +"; waypoint="+waypoint+"; routeSize="+route.size()+"; occupants="+occupants);
+            +"; waypoint="+waypoint+"; routeSize="+route.size()+"; occupancyTile="+occupancyTile+"; occupants="+occupants+"; bodies="+occupantDetails(tile));
         stop();
         return HumanActuator.MotionStatus.FAILED;
+    }
+    private String occupantDetails(IsoGridSquare square){
+        if(square==null)return "unloaded";
+        var text=new java.util.StringJoiner(",","[","]");var bodies=square.getMovingObjects();
+        for(int i=0;i<Math.min(4,bodies.size());i++){
+            var body=bodies.get(i);
+            text.add(body.getClass().getSimpleName()+"#"+body.getID()+"@"+body.getX()+","+body.getY()
+                +"/blocks="+blocksMovement(body)+(body instanceof zombie.characters.IsoGameCharacter c?"/dead="+c.isDead()+"/health="+c.getHealth():""));
+        }
+        return text.toString();
     }
 
     @Override

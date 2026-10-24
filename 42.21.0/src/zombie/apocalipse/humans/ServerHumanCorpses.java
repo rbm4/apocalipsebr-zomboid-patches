@@ -18,6 +18,14 @@ final class ServerHumanCorpses implements HumanCorpsePort {
     private boolean scanUnloaded;
     private Point searchCenter,searchDestination;
     private int searchRadius;
+    private int scannedObjects,scannedCorpses,invalidCorpses,outsideScope,atDropOff,claimedElsewhere;
+    private void resetScan(){scanTile=scanBody=0;scanUnloaded=false;scannedObjects=scannedCorpses=invalidCorpses=outsideScope=atDropOff=claimedElsewhere=0;}
+    private void reportScan(String result,Body selected){
+        HumanLog.log(HumanLog.Level.DEBUG,()->"corpse search key="+human.definition.key()+"; source="+searchCenter
+            +"; radius="+searchRadius+"; destination="+searchDestination+"; result="+result+"; selected="+selected
+            +"; objects="+scannedObjects+"; corpses="+scannedCorpses+"; invalid="+invalidCorpses
+            +"; outsideScope="+outsideScope+"; atDropOff="+atDropOff+"; claimedElsewhere="+claimedElsewhere+"; loaded="+!scanUnloaded);
+    }
     ServerHumanCorpses(ServerHuman human){this.human=human;}
     public String movementSlot(){return human.profile.walkingPatterns().stream().anyMatch(p->p.slot().equals("corpse-cleanup"))?"corpse-cleanup":"background";}
     public boolean permitted(Point p){
@@ -34,7 +42,7 @@ final class ServerHumanCorpses implements HumanCorpsePort {
         if(radius<0||radius>2)throw new IllegalArgumentException("Invalid corpse search radius");
         if(observed!=null&&claims.get(observed)==this&&valid(observed))return new Search(new Body(token,position(observed)),false,true);
         if(!center.equals(searchCenter)||!destination.equals(searchDestination)||radius!=searchRadius){
-            searchCenter=center;searchDestination=destination;searchRadius=radius;scanTile=scanBody=0;scanUnloaded=false;
+            searchCenter=center;searchDestination=destination;searchRadius=radius;resetScan();
         }
         int width=2*radius+1,total=width*width,visited=0;
         while(scanTile<total&&visited<128){
@@ -45,16 +53,22 @@ final class ServerHumanCorpses implements HumanCorpsePort {
             while(scanBody<objects.size()&&visited<128){
                 visited++;
                 var object=objects.get(scanBody++);
-                if(object instanceof IsoDeadBody body&&valid(body)&&!position(body).equals(destination)&&permitted(position(body))
-                    &&(!claims.containsKey(body)||claims.get(body)==this)){
-                    observed=body;token=++sequence;scanTile=scanBody=0;scanUnloaded=false;
-                    return new Search(new Body(token,position(body)),false,true);
+                scannedObjects++;
+                if(object instanceof IsoDeadBody body){
+                    scannedCorpses++;
+                    if(!valid(body)){invalidCorpses++;continue;}
+                    if(position(body).equals(destination)){atDropOff++;continue;}
+                    if(!permitted(position(body))){outsideScope++;continue;}
+                    if(claims.containsKey(body)&&claims.get(body)!=this){claimedElsewhere++;continue;}
+                    observed=body;token=++sequence;var selected=new Body(token,position(body));
+                    reportScan("selected",selected);resetScan();
+                    return new Search(selected,false,true);
                 }
             }
             if(scanBody>=objects.size()){scanTile++;scanBody=0;}
         }
         boolean complete=scanTile>=total,loaded=!scanUnloaded;
-        if(complete){scanTile=scanBody=0;scanUnloaded=false;}
+        if(complete){reportScan("complete",null);resetScan();}
         return new Search(null,complete,loaded);
     }
     public Body resolve(long id){return id==token&&valid(observed)?new Body(id,position(observed)):null;}

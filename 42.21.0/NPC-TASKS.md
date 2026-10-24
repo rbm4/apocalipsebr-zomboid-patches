@@ -140,6 +140,14 @@ the new profile revision. Runtime performs no JDBC calls in dialogue or task tic
 
 ## Verification
 
+With `-Dapocbr.npc.logLevel=DEBUG`, native discovery emits `corpse search` on
+selection and completed scans: source, radius, destination, selected body token
+and tile, object/corpse counts, invalid/scope/drop-off/other-claim skip counts,
+and loading status. It does not log each discovery tick. `cleanup_completed` can
+mean the captured search area had no eligible bodies; it does not by itself
+prove any corpse was hauled. `movement failed ... body_occupied` describes
+moving-object collision separately. See [occupancy diagnostics](NPC-MOVEMENT.md#moving-object-occupancy).
+
 - `python tools/test_human_tasks.py`: production parameter validation, task
   execution, preemption, following, failure and authenticated dialogue integration.
 - `python tools/test_human_corpses.py`: cleanup parameters, relocation, fixed NPC
@@ -155,7 +163,7 @@ the new profile revision. Runtime performs no JDBC calls in dialogue or task tic
 Manually validate two clients giving orders, follow movement near doors/obstacles,
 target disconnect/death, task replacement, defense preemption and actor reactivation.
 
-Cleanup verification: `test_human_corpses.py` passed 34 assertions; tasks (29),
+Cleanup verification: `test_human_corpses.py` passed 48 assertions; tasks (29),
 dialogue (66 plus PTBR/EN runs), walking (32), profiles (56), brain (72), survival
 (101), server humans (92) and engagement (52) passed. Disposable PostgreSQL/JDBC
 checks passed 69 assertions as the engine role; the manager suite passed 41 tests

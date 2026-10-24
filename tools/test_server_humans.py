@@ -130,7 +130,7 @@ public class UdpConnection {
 }
 """,
     "zombie/debug/DebugLog.java": """package zombie.debug;
-public class DebugLog {public static void log(String value){}}
+public class DebugLog {public static final java.util.List<String> messages=new java.util.ArrayList<>();public static void log(String value){messages.add(value);}}
 """,
     "zombie/network/GameServer.java": """package zombie.network;
 import java.util.*;import zombie.characters.IsoPlayer;import zombie.core.raknet.UdpConnection;
@@ -312,7 +312,7 @@ public class IsoGridSquare {
  public Set<String> blockedEdges=new HashSet<>();
  public IsoGridSquare(int a,int b,int c){x=a;y=b;z=c;}
  public BuildingDef getBuildingDef(){return building;}
- public boolean isFree(boolean characters){return free&&(!characters||!occupied);}
+ public boolean isFree(boolean characters){return free&&(!characters||!occupied&&moving.isEmpty());}
  public boolean TreatAsSolidFloor(){return floor;}public boolean HasStairs(){return stairs;}
  public boolean testCollideAdjacentAdvanced(int dx,int dy,int dz,boolean doors){return blockedEdges.contains(dx+","+dy);}
 }

@@ -114,7 +114,37 @@ public class CorpsesTest {
   check(actor.actuator.corpses().resolve(1)!=null,"cleanup acquires a body within the fixed NPC-centered area");
   factory.remove("corpse-dialogue");check(body.square!=null,"dialogue task cancellation preserves body");
  }
- public static void main(String[]args){execution();var profile=profile();nativeAdapter(profile);dialogue(profile);System.out.println("Passed "+checks+" corpse cleanup execution, native and dialogue assertions.");}
+ static void movementOccupancy(HumanProfile profile){
+  var cell=new IsoCell();
+  var actor=new ServerHuman(new ServerHumanDefinition("occupancy","CorpseOccupancy","Occupancy",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1203,cell);
+  var destination=cell.getGridSquare(101,200,0);var dead=new zombie.characters.IsoZombie();dead.x=101.5f;dead.y=200.5f;dead.dead=true;dead.square=destination;destination.moving.add(dead);
+  check(!destination.isFree(true)&&destination.isFree(false),"fixture reproduces vanilla moving-object occupancy even for dead characters");
+  check(actor.movement.occupancyAllows(100.9f,200.5f,101.1f,200.5f),"dead moving character does not block crossing into its tile");
+  dead.dead=false;dead.health=0;
+  check(actor.movement.occupancyAllows(100.9f,200.5f,101.1f,200.5f),"zero-health character does not block before death flag settles");
+  var route=List.of(new zombie.apocalipse.humans.movement.MovementGrid.Tile(100,200),new zombie.apocalipse.humans.movement.MovementGrid.Tile(101,200),new zombie.apocalipse.humans.movement.MovementGrid.Tile(102,200));
+  actor.movement.start(route,0);HumanActuator.MotionStatus result=HumanActuator.MotionStatus.RUNNING;
+  for(int n=1;n<=20&&result==HumanActuator.MotionStatus.RUNNING;n++)result=actor.movement.update(n*100_000_000L);
+  check(result==HumanActuator.MotionStatus.SUCCEEDED&&actor.player.getXi()==102,"production route executes through stale dead occupant");
+  actor.player.setX(100.5f);actor.player.setY(200.5f);dead.health=1;
+  check(!actor.movement.occupancyAllows(100.9f,200.5f,101.1f,200.5f),"live zombie still blocks entering its occupied tile");
+  actor.movement.start(route,0);for(int n=1;n<=20;n++){result=actor.movement.update(n*100_000_000L);if(result!=HumanActuator.MotionStatus.RUNNING)break;}
+  check(result==HumanActuator.MotionStatus.FAILED&&actor.movement.lastFailure().reason().equals("body_occupied"),"live character collision remains enforced in production route");
+  check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("reason=body_occupied")&&s.contains("IsoZombie")&&s.contains("/blocks=true/dead=false/health=1.0")),"occupancy failure identifies the actual blocker and health");
+  destination.moving.clear();dead.x=100.8f;dead.square=cell.getGridSquare(100,200,0);dead.square.moving.add(dead);actor.player.setX(100.5f);
+  actor.movement.start(route,0);actor.movement.update(100_000_000L);
+  check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("reason=body_occupied")&&s.contains("occupancyTile=Tile[x=100, y=200]")&&s.contains("IsoZombie")),"diagnostic describes blocking origin square instead of unrelated next waypoint");dead.square.moving.clear();
+  destination.moving.clear();destination.moving.add(actor.player);
+  check(actor.movement.occupancyAllows(100.9f,200.5f,101.1f,200.5f),"actor's own native square membership does not block movement");
+  destination.moving.clear();var corpse=body(cell,101,200);destination.moving.add(corpse);
+  check(actor.movement.occupancyAllows(100.9f,200.5f,101.1f,200.5f)&&actor.movement.bodyClear(100.9f,200.5f,101.1f,200.5f),"corpse representation is nonblocking in ordinary and tactical occupancy checks");
+  destination.free=false;check(!actor.movement.occupancyAllows(100.9f,200.5f,101.1f,200.5f),"dead occupants never relax static geometry");destination.free=true;
+  destination.moving.clear();destination.occupied=true;check(!actor.movement.occupancyAllows(100.9f,200.5f,101.1f,200.5f),"unexplained occupancy remains fail-closed");destination.occupied=false;
+  actor.dispose();
+  check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("corpse search key=")&&s.contains("result=selected")&&s.contains("corpses=")),"corpse discovery emits selected-body diagnostics independently of movement failures");
+  check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("corpse search key=")&&s.contains("result=complete")&&s.contains("source=")),"empty/completed search reports the actual source and scan result");
+ }
+ public static void main(String[]args){execution();var profile=profile();nativeAdapter(profile);dialogue(profile);movementOccupancy(profile);System.out.println("Passed "+checks+" corpse cleanup execution, native and dialogue assertions.");}
 }
 '''
 
@@ -129,6 +159,6 @@ def main():
         sources.extend(sorted((ROOT/'42.21.0/src/zombie/apocalipse/humans').rglob('*.java')))
         args=work/'sources.txt';args.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
         subprocess.run([str(ROOT/'jdk/bin/javac.exe'),'--release','25','-encoding','UTF-8','-d',str(work/'classes'),'@'+str(args)],check=True)
-        subprocess.run([str(ROOT/'jdk/bin/java.exe'),'-cp',str(work/'classes'),'zombie.apocalipse.humans.CorpsesTest'],check=True)
+        subprocess.run([str(ROOT/'jdk/bin/java.exe'),'-Dapocbr.npc.logLevel=DEBUG','-cp',str(work/'classes'),'zombie.apocalipse.humans.CorpsesTest'],check=True)
 
 if __name__=='__main__':main()

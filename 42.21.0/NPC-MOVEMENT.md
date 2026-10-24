@@ -44,6 +44,36 @@ its current tile. Empty, oversized, diagonal and skipped-tile routes are refused
 An invalid replacement stops the prior route. Physical checks are repeated during
 execution because a valid planned edge can become blocked or unloaded.
 
+## Moving-object occupancy
+
+Vanilla `IsoGridSquare.isFree(true)` rejects any nonempty moving-object list,
+including the NPC itself and dead/zero-health characters awaiting native removal.
+The movement adapter relaxes that result only when all observed occupants are
+self, actual `IsoDeadBody` objects or dead/zero-health game characters. Static
+geometry remains mandatory; live characters, unknown objects, unexplained
+occupancy and lists over 64 objects remain blocked. The same interpretation
+controls normal route steps, origin centering and prediction. Tactical body
+clearance also ignores corpses/dead characters while retaining its work budget.
+
+`body_occupied` is a locomotion failure, not corpse discovery. DEBUG failures now
+include the actual attempted `occupancyTile` (which may still be the origin),
+total occupant count and up to four object classes/IDs/positions, blocker flags
+and character health/death flags. The next waypoint remains in `to` for route
+diagnosis. This avoids describing occupants of a different tile when a step is
+blocked before it crosses the origin boundary.
+
+Regression fixtures model vanilla moving-list occupancy and execute production
+movement across stale dead occupants while confirming live/static/unknown
+blockers still stop it. The corpse fixture covers self, zero-health actors,
+corpse objects, tactical clearance and origin-square diagnostics.
+The regression run passed: corpse/occupancy (48), roaming (571), survival (101),
+walking (32), tasks (29), dialogue (66 plus language checks), server humans (92),
+weapon combat (116), tactics (19) and traversal (93). The target 42.21.0 game-JAR
+dry compilation passed (261 sources, 803 classes). These are isolated checks;
+the reported live blocker identities and corpse search results still need
+verification with the updated server patch. No deployment or database change
+was performed for this fix.
+
 This is a bounded same-floor route executor. It opens passable doors and delegates
 windows and low fences to the separate [traversal subsystem](NPC-TRAVERSAL.md).
 It does not select destinations, climb stairs or cross floors. Path
