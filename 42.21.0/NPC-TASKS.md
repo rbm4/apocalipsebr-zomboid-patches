@@ -40,7 +40,7 @@ does not start movement while the conversation holds the actor.
 | `MOVE_TO` | Required integer `x`, `y`, `z`; nonnegative X/Y below Integer.MAX_VALUE, Z −32…31 | One scoped route; success returns control to routine. |
 | `FOLLOW_PLAYER` | Optional integer `distanceTiles`, 1–8, default 2 | Bind the authenticated conversation participant's online ID plus character instance identity. Choose a permitted stopping tile near them, and replan at most once a second. |
 | `RESUME_ROUTINE` | None | Cancel the assignment and allow ordinary arbitration. |
-| `CLEAR_CORPSES` | Required destination `x`, `y`, `z`; optional `radiusTiles` 0-2 (default 2); optional complete `sourceX`, `sourceY`, `sourceZ` | Capture the NPC's tile when the dialogue selection is accepted unless a fixed source is authored. Gather human/zombie corpses in the fixed square radius, one at a time, and move them along scoped routes to the authored destination. |
+| `CLEAR_CORPSES` | Required destination `x`, `y`, `z`; optional `radiusTiles` 0-2 (default 2); optional complete `sourceX`, `sourceY`, `sourceZ` | Search a square radius around the NPC's current tile as it roams, unless a fixed source is explicitly authored. Gather one corpse at a time and haul it to the authored destination. |
 
 Unknown kinds/parameters, partial coordinates and invalid values reject the
 content. SQL publication applies equivalent validation, including mandatory
@@ -60,16 +60,17 @@ Destination coordinates are dialogue metadata, not engine constants. Example:
 
 Author these as a `dialogue_choice_behavior` row and keyed
 `dialogue_behavior_parameter` rows for the same choice. Radius 2 means a 5x5
-square centered on the captured NPC tile, on the same floor. Moving the NPC or
-participant after acceptance does not move the search center. Optional fixed
-source coordinates must be provided together. Source/destination must be inside
+square centered on the NPC's current tile at each passive search, on the same
+floor. Roaming moves the discovery center; the dialogue participant's position
+has no effect. Explicit optional fixed source coordinates must be provided
+together and override mobile discovery. Search center/destination must be inside
 the profile's loaded cleanup scope. The destination tile is excluded from the
 search, even if it overlaps the source area.
 The cleanup order remains assigned until `RESUME_ROUTINE` (the existing
 "go back to normal" dialogue option), another replacement order, or actor shutdown.
 It lasts for the current activation only; restart/reactivation starts the normal
 routine. Clearing the area does not succeed/finish this task. After hauling, the
-NPC returns to the captured source once, then waits with reason
+NPC returns to the position where the current cleanup batch was discovered once, then waits with reason
 `cleanup_waiting_corpses`. Empty and deferred-only searches poll at most every
 two seconds so newly fallen bodies can be collected without another order.
 During those waits the routine keeps its existing ownership and roaming timer.
@@ -79,8 +80,10 @@ arbitration: empty, partial, unavailable and deferred-only scans never select
 approach/haul, a due retry, or a return after actual work competes for movement.
 The intent never requests an initial return merely because an empty area was
 checked while the actor was roaming away from its source. Idle scans do not
-repeatedly recall the actor to the source. The search center remains the original captured
-NPC tile. Return-route failure retains intent and retries.
+repeatedly recall the actor to the source. A selected body and the work's return
+point remain stable through hauling and defense preemption; moving the actor
+does not abandon that body. New discovery follows the actor again after the
+work is settled. Return-route failure retains intent and retries.
 
 `AssignedTaskModule` delegates this objective to one `CorpseCleanupExecution`.
 `HumanCorpsePort` is the injected capability; `ServerHumanCorpses` owns bounded
@@ -114,16 +117,17 @@ exhausting that bound waits with `cleanup_waiting_deferral_capacity` and release
 the claim rather than allocating without limit or terminating the order.
 
 If only deferred bodies remain, the assignment stays active and yields the
-runtime to routine modules while polling for new work and the earliest due retry. The original source
-and dialogue-authored destination stay fixed while background behavior moves the
-NPC. Return routes also retry: five short attempts, then a five-minute backoff,
+runtime to routine modules while polling for new work and the earliest due retry.
+The search follows the roaming NPC; the dialogue-authored destination stays
+fixed. Deferred in-flight bodies remain tracked outside the current radius,
+and moving the search center does not reset their cooldown or forget them. Return routes also retry: five short attempts, then a five-minute backoff,
 without abandoning the intent. Temporary scope/loading loss waits one second.
 An empty search emits `cleanup_waiting_corpses`; the order does not complete.
 A new order or `RESUME_ROUTINE` can replace/cancel this intent at any time.
 
 The executor owns attempts and phase timing; `HumanCorpsePort` supplies approach
 points, deferred discovery and retry diagnostics. `ServerHumanCorpses` keys its
-cooldowns by native object identity and the original search/destination context;
+cooldowns by native object identity, radius and destination;
 it never puts native objects in brain observations. `AssignedTaskModule` owns the
 assignment and passively samples discovery. Eligibility remains pure and only
 becomes true for ready physical work. The runtime polls intents without
@@ -197,7 +201,7 @@ moving-object collision separately. See [occupancy diagnostics](NPC-MOVEMENT.md#
 - `python tools/test_human_tasks.py`: production parameter validation, task
   execution, preemption, following, failure and authenticated dialogue integration.
 - `python tools/test_human_corpses.py`: cleanup parameters, relocation, fixed NPC
-  source, interruption/resumption, route failure, contention, bounded scans and
+  discovery, interruption/resumption, route failure, contention, bounded scans and
   native inventory/world identity preservation.
 - `python tools/test_human_dialogue.py`: existing conversation authority and wire views.
 - `python tools/test_human_profiles.py` and `python tools/test_human_walking.py`:
@@ -232,8 +236,9 @@ Continuous-order regression coverage checks new corpses after an empty scan,
 explicit resume cancellation, no repeated idle return routes, and discovery
 while another body is deferred. Native corpse discovery remains a separate
 bounded `HumanCorpsePort` capability rather than mixing corpses into the living
-player/zombie contact memory. It uses the fixed cleanup source, which can be far
-from the NPC's moving visual-perception origin during delivery.
+player/zombie contact memory. By default it samples around the current NPC tile;
+selected and deferred bodies retain their handles during delivery even outside
+that moving area.
 
 Current activation-only continuous cleanup verification: corpse cleanup (81),
 perception (166), task lifecycle (29), dialogue (66 plus PTBR/EN), survival (101),
@@ -247,3 +252,8 @@ scan interval using the production `WalkingModule` and `HumanModuleRuntime`.
 Repeated empty and partial scans preserve walking selection and actual movement;
 finding a body switches to cleanup, defense preempts/releases it, and ending
 defense resumes cleanup. Resume-routine cancels future monitoring too.
+
+Mobile-discovery regressions cover movement away from the dialogue position,
+new bodies near the roaming actor, return to the latest work origin, and native
+deferred-body recovery across changed search centers at the original deadline.
+An authored fixed source remains supported as an explicit override.

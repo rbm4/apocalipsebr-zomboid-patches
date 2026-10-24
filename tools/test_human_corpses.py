@@ -54,6 +54,10 @@ public class CorpsesTest {
   public void stopMoving(){stops++;}public boolean face(HumanObservation.Identity i){return true;}public boolean startEmote(String s){return true;}public void stopEmote(){}public boolean say(String s){return true;}public boolean returnHome(){return true;}
  }
  static void execution(){
+  var fixedPort=new Port();fixedPort.here=p(110);fixedPort.bodies.put(1L,p(101));
+  var fixedTask=new AssignedTaskModule();fixedTask.assign(new HumanTaskCommand(HumanTaskCommand.Kind.CLEAR_CORPSES,Map.of("x","105","y","200","z","0","sourceX","100","sourceY","200","sourceZ","0")),null,p(110));
+  fixedTask.update(o(1),fixedPort);
+  check(!fixedPort.held.isEmpty()&&fixedTask.active(),"explicit authored source remains a deliberate override to mobile discovery");
   invalid(Map.of("x","1","y","2"));invalid(Map.of("x","1","y","2","z","0","radiusTiles","3"));
   invalid(Map.of("x","1","y","2","z","0","sourceX","4"));
   check(order(105).destination().equals(p(105))&&order(107).destination().equals(p(107)),"drop-off is per-dialogue metadata, never an engine constant");
@@ -72,9 +76,10 @@ public class CorpsesTest {
   int routesBefore=port.routes.size();port.here=p(110);
   for(int n=0;n<30;n++)task.update(o(now+=100_000_000),port);
   check(port.routes.size()==routesBefore,"idle scanning does not repeatedly recall routine movement to the source");
-  port.bodies.put(3L,p(101));
+  port.bodies.put(3L,p(111));port.bodies.put(4L,p(106));
   for(int n=0;n<100;n++)task.update(o(now+=100_000_000),port);
-  check(port.bodies.get(3L).equals(p(105))&&task.active(),"new corpse is collected after the initial area became empty");
+  check(port.bodies.get(3L).equals(p(105))&&task.active(),"new corpse near the roaming NPC is collected outside the original dialogue area");
+  check(port.bodies.get(4L).equals(p(105))&&port.here.equals(p(110)),"further discoveries near the dump preserve the current work batch return point, not the dialogue position");
   task.interrupt(now,port);task.assign(new HumanTaskCommand(HumanTaskCommand.Kind.RESUME_ROUTINE,Map.of()),null,port.here);
   check(!task.active()&&port.held.isEmpty(),"go back to normal cancels continuous cleanup and releases ownership");
   task=new AssignedTaskModule();port=new Port();port.loaded=false;task.assign(order(105),null,p(100));task.update(o(1),port);
@@ -116,7 +121,7 @@ public class CorpsesTest {
   for(int n=0;n<35;n++)task.update(o(now+=100_000_000),port);
   check(port.bodies.get(2L).equals(p(105))&&port.bodies.get(1L).equals(p(101)),"other corpses are delivered while blocked corpse cools down");
   check(task.active()&&!task.eligible(o(now+1))&&task.snapshot().reason().equals("cleanup_waiting_deferred"),"all-deferred search remains pending and yields routine until the timer expires");
-  port.bodies.put(3L,p(98));
+  port.bodies.put(3L,p(port.here.x()+1));
   for(int n=0;n<70;n++)task.update(o(now+=100_000_000),port);
   check(port.bodies.get(3L).equals(p(105))&&port.deferred.get(1L)==due,"new corpses are discovered during another body's five-minute cooldown");
   port.rejectedGoals.clear();now=due;
@@ -160,8 +165,8 @@ public class CorpsesTest {
  static void passiveIntent(){
   class RoamingPort extends Port {
    int searches,roamStarts;boolean partial;
-   List<String> selected=new ArrayList<>();
-   public Search find(Point source,int radius,Point dest,long now){searches++;return partial?new Search(null,false,true):super.find(source,radius,dest,now);}
+   List<String> selected=new ArrayList<>();List<Point> centers=new ArrayList<>();
+   public Search find(Point source,int radius,Point dest,long now){searches++;centers.add(source);return partial?new Search(null,false,true):super.find(source,radius,dest,now);}
    public boolean startMovement(MovementRequest request,long now){
     if(request instanceof MovementRequest.Pattern){roamStarts++;goal=p(here.x()+20);return true;}
     return super.startMovement(request,now);
@@ -182,10 +187,12 @@ public class CorpsesTest {
   check(port.searches>=5&&port.selected.equals(List.of("walk")),"repeated empty scans never preempt the real walking module");
   check(port.roamStarts>0&&port.here.x()>110&&task.active(),"roaming pause can finish and NPC physically roams while cleanup intent stays assigned");
   check(port.routes.isEmpty(),"empty intent never routes back to captured source before any work");
+  check(port.centers.getFirst().equals(p(110))&&port.centers.stream().anyMatch(c->c.x()>110),"passive discovery follows current NPC tiles instead of the dialogue tile");
   port.partial=true;int before=port.here.x();
   for(int n=0;n<60;n++)runtime.update(o(now+=100_000_000),port);
   check(port.here.x()>before&&"walk".equals(runtime.selectedModule()),"partial bounded discovery also leaves roaming in control");
-  port.partial=false;port.bodies.put(1L,p(101));
+  port.partial=false;port.bodies.put(1L,p(port.here.x()+1));
+  runtime.update(o(now+=2_000_000_000L),port);
   for(int n=0;n<30&&port.held.isEmpty();n++)runtime.update(o(now+=100_000_000),port);
   check("assigned-task".equals(runtime.selectedModule())&&!port.held.isEmpty(),"discovered corpse activates cleanup without another dialogue command");
   threatened.set(true);runtime.update(o(now+=100_000_000),port);
@@ -224,10 +231,10 @@ public class CorpsesTest {
   check(cp.claim(selected.token()),"in-flight body is owned before a delivery obstruction");cooldown.player.setX(101.5f);
   check(cp.move(selected.token(),p(101)),"body can leave original search radius before delivery is deferred");
   check(cp.defer(selected.token(),300_000_000_001L),"native adapter records cooldown by corpse identity");
-  var pending=cp.find(p(100),0,p(109),2);
+  var pending=cp.find(p(102),0,p(109),2);
   check(pending.body()==null&&pending.retryAtNanos()==300_000_000_001L,"native discovery skips deferred corpse and reports exact wake-up time");
-  var ready=cp.find(p(100),0,p(109),300_000_000_001L);
-  check(ready.body()!=null&&ready.body().position().equals(p(101))&&cp.resolve(ready.body().token())!=null,"native corpse outside original radius becomes eligible at cooldown boundary");
+  var ready=cp.find(p(104),0,p(109),300_000_000_001L);
+  check(ready.body()!=null&&ready.body().position().equals(p(101))&&cp.resolve(ready.body().token())!=null,"deferred corpse remains tracked across moving search centers and becomes eligible at the original deadline");
   check(cp.claim(ready.body().token()),"cooldown does not retain a stale claim");cp.release(ready.body().token());
   delayed.square.removeCorpse(delayed,false);cooldown.dispose();
   var bounded=new ServerHuman(new ServerHumanDefinition("corpse-bounded","CorpseBounded","Bounded",100.5f,200.5f,0,IsoDirections.E,false,"Tourist",profile.id()),(short)1202,cell);
@@ -247,9 +254,12 @@ public class CorpsesTest {
   check(ServerHumanDialogue.graphSelect(player,id,token,"root",1,"cleanup",1,now).rawget("error")==null,"dialogue metadata assigns cleanup");
   var task=ServerHumanTasks.module(actor);check(task.active()&&actor.activity.mode()==HumanActivityController.Mode.DIALOGUE,"cleanup waits for exclusive conversation release");
   actor.activity.finishDialogue(now,actor.actuator); // Fixture releases activity; production Lua finishes the lease.
-  actor.player.setX(101.5f); // The captured center must not follow later actor movement.
-  task.update(o(now),actor.actuator);check(task.snapshot().status()==AssignedTaskModule.Status.RUNNING,"source is NPC selection tile, not the participant tile two tiles away");
-  check(actor.actuator.corpses().resolve(1)!=null,"cleanup acquires a body within the fixed NPC-centered area");
+  actor.player.setX(101.5f); // Old body at 98 is now outside the current search radius.
+  task.update(o(now),actor.actuator);
+  check(task.active()&&task.snapshot().reason().equals("cleanup_waiting_corpses")&&actor.actuator.corpses().resolve(1)==null,"dialogue acceptance tile does not anchor subsequent discovery");
+  var newBody=body(actor.player.getCell(),103,200);
+  task.update(o(now+CorpseCleanupExecution.IDLE_NANOS),actor.actuator);
+  check(task.snapshot().status()==AssignedTaskModule.Status.RUNNING&&actor.actuator.corpses().resolve(1)!=null,"cleanup discovers body near the current NPC position outside the old dialogue area");
   factory.remove("corpse-dialogue");check(body.square!=null,"dialogue task cancellation preserves body");
  }
  static void movementOccupancy(HumanProfile profile){

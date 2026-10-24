@@ -11,6 +11,7 @@ public interface HumanCorpsePort {
     default boolean supported(){return true;}
     boolean permitted(Point point);
     String movementSlot();
+    /** Center is the current discovery tile; moving it must preserve deferred body identities and deadlines. */
     Search find(Point center,int radius,Point destination);
     default Search find(Point center,int radius,Point destination,long now){return find(center,radius,destination);}
     /** Ordered body-relative head/feet/side approach tiles; no live native references escape the adapter. */

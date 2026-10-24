@@ -18,7 +18,7 @@ final class ServerHumanCorpses implements HumanCorpsePort {
     private boolean scanUnloaded;
     private Point searchCenter,searchDestination;
     private int searchRadius;
-    private record Deferred(long until,Point source,int radius,Point destination) { }
+    private record Deferred(long until,int radius,Point destination) { }
     private final IdentityHashMap<IsoDeadBody,Deferred> deferred=new IdentityHashMap<>();
     private long scanRetryAt=Long.MAX_VALUE;
     private int deferredCount;
@@ -55,7 +55,8 @@ final class ServerHumanCorpses implements HumanCorpsePort {
         while(waiting.hasNext()){
             var entry=waiting.next();var corpse=entry.getKey();var retry=entry.getValue();
             if(!valid(corpse)||position(corpse).equals(destination)){waiting.remove();continue;}
-            boolean same=retry.source().equals(center)&&retry.radius()==radius&&retry.destination().equals(destination);
+            // A moving search center must not erase deferred in-flight bodies or reset their deadline.
+            boolean same=retry.radius()==radius&&retry.destination().equals(destination);
             if(!same){if(now>=retry.until())waiting.remove();continue;}
             if(now>=retry.until()&&permitted(position(corpse))&&(!claims.containsKey(corpse)||claims.get(corpse)==this)){
                 waiting.remove();observed=corpse;token=++sequence;var selected=new Body(token,position(corpse));
@@ -129,7 +130,7 @@ final class ServerHumanCorpses implements HumanCorpsePort {
     public boolean defer(long id,long until){
         if(resolve(id)==null)return true; // Disappeared bodies need no retry record.
         if(searchCenter==null||deferred.size()>=128&&!deferred.containsKey(observed))return false;
-        release(id);deferred.put(observed,new Deferred(until,searchCenter,searchRadius,searchDestination));return true;
+        release(id);deferred.put(observed,new Deferred(until,searchRadius,searchDestination));return true;
     }
     public void retry(long id,int attempts,String reason,long retryAt){
         HumanLog.log(HumanLog.Level.DEBUG,()->"corpse retry key="+human.definition.key()+"; token="+id+"; attempts="+attempts

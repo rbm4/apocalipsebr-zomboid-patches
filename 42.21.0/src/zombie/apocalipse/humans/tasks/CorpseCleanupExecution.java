@@ -8,7 +8,9 @@ import zombie.apocalipse.humans.walking.WalkingPatternSpec.Point;
 public final class CorpseCleanupExecution {
     public static final int MAX_ATTEMPTS=5;
     public static final long IDLE_NANOS=2_000_000_000L, RETRY_NANOS=1_000_000_000L, DEFER_NANOS=300_000_000_000L;
-    private final Point source,destination;
+    private Point source;
+    private final Point destination;
+    private final boolean followActor;
     private final int radius;
     private HumanCorpsePort.Body body;
     private boolean hauling,moving,claimed,returning,needsReturn;
@@ -16,7 +18,9 @@ public final class CorpseCleanupExecution {
     private long deadline,retryAt=Long.MIN_VALUE;
     private int attempts,returnAttempts;
     private String reason="cleanup_searching";
-    public CorpseCleanupExecution(Point source,Point destination,int radius){
+    public CorpseCleanupExecution(Point source,Point destination,int radius){this(source,destination,radius,true);}
+    public CorpseCleanupExecution(Point source,Point destination,int radius,boolean followActor){
+        this.followActor=followActor;
         this.source=java.util.Objects.requireNonNull(source);this.destination=java.util.Objects.requireNonNull(destination);this.radius=radius;
         if(radius<0||radius>2||source.z()!=destination.z())throw new IllegalArgumentException("Invalid corpse cleanup area");
     }
@@ -27,13 +31,16 @@ public final class CorpseCleanupExecution {
     public void poll(long now,HumanCorpsePort port,Point here){
         if(now<retryAt||hasWork())return;
         if(!port.supported()||here==null){reason="cleanup_waiting_available";retryAt=now+RETRY_NANOS;return;}
-        if(!port.permitted(source)||!port.permitted(destination)){
+        var center=followActor?here:source;
+        if(!port.permitted(center)||!port.permitted(destination)){
             reason="cleanup_waiting_scope";retryAt=now+RETRY_NANOS;return;
         }
         reason="cleanup_searching";
-        var found=port.find(source,radius,destination,now);
+        var found=port.find(center,radius,destination,now);
         if(!found.loaded()){reason="cleanup_waiting_area";retryAt=now+RETRY_NANOS;return;}
         if(found.body()!=null){
+            // Keep the patrol return point through a delivery batch, even if more bodies are found near the dump.
+            if(!needsReturn)source=center;
             body=found.body();attempts=0;hauling=false;moving=false;needsReturn=true;return;
         }
         if(!found.complete()){retryAt=now+100_000_000L;return;}

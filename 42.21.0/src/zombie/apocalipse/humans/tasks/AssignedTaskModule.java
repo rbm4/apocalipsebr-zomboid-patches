@@ -38,7 +38,7 @@ public final class AssignedTaskModule implements HumanModule {
     @Override public void monitor(HumanObservation observation,HumanActuator actuator){
         if(stopped||suspended||!active()||command.kind()!=HumanTaskCommand.Kind.CLEAR_CORPSES||cleanupSource==null)return;
         var before=snapshot();
-        if(cleanup==null)cleanup=new CorpseCleanupExecution(cleanupSource,command.destination(),command.radiusTiles());
+        if(cleanup==null)cleanup=new CorpseCleanupExecution(cleanupSource,command.destination(),command.radiusTiles(),command.source()==null);
         cleanup.poll(observation.nowNanos(),actuator.corpses(),actuator.taskWorld().position());
         reason=cleanup.reason();
         if(!before.equals(snapshot()))actuator.taskWorld().changed(snapshot());
@@ -54,7 +54,7 @@ public final class AssignedTaskModule implements HumanModule {
         if(command.kind()==HumanTaskCommand.Kind.CLEAR_CORPSES){
             if(cleanup==null){
                 if(cleanupSource==null){finish(Status.FAILED,"cleanup_source_unavailable",actuator);return;}
-                cleanup=new CorpseCleanupExecution(cleanupSource,command.destination(),command.radiusTiles());
+                cleanup=new CorpseCleanupExecution(cleanupSource,command.destination(),command.radiusTiles(),command.source()==null);
             }
             var outcome=cleanup.update(now,actuator);
             if(outcome==null)reason=cleanup.reason();
