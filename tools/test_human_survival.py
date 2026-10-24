@@ -183,11 +183,11 @@ public class SurvivalTest {
   for(int x=100;x<=112;x++)for(int y=200;y<=204;y++)cell.tiles.put(x+","+y+",0",new zombie.iso.IsoGridSquare(x,y,0));
   var actor=new ServerHuman(new ServerHumanDefinition("escape","escape","Escape",104.5f,202.5f,0,zombie.iso.IsoDirections.S,false,"Tourist",profile.id()),(short)1235,cell);
   var c=new Contact(new Identity(Kind.ZOMBIE,(short)1,1,1),102.5f,202.5f,0,4,0,0,true);
-  check(actor.actuator.survival().escape(List.of(c),profile.survival(),0),"production adapter starts a scoped physical retreat");
+  check(actor.actuator.survival().escape(List.of(c),profile.survival(),0),"production adapter starts a physical retreat");
   HumanActuator.MotionStatus result=HumanActuator.MotionStatus.RUNNING;
   for(long now=100_000_000L;now<=20*SECOND&&result==HumanActuator.MotionStatus.RUNNING;now+=100_000_000L){
    result=actor.actuator.updateMovement(now);
-   check(actor.player.x>=100&&actor.player.x<113&&actor.player.y>=200&&actor.player.y<205,"emergency movement remains inside assigned area");
+   check(actor.player.x>=100&&actor.player.x<113&&actor.player.y>=200&&actor.player.y<205,"emergency movement remains inside loaded physical space");
   }
   check(result==HumanActuator.MotionStatus.SUCCEEDED&&actor.player.x>106,"adapter progresses the actual shared movement engine away from threat");
   actor.player.setX(104.5f);actor.player.setY(202.5f);
@@ -208,6 +208,27 @@ public class SurvivalTest {
   check(!actor.movement.nextTile().equals(new Tile(105,202)),"replan avoids the recently failed first edge");
   check("movement_stalled".equals(actor.actuator.survival().routeProblem(3*SECOND)),"production adapter detects no positional progress independently of route deadline");
   actor.dispose();
+ }
+ static void outsideEscape(){
+  var spec=new zombie.apocalipse.humans.walking.WalkingPatternSpec("background","area-wander",16,List.of(),new zombie.apocalipse.humans.walking.WalkingPatternSpec.Area(100,200,103,200));
+  var profile=new HumanProfile("escape-beyond-area",1,"modules",Map.of(),"","none",false,false,List.of(new HumanModuleBinding("survival",0,100,Map.of()),new HumanModuleBinding("walk",1000,100,Map.of())),8,100,true,List.of(spec));
+  ServerHumanProfiles.registry().register(profile);
+  var cell=new zombie.iso.IsoCell();cell.strict=true;
+  for(int x=98;x<=125;x++)cell.tiles.put(x+",200,0",new zombie.iso.IsoGridSquare(x,200,0));
+  var actor=new ServerHuman(new ServerHumanDefinition("free-escape","FreeEscape","Escape",102.5f,200.5f,0,zombie.iso.IsoDirections.E,false,"Tourist",profile.id()),(short)1240,cell);
+  var contact=new Contact(new Identity(Kind.ZOMBIE,(short)1,1,1),100.5f,200.5f,0,4,0,0,true);
+  check(actor.actuator.survival().escape(List.of(contact),profile.survival(),0),"emergency can plan escape beyond a narrow designated area");
+  var status=HumanActuator.MotionStatus.RUNNING;long now=0;
+  for(int n=0;n<200&&status==HumanActuator.MotionStatus.RUNNING;n++)status=actor.actuator.updateMovement(now+=100_000_000L);
+  check(status==HumanActuator.MotionStatus.SUCCEEDED&&actor.player.x>104&&!actor.walking.permitted(new Tile(actor.player.getXi(),200)),"escape executes outside the area instead of being clipped by its route policy");
+  check(!actor.walking.scope("background").available(),"outside escape reproduces unavailable natural patrol scope");
+  contact=new Contact(contact.identity(),actor.player.x-2,200.5f,0,4,now,now,true);
+  check(actor.actuator.survival().escape(List.of(contact),profile.survival(),now),"NPC already outside can continue fleeing despite unavailable patrol scope");
+  actor.actuator.stopMoving();
+  check(actor.walking.start(new zombie.apocalipse.humans.walking.MovementRequest.Pattern("background"),now),"after danger releases movement, background behavior starts a return leg");
+  status=HumanActuator.MotionStatus.RUNNING;
+  for(int n=0;n<300&&status==HumanActuator.MotionStatus.RUNNING;n++)status=actor.walking.update(now+=100_000_000L);
+  check(status==HumanActuator.MotionStatus.SUCCEEDED&&actor.walking.permitted(new Tile(actor.player.getXi(),actor.player.getYi())),"escaped NPC walks back into designated area through actual movement");actor.dispose();
  }
  static void emergencyMonitoring(){
   var port=new Port();var guard=new EngageZombiesModule(HumanEngagement.Settings.DEFAULT);
@@ -231,7 +252,7 @@ public class SurvivalTest {
   check("survival".equals(runtime.selectedModule())&&port.escapes==1,"emergency release preserves normal runtime priority");
   runtime.stop(0,port);check(!runtime.emergency(crowd),"stopped runtime cannot request emergency takeover");
  }
- public static void main(String[]args){lifecycle();arbitration();failedFlight();coordinated();relieved();routes();flags();adapter();emergencyMonitoring();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
+ public static void main(String[]args){lifecycle();arbitration();failedFlight();coordinated();relieved();routes();flags();adapter();outsideEscape();emergencyMonitoring();System.out.println("Passed "+checks+" survival, routing, arbitration and cheat activation assertions.");}
 }
 '''
 

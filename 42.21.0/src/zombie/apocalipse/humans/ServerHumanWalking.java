@@ -11,6 +11,7 @@ final class ServerHumanWalking implements WalkingPattern.World {
     private final ServerHuman human;
     private final Map<String, WalkingPattern> patterns = new HashMap<>();
     private WalkingPattern active;
+    private boolean returning;
     private long sequence;
     ServerHumanWalking(ServerHuman human) {
         this.human = human;
@@ -34,8 +35,18 @@ final class ServerHumanWalking implements WalkingPattern.World {
         var context = context();
         MovementGrid scope; List<Tile> route;
         if (request instanceof MovementRequest.Pattern pattern) {
-            active = patterns.get(pattern.slot()); if (active == null) return false;
-            scope = active.scope(context); route = active.plan(context);
+            var selected=patterns.get(pattern.slot());if(selected==null)return false;
+            scope=selected.scope(context);
+            if(pattern.slot().equals("background")&&!scope.walkable(context.current())){
+                // A recovery leg does not complete/advance the authored walking pattern.
+                returning=true;
+                var assigned=scope;scope=recoveryGrid(context.current());
+                var anchor=returnAnchor(context,assigned);
+                route=AreaReturnPlanner.plan(scope,context.current(),assigned::walkable,anchor);
+                var end=route.isEmpty()?null:route.getLast();int steps=route.size();
+                HumanLog.log(HumanLog.Level.DEBUG,()->"area return key="+human.definition.key()+"; from="+context.current()
+                    +"; anchor="+anchor+"; goal="+end+"; steps="+steps);
+            }else{active=selected;route=selected.plan(context);}
         } else {
             var objective = (MovementRequest.To)request;
             var destination = objective.destination();
@@ -49,12 +60,34 @@ final class ServerHumanWalking implements WalkingPattern.World {
         if (!human.movement.start(route, scope, now)) { finish(false); return false; }
         return true;
     }
+    private Tile returnAnchor(WalkingPattern.Context context,MovementGrid assigned){
+        var spec=human.profile.walkingPatterns().stream().filter(p->p.slot().equals("background")).findFirst().orElseThrow();
+        if(spec.area()!=null){
+            var area=spec.area();var closest=new Tile(Math.clamp(context.current().x(),area.x1(),area.x2()),Math.clamp(context.current().y(),area.y1(),area.y2()));
+            if(assigned.walkable(closest))return closest;
+        }
+        return context.home();
+    }
+    private MovementGrid recoveryGrid(Tile start){
+        return new MovementGrid(){
+            public boolean available(){return human.movement.available();}
+            public boolean walkable(Tile tile){var square=human.movement.square(tile.x(),tile.y());
+                return human.movement.walkable(tile)&&square!=null&&(tile.equals(start)||human.movement.freeOfBlockingBodies(square));}
+            public boolean connected(Tile from,Tile to){return traversalCost(from,to)>0;}
+            public int traversalCost(Tile from,Tile to){return walkable(from)&&walkable(to)?human.movement.traversalCost(from,to):0;}
+        };
+    }
     MotionStatus update(long now) {
         var result = human.movement.update(now);
         if (result != MotionStatus.RUNNING) finish(result == MotionStatus.SUCCEEDED);
         return result;
     }
-    private void finish(boolean success) { var previous = active; active = null; if (previous != null) previous.completed(success); }
+    private void finish(boolean success) {
+        var previous=active;active=null;
+        if(returning){returning=false;HumanLog.log(HumanLog.Level.DEBUG,()->"area return settled key="+human.definition.key()+"; success="+success
+            +"; inside="+permitted(new Tile(human.player.getXi(),human.player.getYi())));}
+        if(previous!=null)previous.completed(success);
+    }
     void stop() { try { human.movement.stop(); } finally { finish(false); } }
     public boolean available() { return human.movement.available(); }
     public boolean walkable(Tile tile) { return human.movement.walkable(tile); }

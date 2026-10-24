@@ -338,3 +338,40 @@ survival planning and traversal landing use it, so giblets cannot become targets
 or physical occupants. Static geometry and live/unknown moving objects retain
 their checks. The existing 64-object safety budget still fails closed when a
 square cannot be fully classified within that budget.
+
+## Returning to the designated area
+
+The background walking adapter detects an origin outside its profile scope
+before asking the pattern to wander or advance a waypoint. It delegates to
+`AreaReturnPlanner`, a pure bounded same-floor A* search through loaded physical
+space. The profile scope is the destination predicate, not a restriction on the
+outside approach path. Rectangle profiles guide the search toward a permitted
+nearest boundary coordinate when available; otherwise the home anchor guides
+it. Indoor profiles target their original building. Ordinary explicit destination
+orders retain their existing scope validation.
+
+Each recovery search admits at most 256 discovered nodes and expands at most
+256 queue entries, with at most 64 edges in a leg. If the domain is farther away,
+a partial leg is returned only when it reduces distance to the domain anchor.
+The next background request continues recovery; blocked/unloaded space returns
+failure to the existing walking pause/retry schedule. There is no teleport,
+chunk pinning or unlimited search. Physical obstacles, occupancy, doors and
+traversal checks apply during both planning and execution.
+
+`ServerHumanWalking` owns the transient recovery flag and native grid adapter;
+`AreaReturnPlanner` depends only on a movement grid, inside predicate and anchor.
+A recovery leg never calls the authored pattern's completion callback, so it
+cannot skip a waypoint. On arrival inside the scope, subsequent background
+requests resume normal scoped behavior. Preemption/cancellation stops recovery
+through the existing movement lifecycle and leaves pattern progression intact.
+No per-NPC key check or new persistence field is used.
+
+DEBUG logs report `area return key=...; from=...; anchor=...; goal=...; steps=...`
+and `area return settled ...; success=...; inside=...`. A successful partial leg
+can report `inside=false`; the following background request continues inward.
+
+Regression coverage in `test_human_walking.py` includes outside rectangle and
+indoor origins, blocked-edge detours, bounded long-distance partial progress,
+actual reentry/resumed roaming, and preserving the pending circuit waypoint.
+`test_human_survival.py` verifies unrestricted physical escape and return after
+release, with survival/engagement still ahead of background walking arbitration.

@@ -77,12 +77,25 @@ permit entry into another occupied tile under normal exposure or ignore static c
 origins skip the initial recentering waypoint; ordinary corner prediction and
 traversal centering retain their existing checks.
 
-Routes retain the `background` movement scope: building, rectangle and floor.
-Leon cannot flee outside his assigned indoor territory in this version. RUN intent
+Emergency routes use the loaded physical movement grid rather than the
+`background` building/rectangle scope. An NPC, including Leon, can escape beyond
+its designated area and continue escaping when already outside it. The same
+unrestricted physical/occupancy grid is supplied to route execution, so crossing
+the patrol boundary cannot invalidate an otherwise safe escape leg. Same-floor,
+loaded-square and physical traversal restrictions remain mandatory. RUN intent
 is resolved through existing condition restrictions. Physical collision checks,
 doors/windows/fences, reservations, landing checks and cancellation remain shared
 movement capabilities. A failed traversal becomes a failed route. Dynamic threat
 positions may change after planning; physical occupancy is checked during motion.
+
+After survival releases control according to its existing safety/vitals hold,
+the background walking request detects whether the actor is outside its profile
+scope. If outside, `ServerHumanWalking` requests a bounded physical route back
+into that scope instead of attempting an in-area wander from an invalid origin.
+Recovery can also correct displacement from other activities. Higher-priority
+survival/defense or explicit task orders can preempt recovery normally. No actor
+key, coordinate constant, new profile field or database migration is involved.
+See [area recovery](NPC-MOVEMENT.md#returning-to-the-designated-area).
 
 ## Configuration and migration
 
@@ -130,3 +143,9 @@ evaluating these paths.
 
 Related: [combat](NPC-COMBAT.md), [movement](NPC-MOVEMENT.md),
 [persistence](NPC-PERSISTENCE.md), [architecture](NPC-ENGINE-ARCHITECTURE.md).
+
+Escape/reentry regressions: survival (107 assertions), walking (52), roaming
+(571), traversal (93) and engagement (52) passed. The new cases verify actual
+movement beyond a narrow patrol rectangle, renewed escape from outside, and
+physical return into the area. Existing loaded-space and collision tests remain
+in force; these tests do not claim a live dedicated-server escape demonstration.

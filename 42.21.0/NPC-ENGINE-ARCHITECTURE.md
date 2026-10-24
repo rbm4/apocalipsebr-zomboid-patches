@@ -195,3 +195,10 @@ Native corpse dragging keeps the same ownership boundaries: logical task phases
 consume `HumanCorpsePort` statuses, `ServerHumanCorpseDrag` owns native conversion
 and release, and `ServerCorpseDragAuthority` owns helper relay/ownership separately
 from combat pursuit. See [native corpse dragging](NPC-CORPSE-GRAPPLE.md).
+
+Emergency escape supplies a physical-world grid instead of the patrol domain.
+Background-area recovery is owned by `ServerHumanWalking` and the pure bounded
+`AreaReturnPlanner`; it is not a new actuator-selected NPC role. The profile
+scope remains the reentry destination predicate and normal patrol restriction.
+Recovery legs do not advance authored walking pattern progress. See
+[area recovery](NPC-MOVEMENT.md#returning-to-the-designated-area).

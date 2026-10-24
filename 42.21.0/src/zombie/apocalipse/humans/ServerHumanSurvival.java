@@ -6,7 +6,7 @@ import zombie.apocalipse.humans.movement.MovementGrid.Tile;
 import zombie.apocalipse.humans.movement.MovementModifiers.Pace;
 import zombie.apocalipse.humans.survival.*;
 
-/** Simulation-thread adapter. Profile territory and shared physical traversal apply to emergency routes too. */
+/** Simulation-thread adapter. Emergency routes may leave patrol territory; shared physical traversal still applies. */
 final class ServerHumanSurvival implements SurvivalPort {
     private final ServerHuman human;
     private final RouteRefusals refusals=new RouteRefusals();
@@ -19,7 +19,7 @@ final class ServerHumanSurvival implements SurvivalPort {
     }
     public boolean escape(List<Contact> threats,SurvivalSettings settings,long now,boolean elevated){
         human.walking.stop();
-        var scope=human.walking.scope("background");if(scope==null||!scope.available())return false;
+        var scope=human.movement;if(!scope.available())return false;
         var positions=threats.stream().filter(c->(int)Math.floor(c.z())==human.player.getZi())
             .map(c->new RetreatPlanner.Threat(c.x(),c.y())).toList();
         var start=new Tile(human.player.getXi(),human.player.getYi());
@@ -45,7 +45,7 @@ final class ServerHumanSurvival implements SurvivalPort {
             return false;
         }
         progressX=human.player.getX();progressY=human.player.getY();lastProgress=now;
-        boolean started=human.movement.start(route,scope,Pace.RUN,now);
+        boolean started=human.movement.start(route,planning,Pace.RUN,now);
         if(started)HumanLog.log(HumanLog.Level.DEBUG,()->"retreat route key="+human.definition.key()+"; from="+start
             +"; goal="+route.getLast()+"; steps="+(route.size()-1)+"; threats="+positions.size()+"; elevated="+elevated);
         return started;

@@ -68,6 +68,35 @@ public class WalkingTest {
   for(int i=0;i<200&&result==HumanActuator.MotionStatus.RUNNING;i++){clock+=100_000_000L;result=human.walking.update(clock);}
   check(result==HumanActuator.MotionStatus.SUCCEEDED,"navigation request completes through physical movement");
  }
+ static void recovery(){
+  var world=new World();world.queries=0;
+  var leg=AreaReturnPlanner.plan(world,new Tile(175,200),t->t.x()<=103,new Tile(100,200));
+  check(leg.size()>1&&leg.size()<=65&&leg.getLast().x()<175,"long-distance recovery makes bounded partial progress toward home");
+  check(world.queries<1500,"return search has bounded world-query work");
+  MovementGrid detour=new MovementGrid(){
+   public boolean available(){return true;}public boolean walkable(Tile tile){return world.walkable(tile);}
+   public boolean connected(Tile a,Tile b){return world.connected(a,b)&&(!(a.x()==103&&b.x()==104||a.x()==104&&b.x()==103)||a.y()==202);}
+  };
+  leg=AreaReturnPlanner.plan(detour,new Tile(108,200),t->t.x()<=103,new Tile(100,200));
+  check(!leg.isEmpty()&&leg.getLast().x()<=103&&leg.stream().anyMatch(t->t.y()==202),"recovery detours through a valid boundary opening instead of crossing a blocked edge");
+  MovementGrid blocked=new MovementGrid(){public boolean available(){return true;}public boolean walkable(Tile t){return world.walkable(t);}public boolean connected(Tile a,Tile b){return false;}};
+  check(AreaReturnPlanner.plan(blocked,new Tile(108,200),t->t.x()<=103,new Tile(100,200)).isEmpty(),"blocked return never fabricates a route or teleports");
+  var human=actor("return-area",new WalkingPatternSpec("background","area-wander",8,List.of(),new Area(100,200,103,204)),false);
+  human.player.setX(108.5f);
+  check(!human.walking.scope("background").available(),"fixture reproduces patrol scope being unavailable outside its area");
+  check(!human.walking.start(new MovementRequest.To(new Point(101,200,0)),clock),"ordinary objectives retain their assigned-domain restriction outside");
+  check(human.walking.start(new MovementRequest.Pattern("background"),clock),"background pattern can request recovery from outside its area");complete(human);
+  check(human.walking.permitted(new Tile(human.player.getXi(),human.player.getYi())),"recovery physically reenters assigned area");
+  check(human.walking.start(new MovementRequest.Pattern("background"),clock),"normal roaming resumes after recovery");complete(human);
+  check(human.player.x<104,"resumed patrol remains confined after recovery");human.dispose();
+  human=actor("return-indoor",WalkingPatternSpec.indoor(),true);human.player.setX(108.5f);
+  check(human.walking.start(new MovementRequest.Pattern("background"),clock),"indoor walker can recover from a different building or outdoors");complete(human);
+  check(human.player.x<104&&human.walking.permitted(new Tile(human.player.getXi(),human.player.getYi())),"indoor recovery returns to the original building");human.dispose();
+  human=actor("return-circuit",new WalkingPatternSpec("background","waypoint-circuit",16,List.of(new Point(102,200,0),new Point(104,200,0)),new Area(100,200,104,204)),false);human.player.setX(108.5f);
+  check(human.walking.start(new MovementRequest.Pattern("background"),clock),"bounded circuit can recover from outside authored area");complete(human);
+  check(human.walking.start(new MovementRequest.Pattern("background"),clock),"circuit restarts its original pending leg after recovery");complete(human);
+  check(Math.abs(human.player.x-102.5f)<.001,"recovery arrival does not advance the authored circuit waypoint");human.dispose();
+ }
  static void integration(){
   var human=actor("outside-walker",new WalkingPatternSpec("background","area-wander",8,List.of(),new Area(100,200,106,204)),false);
   check(human.perception.observe(0).movementAvailable(),"movement sense depends on loaded physical space, not lobby building or viewers");
@@ -89,7 +118,7 @@ public class WalkingTest {
   check(circuit.walking.start(new MovementRequest.Pattern("background"),clock),"circuit wrap starts");complete(circuit);
   check(Math.abs(circuit.player.x-102.5f)<.001,"circuit resumes after crossing a building boundary");circuit.dispose();
  }
- public static void main(String[]args){patterns();integration();System.out.println("Passed "+checks+" pattern ownership, objective navigation and movement-sense assertions.");}
+ public static void main(String[]args){patterns();integration();recovery();System.out.println("Passed "+checks+" pattern ownership, objective navigation and movement-sense assertions.");}
 }
 """
 
