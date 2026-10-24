@@ -10,6 +10,8 @@ import zombie.network.GameServer;
 final class ServerHumanActuator implements HumanActuator {
     static final double VISITOR_RADIUS_SQUARED = 8.0 * 8.0;
     private final ServerHuman human;
+    private final ServerHumanCorpses corpses;
+    @Override public zombie.apocalipse.humans.tasks.HumanCorpsePort corpses(){return corpses;}
     @Override public zombie.apocalipse.humans.tasks.HumanTaskWorld taskWorld(){return taskWorld;}
     private final zombie.apocalipse.humans.tasks.HumanTaskWorld taskWorld;
     private zombie.apocalipse.humans.brain.TacticalIntent intent=zombie.apocalipse.humans.brain.TacticalIntent.NONE;
@@ -25,7 +27,7 @@ final class ServerHumanActuator implements HumanActuator {
     }
     private final zombie.apocalipse.humans.survival.SurvivalPort survival;
 
-    ServerHumanActuator(ServerHuman human) { this.human = human;this.survival=new ServerHumanSurvival(human);this.taskWorld=new ServerHumanTasks(human); }
+    ServerHumanActuator(ServerHuman human) { this.human = human;this.corpses=new ServerHumanCorpses(human);this.survival=new ServerHumanSurvival(human);this.taskWorld=new ServerHumanTasks(human); }
     @Override public zombie.apocalipse.humans.survival.SurvivalPort survival(){return survival;}
     @Override public void moduleChanged(String previous,String selected){
         HumanLog.log(HumanLog.Level.DEBUG,()->"module change key="+human.definition.key()+"; previous="+previous+"; selected="+selected);

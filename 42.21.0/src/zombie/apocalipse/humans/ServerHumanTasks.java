@@ -19,6 +19,11 @@ final class ServerHumanTasks implements HumanTaskWorld {
         if(module==null||!module.available())return false;
         var world=human.actuator.taskWorld();
         return switch(command.kind()) {
+            case CLEAR_CORPSES -> {
+                var source=command.source()!=null?command.source():world.position();
+                var corpses=human.actuator.corpses();
+                yield corpses.supported()&&source.z()==command.destination().z()&&corpses.permitted(source)&&corpses.permitted(command.destination());
+            }
             case MOVE_TO -> world.permitted(command.destination());
             case FOLLOW_PLAYER -> {
                 var point=world.locate(new HumanObservation.Identity(issuer.getOnlineID(),issuer.getID()));
@@ -28,7 +33,7 @@ final class ServerHumanTasks implements HumanTaskWorld {
         };
     }
     static void apply(ServerHuman human,HumanTaskCommand command,IsoPlayer issuer){
-        module(human).assign(command,new HumanObservation.Identity(issuer.getOnlineID(),issuer.getID()));
+        module(human).assign(command,new HumanObservation.Identity(issuer.getOnlineID(),issuer.getID()),human.actuator.taskWorld().position());
         HumanLog.log(HumanLog.Level.DEBUG,()->"task accepted key="+human.definition.key()+"; kind="+command.kind());
     }
     public Point position(){return new Point(human.player.getXi(),human.player.getYi(),human.player.getZi());}

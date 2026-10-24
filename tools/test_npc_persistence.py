@@ -58,6 +58,7 @@ public class NpcStoreTest {
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V24__Seed_Leon_Extraction_Militia.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V25__Npc_Survival_And_Cheat_Settings.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V26__Npc_Dialogue_Behavior_Commands.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V27__Npc_Corpse_Cleanup.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
@@ -71,6 +72,12 @@ public class NpcStoreTest {
    var follow=(Map<?,?>)((List<?>)orderNode.get("options")).get(1);
    var command=(zombie.apocalipse.humans.tasks.HumanTaskCommand)follow.get("task");
    check(command.kind()==zombie.apocalipse.humans.tasks.HumanTaskCommand.Kind.FOLLOW_PLAYER&&command.distanceTiles()==2,"JDBC hydrates typed command and parameters");
+   var cleanupRoot=(Map<?,?>)((Map<?,?>)ordersGraph.get("nodes")).get("root");
+   var cleanup=(Map<?,?>)((List<?>)cleanupRoot.get("options")).stream().filter(v->((Map<?,?>)v).get("id").equals("clear_corpses")).findFirst().orElseThrow();
+   var cleanupCommand=(zombie.apocalipse.humans.tasks.HumanTaskCommand)cleanup.get("task");
+   check(cleanupCommand.kind()==zombie.apocalipse.humans.tasks.HumanTaskCommand.Kind.CLEAR_CORPSES&&cleanupCommand.destination().x()==270&&cleanupCommand.destination().y()==14437&&cleanupCommand.radiusTiles()==2&&cleanupCommand.source()==null,"engine role hydrates configurable corpse destination, radius and NPC-centered default");
+   var cleanupLeon=profiles.stream().filter(p->p.id().equals("leon-militia")).findFirst().orElseThrow();
+   check(cleanupLeon.walkingPatterns().stream().anyMatch(p->p.slot().equals("corpse-cleanup")&&p.area().contains(270,14437)),"cleanup movement scope reaches seeded destination");
    c.commit();
    invalid(c,"UPDATE npc_engine.dialogue_behavior_parameter SET parameter_value='3' WHERE dialogue_id='militia-orders'");
    invalid(c,"INSERT INTO npc_engine.dialogue_choice_behavior VALUES('militia-orders',1,'orders','EXECUTE_LUA')");

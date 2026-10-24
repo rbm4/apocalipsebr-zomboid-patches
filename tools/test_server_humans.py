@@ -144,6 +144,7 @@ public class GameServer {
  public static UdpConnection getConnectionFromPlayer(IsoPlayer p){return owners.get(p);}
  public static boolean isDelayedDisconnect(IsoPlayer p){return false;}
  public static Engine udpEngine=new Engine();
+ public static int corpsesSent;public static void sendCorpse(zombie.iso.objects.IsoDeadBody body){corpsesSent++;}
  public static void sendPlayerConnected(IsoPlayer p,UdpConnection c){c.announced++;}
  public static class Engine {public final List<UdpConnection> connections=new ArrayList<>();}
 }
@@ -301,6 +302,10 @@ FILES.update({
     "zombie/iso/IsoGridSquare.java": """package zombie.iso;
 import java.util.*;
 public class IsoGridSquare {
+ public final java.util.ArrayList<zombie.iso.IsoMovingObject> statics=new java.util.ArrayList<>();
+ public java.util.ArrayList<zombie.iso.IsoMovingObject> getStaticMovingObjects(){return statics;}
+ public void removeCorpse(zombie.iso.objects.IsoDeadBody b,boolean remote){statics.remove(b);zombie.network.id.ObjectIDManager.remove(b.id);b.square=null;}
+ public void addCorpse(zombie.iso.objects.IsoDeadBody b,boolean remote){if(!statics.contains(b))statics.add(b);b.square=this;zombie.network.id.ObjectIDManager.add(b.id,b);}
  public final java.util.ArrayList<IsoMovingObject> moving=new java.util.ArrayList<>();
  public java.util.ArrayList<IsoMovingObject> getMovingObjects(){return moving;}
  public int x,y,z;public BuildingDef building;public boolean free=true,floor=true,stairs,occupied;
@@ -737,6 +742,25 @@ def main():
         subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-d", str(output), "@" + str(args)], check=True)
         subprocess.run([str(ROOT / "jdk/bin/java.exe"), "-cp", str(output), "zombie.apocalipse.humans.FactoryTest"], check=True)
 
+
+FILES.update({
+ "zombie/network/id/ObjectID.java": "package zombie.network.id;public class ObjectID {}",
+ "zombie/network/id/ObjectIDManager.java": """package zombie.network.id;
+ public class ObjectIDManager {static final java.util.Map<ObjectID,Object> objects=new java.util.IdentityHashMap<>();
+ public static Object get(ObjectID id){return objects.get(id);}public static void add(ObjectID id,Object b){objects.put(id,b);}public static void remove(ObjectID id){objects.remove(id);}}""",
+ "zombie/iso/objects/IsoDeadBody.java": """package zombie.iso.objects;
+ public class IsoDeadBody extends zombie.iso.IsoMovingObject {
+ public final zombie.network.id.ObjectID id=new zombie.network.id.ObjectID();public float x,y,z;public boolean animal,fake;
+ public zombie.iso.IsoGridSquare square;public Object inventory=new Object();
+ public boolean isAnimal(){return animal;}public boolean isFakeDead(){return fake;}
+ public zombie.network.id.ObjectID getObjectID(){return id;}
+ public int getStaticMovingObjectIndex(){return square==null?-1:square.statics.indexOf(this);}
+ public float getX(){return x;}public float getY(){return y;}public float getZ(){return z;}public int getID(){return 0;}
+ public void setX(float v){x=v;}public void setY(float v){y=v;}public void setZ(float v){z=v;}
+ public zombie.iso.IsoGridSquare getSquare(){return square;}public zombie.iso.IsoGridSquare getCurrentSquare(){return square;}
+ public void setSquare(zombie.iso.IsoGridSquare s){square=s;}
+ }""",
+})
 
 if __name__ == "__main__":
     main()

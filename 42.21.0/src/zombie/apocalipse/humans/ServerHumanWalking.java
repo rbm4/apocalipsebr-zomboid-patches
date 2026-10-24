@@ -37,10 +37,13 @@ final class ServerHumanWalking implements WalkingPattern.World {
             active = patterns.get(pattern.slot()); if (active == null) return false;
             scope = active.scope(context); route = active.plan(context);
         } else {
-            var destination = ((MovementRequest.To)request).destination();
+            var objective = (MovementRequest.To)request;
+            var destination = objective.destination();
             if (destination.z() != context.z()) return false;
             // An objective may select its destination, but cannot bypass the profile's assigned movement area.
-            var background=scope("background");scope=background==null?this:background;
+            var assigned=scope(objective.slot());
+            if(assigned==null&&!objective.slot().equals("background"))return false;
+            scope=assigned==null?this:assigned;
             route = DestinationRoutePlanner.plan(scope, context.current(), new Tile(destination.x(), destination.y()));
         }
         if (!human.movement.start(route, scope, now)) { finish(false); return false; }
