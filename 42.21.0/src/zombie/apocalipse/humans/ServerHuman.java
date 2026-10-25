@@ -89,6 +89,7 @@ final class ServerHuman {
         this.combat = new ServerHumanCombat(this);
         this.actuator = new ServerHumanActuator(this);
         this.physiology = new ServerHumanPhysiology(this);
+        ServerHumanEncounters.bind(this);
     }
 
     boolean isRelevant(UdpConnection connection) {

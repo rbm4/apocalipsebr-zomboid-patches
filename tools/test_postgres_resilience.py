@@ -521,6 +521,10 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
     files += list((SRC / 'savefile').glob('ApocBR*.java'))
     files += [SRC / 'apocalipse/humans/ServerHumanDefinition.java', SRC / 'apocalipse/humans/HumanLifecycle.java', SRC / 'apocalipse/humans/profiles/HumanProfile.java', SRC / 'apocalipse/humans/profiles/HumanModuleBinding.java']
     files += [SRC / 'apocalipse/humans/dialogue/HumanDialogueCatalog.java']
+    files += [SRC / 'apocalipse/humans/encounters/EncounterPolicy.java', SRC / 'apocalipse/humans/encounters/HumanRelationships.java']
+    files += [SRC / 'apocalipse/humans/profiles/HumanCheats.java', SRC / 'apocalipse/humans/survival/SurvivalSettings.java', SRC / 'apocalipse/humans/tasks/HumanTaskCommand.java']
+    for package in ('state','movement','walking'):
+        files += list((SRC / 'apocalipse/humans' / package).glob('*.java'))
     files += [SRC / 'world/ApocBRWorldDictionarySnapshot.java', SRC / 'world/ApocBRWorldDictionaryDecode.java', harness]
     cp = os.pathsep.join(map(str, [GAME, LIB / 'postgresql-42.7.14.jar', LIB / 'HikariCP-7.1.0.jar']))
     subprocess.run([str(JDK / 'javac.exe'), '--release', '25', '-cp', cp, '-d', folder, *map(str, files)], check=True)

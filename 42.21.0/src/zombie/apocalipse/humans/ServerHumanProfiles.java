@@ -39,13 +39,24 @@ public final class ServerHumanProfiles {
             if(p.modules().stream().anyMatch(other->(other.moduleId().equals("survival")||other.moduleId().equals("engage-zombies"))&&other.priority()>=b.priority()
                 ||other.moduleId().equals("walk")&&other.priority()<=b.priority()))throw new IllegalArgumentException("Tasks must follow combat and precede background walking");
         },(p,b)->new zombie.apocalipse.humans.tasks.AssignedTaskModule());
+        modules.register("player-encounter",(p,b)->{
+            if(!p.encounter().enabled()||!b.parameters().isEmpty()||p.encounter().challengeTiles()>p.perceptionRadius())
+                throw new IllegalArgumentException("Typed encounter policy within perception required");
+            if(p.modules().stream().anyMatch(other->((other.moduleId().equals("survival")||other.moduleId().equals("engage-zombies"))&&other.priority()>=b.priority())
+                ||((other.moduleId().equals("walk")||other.moduleId().equals("assigned-task")||other.moduleId().equals("greet"))&&other.priority()<=b.priority())))
+                throw new IllegalArgumentException("Encounters must follow defense and precede ordinary activity");
+        },(p,b)->new zombie.apocalipse.humans.encounters.PlayerEncounterModule(p.encounter()));
         modules.register("survival",(p,b)->{
             if(!b.parameters().isEmpty())throw new IllegalArgumentException("Survival uses typed profile settings");
             if(p.walkingPatterns().stream().noneMatch(s->s.slot().equals("background")))throw new IllegalArgumentException("Survival needs a background movement scope");
             if(p.modules().stream().anyMatch(other->!other.moduleId().equals("survival")&&other.priority()<=b.priority()))
                 throw new IllegalArgumentException("Survival must precede all autonomous modules");
         },(p,b)->new zombie.apocalipse.humans.survival.SurvivalModule(p.survival()));
-        registry.registerBehavior("modules",p->{announcements(p);modules.validate(p);},modules::create);
+        registry.registerBehavior("modules",p->{
+            announcements(p);modules.validate(p);
+            if(p.encounter().enabled()!=p.modules().stream().anyMatch(b->b.moduleId().equals("player-encounter")))
+                throw new IllegalArgumentException("Encounter policy and module must be bound together");
+        },modules::create);
         registry.registerBehavior("guide", p -> { GuidePolicy.from(p.parameters()); announcements(p); },
             p -> new GuideBrain(GuidePolicy.from(p.parameters()),
                 () -> p.greetingKey().isEmpty() ? null : HumanLanguage.text(p.greetingKey()), announcements(p)));

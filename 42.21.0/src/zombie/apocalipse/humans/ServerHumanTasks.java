@@ -15,6 +15,7 @@ final class ServerHumanTasks implements HumanTaskWorld {
         return human.activity.behavior() instanceof HumanModuleRuntime runtime?runtime.module(AssignedTaskModule.class):null;
     }
     static boolean accepts(ServerHuman human,HumanTaskCommand command,IsoPlayer issuer){
+        if(!ServerHumanEncounters.authorized(human,issuer))return false;
         var module=module(human);
         if(module==null||!module.available())return false;
         var world=human.actuator.taskWorld();

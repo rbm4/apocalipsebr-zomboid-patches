@@ -42,6 +42,8 @@ public final class ApocBRNpcStore {
     private final ConcurrentHashMap<String,State> pending=new ConcurrentHashMap<>();
     private final ConcurrentHashMap<DialogueIdentity,Set<String>> dialogueFlags=new ConcurrentHashMap<>();
     private final ConcurrentHashMap<EarnedFlag,Boolean> pendingFlags=new ConcurrentHashMap<>();
+    private final zombie.apocalipse.humans.encounters.HumanRelationships relationships=new zombie.apocalipse.humans.encounters.HumanRelationships();
+    public zombie.apocalipse.humans.encounters.HumanRelationships relationships(){return relationships;}
     private int flagCount;
     private final AtomicReference<Loaded> loaded=new AtomicReference<>();
     private final AtomicReference<List<HumanProfile>> profiles=new AtomicReference<>();
@@ -96,6 +98,7 @@ public final class ApocBRNpcStore {
                         var dialogues=ApocBRNpcDialogues.read(connection);
                         var labels=ApocBRNpcDialogues.labels(connection);
                         readDialogueFlags();
+                        relationships.restore(ApocBRNpcRelationships.read(connection,server,world));
                         connection.commit();zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(dialogues,labels);
                         loaded.set(new Loaded(configuration,definitions));initialized=true;nextProfiles=System.nanoTime()+30000000000L;
                     }
@@ -153,6 +156,7 @@ public final class ApocBRNpcStore {
         try{connection.close();}catch(SQLException ignored){}connection=null;locked=false;
     }
     private void flush() {
+        ApocBRNpcRelationships.flush(relationships,server,world,epoch);
         for(var flag:pendingFlags.keySet()) {
             var id=flag.identity();
             var sql=new ApocBRPersistenceOperations.Sql("""
@@ -269,7 +273,7 @@ public final class ApocBRNpcStore {
                     }
                 }
                 result.add(new HumanProfile(id,revision,"modules",Map.of(),rows.getString(5),rows.getString(6),rows.getBoolean(3),rows.getBoolean(4),bindings,rows.getDouble(7),rows.getInt(8),rows.getBoolean(9),readWalkingPatterns(connection,id,revision),
-                    new zombie.apocalipse.humans.profiles.HumanCheats(rows.getBoolean(10),rows.getBoolean(11),rows.getBoolean(12)),readSurvival(connection,id,revision,bindings)));
+                    new zombie.apocalipse.humans.profiles.HumanCheats(rows.getBoolean(10),rows.getBoolean(11),rows.getBoolean(12)),readSurvival(connection,id,revision,bindings),ApocBRNpcRelationships.policy(connection,id,revision,bindings)));
             }
         }
         return List.copyOf(result);

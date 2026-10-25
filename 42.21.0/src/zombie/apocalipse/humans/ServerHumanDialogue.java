@@ -245,6 +245,7 @@ public final class ServerHumanDialogue {
     static KahluaTable begin(IsoPlayer p, int id, long now) {
         ServerHuman h = human(id);
         if (h == null || !h.profile.dialogue() || !owned(p)) return rejected("unavailable");
+        if (!ServerHumanEncounters.authorized(h,p)) return rejected("unavailable");
         if (sessions.containsKey((short)id) || sessions.values().stream().anyMatch(s -> s.visitor == p)) return rejected("busy");
         if (h.activity.emergency(h.actuator.observe(now))) return rejected("unavailable");
         if (!near(h, p, 8)) return rejected("unavailable");
@@ -260,7 +261,7 @@ public final class ServerHumanDialogue {
         if (id < 0 || id > Short.MAX_VALUE) return null;
         Session s = sessions.get((short)id);
         if (s == null || s.visitor != p || s.token != token) return null;
-        if (s.human.activity.emergency(s.human.actuator.observe(now))) {
+        if (!ServerHumanEncounters.authorized(s.human,p) || s.human.activity.emergency(s.human.actuator.observe(now))) {
             close(s.human, "threat", now); return null;
         }
         if (now >= s.deadline || !owned(p) || GameServer.getConnectionFromPlayer(p) != s.connection) {

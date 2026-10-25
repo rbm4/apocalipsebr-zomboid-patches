@@ -34,6 +34,7 @@ and ability is not the intended hierarchy.
 | Local combat tactics | `HumanCombatTactics`, `CombatRoutePlanner`, `ServerHumanCombatApproach` | Per-engagement spacing/reaction/retreat policy and bounded placement routes; weapon phases retain attack timing and commitment. See [NPC-COMBAT.md](NPC-COMBAT.md#local-combat-tactics-and-exposure-windows). |
 | Tactical coordination | `TacticalIntent`, `SurvivalModule`, `ServerHumanActuator` | Immutable objective/posture/target/exposure decisions, guarded movement and explicit escape-route ownership during defensive combat. See [NPC-TACTICS.md](NPC-TACTICS.md). |
 | Transport and feature services | `ServerHumanTransport`, dialogue/trade controllers | Delivery, authenticated requests, exclusive leases and feature-specific authoritative rules. |
+| Player encounters and relationships | `PlayerEncounterModule`, `EncounterPort`, `HumanRelationships`, `ApocBRNpcRelationships` | Profile-bound challenges, detached player facts, shared account/affiliation outcomes and worker/journal persistence. See [player encounters](docs/npc-player-encounters.md). |
 
 Brains depend on ports and action data, not on concrete event controllers,
 database clients, networking or global NPC registries. Actuators must not choose

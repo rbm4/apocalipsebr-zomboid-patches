@@ -81,6 +81,9 @@ public final class ServerHumanTrading {
         }
         if (!owned(visitor, connection)) return true;
         if (!human.profile.trading()) { reply(human,visitor,connection,false); return true; }
+        if (!ServerHumanEncounters.authorized(human,visitor)||human.activity.emergency(human.actuator.observe(System.nanoTime()))) {
+            reply(human,visitor,connection,false);return true;
+        }
         Session active=sessions.get(target.getOnlineID());
         if (!ask) {
             if (active != null && active.visitor == visitor) finish(active, true);
@@ -125,7 +128,8 @@ public final class ServerHumanTrading {
         Session session=session(visitor);
         if (session == null) return null;
         if (session.human.player != target || session.connection != connection
-            || System.nanoTime() >= session.expires || !nearby(session.human,visitor)) {
+            || System.nanoTime() >= session.expires || !nearby(session.human,visitor)
+            || !ServerHumanEncounters.authorized(session.human,visitor)||session.human.activity.emergency(session.human.actuator.observe(System.nanoTime()))) {
             finish(session,true); return null;
         }
         return session;
@@ -240,7 +244,8 @@ public final class ServerHumanTrading {
 
     static void update(ServerHuman human, long now) {
         Session session=sessions.get(human.player.getOnlineID());
-        if (session != null && (now >= session.expires || !owned(session.visitor,session.connection) || !nearby(human,session.visitor))) finish(session,true);
+        if (session != null && (now >= session.expires || !owned(session.visitor,session.connection) || !nearby(human,session.visitor)
+            || !ServerHumanEncounters.authorized(human,session.visitor)||human.activity.emergency(human.actuator.observe(now)))) finish(session,true);
     }
 
     static void close(ServerHuman human) {

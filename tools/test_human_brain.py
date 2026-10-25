@@ -140,6 +140,7 @@ def main():
         harness = work / "BrainTest.java"
         harness.write_text(HARNESS, encoding="utf-8")
         sources = [harness, *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/brain").glob("*.java")), *sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/profiles").glob("*.java"))]
+        sources.append(ROOT / "42.21.0/src/zombie/apocalipse/humans/encounters/EncounterPolicy.java")
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/state").glob("*.java")))
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/movement").glob("*.java")))
         sources.extend(sorted((ROOT / "42.21.0/src/zombie/apocalipse/humans/walking").glob("*.java")))

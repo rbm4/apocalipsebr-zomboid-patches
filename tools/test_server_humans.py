@@ -20,6 +20,7 @@ public final class ApocBRNpcStore {
  public static boolean enabled(){return false;}
  public record DialogueIdentity(String npc,String dialogue,String kind,String account){}
  public static ApocBRNpcStore current(){return null;}
+ public zombie.apocalipse.humans.encounters.HumanRelationships relationships(){return new zombie.apocalipse.humans.encounters.HumanRelationships();}
  public Set<String> dialogueFlags(DialogueIdentity id){return Set.of();}
  public boolean remember(DialogueIdentity id,String flag){return false;}
  public static ApocBRNpcStore start(String s,String w,ServerHumanDefinition d){throw new AssertionError("Unexpected database initialization");}
@@ -69,7 +70,7 @@ public class IsoPlayer extends IsoGameCharacter {
  private final java.util.List<zombie.network.fields.hit.HitInfo> hitInfo=new java.util.ArrayList<>();
  public zombie.inventory.InventoryItem getPrimaryHandItem(){return primary;}public zombie.inventory.InventoryItem getSecondaryHandItem(){return secondary;}
  public void setPrimaryHandItem(zombie.inventory.InventoryItem item){primary=item;}public void setSecondaryHandItem(zombie.inventory.InventoryItem item){secondary=item;}
- public void setUseHandWeapon(zombie.inventory.types.HandWeapon weapon){}public void setIsAiming(boolean value){aiming=value;}
+ public void setUseHandWeapon(zombie.inventory.types.HandWeapon weapon){}public void setIsAiming(boolean value){aiming=value;}public boolean isAiming(){return aiming;}
  public void setAttackTargetSquare(IsoGridSquare square){}
  public void setDoShove(boolean value){}public boolean critical;public int critChance=20;public void setCriticalHit(boolean value){critical=value;}public boolean isCriticalHit(){return critical;}public int calculateCritChance(IsoGameCharacter target){return critChance;}public float getHittingMod(){return 1;}public void setAimAtFloor(boolean value){}
  public void setAttackType(zombie.AttackType value){}public void setVariable(String key,String value){}

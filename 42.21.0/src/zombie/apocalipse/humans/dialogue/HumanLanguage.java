@@ -38,6 +38,11 @@ public final class HumanLanguage {
     }
     // Standalone operation without SQL uses the same shipped labels as the migration.
     private static final Map<String,Map<String,Object>> DEFAULTS=Map.ofEntries(
+        Map.entry("NPC_Encounter_returning",Map.of("PTBR",Map.of("text","Ola de novo. Continue com as armas guardadas e podemos conversar."),"EN",Map.of("text","Hello again. Keep your weapons stowed and we can talk."))),
+        Map.entry("NPC_Encounter_greeting",Map.of("PTBR",Map.of("text","Ola, sobrevivente. Mantenha as armas guardadas por aqui."),"EN",Map.of("text","Hello, survivor. Keep your weapons stowed here."))),
+        Map.entry("NPC_Encounter_warning",Map.of("PTBR",Map.of("text","Guarde as armas das duas maos. Voce tem alguns segundos para obedecer."),"EN",Map.of("text","Put away the weapons in both hands. You have a few seconds to comply."))),
+        Map.entry("NPC_Encounter_accepted",Map.of("PTBR",Map.of("text","Tudo certo. Podemos conversar enquanto voce mantiver as armas guardadas."),"EN",Map.of("text","All right. We can talk while you keep your weapons stowed."))),
+        Map.entry("NPC_Encounter_refused",Map.of("PTBR",Map.of("text","Voce ignorou o aviso. Nao receberemos suas ordens. Afaste-se e tente depois."),"EN",Map.of("text","You ignored the warning. We will not take your orders. Leave and try later."))),
         Map.entry("IGUI_ApocExtractionMapUtils_GuideHello",Map.of("PTBR",Map.of("text","Olá!"),"EN",Map.of("text","Hello!"))),
         Map.entry("IGUI_ApocExtractionMapUtils_EventCountdown",Map.of("PTBR",Map.of("text","A próxima operação, %1, começa em %2."),"EN",Map.of("text","The next operation, %1, starts in %2."))),
         Map.entry("IGUI_ApocExtractionMapUtils_EventRemaining",Map.of("PTBR",Map.of("text","A operação %1 está ativa. Tempo restante estimado: %2."),"EN",Map.of("text","Operation %1 is active. Estimated time remaining: %2."))),

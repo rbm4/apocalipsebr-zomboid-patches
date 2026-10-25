@@ -59,6 +59,7 @@ public class NpcStoreTest {
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V25__Npc_Survival_And_Cheat_Settings.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V26__Npc_Dialogue_Behavior_Commands.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V27__Npc_Corpse_Cleanup.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V28__Npc_Player_Encounters.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
@@ -66,6 +67,11 @@ public class NpcStoreTest {
    var militia=profiles.stream().filter(p->p.id().equals("militia-patrol")).findFirst().orElseThrow();
    check(militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("survival"),"database militia profile enables orders and retains survival priority");
    check(militia.modules().stream().anyMatch(m->m.moduleId().equals("assigned-task")),"militia task capability loaded");
+   check(militia.encounter().enabled()&&militia.encounter().affiliation().equals("militia")&&militia.encounter().warningMs()==8000,"V28 typed encounter policy and affiliation hydrated");
+   check(militia.modules().stream().anyMatch(m->m.moduleId().equals("player-encounter")),"encounter module published");
+   invalid(c,"UPDATE npc_engine.profile_encounter SET warning_ms=9000 WHERE profile_id='militia-patrol'");
+   invalid(c,"INSERT INTO npc_engine.profile_encounter VALUES('militia-patrol',999,'militia',8,8000,1000,60000,300000,60000)");
+   invalid(c,"INSERT INTO npc_engine.profile_encounter VALUES('militia-patrol',999,'militia',8,100,1000,60000,300000,60000)");
    var orders=ApocBRNpcDialogues.read(c);
    var ordersGraph=(Map<?,?>)orders.get("leon-militia");
    var orderNode=(Map<?,?>)((Map<?,?>)ordersGraph.get("nodes")).get("orders");
@@ -209,6 +215,8 @@ public class NpcStoreTest {
    store.offer(state(d,5,150,HumanLifecycle.State.ACTIVE,false));store.offer(state(d,4,140,HumanLifecycle.State.ACTIVE,false));
    check(store.remember(account,"knows_secret"),"trusted selection stages earned fact without SQL on request thread");
    check(store.remember(account,"knows_secret")&&store.dialogueFlags(account).size()==2,"repeated earned flag is idempotent");
+   var relationshipKey=new zombie.apocalipse.humans.encounters.HumanRelationships.Key("militia","steam","123");
+   check(store.relationships().record(relationshipKey,"guard",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.COMPLIED,100000,militia.encounter()),"relationship outcome captured without request-thread SQL");
    ApocBRNpcStore.shutdown();check(!ApocBRPersistence.queue.isEmpty(),"shutdown stages final detached checkpoint");
    try(var other=DriverManager.getConnection(url,"pz_server_01","");var s=ApocBRNpcStore.statement(other,"SELECT pg_try_advisory_lock(hashtext(?),hashtext(?))","npc-engine:test","world");var r=s.executeQuery()){
     r.next();check(r.getBoolean(1),"shutdown releases advisory ownership before returning pooled connection");
@@ -216,6 +224,25 @@ public class NpcStoreTest {
    }
    while(!ApocBRPersistence.queue.isEmpty())apply(c,ApocBRPersistence.queue.remove().statements());
    check(number(c,"SELECT count(*) FROM npc_engine.dialogue_flag WHERE player_identity='123'")==2,"earned facts persist through shared worker/journal using engine role");
+   var restoredRelationships=ApocBRNpcRelationships.read(c,"test","world");
+   check(restoredRelationships.get(relationshipKey).complied()==1,"relationship worker flush persists as engine role");
+   check(ApocBRNpcRelationships.read(c,"other","world").isEmpty(),"relationship scope isolation");
+   c.commit();
+   var relationMemory=new zombie.apocalipse.humans.encounters.HumanRelationships();
+   var replayKey=new zombie.apocalipse.humans.encounters.HumanRelationships.Key("militia","steam","replay-account");
+   relationMemory.record(replayKey,"guard-a",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.GREETED,100000,militia.encounter());
+   relationMemory.record(replayKey,"guard-b",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.COMPLIED,101000,militia.encounter());
+   var events=relationMemory.pending();
+   apply(c,ApocBRNpcRelationships.statements("test","world",3,events.get(1)));
+   apply(c,ApocBRNpcRelationships.statements("test","world",3,events.get(0)));
+   apply(c,ApocBRNpcRelationships.statements("test","world",3,events.get(1)));
+   check(number(c,"SELECT count(*) FROM npc_engine.relationship_event WHERE player_identity='replay-account'")==2,"semantic event UUID deduplicates replay");
+   check(number(c,"SELECT complied FROM npc_engine.player_relationship WHERE player_identity='replay-account'")==1,"absolute projection prevents double reputation and stale overwrite");
+   relationMemory.record(replayKey,"guard-a",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.REFUSED,102000,militia.encounter());
+   apply(c,ApocBRNpcRelationships.statements("test","world",2,relationMemory.pending().getLast()));
+   check(number(c,"SELECT count(*) FROM npc_engine.relationship_event WHERE player_identity='replay-account'")==2,"old ownership epoch cannot append relationship history");
+   check(number(c,"SELECT refused FROM npc_engine.player_relationship WHERE player_identity='replay-account'")==0,"old ownership epoch cannot mutate relationships");
+   check(ApocBRNpcRelationships.read(c,"test","world").get(replayKey).permits(102000),"account permission survives detached reload across NPCs");c.commit();
    check(number(c,"SELECT x FROM npc_engine.runtime_state")==150,"coalescing retains newest mutation");
    check(number(c,"SELECT round(body_health::numeric*100) FROM npc_engine.runtime_state")==60,"worker and journal retain newest physical checkpoint");
    apply(c,ApocBRNpcStore.statements("test","world",3,state(d,6,150,HumanLifecycle.State.DEAD,true)));
@@ -243,7 +270,8 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     for name,content in FILES.items():
         p=work/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(content,encoding='utf-8');sources.append(p)
     sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'savefile/ApocBRNpcDialogues.java',SRC/'apocalipse/humans/dialogue/HumanDialogueCatalog.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java',SRC/'apocalipse/humans/profiles/HumanCheats.java',SRC/'apocalipse/humans/survival/SurvivalSettings.java']
-    sources += [SRC/'apocalipse/humans/tasks/HumanTaskCommand.java']
+    sources += [SRC/'apocalipse/humans/tasks/HumanTaskCommand.java',SRC/'savefile/ApocBRNpcRelationships.java']
+    sources += [SRC/'apocalipse/humans/encounters/EncounterPolicy.java',SRC/'apocalipse/humans/encounters/HumanRelationships.java']
     sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java')) + list((SRC/'apocalipse/humans/walking').glob('*.java'))
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
@@ -256,6 +284,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
         if '--manager-test' in sys.argv:
             manager=ROOT.parent/'apocalipsebr-manager/manager'
             env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
-            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcSurvivalMigrationTest,NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcEncounterMigrationTest,NpcSurvivalMigrationTest,NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
     finally:
         run([BIN/'pg_ctl.exe','-D',work/'data','-m','immediate','-w','stop'],stdout=subprocess.DEVNULL)
