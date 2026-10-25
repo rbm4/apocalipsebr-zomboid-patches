@@ -18,8 +18,8 @@ import zombie.apocalipse.humans.state.*;
 /** Native packet construction and local native processing, never a fake client receive/ownership path. */
 final class ServerHumanCombatNetwork {
     private ServerHumanCombatNetwork() { }
-    static boolean clearBodies(ServerHuman human,IsoZombie target){return clearBodies(human,target,human.player.getX(),human.player.getY());}
-    static boolean clearBodies(ServerHuman human,IsoZombie target,float fromX,float fromY){
+    static boolean clearBodies(ServerHuman human,IsoGameCharacter target){return clearBodies(human,target,human.player.getX(),human.player.getY());}
+    static boolean clearBodies(ServerHuman human,IsoGameCharacter target,float fromX,float fromY){
         double dx=target.getX()-fromX,dy=target.getY()-fromY,length=dx*dx+dy*dy;
         if(length<.0001)return true;
         int steps=(int)Math.ceil(Math.sqrt(length)*2);if(steps>64)return false;
@@ -39,9 +39,13 @@ final class ServerHumanCombatNetwork {
         }
         return true;
     }
-    static boolean commit(ServerHuman human,IsoZombie target,int itemId,long execution,long strike,long now){
+    static boolean commit(ServerHuman human,IsoGameCharacter target,int itemId,long execution,long strike,long now){
         HandWeapon weapon=human.inventory.item(itemId);
         if(weapon==null||human.player.getPrimaryHandItem()!=weapon||weapon.getCondition()<=0||target.isDead()||human.movement.traversing())return false;
+        if(target instanceof zombie.characters.IsoPlayer player&&(!ServerHumanRetaliation.pvp(human.player,player,weapon.isRanged())
+            ||!human.perception.eligible(player)||!human.perception.visible(player)
+            ||!human.territory.contains(player.getX(),player.getY(),player.getZ())
+            ||!human.territory.contains(human.player.getX(),human.player.getY(),human.player.getZ())))return false;
         var actor=human.player;
         if(!ServerHumanAttackLine.clear(human,target,actor.getX(),actor.getY(),weapon.isRanged()))return false;
         actor.setUseHandWeapon(weapon);actor.setDoShove(false);actor.setAimAtFloor(target.isOnFloor());
@@ -63,7 +67,7 @@ final class ServerHumanCombatNetwork {
         float committed=0;
         var hits=new ArrayList<WeaponHit>();
         if(hit){
-            actor.setVariable("ZombieHitReaction",weapon.isRanged()?"Shot":"HeadLeft");
+            actor.setVariable("ZombieHitReaction",weapon.isRanged()&&target instanceof IsoZombie?"Shot":"HeadLeft");
             // "Shot" is the attacker's unresolved marker, not a playable victim
             // clip. Vanilla CombatManager.processHit resolves it before packing.
             // Use a concrete non-fall reaction here without rerolling criticals
@@ -72,15 +76,15 @@ final class ServerHumanCombatNetwork {
             float rolled=Rand.Next(weapon.getMinDamage(),weapon.getMaxDamage());
             if(!weapon.isRanged())rolled*=weapon.getDamageMod(actor)*actor.getHittingMod();
             // Let native code resolve hit force/modifiers first; calibration must not inflate knockback.
-            float damage=zombie.apocalipse.humans.brain.HumanCombatDamage.packetDamage(
-                target.processHitDamage(weapon,actor,rolled,false,1),weapon.isRanged());
+            float resolved=target.processHitDamage(weapon,actor,rolled,false,1);
+            float damage=target instanceof IsoZombie?zombie.apocalipse.humans.brain.HumanCombatDamage.packetDamage(resolved,weapon.isRanged()):Math.clamp(resolved,0,100);
             committed=damage;
             double dx=target.getX()-actor.getX(),dy=target.getY()-actor.getY(),distance=Math.max(.001,Math.hypot(dx,dy));
             var wound=new WeaponHit();wound.set(damage,1,target.getHitForce(),(float)(dx/distance),(float)(dy/distance),false,false,false,false);hits.add(wound);
         }
         actor.setAttackTargetSquare(target.getCurrentSquare());
-        HitCharacter packet=hit?new ServerHumanHitPacket(actor,weapon,target,hits):new ServerHumanMissPacket(actor,weapon);
-        var packetType=hit?PacketTypes.PacketType.PlayerHitZombie:PacketTypes.PacketType.PlayerHitSquare;
+        HitCharacter packet=hit?(target instanceof IsoZombie z?new ServerHumanHitPacket(actor,weapon,z,hits):new ServerHumanPlayerHitPacket(actor,weapon,(zombie.characters.IsoPlayer)target,hits)):new ServerHumanMissPacket(actor,weapon);
+        var packetType=hit?(target instanceof IsoZombie?PacketTypes.PacketType.PlayerHitZombie:PacketTypes.PacketType.PlayerHitPlayer):PacketTypes.PacketType.PlayerHitSquare;
         ServerHumanTransport.equipment(human);
         // Native client attack presentation is driven by this event, independently of the 500ms movement heartbeat.
         for(var viewer:human.viewers)if(human.isRelevant(viewer))packet.sendToClient(packetType,viewer);
@@ -100,7 +104,7 @@ final class ServerHumanCombatNetwork {
         }
         float after=target.getHealth(),packetDamage=committed;
         HumanLog.log(HumanLog.Level.DEBUG,()->"combat commit key="+human.definition.key()+"; execution="+execution+"; strike="+strike+"; weapon="+weapon.getFullType()
-            +"; target="+target.getOnlineID()+"; hit="+hit+"; critical="+critical+"; packetDamage="+packetDamage+"; health="+before+" -> "+after);
+            +"; target="+(target instanceof IsoZombie z?z.getOnlineID():((zombie.characters.IsoPlayer)target).getOnlineID())+"; hit="+hit+"; critical="+critical+"; packetDamage="+packetDamage+"; health="+before+" -> "+after);
         return true;
     }
 }

@@ -60,6 +60,7 @@ public class NpcStoreTest {
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V26__Npc_Dialogue_Behavior_Commands.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V27__Npc_Corpse_Cleanup.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V28__Npc_Player_Encounters.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V29__Npc_Retaliation_And_Longer_Warnings.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
@@ -67,7 +68,8 @@ public class NpcStoreTest {
    var militia=profiles.stream().filter(p->p.id().equals("militia-patrol")).findFirst().orElseThrow();
    check(militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("survival"),"database militia profile enables orders and retains survival priority");
    check(militia.modules().stream().anyMatch(m->m.moduleId().equals("assigned-task")),"militia task capability loaded");
-   check(militia.encounter().enabled()&&militia.encounter().affiliation().equals("militia")&&militia.encounter().warningMs()==8000,"V28 typed encounter policy and affiliation hydrated");
+   check(militia.encounter().enabled()&&militia.encounter().affiliation().equals("militia")&&militia.encounter().warningMs()==16000,"V29 doubles the immutable encounter warning");
+   check(militia.modules().stream().anyMatch(m->m.moduleId().equals("retaliate-player")),"retaliation module published");
    check(militia.modules().stream().anyMatch(m->m.moduleId().equals("player-encounter")),"encounter module published");
    invalid(c,"UPDATE npc_engine.profile_encounter SET warning_ms=9000 WHERE profile_id='militia-patrol'");
    invalid(c,"INSERT INTO npc_engine.profile_encounter VALUES('militia-patrol',999,'militia',8,8000,1000,60000,300000,60000)");
@@ -89,7 +91,8 @@ public class NpcStoreTest {
    invalid(c,"INSERT INTO npc_engine.dialogue_choice_behavior VALUES('militia-orders',1,'orders','EXECUTE_LUA')");
    check(militia.modules().stream().filter(m->m.moduleId().equals("engage-zombies")).findFirst().orElseThrow().parameters().get("retryMs")==2000L,"engagement timing hydrated through existing typed millisecond fields");
    check(militia.survival().crowdCount()==4&&militia.survival().reengageEndurance()==.72,"typed survival thresholds hydrated");
-   check(profiles.stream().allMatch(p->p.cheats().godMode()&&!p.cheats().ghostMode()&&!p.cheats().invisible()),"migration preserves original protection flags for every actor");
+   check(profiles.stream().allMatch(p->!p.cheats().ghostMode()&&!p.cheats().invisible()),"migration preserves ghost and invisibility flags");
+   check(!militia.cheats().godMode()&&!cleanupLeon.cheats().godMode()&&profiles.stream().filter(p->p.id().equals("lobby-guide")).findFirst().orElseThrow().cheats().godMode(),"V29 disables militia god mode and retains guide protection");
    var guide=profiles.stream().filter(p->p.id().equals("lobby-guide")).findFirst().orElseThrow();
    check(guide.walkingPatterns().size()==1&&guide.walkingPatterns().getFirst().patternId().equals("indoor-wander"),"published guide has explicit immutable movement binding");
    var leon=profiles.stream().filter(p->p.id().equals("leon-militia")).findFirst().orElseThrow();
@@ -217,6 +220,7 @@ public class NpcStoreTest {
    check(store.remember(account,"knows_secret")&&store.dialogueFlags(account).size()==2,"repeated earned flag is idempotent");
    var relationshipKey=new zombie.apocalipse.humans.encounters.HumanRelationships.Key("militia","steam","123");
    check(store.relationships().record(relationshipKey,"guard",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.COMPLIED,100000,militia.encounter()),"relationship outcome captured without request-thread SQL");
+   check(store.relationships().record(relationshipKey,"guard",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.ATTACKED,100001,militia.encounter()),"validated attack outcome captured separately from refusal");
    ApocBRNpcStore.shutdown();check(!ApocBRPersistence.queue.isEmpty(),"shutdown stages final detached checkpoint");
    try(var other=DriverManager.getConnection(url,"pz_server_01","");var s=ApocBRNpcStore.statement(other,"SELECT pg_try_advisory_lock(hashtext(?),hashtext(?))","npc-engine:test","world");var r=s.executeQuery()){
     r.next();check(r.getBoolean(1),"shutdown releases advisory ownership before returning pooled connection");
@@ -226,6 +230,8 @@ public class NpcStoreTest {
    check(number(c,"SELECT count(*) FROM npc_engine.dialogue_flag WHERE player_identity='123'")==2,"earned facts persist through shared worker/journal using engine role");
    var restoredRelationships=ApocBRNpcRelationships.read(c,"test","world");
    check(restoredRelationships.get(relationshipKey).complied()==1,"relationship worker flush persists as engine role");
+   check(restoredRelationships.get(relationshipKey).permissionUntilMs()==0&&restoredRelationships.get(relationshipKey).refused()==0,"attack revokes permission without falsely recording refusal");
+   check(number(c,"SELECT count(*) FROM npc_engine.relationship_event WHERE outcome='ATTACKED'")==1,"attack event persists idempotently under V29");
    check(ApocBRNpcRelationships.read(c,"other","world").isEmpty(),"relationship scope isolation");
    c.commit();
    var relationMemory=new zombie.apocalipse.humans.encounters.HumanRelationships();
@@ -284,6 +290,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
         if '--manager-test' in sys.argv:
             manager=ROOT.parent/'apocalipsebr-manager/manager'
             env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
-            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcEncounterMigrationTest,NpcSurvivalMigrationTest,NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcRetaliationMigrationTest,NpcEncounterMigrationTest,NpcSurvivalMigrationTest,NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
     finally:
         run([BIN/'pg_ctl.exe','-D',work/'data','-m','immediate','-w','stop'],stdout=subprocess.DEVNULL)

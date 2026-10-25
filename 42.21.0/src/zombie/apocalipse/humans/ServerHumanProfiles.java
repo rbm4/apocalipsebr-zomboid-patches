@@ -33,6 +33,11 @@ public final class ServerHumanProfiles {
             (p,b)->new zombie.apocalipse.humans.brain.WalkingModule(b.parameters().getOrDefault("pauseMs",3000L)*1000000L));
         modules.register("engage-zombies",(p,b)->HumanEngagement.Settings.fromMilliseconds(b.parameters()),
             (p,b)->new EngageZombiesModule(HumanEngagement.Settings.fromMilliseconds(b.parameters())));
+        modules.register("retaliate-player",(p,b)->{
+            zombie.apocalipse.humans.encounters.RetaliatePlayerModule.Settings.from(b.parameters());
+            if(p.modules().stream().anyMatch(other->other.moduleId().equals("survival")?other.priority()>=b.priority():
+                !other.moduleId().equals("retaliate-player")&&other.priority()<=b.priority()))throw new IllegalArgumentException("Retaliation must follow survival and precede other modules");
+        },(p,b)->new zombie.apocalipse.humans.encounters.RetaliatePlayerModule(zombie.apocalipse.humans.encounters.RetaliatePlayerModule.Settings.from(b.parameters())));
         modules.register("assigned-task",(p,b)->{
             if(!b.parameters().isEmpty())throw new IllegalArgumentException("Tasks use per-command typed parameters");
             if(p.walkingPatterns().stream().noneMatch(s->s.slot().equals("background")))throw new IllegalArgumentException("Tasks require a movement scope");
@@ -68,7 +73,7 @@ public final class ServerHumanProfiles {
         registry.register(modular("roaming-greeter","none",true));
         registry.register(new HumanProfile("stationary",1,"idle",Map.of(),"","none",true,false));
         registry.register(new HumanProfile("militia-patrol",1,"modules",Map.of(),"","none",false,false,
-            java.util.List.of(new HumanModuleBinding("survival",10,100,Map.of()),new HumanModuleBinding("engage-zombies",100,100,Map.of()),
+            java.util.List.of(new HumanModuleBinding("survival",10,100,Map.of()),new HumanModuleBinding("retaliate-player",11,100,Map.of()),new HumanModuleBinding("engage-zombies",100,100,Map.of()),
                 new HumanModuleBinding("walk",1000,100,Map.of())),8,100,true));
         return registry;
     }

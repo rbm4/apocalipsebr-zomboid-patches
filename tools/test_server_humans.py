@@ -65,6 +65,11 @@ public class SurvivorDesc {
 import zombie.iso.*;
 public class IsoPlayer extends IsoGameCharacter {
  public float useChargeDelta;public boolean aiming;
+ public final zombie.inventory.types.HandWeapon bareHands=new zombie.inventory.types.HandWeapon(-1,"Base.BareHands");
+ public boolean isGodMod(){return god;}public byte getExtraInfoFlags(){return (byte)(god?1:0);}
+ public final Safety safety=new Safety();public Safety getSafety(){return safety;}public boolean factionPvp;
+ public boolean isFactionPvp(){return factionPvp;}public static class Safety{public boolean enabled;public boolean isEnabled(){return enabled;}}
+
  private zombie.inventory.InventoryItem primary,secondary;
  private final zombie.network.fields.hit.AttackVars attackVars=new zombie.network.fields.hit.AttackVars();
  private final java.util.List<zombie.network.fields.hit.HitInfo> hitInfo=new java.util.ArrayList<>();
@@ -152,7 +157,7 @@ public class GameServer {
 """,
     "zombie/network/PacketTypes.java": """package zombie.network;
 public class PacketTypes {public enum PacketType {
- PlayerUpdateReliable,PlayerTimeout,PlayerInjuries,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer,Equip,PlayerHitZombie,PlayerHitSquare,RangedWeaponSound;
+ PlayerUpdateReliable,PlayerTimeout,PlayerInjuries,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer,Equip,PlayerHitZombie,PlayerHitPlayer,PlayerHitSquare,RangedWeaponSound;
  public void doPacket(zombie.core.network.ByteBufferWriter b){} public void send(zombie.core.raknet.UdpConnection c){}
  }}
 """,
@@ -298,6 +303,19 @@ public class FactoryTest {
 }
 
 FILES.update({
+ "zombie/characters/Faction.java":"package zombie.characters;public class Faction {public static boolean same;public static boolean isInSameFaction(IsoPlayer a,IsoPlayer b){return same;}}",
+ "zombie/iso/areas/NonPvpZone.java":"package zombie.iso.areas;public class NonPvpZone {public static boolean blocked;public static boolean isInNonPvpZone(zombie.characters.IsoPlayer p){return blocked;}}",
+ "zombie/network/ServerOptions.java":"package zombie.network;public class ServerOptions {public static final ServerOptions instance=new ServerOptions();public final Flag pvp=new Flag(true),safetySystem=new Flag(false);public static class Flag{public boolean value;Flag(boolean v){value=v;}public boolean getValue(){return value;}}}",
+ "zombie/network/fields/hit/Player.java":"package zombie.network.fields.hit;public class Player {public short id;public zombie.characters.IsoPlayer player;public short getID(){return id;}public zombie.characters.IsoPlayer getPlayer(){return player;}public void set(zombie.characters.IsoPlayer p,boolean critical){player=p;id=p.getOnlineID();}}",
+ "zombie/network/packets/hit/PlayerHitPlayerPacket.java":r"""package zombie.network.packets.hit;
+ public class PlayerHitPlayerPacket implements HitCharacter {
+  protected final PlayerHitZombiePacket.Fall fall=new PlayerHitZombiePacket.Fall();public zombie.characters.IsoPlayer target,actor;public zombie.inventory.types.HandWeapon weapon;
+  public java.util.List<zombie.network.fields.hit.WeaponHit> hits;public static int localProcesses,sends;
+  public void set(zombie.characters.IsoPlayer actor,zombie.inventory.types.HandWeapon weapon,boolean critical,java.util.List<?> tracers,java.util.List<zombie.network.fields.hit.WeaponHit> hits,zombie.characters.IsoPlayer target){this.actor=actor;this.target=target;this.weapon=weapon;this.hits=java.util.List.copyOf(hits);}
+  public void attack(){}
+  public void processClient(Object connection){localProcesses++;for(var hit:hits){target.setHealth(target.getHealth()-.1f);target.getBodyDamage().setOverallBodyHealth(target.getHealth()*100);}attack();}
+  public void sendToClient(zombie.network.PacketTypes.PacketType type,zombie.core.raknet.UdpConnection connection){sends++;}
+ }""",
     "zombie/iso/BuildingDef.java": """package zombie.iso;public class BuildingDef {}
 """,
     "zombie/iso/IsoGridSquare.java": """package zombie.iso;
@@ -571,7 +589,10 @@ FILES.update({
   public abstract int getID();public abstract IsoGridSquare getCurrentSquare();
  }""",
  "zombie/characters/IsoGameCharacter.java": """package zombie.characters;
- public abstract class IsoGameCharacter extends zombie.iso.IsoMovingObject {public abstract boolean isDead();public abstract float getHealth();}""",
+ public abstract class IsoGameCharacter extends zombie.iso.IsoMovingObject {public abstract boolean isDead();public abstract float getHealth();public boolean isOnFloor(){return false;}
+ public float getHitForce(){return .5f;}public void setHitReaction(String value){}
+ public float processHitDamage(zombie.inventory.types.HandWeapon weapon,IsoPlayer owner,float damage,boolean ignore,float range){return damage*.3f;}
+ }""",
  "zombie/characters/IsoZombie.java": """package zombie.characters;
  public class IsoZombie extends IsoGameCharacter {
   public int nativeHits;public String reaction;public boolean floor;

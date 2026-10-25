@@ -1,8 +1,9 @@
 # Player encounters and affiliation memory (42.21.0)
 
-Server only; deploy with manager migration V28 after V27. The first policy orders
+Server only; deploy with manager migrations V28 and V29 after V27. The policy orders
 players to unequip weapons from **both hands**. Refusal warns and denies
-interaction; this feature does not attack players or constrain player movement.
+interaction. Validated player attacks activate the separate
+[retaliation module](npc-player-retaliation.md).
 
 ## Owners
 
@@ -31,7 +32,7 @@ and priorities.
 | Field | Default | Meaning |
 | --- | --- | --- |
 | `challenge_tiles` | 8, capped by seeded perception | Same-floor visible proximity to the NPC |
-| `warning_ms` | 8000 | Deadline after successful warning delivery |
+| `warning_ms` | 16000 | Deadline after successful warning delivery |
 | `compliance_ms` | 1000 | Continuous observed time without held weapons |
 | `cooldown_ms` | 60000 | Shared interval before another encounter |
 | `permission_ms` | 300000 | Interaction permission after compliance |
@@ -66,8 +67,8 @@ Trade request/commit paths also check the existing emergency hook. Pure emergenc
 checks remain available during autonomous suspension; the ordinary passive
 `monitor` hook never runs encounter actions during dialogue.
 
-Responses in this first policy are physical actions. It adds no negotiation graph,
-forced client window, recruitment or player-combat backend. Conversation ranges,
+Responses in this policy are physical actions. It adds no negotiation graph,
+forced client window or recruitment. Conversation ranges,
 wire format and V26/V27 NPC task commands remain unchanged.
 
 ## Persistence and failures
@@ -79,9 +80,11 @@ State stores revision, contact attempts, compliance/refusal counts, permission
 and denial expiries, and next encounter time. Expiries use UTC epoch milliseconds.
 Active targets, claims, sessions, actions and monotonic deadlines are never saved.
 
-Events are `GREETED`, `COMPLIED`, `REFUSED`, `LEFT`, with UUID, source NPC and
+Events are `GREETED`, `COMPLIED`, `REFUSED`, `LEFT`, `ATTACKED`, with UUID, source NPC and
 timestamp. `GREETED` means an accepted contact attempt, not a transaction spanning
 speech and persistence. Cached mutation and detached enqueue happen together.
+`ATTACKED` revokes permission and starts denial without increasing refusal counts.
+The shared affiliation remembers the attack; only the attacked NPC retaliates.
 The worker submits event insertion and its absolute state projection in one
 shared-journal transaction. UUID uniqueness deduplicates history; revisions
 prevent stale projections. Both statements acquire the scope/epoch fence, so an
@@ -97,10 +100,12 @@ pruning: administrators define retention separately from current state.
 
 ## Rollout and checks
 
-Apply V28 with the manager's game-runtime Flyway datasource, deploy the server
+Apply V28 and V29 with the manager's game-runtime Flyway datasource, deploy the server
 patch and restart/reactivate militia actors. V28 clones heads above drafts,
 retaining old history, movement/cleanup areas, cheats, survival, tasks, trade and
 custom dialogue bindings. Active policies do not hot-swap on profile refresh.
+V29 clones encounter profiles again, doubles their warning durations, adds
+retaliation after survival and disables their god mode. The guide is unchanged.
 Standalone profiles are unchanged; explicitly authored encounter profiles can
 use bounded in-memory relationships without SQL persistence.
 

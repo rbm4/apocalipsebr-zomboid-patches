@@ -10,6 +10,11 @@ Incoming zombie pursuit/attacks now have a separate temporary server-authority
 controller. It yields to native weapon hit reactions and keeps persisted NPC
 god-mode protection. See [server zombie interactions](NPC-ZOMBIE-CONTROL.md).
 
+V29 adds [player retaliation](docs/npc-player-retaliation.md) through this same
+weapon phase engine, inventory, movement and native consequence bridge. The
+migration disables god mode on encounter profiles; the guide stays protected.
+Player damage received by NPCs remains deferred.
+
 ## Owners and execution
 
 | Component | Responsibility |

@@ -4,13 +4,14 @@ import zombie.apocalipse.humans.brain.*;
 import zombie.apocalipse.humans.movement.*;
 import zombie.apocalipse.humans.movement.MovementGrid.Tile;
 import zombie.characters.IsoZombie;
+import zombie.characters.IsoGameCharacter;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.DoubleSupplier;
 
 /** One combat route owner, using the same physical engine/prediction as roaming. */
 final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
     private final ServerHuman human;
-    private final IsoZombie target;
+    private final IsoGameCharacter target;
     private long nextRepath;
     private boolean planned,routeActive;
     private float goalX,goalY;
@@ -19,8 +20,8 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
     private boolean retreating;
     private long retreatDeadline;
     private boolean ranged;
-    ServerHumanCombatApproach(ServerHuman human,IsoZombie target){this(human,target,()->ThreadLocalRandom.current().nextDouble());}
-    ServerHumanCombatApproach(ServerHuman human,IsoZombie target,DoubleSupplier random){this.human=human;this.target=target;tactics=new HumanCombatTactics(random);}
+    ServerHumanCombatApproach(ServerHuman human,IsoGameCharacter target){this(human,target,()->ThreadLocalRandom.current().nextDouble());}
+    ServerHumanCombatApproach(ServerHuman human,IsoGameCharacter target,DoubleSupplier random){this.human=human;this.target=target;tactics=new HumanCombatTactics(random);}
     double distance(){return Math.hypot(target.getX()-human.player.getX(),target.getY()-human.player.getY());}
     boolean clear(float x,float y,boolean ranged){
         return ServerHumanAttackLine.clear(human,target,x,y,ranged);
@@ -40,7 +41,7 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
         double nearest=human.perception.awareness().contacts().stream()
             .filter(c->c.identity().kind()==HumanSenses.Kind.ZOMBIE&&now>=c.lastSeenNanos()&&now-c.lastSeenNanos()<=2_000_000_000L)
             // A melee opponent inside weapon reach is expected; extra attackers take priority.
-            .filter(c->weapon.ranged()||c.identity().instanceId()!=target.getID()||c.identity().onlineId()!=target.getOnlineID()
+            .filter(c->weapon.ranged()||!(target instanceof IsoZombie z)||c.identity().instanceId()!=z.getID()||c.identity().onlineId()!=z.getOnlineID()
                 ||distance()<weapon.reach()*.55)
             .mapToDouble(c->Math.hypot(c.x()-human.player.getX(),c.y()-human.player.getY())).min().orElse(Double.POSITIVE_INFINITY);
         var order=tactics.update(weapon,distance(),lane,recovering,nearest,now);

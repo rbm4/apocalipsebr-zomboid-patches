@@ -26,6 +26,10 @@ final class ServerHuman {
     final ServerHumanCombat combat;
     final ServerHumanInventory inventory;
     boolean aiming;
+    IsoPlayer lastPlayerAttacker;
+    byte lastPlayerShot;
+    int lastPlayerWeapon;
+    long lastPlayerAttackAt;
     final java.util.Map<UdpConnection,ServerHumanTransport.Equipment> equipmentPresentation=new IdentityHashMap<>();
     final zombie.apocalipse.humans.state.HumanStateStore state;
     final ServerHumanPhysiology physiology;
@@ -90,6 +94,7 @@ final class ServerHuman {
         this.actuator = new ServerHumanActuator(this);
         this.physiology = new ServerHumanPhysiology(this);
         ServerHumanEncounters.bind(this);
+        ServerHumanRetaliation.bind(this);
     }
 
     boolean isRelevant(UdpConnection connection) {

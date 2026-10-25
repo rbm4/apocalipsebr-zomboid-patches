@@ -1,13 +1,13 @@
 package zombie.apocalipse.humans;
 
-import zombie.characters.IsoZombie;
+import zombie.characters.IsoGameCharacter;
 import zombie.iso.LosUtil;
 import zombie.pathfind.PolygonalMap2;
 
 /** Simulation-thread weapon obstruction queries, shared by placement, windup and hit commitment. */
 final class ServerHumanAttackLine {
     private ServerHumanAttackLine(){ }
-    static boolean clear(ServerHuman human,IsoZombie target,float x,float y,boolean ranged){
+    static boolean clear(ServerHuman human,IsoGameCharacter target,float x,float y,boolean ranged){
         int z=human.player.getZi();
         if(!Float.isFinite(x)||!Float.isFinite(y)||target.getZi()!=z||target.getCurrentSquare()==null)return false;
         if(ranged){
