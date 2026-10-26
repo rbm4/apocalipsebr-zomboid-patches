@@ -54,6 +54,11 @@ the main thread. Native shared caches/pools, object reuse and silent lost effect
 remain risks beyond exceptions. See [the inventory](../reports/2026-10-26-npc-async-snapshot-map.md)
 for the planned long-term ownership boundaries.
 
+The [collision scratch fix](../issues/2026-10-26-npc-collision-scratch-race.md)
+isolates `LineClearCollideMain` and its borrowed result vector per caller thread
+after a native point-pool race stopped the worker. It does not isolate live
+world reads, vehicle cache rebuilds or the separate Clipper collision subsystem.
+
 ## Failure, diagnostics and shutdown
 
 An exception escaping the worker tick stops that worker, logs a full stack trace

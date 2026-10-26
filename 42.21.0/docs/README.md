@@ -101,6 +101,7 @@ snapshot contract; the two features must not be treated as interchangeable.
 
 | Date | Document |
 | --- | --- |
+| 2026-10-26 | [NPC collision scratch race and per-thread helpers](issues/2026-10-26-npc-collision-scratch-race.md) |
 | 2026-10-24 | [NPC corpse grapple compatibility assessment](issues/2026-10-24-npc-corpse-grapple-compatibility.md) |
 | 2026-10-19 | [PostgreSQL character reconstruction diagnostics (42.21.0)](issues/2026-10-19-player-reconstruction-diagnostics.md) |
 | 2026-10-17 | [Player capture failures and replay rejection (42.21.0 server)](issues/2026-10-17-player-capture-diagnostics.md) |

@@ -20,6 +20,8 @@ import zombie.vehicles.BaseVehicle;
 
 final class LineClearCollideMain {
     final Vector2 perp = new Vector2();
+    // Borrowed result, valid until the next getCollidepoint call on this helper.
+    private final Vector2 collidePoint = new Vector2();
     final ArrayList<Point> pts = new ArrayList<>();
     final VehicleRect sweepAabb = new VehicleRect();
     final VehicleRect vehicleAabb = new VehicleRect();
@@ -696,7 +698,7 @@ final class LineClearCollideMain {
             Point pt = this.pts.get(i);
             IsoGridSquare square = IsoWorld.instance.currentCell.getGridSquare(pt.x, pt.y, z);
             if (checkCost && square != null && SquareUpdateTask.getCost(square) > 0) {
-                return PolygonalMap2.temp.set(pt.x + 0.5F, pt.y + 0.5F);
+                return this.collidePoint.set(pt.x + 0.5F, pt.y + 0.5F);
             }
 
             if (square != null
@@ -726,7 +728,7 @@ final class LineClearCollideMain {
                             LineDrawer.addLine(pt.x - w, pt.y - n, z, pt.x + e, pt.y + 1.0F + s, z, 1.0F, 0.0F, 0.0F, null, false);
                         }
 
-                        return PolygonalMap2.temp.set(pt.x + (fromX - toX < 0.0F ? -0.5F : 0.5F), pt.y + 0.5F);
+                        return this.collidePoint.set(pt.x + (fromX - toX < 0.0F ? -0.5F : 0.5F), pt.y + 0.5F);
                     }
                 }
 
@@ -752,7 +754,7 @@ final class LineClearCollideMain {
                             LineDrawer.addLine(pt.x - wx, pt.y - nx, z, pt.x + 1.0F + ex, pt.y + sx, z, 1.0F, 0.0F, 0.0F, null, false);
                         }
 
-                        return PolygonalMap2.temp.set(pt.x + 0.5F, pt.y + (fromY - toY < 0.0F ? -0.5F : 0.5F));
+                        return this.collidePoint.set(pt.x + 0.5F, pt.y + (fromY - toY < 0.0F ? -0.5F : 0.5F));
                     }
                 }
             } else {
@@ -777,12 +779,12 @@ final class LineClearCollideMain {
                         LineDrawer.addLine(pt.x - wxx, pt.y - nxx, z, pt.x + 1.0F + exx, pt.y + 1.0F + sxx, z, 1.0F, 0.0F, 0.0F, null, false);
                     }
 
-                    return PolygonalMap2.temp.set(pt.x + 0.5F, pt.y + 0.5F);
+                    return this.collidePoint.set(pt.x + 0.5F, pt.y + 0.5F);
                 }
             }
         }
 
-        return PolygonalMap2.temp.set(toX, toY);
+        return this.collidePoint.set(toX, toY);
     }
 
     boolean polyVehicleIntersect(VehiclePoly poly, boolean render) {
