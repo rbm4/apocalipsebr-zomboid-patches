@@ -29,6 +29,10 @@ A modern version directory generally contains:
 <version>/
   decompiled/zombie/   Unmodified decompiled source for that exact game build
   src/zombie/          Complete Java source files that override vanilla classes
+  docs/README.md      Version documentation index, grouped by category and date
+  docs/features/      Maintained feature, architecture and configuration guides
+  docs/reports/       Investigations, measurements, reviews and implementation maps
+  docs/issues/        Diagnoses, known limitations, fixes and reproduction records
   patch*.ps1           Windows compilation and deployment scripts
   patch*.sh            Linux compilation and deployment scripts where available
 ```
@@ -45,7 +49,51 @@ Older version directories may use several focused patch scripts or may not conta
 6. Do not rely on memory, online API documentation, or another Project Zomboid build when the target decompiled source can answer the question.
 7. Decompiled code may contain synthetic names, awkward control flow, or decompiler artifacts. Avoid cleanup-only rewrites because they make compatibility review harder and can change behavior.
 
-If the user does not specify a version, inspect the available version directories and ask which build is targeted. Default to the newest version only when the user explicitly permits that choice.
+Use the version explicitly requested by the user or implicitly identified by the
+task's paths, active files, logs or existing patch context. If no version is
+identified, select the latest available **server** version automatically: compare
+unsuffixed numeric version directories numerically, excluding `-client` and other
+suffixes. At this update that default is **42.21.0**; discover directories again
+instead of treating this number as permanent. Do not ask the user to select a
+version merely because they omitted it. Explicit client work still targets its
+separate client directory and exact baseline.
+
+## Version documentation and index
+
+All new version-specific documentation belongs under `<version>/docs/`, including
+feature architecture, configuration, investigations, telemetry explanations and
+issue resolutions. For 42.21.0 start with [the documentation index](42.21.0/docs/README.md).
+Do not create new guide copies in the version root or a nested `docs/docs/`.
+
+- `features/`: maintained behavior, ownership contracts, configuration, schema
+  references and companion reference SQL. Explain the implemented behavior and
+  distinguish future design from current guarantees.
+- `reports/`: dated source investigations, performance captures, reviews,
+  comparisons and implementation proposals. Preserve their evidence and historical
+  scope; a proposal is not proof that a feature has shipped.
+- `issues/`: reproductions, failure diagnosis, operational troubleshooting and
+  resolutions. State whether the issue remains open, mitigated or resolved.
+
+Name documents `YYYY-MM-DD-descriptive-topic.md` using the document's creation or
+report date, with lowercase hyphen-separated topics. Companion documentation SQL
+uses the same dated naming convention and category. Actual executable migrations,
+source files and build tools retain their existing project-specific locations
+and naming contracts; do not rename runtime assets just to match documentation.
+`docs/README.md` is the undated index exception. Keep a maintained guide's original
+filename date when editing it and record material later verification dates in
+its content; create a separate dated report for a new investigation. For migrated
+documents use the original Git addition date when available, and disclose any
+fallback rather than inventing historical dates.
+
+Each version's `docs/README.md` must link every version document and SQL companion,
+group entries into features/reports/issues and sort newest date first within each
+category. Include the date and meaningful title. Add links from relevant feature
+guides to their reports/issues and back from reports/issues to the owning feature
+when that relationship is known. Creating, moving, renaming or retiring a document
+must update the index and all affected references in the same change. Preserve
+relative source, SQL, cross-version and external-repository links when moving
+files. Validate local link targets and index coverage; documentation-only changes
+do not require Java compilation or gameplay fixtures.
 
 ## Creating a new Java monkey patch
 
@@ -329,7 +377,7 @@ Use this map as a starting point, then inspect the script's production source li
 | `test_player_packet_algorithms.py` | Inventory update indexing, player spatial queries, sound stress indexing, zombie packet flags/contracts, and extracted expiry/path-threshold logic. |
 | `test_zombie_auth_algorithms.py` | Zombie ownership indexes, authorization coverage and cadence, including disconnect and reassignment behavior. |
 | `test_packet_ownership_guard.py` | Packet receive direction, player ownership and online-ID sentinel validation, spoof rejection, and production player-stat deserialization. |
-| `test_server_humans.py` | Human factory lifecycle, identity retention across relevance/reconnects, observation/actuation, idle/emote packet fields and the production chat bridge. See `42.21.0/SERVER-HUMANS.md`. |
+| `test_server_humans.py` | Human factory lifecycle, identity retention across relevance/reconnects, observation/actuation, idle/emote packet fields and the production chat bridge. See `42.21.0/docs/features/2026-10-19-server-humans.md`. |
 | `test_human_brain.py` | Production greeting state machine and action execution: selection, transitions, timing, terminal outcomes, cancellation, incarnation changes and repeat suppression. |
 | `test_human_roaming.py` | Indoor route planner/controller, bounded search, collision/occupancy/unload checks, building/floor confinement, movement speed and packet replication. Shares the human lifecycle fixture. |
 | `test_human_trading.py` | Production native NPC trade adapter, mixed-item destruction, money-only receipt capture, ownership/consent, duplicates, cancellation and persistence refusal. |
@@ -362,7 +410,10 @@ Report the scripts run, their outcomes, the target-JAR compilation result, and r
 - `Analyze-PZGameProfiler.ps1`: analyzes profiler CSV recordings and writes reports. The folder also contains `Analyze-PZGameProfiler-Fixed.ps1` and `script.ps1`; inspect them before choosing an alternate implementation rather than assuming they are interchangeable.
 - `Sample-PZClientStutter.ps1`: samples a running client process, with options for thread stacks, GPU counters and profiler analysis. Inspect its parameters and output locations before collecting diagnostics; it is separate from the isolated Java fixtures and server telemetry.
 
-For server metric definitions and optimization status, use the target version's `TELEMETRY.md` and related investigation/follow-up reports alongside the source and tests. Keep those documents current when adding counters, changing timing boundaries or implementing a previously documented proposal.
+For server metric definitions and optimization status, find the maintained
+telemetry feature guide and related reports through the target version's
+`docs/README.md`. Keep those documents and their index current when adding
+counters, changing timing boundaries or implementing a previously documented proposal.
 
 ## Safety and compatibility constraints
 
@@ -392,7 +443,7 @@ For each implemented patch, report:
 ## NPC engine object-oriented architecture
 
 All NPC bot engine features, including extensions to existing behavior, must
-follow [the NPC engine architecture contract](42.21.0/NPC-ENGINE-ARCHITECTURE.md).
+follow [the NPC engine architecture contract](42.21.0/docs/features/2026-10-20-npc-engine-architecture.md).
 Keep lifecycle/composition, behavioral policy, content providers, immutable
 commands, execution state, engine capabilities and transport/authority separate.
 Use composition and injected ports for role-specific behavior. Do not add NPC
@@ -406,12 +457,93 @@ build. This rule applies to all NPC features, not only speech.
 
 
 NPC profile/lifecycle changes must also follow
-[the profile and persistence-boundary contract](42.21.0/NPC-PROFILES-LIFECYCLE.md).
+[the profile and persistence-boundary contract](42.21.0/docs/features/2026-10-20-npc-profiles-lifecycle.md).
 Select behavior by registered `profileId`, never logical actor key or display
 name. Register immutable versioned profile data separately from allowlisted
 factories; create fresh behavior/controller state per NPC. Shared interaction
 services use the activity controller, not guide-specific states. The logical
 lifecycle owns activation independently of presentation IDs. PostgreSQL intake
-must eventually marshal validated immutable desired snapshots onto the simulation
-thread; do not persist native IDs, executors, connections or monotonic timers.
-The current refactor intentionally has no profile persistence or database writes.
+must publish validated detached configuration/state to the owning NPC runtime;
+do not let database workers construct live actors or mutate world objects.
+Profile/module configuration, NPC state and related semantic memories now have
+implemented persistence boundaries; consult the indexed NPC persistence guide
+instead of assuming they are absent. Persist detached logical facts, never native
+IDs, live executors, connections or monotonic timers.
+
+### Component and subsystem map
+
+The engine lives under `src/zombie/apocalipse/humans/` in the selected version.
+Use the indexed architecture and subsystem guides before extending a capability.
+Keep policy, execution, native authority and persistence as separate collaborators.
+
+| Layer / subsystem | Main components | Responsibility and extension boundary |
+| --- | --- | --- |
+| Composition and logical lifecycle | `ServerHumanFactory`, `HumanLifecycle`, `ServerHumanProfiles`, `ServerHuman` | Register logical actors, bind immutable profiles, assemble fresh per-actor services, activate/remove/respawn and coordinate checkpoints. Logical identity outlives native presentation IDs. |
+| Profiles and registration | `profiles/`, profile/module registries, walking-pattern registry | Validate immutable versioned data separately from allowlisted factories. Select policy by `profileId`, never actor key/name. |
+| Simulation scheduling | `ServerHumanSimulationWorker`, factory `update/tick` | Own the independent NPC clock, startup mode, failure stop and shutdown; distinguish it from the vanilla world loop and persistence workers. |
+| Behavior and arbitration | `brain/HumanBehavior`, `HumanModuleRuntime`, modules, `HumanActivityController` | Select objectives/priorities and arbitrate autonomous behavior versus exclusive dialogue/trade. Modules own policy; controllers own interruption and leases. |
+| Actions and executions | `HumanAction`, `HumanActionExecution` | Reusable immutable action descriptions and fresh mutable execution progress, deadlines, terminal results and cancellation. Reuse bounded `Sequence`, `Wait`, `Say` and supported parallel lanes. |
+| Perception and territory | `ServerHumanPerception`, `HumanContactMemory`, `HumanSenses`, `HumanObservation`, `ServerHumanTerritory` | Bounded discovery/visibility, lifetime-qualified contacts and detached observations. Keep sensing independent of hostility and target selection. |
+| Walking, navigation and physical movement | `ServerHumanWalking`, `walking/`, route planners, `ServerHumanMovement`, `MovementGrid`, `MovementModifiers` | Patterns/objectives choose destinations; bounded planners propose routes; physical execution owns movement/collision and presentation. Pure condition resolution consumes explicit inputs. |
+| Obstacle traversal | `traversal/`, `HumanTraversal`, `TraversalExecution`, `TraversalWorld`, `CrossingReservations` | Classify edges, arbitrate shared crossing/landing leases and own native interactions/commitment. Native obstacle references never become worker-safe just because a DTO holds them. |
+| Physical state and survival | `state/`, `HumanStateStore`, `HumanStateReducer`, `HumanMutation`, `ServerHumanPhysiology`, `survival/` | Immutable health/needs snapshots, serialized authoritative reductions and native stat projection; survival owns fight/flight policy and retreat planning. |
+| Engagement, tactics and weapons | `HumanEngagement`, engagement modules, `HumanCombatTactics`, `HumanCombat`, `HumanWeaponCombat`, combat/inventory/native adapters | Separate target policy, positioning, execution leases, phase timing, equipment and one-shot hit commits. Preserve cancellation and authoritative target/range/PvP revalidation. |
+| Player encounters and retaliation | `encounters/`, `ServerHumanEncounters`, `ServerHumanRetaliation`, `ServerHumanPlayerAttacks`, `ServerHumanPlayerDamage` | Account/affiliation memory, authenticated aggression intake, PvP authorization and native damage import. Keep incoming vulnerability distinct from outgoing retaliation eligibility. |
+| Dialogue, trading and assigned tasks | `dialogue/`, `ServerHumanDialogue`, `ServerHumanTrading`, `tasks/`, task/corpse ports and adapters | Own authenticated sessions, interaction exclusivity, task intent and native item/corpse execution. Shared services depend on the generic activity controller. |
+| Reactive speech and content | `speech/`, `ServerHumanSpeech`, announcement ports/providers | Detached speech context/decisions, immutable cached catalogs, bounded repetition memory and acknowledged delivery. Speech does not own movement or weapon timing; content providers do not select actors or send packets. |
+| Death, loot and respawn | `death/`, `HumanLifecycle`, `ServerHumanDeaths`, reputation port | One death transition, native corpse/loot effects and logical respawn deadlines; fresh runtime/state ownership for each incarnation. |
+| Native capabilities and transport | `HumanActuator`, `ServerHumanActuator`, `ServerHumanTransport`, packet adapters | Execute mechanics and replicate validated results. Keep actor-specific content and domain policy out of generic actuators and packet builders. |
+| Zombie interaction authority | `zombie.apocalipse.zombies`, `ZombieVictimPort`, `ServerHumanZombieVictims`, corpse-drag authority | Coordinate server zombie control and human-victim/native corpse interactions; respect reaction preemption and authority ownership. |
+| Persistence | `zombie.savefile.ApocBRNpcStore` and NPC/profile/relationship/dialogue/speech/mortality persistence adapters | Capture detached facts, stage bounded journal/JDBC work and publish validated results. Database workers do not own live-world mutation or NPC simulation timing. |
+
+### NPC simulation worker versus world simulation
+
+The default 42.21.0 mode is asynchronous: one daemon
+`ApocBR-NPC-Simulation` worker targets 10 Hz independently of vanilla world ticks.
+`-Dapocbr.npc.async=false` selects synchronous execution at JVM startup; changing
+the property later is not a supported hot switch. `GameServer` still calls the
+factory entry point to bootstrap configuration, install the Lua API and attach
+the zombie victim adapter. After successful configuration, the worker executes
+the existing NPC simulation; it parks between deadlines, never overlaps its own
+ticks and does not queue missed ticks. Failure stops it with diagnostics rather
+than silently restarting or falling back to sync. `ServerMap.QueuedQuit()` joins
+it before world/pathfinding/network teardown.
+
+This scheduling change deliberately separated the bot clock from the main world
+loop and required explicit server-thread/NPC-worker access guards plus serialized
+factory maps and state reductions. It did **not** convert every world read, native
+mutation, Lua callback or packet path into a thread-safe operation. Factory-managed
+state stores accept the registered server thread and their dedicated worker;
+standalone stores retain their construction-thread owner. Factory locks can make
+server callbacks wait for an NPC tick, and returning an actor reference from a
+guarded lookup does not lock that actor for the rest of the callback.
+
+New features and changes must account for asynchronous execution from the start:
+
+- Identify every entry thread and mutable owner, including server packet/Lua
+  callbacks, NPC ticks, zombie interaction callbacks and persistence workers.
+  A class, method name, record, getter or `final` reference is not evidence of
+  thread safety. Check nested collections, native pools/caches and object reuse.
+- Prefer detached immutable observations/configuration and immutable commands
+  with explicit results across ownership boundaries. The documented snapshot
+  design remains a migration plan; do not claim it already isolates the worker.
+- Do not extend the experiment by casually adding live global reads or mutations
+  to worker policy. Use the subsystem's owning adapter, establish its thread
+  contract and snapshot/marshal or explicitly synchronize shared state as needed.
+  Existing unsafe accesses are technical debt, not a precedent for new features.
+- Preserve incarnation/control/revision validation, exactly-once effects,
+  exclusive interaction ownership and cancellation when work crosses threads.
+  Do not share per-execution mutable state between NPCs or concurrent callers.
+- Keep work/queues bounded. Do not create a thread per NPC/action, block the world
+  tick on worker results, hold a factory monitor while joining a worker, or hide
+  lost effects behind swallowed exceptions. Audit lock ordering before adding locks.
+- Verify both startup modes, authorized versus unrelated callers, concurrent
+  callbacks, stale/reused entities, failure/cancellation and shutdown. Use
+  production-code fixtures plus exact-JAR compilation; runtime streaming, Lua,
+  network and slow-tick tests are still required for concurrency claims.
+
+Document each new capability's thread ownership and cross-thread inputs/results
+in its dated feature guide, update `docs/README.md`, and link any measured report
+or unresolved issue. Use the NPC worker guide and access inventory from the index
+as the starting points for threading work. Do not confuse this live-world NPC
+worker with the separate immutable asynchronous zombie-packet sending pipeline.

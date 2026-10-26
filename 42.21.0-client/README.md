@@ -1,7 +1,7 @@
 # 42.21.0 client: world map polygon buffer offsets
 
 An independent opt-in zombie locomotion sampler is documented in
-[client zombie capture](../42.21.0/CLIENT-ZOMBIE-SAMPLER.md). Its builder produces
+[client zombie capture](../42.21.0/docs/features/2026-10-23-client-zombie-sampler.md). Its builder produces
 a separate diagnostic archive from exact vanilla sources; this world-map script
 continues to install only the geometry patch.
 
