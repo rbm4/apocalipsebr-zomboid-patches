@@ -37,6 +37,7 @@ and ability is not the intended hierarchy.
 | Player encounters and relationships | `PlayerEncounterModule`, `EncounterPort`, `HumanRelationships`, `ApocBRNpcRelationships` | Profile-bound challenges, detached player facts, shared account/affiliation outcomes and worker/journal persistence. See [player encounters](docs/npc-player-encounters.md). |
 | Player retaliation | `RetaliatePlayerModule`, `RetaliationPort`, `ServerHumanRetaliation`, `ServerHumanPlayerAttacks` | Authenticated attack intake, transient aggressor identity and cancellation, shared weapon execution and native PvP damage. See [retaliation](docs/npc-player-retaliation.md). |
 | Incoming player damage | `ServerHumanPlayerDamage`, `ServerHumanPhysiology`, `HumanStateStore` | Native body/armor rolls after validated packet intake, immediate logical health mutation, reconstructed hit presentation and existing death/checkpoint ownership. |
+| Death, loot and respawn | `HumanLifecycle`, `HumanDeathPolicy`, `ServerHumanDeaths`, `HumanReputationPort`, `ApocBRNpcMortality` | Persisted deadlines outside active AI, native corpse loot, killer relationship hook and fresh-incarnation activation. See [death and respawn](docs/npc-death-respawn-loot.md). |
 
 Brains depend on ports and action data, not on concrete event controllers,
 database clients, networking or global NPC registries. Actuators must not choose

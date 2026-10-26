@@ -61,6 +61,7 @@ public class NpcStoreTest {
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V27__Npc_Corpse_Cleanup.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V28__Npc_Player_Encounters.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V29__Npc_Retaliation_And_Longer_Warnings.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V30__Npc_Death_Respawn_And_Loot.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
@@ -191,11 +192,26 @@ public class NpcStoreTest {
     s.execute("INSERT INTO npc_engine.dialogue_flag(server_key,world,npc_key,dialogue_id,identity_kind,player_identity,flag) VALUES('test','world','guide','guide','steam','123','met_guide')");c.commit();
    }
    // Start actual worker: adopts existing actor, never overwrites maintained identity/config.
+   try(var s=c.createStatement()){
+    s.execute("INSERT INTO npc_engine.respawn_profile VALUES('test-respawn','Test',true,1200000)");
+    s.execute("INSERT INTO npc_engine.loot_table(loot_table_id,display_name) VALUES('test-loot','Test')");
+    s.execute("INSERT INTO npc_engine.loot_entry VALUES('test-loot','RARE','Base.Bandage',3,1,2)");c.commit();
+   }
+   var deathPolicy=ApocBRNpcMortality.read(c,"test-respawn","test-loot");
+   check(deathPolicy.enabled()&&deathPolicy.delayMs()==1200000&&deathPolicy.loot().entries().size()==1,"engine role hydrates typed respawn and loot configuration");
+   var deadDefinition=new ServerHumanDefinition("zzz-dead","DeadGuard","Dead guard",101,201,0,IsoDirections.E,false,"Tourist","militia-patrol",deathPolicy);
+   var deadPhysical=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Kill());
+   var deathState=new zombie.apocalipse.humans.death.HumanDeathState(1000,1201000,"12345678-1234-1234-1234-123456789abc");
+   apply(c,ApocBRNpcStore.statements("test","world",2,new ApocBRNpcStore.State(deadDefinition,HumanLifecycle.State.DEAD,3,1,110,210,0,5,false,deadPhysical,deathState)));
    ApocBRPostgresConnector.url=url;System.setProperty("apocbr.npc.persistence.enabled","true");
    var store=ApocBRNpcStore.start("test","world",d);ApocBRNpcStore.Loaded loaded=null;
    long deadline=System.nanoTime()+10000000000L;
    while(loaded==null&&System.nanoTime()<deadline){Thread.sleep(20);loaded=store.takeLoaded();}
-   check(loaded!=null&&loaded.instances().size()==1,"worker hydrates logical instances");
+   check(loaded!=null&&loaded.instances().size()==2,"worker hydrates active and dead logical instances");
+   var deadRestored=loaded.instances().stream().filter(i->i.state().definition().key().equals("zzz-dead")).findFirst().orElseThrow();
+   check(deadRestored.activate()&&deadRestored.state().lifecycle()==HumanLifecycle.State.DEAD,"restart keeps dead NPC outside active simulation but eligible for scheduler");
+   check(deadRestored.state().death().equals(deathState)&&deadRestored.state().physiology().dead(),"death ID, deadline and zero health survive restart exactly");
+   check(deadRestored.state().definition().deathPolicy().equals(deathPolicy)&&deadRestored.state().definition().x()==101,"restart retains configured home and per-NPC loot/respawn policy");
    check(loaded.instances().getFirst().state().physiology().vitals().hunger()>.29f,"worker hydrates physical state from PostgreSQL");
    check(zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current().profiles().containsKey("lobby-guide"),"dialogue cache is hot before NPC startup snapshot becomes visible");
    check(zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.current().labels().containsKey("IGUI_ApocExtractionMapUtils_GuideHello"),"labels and graphs publish together before actor activation");
@@ -221,6 +237,7 @@ public class NpcStoreTest {
    var relationshipKey=new zombie.apocalipse.humans.encounters.HumanRelationships.Key("militia","steam","123");
    check(store.relationships().record(relationshipKey,"guard",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.COMPLIED,100000,militia.encounter()),"relationship outcome captured without request-thread SQL");
    check(store.relationships().record(relationshipKey,"guard",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.ATTACKED,100001,militia.encounter()),"validated attack outcome captured separately from refusal");
+   check(store.relationships().record(relationshipKey,"guard",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.KILLED_NPC,100002,militia.encounter()),"kill reputation hook captured without request-thread SQL");
    ApocBRNpcStore.shutdown();check(!ApocBRPersistence.queue.isEmpty(),"shutdown stages final detached checkpoint");
    try(var other=DriverManager.getConnection(url,"pz_server_01","");var s=ApocBRNpcStore.statement(other,"SELECT pg_try_advisory_lock(hashtext(?),hashtext(?))","npc-engine:test","world");var r=s.executeQuery()){
     r.next();check(r.getBoolean(1),"shutdown releases advisory ownership before returning pooled connection");
@@ -232,6 +249,7 @@ public class NpcStoreTest {
    check(restoredRelationships.get(relationshipKey).complied()==1,"relationship worker flush persists as engine role");
    check(restoredRelationships.get(relationshipKey).permissionUntilMs()==0&&restoredRelationships.get(relationshipKey).refused()==0,"attack revokes permission without falsely recording refusal");
    check(number(c,"SELECT count(*) FROM npc_engine.relationship_event WHERE outcome='ATTACKED'")==1,"attack event persists idempotently under V29");
+   check(number(c,"SELECT count(*) FROM npc_engine.relationship_event WHERE outcome='KILLED_NPC'")==1,"kill relationship mutation survives worker shutdown and journal staging");
    check(ApocBRNpcRelationships.read(c,"other","world").isEmpty(),"relationship scope isolation");
    c.commit();
    var relationMemory=new zombie.apocalipse.humans.encounters.HumanRelationships();
@@ -249,8 +267,8 @@ public class NpcStoreTest {
    check(number(c,"SELECT count(*) FROM npc_engine.relationship_event WHERE player_identity='replay-account'")==2,"old ownership epoch cannot append relationship history");
    check(number(c,"SELECT refused FROM npc_engine.player_relationship WHERE player_identity='replay-account'")==0,"old ownership epoch cannot mutate relationships");
    check(ApocBRNpcRelationships.read(c,"test","world").get(replayKey).permits(102000),"account permission survives detached reload across NPCs");c.commit();
-   check(number(c,"SELECT x FROM npc_engine.runtime_state")==150,"coalescing retains newest mutation");
-   check(number(c,"SELECT round(body_health::numeric*100) FROM npc_engine.runtime_state")==60,"worker and journal retain newest physical checkpoint");
+   check(number(c,"SELECT x FROM npc_engine.runtime_state WHERE npc_key='guide'")==150,"coalescing retains newest mutation");
+   check(number(c,"SELECT round(body_health::numeric*100) FROM npc_engine.runtime_state WHERE npc_key='guide'")==60,"worker and journal retain newest physical checkpoint");
    apply(c,ApocBRNpcStore.statements("test","world",3,state(d,6,150,HumanLifecycle.State.DEAD,true)));
    check(number(c,"SELECT count(*) FROM npc_engine.runtime_state WHERE retired AND lifecycle='DEAD'")==1,"terminal and administrative state persisted");
    try(var s=c.createStatement()){s.execute("CREATE TABLE npc_engine.permission_probe(id bigserial PRIMARY KEY)");c.commit();}
@@ -278,6 +296,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     sources += [SRC/'savefile/ApocBRNpcStore.java',SRC/'savefile/ApocBRNpcDialogues.java',SRC/'apocalipse/humans/dialogue/HumanDialogueCatalog.java',SRC/'apocalipse/humans/ServerHumanDefinition.java',SRC/'apocalipse/humans/HumanLifecycle.java',SRC/'apocalipse/humans/profiles/HumanProfile.java',SRC/'apocalipse/humans/profiles/HumanModuleBinding.java',SRC/'apocalipse/humans/profiles/HumanCheats.java',SRC/'apocalipse/humans/survival/SurvivalSettings.java']
     sources += [SRC/'apocalipse/humans/tasks/HumanTaskCommand.java',SRC/'savefile/ApocBRNpcRelationships.java']
     sources += [SRC/'apocalipse/humans/encounters/EncounterPolicy.java',SRC/'apocalipse/humans/encounters/HumanRelationships.java']
+    sources += [SRC/'savefile/ApocBRNpcMortality.java'] + list((SRC/'apocalipse/humans/death').glob('*.java'))
     sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java')) + list((SRC/'apocalipse/humans/walking').glob('*.java'))
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
@@ -290,6 +309,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
         if '--manager-test' in sys.argv:
             manager=ROOT.parent/'apocalipsebr-manager/manager'
             env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
-            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcRetaliationMigrationTest,NpcEncounterMigrationTest,NpcSurvivalMigrationTest,NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcMortalityMigrationTest,NpcRetaliationMigrationTest,NpcEncounterMigrationTest,NpcSurvivalMigrationTest,NpcWalkingMigrationTest,NpcCrudIntegrationTest,NpcTradePolicyMigrationTest,NpcPhysicalStateMigrationTest,NpcEngagementProfileMigrationTest,NpcServiceTest,NpcTemplateTest,NpcControllerTest','test'],cwd=manager,env=env)
     finally:
         run([BIN/'pg_ctl.exe','-D',work/'data','-m','immediate','-w','stop'],stdout=subprocess.DEVNULL)

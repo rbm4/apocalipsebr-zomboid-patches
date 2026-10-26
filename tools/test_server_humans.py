@@ -12,7 +12,8 @@ FILES = {
     "zombie/savefile/ApocBRNpcStore.java": """package zombie.savefile;
 import java.util.*;import zombie.apocalipse.humans.*;import zombie.apocalipse.humans.profiles.*;
 public final class ApocBRNpcStore {
- public record State(ServerHumanDefinition definition,HumanLifecycle.State lifecycle,int activations,int profileRevision,float x,float y,int z,long revision,boolean retired,zombie.apocalipse.humans.state.HumanState physiology){
+ public record State(ServerHumanDefinition definition,HumanLifecycle.State lifecycle,int activations,int profileRevision,float x,float y,int z,long revision,boolean retired,zombie.apocalipse.humans.state.HumanState physiology,zombie.apocalipse.humans.death.HumanDeathState death){
+ public State(ServerHumanDefinition d,HumanLifecycle.State l,int a,int p,float x,float y,int z,long r,boolean t,zombie.apocalipse.humans.state.HumanState h){this(d,l,a,p,x,y,z,r,t,h,zombie.apocalipse.humans.death.HumanDeathState.NONE);}
  public State(ServerHumanDefinition d,HumanLifecycle.State l,int a,int p,float x,float y,int z,long r,boolean t){this(d,l,a,p,x,y,z,r,t,zombie.apocalipse.humans.state.HumanState.INITIAL);}}
 
  public record Restored(State state,boolean activate){}
@@ -292,8 +293,9 @@ public class FactoryTest {
    }else check(testVictim==null,"persisted concealment excludes NPC from prey");
    f.remove(name);check(victims.resolve(testId)==null,"deactivated victim immediately disappears");
   }
+  var idCursor=ServerHumanFactory.class.getDeclaredField("nextId");idCursor.setAccessible(true);idCursor.setInt(f,ServerHumanFactory.LAST_ID-3);
   int count=0;while(true){try{String key="n"+count;f.spawn(def(key,1));f.remove(key);count++;}catch(IllegalStateException expected){break;}}
-  check(count>0&&count<64,"ID budget exhausted safely without touching live-player slots");
+  check(count==4,"expanded native ID budget exhausts safely without recycling or touching live-player slots");
   GameServer.server=false;rejects(()->f.remove("missing"),"client cannot operate factory");
   check(!ServerHumanFactory.handleDataRequest(id,a),"client data request bypasses server factory");
   System.out.println("Passed "+checks+" server-human lifecycle and packet-field assertions.");
@@ -739,7 +741,7 @@ public static int engagements;
 public static ServerZombieController getInstance(){return I;}public void install(ZombieVictimPort port){}
 public boolean engage(zombie.characters.IsoZombie z,short id){engagements++;return true;}}"""
 FILES["zombie/characters/IsoPlayer.java"] = FILES["zombie/characters/IsoPlayer.java"].replace(
-    "public float useChargeDelta;", "public void setAttackedBy(zombie.characters.IsoGameCharacter z){}public boolean isDeathDragDown(){return false;}public float useChargeDelta;")
+    "public float useChargeDelta;", "public zombie.characters.IsoGameCharacter attackedBy;public zombie.characters.IsoGameCharacter getAttackedBy(){return attackedBy;}public void setAttackedBy(zombie.characters.IsoGameCharacter z){attackedBy=z;}public boolean isDeathDragDown(){return false;}public float useChargeDelta;")
 FILES["zombie/characters/BodyDamage/BodyDamage.java"] = FILES["zombie/characters/BodyDamage/BodyDamage.java"].replace(
     "private float health=100;", "private float health=100;public void DamageFromWeapon(zombie.inventory.types.HandWeapon weapon,int part){health-=10;}public void calculateOverallHealth(){}public boolean AddRandomDamageFromZombie(zombie.characters.IsoZombie z,String reaction,int part){health-=10;return true;}")
 
@@ -773,6 +775,10 @@ FILES.update({
  public static Object get(ObjectID id){return objects.get(id);}public static void add(ObjectID id,Object b){objects.put(id,b);}public static void remove(ObjectID id){objects.remove(id);}}""",
  "zombie/iso/objects/IsoDeadBody.java": """package zombie.iso.objects;
  public class IsoDeadBody extends zombie.iso.IsoMovingObject {
+ public static final java.util.List<IsoDeadBody> created=new java.util.ArrayList<>();
+ public zombie.inventory.ItemContainer lootContainer=new zombie.inventory.ItemContainer();public zombie.inventory.ItemContainer getContainer(){return lootContainer;}
+ public float reanimateTime;public void setReanimateTime(float value){reanimateTime=value;}
+ public IsoDeadBody(){}public IsoDeadBody(zombie.characters.IsoPlayer player){x=player.getX();y=player.getY();z=player.getZ();square=player.getCurrentSquare();lootContainer=player.getInventory();if(square!=null)square.statics.add(this);created.add(this);}
  public final zombie.network.id.ObjectID id=new zombie.network.id.ObjectID();public float x,y,z,angle;public boolean animal,fake;
  public float getAngle(){return angle;}
  public zombie.iso.IsoGridSquare square;public Object inventory=new Object();

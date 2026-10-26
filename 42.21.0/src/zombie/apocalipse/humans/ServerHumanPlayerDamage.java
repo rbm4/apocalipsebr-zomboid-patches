@@ -26,6 +26,7 @@ public final class ServerHumanPlayerDamage {
         body.calculateOverallHealth();
         float loss=Math.clamp((before-body.getOverallBodyHealth())/100F,0,1);
         if(loss>0)human.state.dispatch(new HumanMutation.Damage(loss,0,0,0));
+        if(human.state.snapshot().dead()&&human.profile.encounter().enabled())human.deathKiller=ServerHumanEncounters.key(human,attacker);
         human.physiology.project();
         // Rebuild presentation from server state; stock clients only display PvP
         // hit effects. Never call processServer/PlayerHit.attack a second time.

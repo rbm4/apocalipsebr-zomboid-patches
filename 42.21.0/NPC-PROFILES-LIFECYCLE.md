@@ -127,6 +127,8 @@ stateDiagram-v2
     SPAWNING --> DORMANT: activation failure
     ACTIVE --> DORMANT: deactivate
     ACTIVE --> DEAD: detected death or markDead
+    DEAD --> SPAWNING: enabled persisted respawn deadline is due
+    SPAWNING --> DEAD: respawn construction failure
 ```
 
 Simulation-thread APIs on `ServerHumanFactory`:
@@ -137,14 +139,15 @@ Simulation-thread APIs on `ServerHumanFactory`:
 | `activate(key)` | Construct the selected profile/runtime and presentation; commit ACTIVE only after construction. |
 | `spawn(definition)` | Compatibility convenience for register plus activate. |
 | `deactivate(key)` | Remove live routing/presentation, stop control, close dialogue/trade and retain DORMANT logical state. |
-| `markDead(key)` | Remove the live actor and enter terminal DEAD. |
+| `markDead(key)` | Remove the live actor, create a native corpse and enter DEAD with a persisted respawn deadline. |
 | `lifecycle(key)` | Return an immutable logical snapshot, or null. |
 | `remove(key)` | Permanent administrative removal, including dormant/dead records. |
 
 The factory detects an active presentation's death on the simulation thread.
-Existing built-ins remain invulnerable through the existing presentation setup;
-`markDead` also supports explicit administrative lifecycle decisions. DEAD cannot
-activate again. Spawning failure rolls back to DORMANT without counting a
+Profile flags determine vulnerability; the guide retains god mode.
+`markDead` also supports explicit administrative lifecycle decisions. Ordinary
+activation still refuses DEAD; the V30 scheduler owns respawning.
+Spawning failure rolls back to DORMANT (or DEAD for respawn) without counting a
 successful activation. A failed `spawn` can leave its registered logical record
 dormant for inspection/retry. Unknown profiles fail before logical registration.
 
@@ -157,11 +160,11 @@ existing roster lifecycle event.
 Dormancy is explicitly requested; no new distance/relevance scheduler or offline
 simulation is enabled. Reactivation starts a fresh runtime at the definition's
 spawn coordinates, with fresh ephemeral visitor cooldowns and current profile
-revision. It allocates a fresh presentation ID. The existing no-reuse policy,
-name reservations and **64 total presentation IDs per server process** remain in
-force. This prevents delayed packets from targeting a different incarnation;
-automatic activation churn must wait for a separately validated transport/ID
-policy. Logical keys/profile IDs, not presentation IDs, are the storage keys.
+revision. It allocates a fresh presentation ID. V30 retains name reservations
+and no ID recycling, with 64 active slots and fresh IDs from 1024 through 32766.
+Logical keys/profile IDs, not presentation IDs, are the storage keys.
+See [death, corpse loot and respawn](docs/npc-death-respawn-loot.md) for persisted
+deadlines, offline time, native corpses, reputation hooks and incarnation limits.
 
 ## PostgreSQL persistence
 

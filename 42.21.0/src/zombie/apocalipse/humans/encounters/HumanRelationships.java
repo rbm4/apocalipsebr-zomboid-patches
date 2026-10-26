@@ -11,7 +11,7 @@ public final class HumanRelationships {
                 ||account==null||account.isBlank()||account.length()>128)throw new IllegalArgumentException("Invalid relationship key");
         }
     }
-    public enum Outcome { GREETED, COMPLIED, REFUSED, LEFT, ATTACKED }
+    public enum Outcome { GREETED, COMPLIED, REFUSED, LEFT, ATTACKED, KILLED_NPC }
     public record State(long revision,long meetings,long complied,long refused,long permissionUntilMs,long deniedUntilMs,long nextEncounterMs) {
         public static final State EMPTY=new State(0,0,0,0,0,0,0);
         public State {if(revision<0||meetings<0||complied<0||refused<0||permissionUntilMs<0||deniedUntilMs<0||nextEncounterMs<0)
@@ -40,7 +40,7 @@ public final class HumanRelationships {
     public synchronized boolean record(Key key,String npc,Outcome outcome,long at,EncounterPolicy policy){
         if(npc==null||npc.isBlank()||npc.length()>128||at<0||pending.size()>=PENDING_LIMIT||!states.containsKey(key)&&states.size()>=CAPACITY)return false;
         var old=get(key);boolean greeted=outcome==Outcome.GREETED,complied=outcome==Outcome.COMPLIED,refused=outcome==Outcome.REFUSED;
-        boolean denied=refused||outcome==Outcome.ATTACKED;
+        boolean denied=refused||outcome==Outcome.ATTACKED||outcome==Outcome.KILLED_NPC;
         var state=new State(Math.addExact(old.revision(),1),Math.addExact(old.meetings(),greeted?1:0),Math.addExact(old.complied(),complied?1:0),
             Math.addExact(old.refused(),refused?1:0),denied?0:complied?Math.addExact(at,policy.permissionMs()):old.permissionUntilMs(),
             denied?Math.addExact(at,policy.refusalMs()):old.deniedUntilMs(),Math.addExact(at,policy.cooldownMs()));

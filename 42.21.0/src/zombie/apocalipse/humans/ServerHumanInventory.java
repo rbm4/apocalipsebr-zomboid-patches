@@ -14,6 +14,12 @@ final class ServerHumanInventory implements HumanCombatInventory {
     private InventoryItem clip,bullets;
     private boolean initialized;
     ServerHumanInventory(ServerHuman human){this.human=human;}
+    /** Combat test supplies are not an implicit loot table. Worn/native personal items remain. */
+    void releaseForCorpse(){
+        if(!initialized)return;
+        human.player.setPrimaryHandItem(null);human.player.setSecondaryHandItem(null);
+        for(var item:List.of(crowbar,pistol,clip,bullets))human.player.getInventory().Remove(item);
+    }
     private void initialize(){
         if(initialized)return;
         // Validate the entire fixed fixture before adding anything to the native inventory.

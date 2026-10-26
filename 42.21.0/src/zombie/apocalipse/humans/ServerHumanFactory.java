@@ -21,9 +21,11 @@ import zombie.network.GameServer;
  */
 public final class ServerHumanFactory {
     // Vanilla has 255 connection slots with four player IDs each (0..1019).
-    // Keep IDs modest: VoiceManagerData uses an ID-indexed array on clients.
+    // Stay below Short.MAX_VALUE: native VoiceManagerData increments a short index.
+    // Incarnations consume fresh IDs; the active actor budget is independent.
     static final int FIRST_ID = 1024;
-    static final int LAST_ID = 1087;
+    static final int LAST_ID = 32766;
+    static final int MAX_ACTIVE = 64;
     static final long UPDATE_NANOS = 500_000_000L;
     static final long BRAIN_UPDATE_NANOS = 100_000_000L;
     static final long CHECKPOINT_NANOS = Math.max(1000,Math.min(60000,
@@ -43,6 +45,9 @@ public final class ServerHumanFactory {
     private boolean persistencePaused;
     private boolean configurationRejected;
     private final Set<String> retiredKeys=new HashSet<>();
+    private record Respawn(String key,long at,String deathId) { }
+    private final java.util.PriorityQueue<Respawn> respawns=new java.util.PriorityQueue<>(java.util.Comparator.comparingLong(Respawn::at));
+    public void reputationPort(zombie.apocalipse.humans.death.HumanReputationPort port){requireOwner();ServerHumanDeaths.reputation=java.util.Objects.requireNonNull(port);}
     private int nextId = FIRST_ID;
     private long nextUpdate;
     private long nextBrainUpdate;
@@ -86,7 +91,7 @@ public final class ServerHumanFactory {
                     ServerHumanProfiles.registry().install(loaded.profiles(),true);
                     Set<String> names=new HashSet<>();
                     long activeCount=loaded.instances().stream().filter(r->!r.state().retired()&&r.activate()&&r.state().lifecycle()!=HumanLifecycle.State.DEAD).count();
-                    if(activeCount>LAST_ID-FIRST_ID+1)throw new IllegalArgumentException("Too many active NPCs");
+                    if(activeCount>MAX_ACTIVE)throw new IllegalArgumentException("Too many active NPCs");
                     for(var restored:loaded.instances()) {
                         var state=restored.state();if(state.retired())continue;
                         ServerHumanProfiles.registry().require(state.definition().profileId());checkOnlineName(state.definition());
@@ -102,7 +107,9 @@ public final class ServerHumanFactory {
                     registerDormant(state.definition());
                     instances.get(state.definition().key()).restore(state.lifecycle(),state.activations(),state.profileRevision());
                     instances.get(state.definition().key()).physiology().restore(state.physiology());
+                    instances.get(state.definition().key()).restoreDeath(state.death());
                     checkpoints.put(state.definition().key(),state);
+                    if(restored.activate()&&state.lifecycle()==HumanLifecycle.State.DEAD)scheduleRespawn(state.definition().key());
                     if(restored.activate()&&state.lifecycle()!=HumanLifecycle.State.DEAD)try{activate(state.definition().key());}
                         catch(RuntimeException failure){DebugLog.log("[ApocBR][ServerHumans] NPC activation deferred key="+state.definition().key()+" issue="+failure.getClass().getSimpleName());}
                 }
@@ -132,6 +139,7 @@ public final class ServerHumanFactory {
         }
         if (now < nextBrainUpdate) return;
         nextBrainUpdate = now + BRAIN_UPDATE_NANOS;
+        respawnDue(System.currentTimeMillis());
         acceptMutations=true;
         for(int count=0;count<128;count++){
             var command=mutations.poll();if(command==null)break;
@@ -206,19 +214,23 @@ public final class ServerHumanFactory {
     }
 
     public short activate(String key) {
+        return activate(key,false,System.currentTimeMillis());
+    }
+    private short activate(String key,boolean respawn,long epochMs) {
         requireOwner();
+        if(humans.size()>=MAX_ACTIVE)throw new IllegalStateException("Active NPC limit reached");
         HumanLifecycle instance = instances.get(key);
         if (instance == null) throw new IllegalArgumentException("Unknown human key: " + key);
         ServerHumanDefinition definition = instance.definition();
         ServerHumanProfiles.registry().require(definition.profileId());
         checkOnlineName(definition);
-        instance.spawning();
+        if(respawn)instance.respawning(epochMs);else instance.spawning();
         try {
             short id = allocateId();
             if(instance.physiology().snapshot().dead())throw new IllegalStateException("Dead NPC physical state cannot activate");
             ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell,instance.physiology(),traversalWorld);
             var restored=checkpoints.get(key);
-            if(restored!=null){human.player.setX(restored.x());human.player.setY(restored.y());human.player.setZ(restored.z());human.player.realx=restored.x();human.player.realy=restored.y();human.player.realz=(byte)restored.z();human.postX=restored.x();human.postY=restored.y();}
+            if(restored!=null&&!respawn){human.player.setX(restored.x());human.player.setY(restored.y());human.player.setZ(restored.z());human.player.realx=restored.x();human.player.realy=restored.y();human.player.realz=(byte)restored.z();human.postX=restored.x();human.postY=restored.y();}
             humans.put(key,human); byId.put(id,human); instance.active(human.profile.revision());
             checkpoint(key,false);
             DebugLog.log("[ApocBR][ServerHumans] Spawned key=" + key + " profile=" + definition.profileId()
@@ -226,7 +238,7 @@ public final class ServerHumanFactory {
             ServerHumanDialogue.rosterChanged();
             return id;
         } catch (RuntimeException failure) {
-            if (instance.state() == HumanLifecycle.State.SPAWNING) instance.dormant();
+            if (instance.state() == HumanLifecycle.State.SPAWNING) instance.spawnFailed();
             throw failure;
         }
     }
@@ -255,6 +267,11 @@ public final class ServerHumanFactory {
         if (death) {instances.get(key).physiology().dispatch(new HumanMutation.Kill());instances.get(key).dead();}
         else instances.get(key).dormant();
         checkpoint(key,false,human);
+        if(death){
+            scheduleRespawn(key);
+            try{ServerHumanDeaths.died(human,instances.get(key));}
+            catch(RuntimeException failure){HumanLog.log(HumanLog.Level.ERROR,()->"NPC death effects failed key="+key+"; issue="+failure.getClass().getSimpleName());}
+        }
         human.dispose();
         ServerHumanDialogue.rosterChanged();
         return true;
@@ -278,11 +295,31 @@ public final class ServerHumanFactory {
         float y=human!=null?human.player.getY():old!=null?old.y():d.y();
         int z=human!=null?human.player.getZi():old!=null?old.z():d.z();
         long revision=old==null?1:old.revision();
-        var state=new zombie.savefile.ApocBRNpcStore.State(d,logical.state(),logical.activations(),logical.snapshot().profileRevision(),x,y,z,revision,retired,logical.physiology().snapshot());
+        var state=new zombie.savefile.ApocBRNpcStore.State(d,logical.state(),logical.activations(),logical.snapshot().profileRevision(),x,y,z,revision,retired,logical.physiology().snapshot(),logical.death());
         if(old!=null&&old.equals(state))return;
-        state=new zombie.savefile.ApocBRNpcStore.State(d,state.lifecycle(),state.activations(),state.profileRevision(),x,y,z,revision+1,retired,state.physiology());
+        state=new zombie.savefile.ApocBRNpcStore.State(d,state.lifecycle(),state.activations(),state.profileRevision(),x,y,z,revision+1,retired,state.physiology(),state.death());
         store.offer(state);checkpoints.put(key,state);
         HumanLog.checkpoint(old,state);
+    }
+
+    private void scheduleRespawn(String key){
+        var logical=instances.get(key);if(logical.definition().deathPolicy().enabled()&&logical.death().respawnAtMs()>0)
+            respawns.add(new Respawn(key,logical.death().respawnAtMs(),logical.death().deathId()));
+    }
+    private void respawnDue(long now){
+        for(int budget=0;budget<8&&!respawns.isEmpty()&&respawns.peek().at()<=now;budget++){
+            var ticket=respawns.remove();var logical=instances.get(ticket.key());
+            if(logical==null||logical.state()!=HumanLifecycle.State.DEAD||!logical.death().deathId().equals(ticket.deathId())||!logical.definition().deathPolicy().enabled())continue;
+            var d=logical.definition();
+            if(humans.size()>=MAX_ACTIVE||IsoWorld.instance.currentCell.getGridSquare((int)Math.floor(d.x()),(int)Math.floor(d.y()),d.z())==null){
+                respawns.add(new Respawn(ticket.key(),now+1000,ticket.deathId()));continue;
+            }
+            try{activate(ticket.key(),true,now);}
+            catch(RuntimeException failure){
+                respawns.add(new Respawn(ticket.key(),now+1000,ticket.deathId()));
+                HumanLog.log(HumanLog.Level.ERROR,()->"NPC respawn deferred key="+ticket.key()+"; issue="+failure.getClass().getSimpleName());
+            }
+        }
     }
 
     /** Fallback for vanilla clients discovering/reloading an unknown remote-player ID. */

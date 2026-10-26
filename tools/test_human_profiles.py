@@ -119,7 +119,7 @@ public class ProfilesTest {
   var publicRoster=ServerHumanDialogue.roster();
   boolean advertised=false;for(Object value:publicRoster.values.values())if(((Number)((se.krka.kahlua.vm.KahluaTable)value).rawget("id")).intValue()==hidden)advertised=true;
   check(!advertised,"dialogue-disabled profile omitted from world roster");
-  var next=ServerHumanFactory.class.getDeclaredField("nextId");next.setAccessible(true);next.setInt(f,1088);
+  var next=ServerHumanFactory.class.getDeclaredField("nextId");next.setAccessible(true);next.setInt(f,ServerHumanFactory.LAST_ID+1);
   f.registerDormant(definition("exhausted","stationary"));invalid(()->f.activate("exhausted"));
   check(f.lifecycle("exhausted").state()==HumanLifecycle.State.DORMANT,"activation failure rolls spawning state back to dormant");
   check(f.lifecycle("exhausted").activations()==0,"failed activation never increments successful activation count");

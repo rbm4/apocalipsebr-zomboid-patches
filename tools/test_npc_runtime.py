@@ -27,6 +27,11 @@ public class NpcRuntimeTest {
  static HumanObservation observe(long ms,List<HumanObservation.Visitor> visitors){return new HumanObservation(ms*1000000L,visitors,true);}
  static ServerHumanDefinition definition(String key){return new ServerHumanDefinition(key,"npc-"+key,key,100,200,0,IsoDirections.E,false,"Tourist","lobby-guide");}
  static ApocBRNpcStore.Restored restored(String key,HumanLifecycle.State state,boolean activate,boolean retired){return new ApocBRNpcStore.Restored(new ApocBRNpcStore.State(definition(key),state,4,1,110,210,0,20,retired),activate);}
+ static ApocBRNpcStore.Restored overdue(){
+  var physical=zombie.apocalipse.humans.state.HumanStateReducer.reduce(zombie.apocalipse.humans.state.HumanState.INITIAL,new zombie.apocalipse.humans.state.HumanMutation.Kill());
+  return new ApocBRNpcStore.Restored(new ApocBRNpcStore.State(definition("overdue"),HumanLifecycle.State.DEAD,4,1,110,210,0,20,false,physical,
+   new zombie.apocalipse.humans.death.HumanDeathState(1,2,"12345678-1234-1234-1234-123456789abc")),true);
+ }
  public static void main(String[] args)throws Exception {
   var port=new Port();var high=new Module();var low=new Module();low.eligible=true;
   var runtime=new HumanModuleRuntime(List.of(new HumanModuleRuntime.Entry("low",100,100,low),new HumanModuleRuntime.Entry("high",1,500,high)));
@@ -64,11 +69,13 @@ public class NpcRuntimeTest {
   ApocBRNpcStore.enabled=true;
   ApocBRNpcStore.loaded=new ApocBRNpcStore.Loaded(List.of(profile,registry.require("stationary")),List.of(
    restored("active",HumanLifecycle.State.ACTIVE,true,false),restored("dormant",HumanLifecycle.State.DORMANT,false,false),
-   restored("dead",HumanLifecycle.State.DEAD,true,false),restored("retired",HumanLifecycle.State.DEAD,false,true)));
+   restored("dead",HumanLifecycle.State.DEAD,true,false),overdue(),restored("retired",HumanLifecycle.State.DEAD,false,true)));
   var factory=ServerHumanFactory.getInstance();factory.tick(0);
   check(factory.lifecycle("active").state()==HumanLifecycle.State.ACTIVE&&factory.lifecycle("active").activations()==5,"logical identity survives restart while activation is fresh");
   check(factory.lifecycle("dormant").state()==HumanLifecycle.State.DORMANT,"dormant actor has no presentation");
   check(factory.lifecycle("dead").state()==HumanLifecycle.State.DEAD,"death survives restart");
+  check(factory.lifecycle("overdue").state()==HumanLifecycle.State.ACTIVE&&factory.lifecycle("overdue").activations()==5,"elapsed deadline resumes once after restart");
+  check(factory.state("overdue").vitals().health()==1&&zombie.iso.objects.IsoDeadBody.created.isEmpty(),"restart respawn resets health without recreating or rerolling old corpses");
   invalid(()->factory.activate("dead"));invalid(()->factory.registerDormant(definition("retired")));
   var human=ServerHumanFactory.dialogueHumans().iterator().next();check(human.player.getX()==110&&human.player.getY()==210,"presentation restored from logical position");
   check(human.player.getOnlineID()>=1024,"fresh presentation ID independent of saved logical identity");

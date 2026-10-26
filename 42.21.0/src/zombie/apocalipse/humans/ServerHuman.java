@@ -38,6 +38,8 @@ final class ServerHuman {
     float postX, postY;
     String emote;
     private boolean disposed;
+    private boolean activitiesStopped;
+    zombie.apocalipse.humans.encounters.HumanRelationships.Key deathKiller;
 
     ServerHuman(ServerHumanDefinition definition, short onlineId, IsoCell cell) {
         this(definition,onlineId,cell,new zombie.apocalipse.humans.state.HumanStateStore(zombie.apocalipse.humans.state.HumanState.INITIAL));
@@ -106,9 +108,8 @@ final class ServerHuman {
         return connection.isFullyConnected() && connection.isRelevantTo(player.getX(), player.getY());
     }
 
-    void dispose() {
-        if (disposed) return;
-        disposed = true;
+    void stopActivities() {
+        if(activitiesStopped)return;activitiesStopped=true;
         activity.stop(System.nanoTime(), actuator);
         combat.stop();
         actuator.closeCorpses();
@@ -116,6 +117,11 @@ final class ServerHuman {
         ServerHumanTrading.close(this);
         movement.close();
         perception.clear();
+    }
+    void dispose() {
+        if (disposed) return;
+        disposed = true;
+        stopActivities();
         // Never call normal disconnectPlayer(): this actor has no account/connection/save.
         for (UdpConnection connection : viewers) {
             if (connection.isFullyConnected()) ServerHumanTransport.remove(this, connection);
