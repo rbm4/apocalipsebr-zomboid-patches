@@ -30,6 +30,8 @@ final class ServerHuman {
     byte lastPlayerShot;
     int lastPlayerWeapon;
     long lastPlayerAttackAt;
+    long nextPlayerHitTrace;
+    int playerHitTraceLines;
     final java.util.Map<UdpConnection,ServerHumanTransport.Equipment> equipmentPresentation=new IdentityHashMap<>();
     final zombie.apocalipse.humans.state.HumanStateStore state;
     final ServerHumanPhysiology physiology;
@@ -95,6 +97,9 @@ final class ServerHuman {
         this.physiology = new ServerHumanPhysiology(this);
         ServerHumanEncounters.bind(this);
         ServerHumanRetaliation.bind(this);
+        // Native Safety starts enabled. A combatant must advertise safety off to
+        // stock clients, or two safety-on actors are filtered before any hit packet.
+        if(ServerHumanRetaliation.module(this)!=null)this.player.getSafety().setEnabled(false);
     }
 
     boolean isRelevant(UdpConnection connection) {

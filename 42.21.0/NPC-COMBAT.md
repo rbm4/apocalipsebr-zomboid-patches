@@ -13,7 +13,8 @@ god-mode protection. See [server zombie interactions](NPC-ZOMBIE-CONTROL.md).
 V29 adds [player retaliation](docs/npc-player-retaliation.md) through this same
 weapon phase engine, inventory, movement and native consequence bridge. The
 migration disables god mode on encounter profiles; the guide stays protected.
-Player damage received by NPCs remains deferred.
+Player hits now use native body damage imported into logical NPC health; see
+the retaliation document for stock-client intake and receive diagnostics.
 
 ## Owners and execution
 

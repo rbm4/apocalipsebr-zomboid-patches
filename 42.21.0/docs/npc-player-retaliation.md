@@ -2,9 +2,9 @@
 
 The attacked NPC can attack and damage its aggressor through the existing weapon
 engine. Proximity, aiming, carrying a weapon and refusing to unequip do not start
-combat. Refusal still warns and denies interaction. Incoming player damage to
-NPCs is deferred: accepted attempts trigger retaliation without applying damage
-or client-authored fall state to the NPC.
+combat. Refusal still warns and denies interaction. Authenticated incoming player
+hits now damage NPCs through native body damage and armor, update logical health
+immediately and trigger retaliation. Client-authored victim/fall state is discarded.
 
 ## Ownership and boundaries
 
@@ -25,10 +25,30 @@ combinations within 500ms cannot spend ammunition or refresh retaliation twice.
 The native patch baseline is the exact
 `42.21.0/decompiled/zombie/network/packets/hit/PlayerHitPlayerPacket.java`.
 The replacement resolves NPC targets after parsing and intercepts their server
-processing. Accepted attempts consume the native attack once and skip victim
-damage/fall processing and forwarding. Native packet annotations, anticheats and
+processing. Accepted attempts consume the native attack once and use
+`ServerHumanPlayerDamage` instead of the connection-oriented native victim path.
+Native packet annotations, anticheats and
 ordinary player-versus-player processing remain intact. God-mode NPC attempts
 are rejected; the guide keeps its existing protection.
+
+`ServerHumanPlayerDamage` bounds hit count by weapon projectile/hit limits,
+rejects nonfinite/invalid damage evidence and rolls native `DamageFromWeapon`
+on the server for positive hit evidence. Armor and native PvP damage modifiers
+apply. Zero-damage shove evidence adds no wound. Client damage magnitudes do not
+set logical health. Native `ignoreDamage` evidence (shoves or ignored pellets) adds
+no wound, exposed through a read-only getter on the exact native `WeaponHit` patch.
+Native body loss becomes one `HumanMutation.Damage` and is
+projected immediately; existing checkpoints and terminal death lifecycle own
+persistence/removal. This does not add a respawn timer or persist individual native
+body-part wounds. Presentation is reconstructed with bounded server-generated hit
+force/direction and zero fall coordinates; the original client hit is not relayed.
+
+Incoming checks use `pvp(attacker, victim)`. An admin attacker's god/invisibility
+does not grant immunity to their victim. Retaliation separately refuses protected
+or invisible targets. Combat-enabled NPCs advertise native Safety disabled at
+construction; native Safety defaults to enabled, which makes a stock client filter
+two safety-on actors before sending a hit. `ConnectedPacket` already serializes
+Safety. Guide god-mode protection and global PvP/non-PvP rules remain intact.
 
 ## Execution, damage and cancellation
 
@@ -76,6 +96,11 @@ Run `python tools/test_human_retaliation.py`,
 real game JAR with `powershell -File 42.21.0/patchApocalipseBr.ps1 -DryRun`.
 The targeted fixture compiles the production packet patch and unmodified native
 Safety anticheat, with stubs at native world/network/body-damage boundaries.
+`human_hit_wire_fixture.py` also imports native ID classes and extracts the exact
+target-version parse/write methods for character/player fields, attack vars,
+moving-object IDs, tracers, hits, fall and hit packet payloads. Melee and ranged
+byte-buffer round trips exercise packet consistency and actual damage intake;
+they include an optional tracer endpoint and connection-slot attacker resolution.
 It checks attempt ownership, protected NPCs, duplicate swings, cancellation,
 permission revocation, ranged ammo and damage dispatch. PostgreSQL tests use a
 disposable localhost cluster with distinct migration and engine roles.
@@ -84,6 +109,38 @@ Live acceptance still needs two clients: melee/ranged attack attempts, attacker
 health and body injuries, no duplicate damage, ammo/reload, safety/faction and
 non-PvP changes, walls/bystanders, territory exit, dialogue interruption and guide
 protection. No production migration or deployment is part of the automated checks.
+
+## Receive diagnostics
+
+Receive traces are enabled by default independently of `apocbr.npc.logLevel`
+(whose default is ERROR). Disable explicitly with
+`-Dapocbr.npc.playerHitTrace=false`. Lines begin `[ApocBR][NPC][PlayerHit]`.
+Startup prints `server intake ready`. `PlayerHitPlayer.parse` logs receipt before
+parsing, then NPC resolution and packet consistency/weapon resolution. Native
+anticheats still run between consistency and intake; their own rejection warnings
+remain authoritative. Intake reports ownership, equipped weapon, life/floor,
+PvP/safety/faction/zone, range, obstruction and duplicate-shot rejection. Accepted
+hits show the retaliation module, attacker protection, profile revision and NPC
+god/safety flags. Committed damage shows loss and logical health; retaliation
+reports execution start or unavailable contact.
+
+`PlayerHitSquarePacket` is a second narrow exact-version native patch: it logs
+miss receipt before parsing and retains native processing. A square packet means
+the client reported no character hit. It does not authorize damage or retaliation,
+and the server does not invent a hit from a tracer. If only square packets arrive,
+inspect target eligibility, safety, god mode, aim and shot obstruction on the client.
+No receive lines after the startup marker means neither patched hit entry point
+was reached. Traces are bounded to eight lines per NPC per second; generic raw
+receipt and square-miss lines each have a separate one-per-second limit.
+
+This followup needs the new server classes and a restart/reactivation, with no
+additional migration after V29 and no client patch or wire-format change.
+
+Followup verification (2026-10-25): 58 retaliation/intake/wire/damage assertions,
+116 shared weapon assertions, 107 survival, 92 lifecycle, 66 dialogue (plus EN/PTBR),
+56 ownership and 131 corpse assertions passed. Target game-JAR dry compilation
+passed with 281 Java sources and 838 class files. No live server deployment or
+live shooting result is claimed by these isolated tests.
 
 2026-10-25 verification: retaliation fixture 38 assertions, shared weapon combat
 116, encounter 31, dialogue 66 (plus EN/PTBR), lifecycle 92, ownership 56, trade

@@ -95,20 +95,34 @@ public class RetaliationTest {
   var weapon=new HandWeapon(77,"Base.Crowbar");p.getInventory().AddItem(weapon);p.setPrimaryHandItem(weapon);
   var connection=GameServer.getConnectionFromPlayer(p);h.viewers.add(connection);
   check(!h.player.isGodMod()&&(h.player.getExtraInfoFlags()&1)==0,"militia with disabled god mode is targetable through ordinary presentation");
+  check(p.getSafety().isEnabled()&&!h.player.getSafety().isEnabled(),"combat NPC advertises safety off so a stock safety-on visitor can hit");
   h.player.god=true;check(!ServerHumanPlayerAttacks.receive(p,h.player,weapon,connection,1,(byte)0),"protected NPCs cannot acquire retaliation from blocked attacks");h.player.god=false;
   var targetField=new Player();targetField.id=id;ServerHumanPlayerAttacks.resolve(targetField);check(targetField.getPlayer()==h.player,"reserved NPC target resolves without registering a fake player account");
   var occupied=new Player();occupied.id=id;occupied.player=p;ServerHumanPlayerAttacks.resolve(occupied);check(occupied.player==p,"resolver does not replace an already resolved player");
   var hit=new WeaponHit();hit.set(1,1,1,1,0,false,false,false,false);
-  var packet=new PlayerHitPlayerPacket();packet.set(p,weapon,false,List.of(),List.of(hit),h.player);
+  // Serialize through exact native writer methods, then parse as a stock client
+  // packet. The NPC is absent from GameServer.IDToPlayerMap throughout.
+  p.playerIndex=0;
+  var clientPacket=new PlayerHitPlayerPacket();clientPacket.set(p,weapon,false,List.of(),List.of(hit),h.player);
+  var writer=new zombie.core.network.ByteBufferWriter();clientPacket.write(writer);writer.bb.flip();
+  var fromWire=new PlayerHitPlayerPacket();fromWire.parse(new zombie.core.network.ByteBufferReader(writer.bb),connection);
+  check(!writer.bb.hasRemaining(),"stock client payload including variable player fields and fall is fully consumed");
+  check(fromWire.getWielder()==p&&fromWire.target.getPlayer()==h.player&&fromWire.getHandWeapon()==weapon,"wire resolves connection-owned attacker, inventory weapon and detached NPC target");
+  check(fromWire.isConsistent(connection)&&fromWire.getHitCount()==1,"native serialized hit passes consistency before server intake");
+  var packet=fromWire;
   var safety=new zombie.network.anticheats.AntiCheatSafety();
   check(safety.validate(connection,packet).isEmpty(),"native safety admits a non-god militia attack attempt");
-  float botBefore=h.player.getHealth();int swings=Player.swings;
+  float botBefore=h.player.getHealth();int swings=Player.swings;h.nextPlayerHitTrace=0;
   packet.processServer(PacketTypes.PacketType.PlayerHitPlayer,connection);
   var module=ServerHumanRetaliation.module(h);
   check(module.aggressor().equals(new HumanObservation.Identity(p.id,p.getID())),"validated actual hit arms retaliation");
-  check(h.player.getHealth()==botBefore&&PlayerHitCharacter.localHits==0,"incoming attempt applies no NPC damage");
+  check(h.player.getHealth()<botBefore&&PlayerHitCharacter.localHits==0,"incoming hit commits native body loss without native player-account processing");
+  float botDamaged=h.player.getHealth();check(h.state.snapshot().vitals().health()==botDamaged,"body loss projects into durable logical state immediately");
+  check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("received native PlayerHitPlayer")),"default receive diagnostics precede native payload parsing");
+  check(zombie.debug.DebugLog.messages.stream().anyMatch(s->s.contains("damage committed")),"committed NPC damage is logged even at default NPC ERROR threshold");
   check(Player.swings==swings+1,"accepted attack spends native swing once");
   packet.processServer(PacketTypes.PacketType.PlayerHitPlayer,connection);check(Player.swings==swings+1,"duplicate attempt cannot spend ammo or refresh twice");
+  check(h.player.getHealth()==botDamaged,"duplicate shot cannot damage NPC twice");
   check(ServerHumanEncounters.memory().get(ServerHumanEncounters.key(h,p)).permissionUntilMs()==0,"attack revokes interaction permission");
   check(!ServerHumanPlayerAttacks.receive(p,h.player,weapon,new zombie.core.raknet.UdpConnection(),1,(byte)1),"wrong connection rejected");
   var q=DialogueTest.visitor((short)2);q.x=102;var other=GameServer.getConnectionFromPlayer(q);
@@ -122,7 +136,7 @@ public class RetaliationTest {
   long now=System.nanoTime();
   for(int n=0;n<8&&PlayerHitCharacter.localHits==nativeBefore;n++)module.update(o(now+n*500000000L),h.actuator);
   check(PlayerHitCharacter.localHits==nativeBefore+1&&p.getHealth()<pvpBefore,"NPC uses native PvP hit processing to damage the aggressor");
-  check(h.player.getHealth()==botBefore&&q.getHealth()==1,"NPC and unrelated player remain undamaged");
+  check(h.player.getHealth()==botDamaged&&q.getHealth()==1,"outgoing retaliation does not damage NPC or unrelated player");
   int nativeAfter=PlayerHitCharacter.localHits;module.update(o(now+3600000000L),h.actuator);
   check(PlayerHitCharacter.localHits==nativeAfter,"recovery polling does not replay committed strike");
   ServerOptions.instance.pvp.value=false;module.update(o(now+4000000000L),h.actuator);check(module.aggressor()==null,"disabling PvP cancels active retaliation");ServerOptions.instance.pvp.value=true;
@@ -137,6 +151,31 @@ public class RetaliationTest {
   module.update(o(System.nanoTime()),h.actuator);check(module.aggressor()==null,"recycled online ID cannot inherit retaliation");
   int normal=PlayerHitCharacter.ordinaryServer;ordinary.processServer(PacketTypes.PacketType.PlayerHitPlayer,connection);
   check(PlayerHitCharacter.ordinaryServer==normal+1,"real player versus player still follows vanilla dispatch");
+  p.x=101;p.god=true;p.invisible=true;
+  check(ServerHumanPlayerAttacks.receive(p,h.player,weapon,connection,1,(byte)2),"protected invisible attacker may inflict a validated hit; retaliation protection is separate");
+  check(!ServerHumanRetaliation.pvp(h.player,p,false),"protected attacker remains immune to retaliation");p.god=false;p.invisible=false;
+  var gun=new HandWeapon(78,"Base.Pistol");p.getInventory().AddItem(gun);p.setPrimaryHandItem(gun);
+  var tracer=new TracerInfo();tracer.hasEndPosition=true;tracer.range=15;tracer.endX=100;tracer.endY=200;tracer.endZ=0;
+  var rangedClient=new PlayerHitPlayerPacket();rangedClient.set(p,gun,false,List.of(tracer),List.of(hit),h.player);
+  var rangedWriter=new zombie.core.network.ByteBufferWriter();rangedClient.write(rangedWriter);rangedWriter.bb.flip();
+  var rangedServer=new PlayerHitPlayerPacket();rangedServer.parse(new zombie.core.network.ByteBufferReader(rangedWriter.bb),connection);
+  check(!rangedWriter.bb.hasRemaining()&&rangedServer.isConsistent(connection),"ranged stock wire with optional tracer endpoint consumes exact payload");
+  float beforeBullet=h.player.getHealth();rangedServer.processServer(PacketTypes.PacketType.PlayerHitPlayer,connection);
+  check(h.player.getHealth()<beforeBullet&&module.aggressor()!=null,"parsed ranged client packet inflicts NPC damage and arms retaliation");p.setPrimaryHandItem(weapon);
+  var invalid=new WeaponHit();invalid.damage=Float.NaN;
+  check(!ServerHumanPlayerDamage.valid(List.of(invalid),weapon),"nonfinite client damage is rejected");
+  check(!ServerHumanPlayerDamage.valid(Collections.nCopies(4,hit),weapon),"projectile count bounds incoming native rolls");
+  float beforeShove=h.player.getHealth();var shove=new WeaponHit();shove.damage=0;
+  ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(shove));check(h.player.getHealth()==beforeShove,"zero-damage shove does not invent a wound");
+  var ignoredHit=new WeaponHit();ignoredHit.set(1,1,0,0,0,false,false,false,true);
+  ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(ignoredHit));check(h.player.getHealth()==beforeShove,"native ignore-damage flag prevents positive-damage shove or ignored pellet wounds");
+  for(int n=0;n<12;n++)ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(hit));
+  check(h.state.snapshot().dead()&&h.player.getHealth()==0,"incoming body damage can kill durable NPC state");
+  ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(hit));check(h.player.getHealth()==0,"death is terminal and later packets cannot revive");
+  h.nextPlayerHitTrace=0;int logs=zombie.debug.DebugLog.messages.size();for(int n=0;n<50;n++)ServerHumanPlayerAttacks.trace(h.player,"trace limit test");
+  check(zombie.debug.DebugLog.messages.size()==logs+8,"receive diagnostic output is bounded per NPC");
+  System.setProperty("apocbr.npc.playerHitTrace","false");logs=zombie.debug.DebugLog.messages.size();ServerHumanPlayerAttacks.received();ServerHumanPlayerAttacks.missed();
+  check(zombie.debug.DebugLog.messages.size()==logs,"receive traces can be disabled explicitly");System.clearProperty("apocbr.npc.playerHitTrace");
   factory.remove("retaliation-test");
  }
 }
@@ -150,10 +189,11 @@ def main():
         fixture['zombie/characters/IsoGameCharacter.java']=fixture['zombie/characters/IsoGameCharacter.java'].replace('public abstract boolean isDead();','public float realx,realy;public byte realz;public boolean isRemote(){return false;}public abstract boolean isDead();')
         fixture['zombie/inventory/types/HandWeapon.java']=fixture['zombie/inventory/types/HandWeapon.java'].replace('public boolean isRanged()', 'public String getName(){return getFullType();}public boolean isMelee(){return !isRanged();}public boolean isRanged()')
         fixture['zombie/characters/IsoPlayer.java']=fixture['zombie/characters/IsoPlayer.java'].replace('public float useChargeDelta;', 'public Object getHitReactionNetworkAI(){return null;}public boolean isRemote(){return remote;}public float useChargeDelta;')
-        fixture['zombie/network/fields/hit/WeaponHit.java']=fixture['zombie/network/fields/hit/WeaponHit.java'].replace('public float damage;', 'public float damage;public float getDamage(){return damage;}')
         fixture['zombie/apocalipse/humans/RetaliationTest.java']=HARNESS
         fixture['zombie/apocalipse/humans/DialogueTest.java']=DIALOGUE
         fixture['zombie/apocalipse/humans/EncounterTest.java']=ENCOUNTERS
+        from human_hit_wire_fixture import configure
+        configure(fixture,ROOT)
         sources=[]
         for relative,content in fixture.items():
             path=work/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding='utf-8');sources.append(path)

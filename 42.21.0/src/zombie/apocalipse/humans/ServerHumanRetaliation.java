@@ -30,10 +30,16 @@ final class ServerHumanRetaliation implements RetaliationPort {
             ||!pvp(human.player,target,false))return null;
         return target;
     }
-    public Contact observe(HumanObservation.Identity identity){var target=resolve(identity);return new Contact(target!=null,target!=null&&human.perception.visible(target));}
+    public Contact observe(HumanObservation.Identity identity){
+        var target=resolve(identity);boolean visible=target!=null&&human.perception.visible(target);
+        if(target==null)ServerHumanPlayerAttacks.trace(human.player,"retaliation target rejected: identity/life/protection/territory/PvP");
+        else if(!visible)ServerHumanPlayerAttacks.trace(human.player,"retaliation waiting: no visual contact");
+        return new Contact(target!=null,visible);
+    }
     public HumanCombat.Execution begin(HumanObservation.Identity identity,long now){
         var target=resolve(identity);
         if(target==null)return HumanCombat.finished(new HumanCombat.Result(HumanCombat.Status.REJECTED,HumanCombat.Reason.INVALID_TARGET));
+        ServerHumanPlayerAttacks.trace(human.player,"retaliation weapon execution started");
         var approach=new ServerHumanCombatApproach(human,target);
         return new HumanWeaponCombat(human.inventory,new HumanWeaponCombat.Operations(){
             public double distance(){return approach.distance();}

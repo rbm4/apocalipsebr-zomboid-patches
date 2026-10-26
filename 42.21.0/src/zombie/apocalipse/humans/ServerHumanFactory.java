@@ -67,7 +67,7 @@ public final class ServerHumanFactory {
     }
 
     void tick(long now) {
-        if (owner == null) owner = Thread.currentThread();
+        if (owner == null) { owner = Thread.currentThread(); ServerHumanPlayerAttacks.ready(); }
         requireOwner();
         ServerHumanDialogue.install();
         if(configurationRejected)return;

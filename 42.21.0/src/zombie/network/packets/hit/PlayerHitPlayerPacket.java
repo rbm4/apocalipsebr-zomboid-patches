@@ -57,6 +57,7 @@ public class PlayerHitPlayerPacket
 
     @Override
     public void parse(ByteBufferReader b, IConnection connection) {
+        zombie.apocalipse.humans.ServerHumanPlayerAttacks.received();
         super.parse(b, connection);
         this.target.parse(b, connection);
         zombie.apocalipse.humans.ServerHumanPlayerAttacks.resolve(this.target);
@@ -66,10 +67,15 @@ public class PlayerHitPlayerPacket
     @Override
     public void processServer(zombie.network.PacketTypes.PacketType packetType, UdpConnection connection) {
         if (zombie.apocalipse.humans.ServerHumanPlayerAttacks.isNpc(this.target.getPlayer())) {
+            if (!zombie.apocalipse.humans.ServerHumanPlayerDamage.valid(this.hits, this.getHandWeapon())) {
+                zombie.apocalipse.humans.ServerHumanPlayerAttacks.trace(this.target.getPlayer(), "rejected: hit count/damage");
+                return;
+            }
             if (zombie.apocalipse.humans.ServerHumanPlayerAttacks.receive(this.getWielder(), this.target.getPlayer(), this.getHandWeapon(), connection, this.getHitCount(), this.getShotID())) {
-                // Consume the native attacker swing/ammo once; do not apply or relay victim damage/fall data.
+                // Consume the native attack once, then import native body loss into logical NPC state.
                 super.preProcess();
                 this.attack();
+                zombie.apocalipse.humans.ServerHumanPlayerDamage.apply(this.getWielder(), this.target.getPlayer(), this.getHandWeapon(), this.hits);
             }
             return;
         }
@@ -85,7 +91,9 @@ public class PlayerHitPlayerPacket
 
     @Override
     public boolean isConsistent(IConnection connection) {
-        return super.isConsistent(connection) && this.target.isConsistent(connection);
+        boolean consistent = super.isConsistent(connection) && this.target.isConsistent(connection);
+        zombie.apocalipse.humans.ServerHumanPlayerAttacks.trace(this.target.getPlayer(), "native packet consistency=" + consistent + "; weaponResolved=" + (this.getHandWeapon() != null));
+        return consistent;
     }
 
     @Override

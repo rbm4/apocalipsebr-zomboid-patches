@@ -68,7 +68,7 @@ public class IsoPlayer extends IsoGameCharacter {
  public final zombie.inventory.types.HandWeapon bareHands=new zombie.inventory.types.HandWeapon(-1,"Base.BareHands");
  public boolean isGodMod(){return god;}public byte getExtraInfoFlags(){return (byte)(god?1:0);}
  public final Safety safety=new Safety();public Safety getSafety(){return safety;}public boolean factionPvp;
- public boolean isFactionPvp(){return factionPvp;}public static class Safety{public boolean enabled;public boolean isEnabled(){return enabled;}}
+ public boolean isFactionPvp(){return factionPvp;}public static class Safety{public boolean enabled=true;public boolean isEnabled(){return enabled;}public void setEnabled(boolean value){enabled=value;}}
 
  private zombie.inventory.InventoryItem primary,secondary;
  private final zombie.network.fields.hit.AttackVars attackVars=new zombie.network.fields.hit.AttackVars();
@@ -623,7 +623,7 @@ FILES.update({
  public class HandWeapon extends zombie.inventory.InventoryItem {
   public boolean chambered,clip,jammed;public HandWeapon(int id,String type){super(id,type);}
   public boolean isRanged(){return type.equals("Base.Pistol");}public boolean isTwoHandWeapon(){return !isRanged();}
-  public int getMaxAmmo(){return 15;}public float getMaxRange(zombie.characters.IsoPlayer owner){return isRanged()?15:1.2f;}
+  public int getMaxAmmo(){return 15;}public int getProjectileCount(){return 1;}public int getMaxHitCount(){return 3;}public float getMaxRange(zombie.characters.IsoPlayer owner){return isRanged()?15:1.2f;}
   public boolean isJammed(){return jammed;}public void setJammed(boolean value){jammed=value;}
   public boolean isRoundChambered(){return chambered;}public void setRoundChambered(boolean value){chambered=value;}
   public void setContainsClip(boolean value){clip=value;}public void setSpentRoundChambered(boolean value){}
@@ -650,7 +650,7 @@ FILES.update({
  "zombie/network/fields/hit/HitInfo.java":r"""package zombie.network.fields.hit;
  public class HitInfo {public HitInfo init(Object target,float dot,float distance,float x,float y,float z){return this;}}""",
  "zombie/network/fields/hit/WeaponHit.java":r"""package zombie.network.fields.hit;
- public class WeaponHit {public float damage;public void set(float damage,float range,float force,float dx,float dy,boolean head,boolean legs,boolean remove,boolean ignore){this.damage=damage;}}""",
+ public class WeaponHit {public float damage;public boolean ignored;public float getDamage(){return damage;}public boolean isDamageIgnored(){return ignored;}public void set(float damage,float range,float force,float dx,float dy,boolean head,boolean legs,boolean remove,boolean ignore){this.damage=damage;this.ignored=ignore;}}""",
  "zombie/network/packets/hit/PlayerHitZombiePacket.java":r"""package zombie.network.packets.hit;
  import java.util.*;import zombie.network.fields.hit.*;import zombie.characters.*;import zombie.inventory.types.HandWeapon;
  public class PlayerHitZombiePacket implements HitCharacter {
@@ -739,9 +739,9 @@ public static int engagements;
 public static ServerZombieController getInstance(){return I;}public void install(ZombieVictimPort port){}
 public boolean engage(zombie.characters.IsoZombie z,short id){engagements++;return true;}}"""
 FILES["zombie/characters/IsoPlayer.java"] = FILES["zombie/characters/IsoPlayer.java"].replace(
-    "public float useChargeDelta;", "public void setAttackedBy(IsoZombie z){}public boolean isDeathDragDown(){return false;}public float useChargeDelta;")
+    "public float useChargeDelta;", "public void setAttackedBy(zombie.characters.IsoGameCharacter z){}public boolean isDeathDragDown(){return false;}public float useChargeDelta;")
 FILES["zombie/characters/BodyDamage/BodyDamage.java"] = FILES["zombie/characters/BodyDamage/BodyDamage.java"].replace(
-    "private float health=100;", "private float health=100;public void calculateOverallHealth(){}public boolean AddRandomDamageFromZombie(zombie.characters.IsoZombie z,String reaction,int part){health-=10;return true;}")
+    "private float health=100;", "private float health=100;public void DamageFromWeapon(zombie.inventory.types.HandWeapon weapon,int part){health-=10;}public void calculateOverallHealth(){}public boolean AddRandomDamageFromZombie(zombie.characters.IsoZombie z,String reaction,int part){health-=10;return true;}")
 
 def main():
     # Preserve the entire vanilla request handler after the one intentional fallback.
