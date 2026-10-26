@@ -10,6 +10,7 @@ import java.time.*;
 import java.time.format.*;
 import java.util.*;
 import java.util.concurrent.*;
+import org.postgresql.util.PSQLException;
 import zombie.ZomboidFileSystem;
 import zombie.characters.IsoPlayer;
 import zombie.core.Core;
@@ -259,10 +260,35 @@ public final class ApocBRPlayerMigration {
             // Only our typed assertions supply identifiers; arbitrary loader messages are never logged.
             if(failure instanceof ApocBRPlayerMigrationVerification.AssertionFailure assertion)detail.append("; assertion=").append(assertion.code).append(assertion.diagnostic);
             if(failure instanceof ApocBRPlayerRelationalCapture.IncompleteGraphException graph)detail.append("; ").append(graph.diagnostic());
-            if(failure instanceof SQLException sql)detail.append("; SQLState=").append(ApocBRPlayerReconstructionLog.token(sql.getSQLState()));
+            if(failure instanceof SQLException sql)detail.append(sqlDiagnostic(sql));
             detail.append("; frames=");var frames=failure.getStackTrace();
             for(int i=0;i<Math.min(6,frames.length);i++){if(i>0)detail.append('|');detail.append(frames[i].getClassName()).append('.').append(frames[i].getMethodName()).append(':').append(frames[i].getLineNumber());}
         }
+        return detail.toString();
+    }
+    static String sqlDiagnostic(SQLException failure) {
+        StringBuilder detail=new StringBuilder();
+        Set<Throwable> seen=Collections.newSetFromMap(new IdentityHashMap<>());
+        Deque<Throwable> pending=new ArrayDeque<>();pending.add(failure);int count=0;
+        // JDBC batches often keep the actual server error in nextException, not cause.
+        while(!pending.isEmpty()&&count<8) {
+            Throwable next=pending.removeFirst();if(!seen.add(next))continue;
+            detail.append("; sqlIndex=").append(count++).append("; sqlException=").append(next.getClass().getSimpleName());
+            if(next instanceof SQLException sql) {
+                detail.append("; SQLState=").append(ApocBRPlayerReconstructionLog.token(sql.getSQLState())).append("; errorCode=").append(sql.getErrorCode());
+                if(sql instanceof PSQLException pg&&pg.getServerErrorMessage()!=null) {
+                    var error=pg.getServerErrorMessage();
+                    detail.append("; schema=").append(ApocBRPlayerReconstructionLog.token(error.getSchema()))
+                        .append("; table=").append(ApocBRPlayerReconstructionLog.token(error.getTable()))
+                        .append("; column=").append(ApocBRPlayerReconstructionLog.token(error.getColumn()))
+                        .append("; constraint=").append(ApocBRPlayerReconstructionLog.token(error.getConstraint()));
+                }
+                if(sql.getNextException()!=null)pending.addLast(sql.getNextException());
+            }
+            if(next.getCause()!=null)pending.addLast(next.getCause());
+        }
+        // Never include driver messages, SQL, DETAIL, WHERE or duplicate key values.
+        if(!pending.isEmpty())detail.append("; sqlChainTruncated=true");
         return detail.toString();
     }
     private void run() {
@@ -289,7 +315,9 @@ public final class ApocBRPlayerMigration {
                         failed++;
                         String detail=cause instanceof ApocBRPlayerRelationalCapture.IncompleteGraphException graph?"; "+graph.diagnostic()
                             :cause instanceof ApocBRPlayerRelationalLimits.SizeExceeded size?"; "+size.diagnostic():"";
-                        event("FAILED",row,"issue="+cause.getClass().getSimpleName()+(cause instanceof SQLException sql?"; SQLState="+sql.getSQLState():"")+detail);
+                        event("FAILED",row,"issue="+cause.getClass().getSimpleName()+"; world="+clean(world)
+                            +"; identityMode="+(coop?"steam_coop":"username")+"; sourceDataset="+dataset
+                            +"; "+verificationDiagnostic(cause)+detail);
                     }
                 }finally{request=null;verification=null;reserved=null;}
                 Thread.sleep(1000); // interval starts after the previous character's terminal outcome

@@ -1,6 +1,7 @@
 """Production migration worker with real read-only SQLite and isolated engine/PostgreSQL ports."""
 from pathlib import Path
 import os
+import sys
 import sqlite3
 import subprocess
 import tempfile
@@ -9,6 +10,7 @@ from contextlib import closing
 ROOT = Path(__file__).resolve().parents[1]
 GAME = Path(os.environ.get('APOCBR_TEST_GAME_JAR', r'Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar'))
 JDK = ROOT / 'jdk/bin'
+CLASSPATH = str(GAME) + os.pathsep + str(ROOT / '42.21.0/lib/postgresql-42.7.14.jar')
 STUBS = {
 'zombie/ZomboidFileSystem.java': '''package zombie;public class ZomboidFileSystem {
  public static final ZomboidFileSystem instance=new ZomboidFileSystem();
@@ -141,6 +143,18 @@ import java.nio.file.*;import java.time.*;import java.util.*;import zombie.netwo
 public class MigrationTest {
  static void check(boolean ok,String text){if(!ok)throw new AssertionError(text);}
  static String logs()throws Exception{return Files.readString(Path.of(System.getProperty("fixture"),"save","player-migration.log"));}
+ static void sqlDiagnostics() {
+  var pg=new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage(
+   "SERROR\0C23505\0splayer_rel\0tplayer_slot\0cidentity_key\0nfixture_slot_identity_key\0MPRIVATE_MESSAGE\0DPRIVATE_DUPLICATE_VALUES\0WPRIVATE_QUERY\0\0"));
+  var batch=new java.sql.BatchUpdateException("PRIVATE_BATCH_SQL","23505",new int[0]);batch.setNextException(pg);pg.setNextException(batch);
+  String detail=ApocBRPlayerMigration.sqlDiagnostic(batch);
+  for(String field:List.of("SQLState=23505","schema=player_rel","table=player_slot","column=identity_key","constraint=fixture_slot_identity_key","sqlException=PSQLException"))check(detail.contains(field),"structured SQL diagnostic "+field);
+  check(!detail.contains("PRIVATE_")&&!detail.contains("sqlIndex=2"),"raw messages and values omitted, cyclic JDBC chain bounded");
+  var root=new java.sql.SQLException("PRIVATE_ROOT","08006");var tail=root;
+  for(int i=0;i<12;i++){var next=new java.sql.SQLException("PRIVATE_NEXT","23505");tail.setNextException(next);tail=next;}
+  detail=ApocBRPlayerMigration.sqlDiagnostic(root);
+  check(detail.contains("sqlIndex=7")&&!detail.contains("sqlIndex=8"),"SQL chain limited to eight entries");
+ }
  static void equipmentDiagnostics() {
   var items=List.<Map<String,Object>>of(Map.of("id",1,"native_id",10),Map.of("id",2,"native_id",11));
   List<Map<String,Object>> equipment=new ArrayList<>();
@@ -163,6 +177,7 @@ public class MigrationTest {
   }
  }
  static void comparisons() {
+  sqlDiagnostics();
   equipmentDiagnostics();
   normalizedEquipment();
   var tables=new LinkedHashMap<String,List<Map<String,Object>>>();
@@ -239,6 +254,7 @@ public class MigrationTest {
  }
  public static void main(String[] args)throws Exception {
  GameServer.mainThread=Thread.currentThread();System.setProperty("apocbr.postgres.enabled","true");
+ if(args.length>0&&args[0].equals("diagnostics")){sqlDiagnostics();System.out.println("Structured SQL diagnostics: PostgreSQL constraint/table/column, batch chains, cycles, bounded output and private-value omission passed");return;}
  if(args.length>0&&args[0].equals("validate")) {
   System.setProperty("fixture",System.getProperty("fixture")+"/validation");
   Files.createDirectories(Path.of(System.getProperty("fixture"),"save"));
@@ -357,8 +373,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_migration_') as folder:
         files.append(str(path))
     source = ROOT / '42.21.0/src/zombie/savefile'
     files += [str(source / name) for name in ('ApocBRPlayerMigration.java', 'ApocBRPlayerMigrationVerification.java', 'ApocBRPlayerReconstructionLog.java', 'ApocBRPlayerValidationTargets.java', 'ApocBRPlayerLoadQuality.java', 'ApocBRPlayerRelationalLimits.java')]
-    subprocess.run([str(JDK/'javac.exe'), '--release', '25', '-cp', str(GAME), '-d', folder, *files], check=True)
-    subprocess.run([str(JDK/'java.exe'), '-Dfixture='+folder, '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.MigrationTest'], check=True, timeout=40)
-    subprocess.run([str(JDK/'java.exe'), '-Dfixture='+folder, '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.MigrationTest', 'stop'], check=True, timeout=12)
-    subprocess.run([str(JDK/'java.exe'), '-Dfixture='+folder, '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.MigrationTest', 'stop-verification'], check=True, timeout=12)
-    subprocess.run([str(JDK/'java.exe'), '-Dfixture='+folder, '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.MigrationTest', 'validate'], check=True, timeout=115)
+    subprocess.run([str(JDK/'javac.exe'), '--release', '25', '-cp', CLASSPATH, '-d', folder, *files], check=True)
+    runs = [('diagnostics', 15)] if '--diagnostics-only' in sys.argv else [('', 40), ('stop', 12), ('stop-verification', 12), ('validate', 115)]
+    for mode, timeout in runs:
+        subprocess.run([str(JDK/'java.exe'), '-Dfixture='+folder, '-cp', folder+os.pathsep+CLASSPATH, 'zombie.savefile.MigrationTest', *([mode] if mode else [])], check=True, timeout=timeout)

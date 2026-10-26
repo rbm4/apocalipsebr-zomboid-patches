@@ -260,6 +260,17 @@ messages are not logged.
 
 `COLLISION_DISCARDED` identifies incoming characters rejected for a foreign source
 dataset. `FAILED` reports the exception type and SQLState when available.
+Persistence failures also include world, identity mode and source dataset, bounded
+stack frames, SQL vendor code and PostgreSQL schema/table/column/constraint
+identifiers when supplied by the driver. Both JDBC `nextException` and cause
+chains are inspected with cycle detection and an eight-entry limit per SQL
+diagnostic; a capped chain reports `sqlChainTruncated=true`. These details also
+apply to SQL verification failures. In particular, `23505` plus the constraint
+name distinguishes slot/account uniqueness from an inventory or snapshot key
+conflict; it is not automatically classified as `COLLISION_DISCARDED`.
+Raw SQL, driver messages, PostgreSQL DETAIL/WHERE and duplicate-key values are
+excluded. Diagnostics are appended to `player-migration.log` and mirrored to the
+server log without changing collision handling, transaction behavior or retries.
 `VERIFICATION_STARTED`, `ASSERTION_PASSED`, `VERIFIED` and `VERIFICATION_FAILED`
 record the character and expected snapshot IDs. Verification failures include
 their stage, typed assertion code when applicable, exception types, nested causes
@@ -310,6 +321,10 @@ skipped accounts. The worker flushes every file event before proceeding; audit
 file failures stop the run rather than silently dropping collision reports.
 
 ## Validation
+
+- `python -B tools/test_postgres_player_migration.py --diagnostics-only`: actual
+  PostgreSQL driver error metadata, nested JDBC batch errors, cyclic/long chains,
+  and exclusion of raw SQL/messages/duplicate values. No server/database required.
 
 - `python -B tools/test_postgres_player_migration.py`: actual migration worker,
   real temporary read-only SQLite databases, server-thread native-load boundary,
