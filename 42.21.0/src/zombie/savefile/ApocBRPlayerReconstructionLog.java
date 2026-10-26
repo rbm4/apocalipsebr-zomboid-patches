@@ -9,6 +9,27 @@ import zombie.debug.DebugLog;
 final class ApocBRPlayerReconstructionLog {
     private static final ThreadLocal<Attempt> current=new ThreadLocal<>();
     private static java.util.function.Consumer<String> sink=DebugLog::log;
+    private static final ThreadLocal<Diagnostics> diagnostics=new ThreadLocal<>();
+    private static final Set<String> AUDIT_EVENTS=Set.of("MISSING_TRAIT_SKIPPED","ITEM_TYPE_MISMATCH","MISSING_REGISTRY","ITEM_SEQUENCE_FAILED","MOVEABLE_RECONSTRUCTION_FAILED","FAILED");
+    static void moveableFailure(String fullType,String sprite){var a=current.get();if(a!=null)a.event("MOVEABLE_RECONSTRUCTION_FAILED","; fullType="+token(fullType)+"; worldSprite="+token(sprite));}
+    static Diagnostics collect(java.util.function.Consumer<String> audit){return new Diagnostics(audit);}
+    static void missingTrait(String key) {
+        var capture=diagnostics.get();if(capture!=null)capture.skippedTraits.add(key);
+        var attempt=current.get();if(attempt!=null)attempt.event("MISSING_TRAIT_SKIPPED","; traitKey="+token(key));
+    }
+    static final class Diagnostics implements AutoCloseable {
+        final Diagnostics previous=diagnostics.get();final java.util.function.Consumer<String> audit;
+        final Set<String> skippedTraits=new HashSet<>();int emitted;
+        Diagnostics(java.util.function.Consumer<String> audit){this.audit=audit;diagnostics.set(this);}
+        void accept(String event,String message) {
+            if(AUDIT_EVENTS.contains(event)) {
+                if(emitted<32)audit.accept(message.substring(0,Math.min(4096,message.length())));
+                else if(emitted==32)audit.accept("RECONSTRUCTION_DIAGNOSTICS_TRUNCATED; limit=32");
+                emitted++;
+            }
+        }
+        public void close(){diagnostics.set(previous);if(previous==null)diagnostics.remove();}
+    }
     private static final Set<String> REASONS=Set.of("Relational login requires a complete compatible head","Relational login graph count mismatch",
         "Relational login edge count mismatch","Relational login read exceeds graph budget","Missing root inventory","Duplicate item","Duplicate container",
         "Invalid container owner","Invalid saved item type or identity","Saved item type changed","Incomplete component","Unsupported saved component",
@@ -27,8 +48,9 @@ final class ApocBRPlayerReconstructionLog {
         void lookup(String world,String identity,boolean coop){event("LOOKUP","; world="+token(world)+"; identityMode="+(coop?"steam_coop":"username")
             +"; identityRef="+UUID.nameUUIDFromBytes(String.valueOf(identity).getBytes(StandardCharsets.UTF_8)));}
         void stage(String stage){this.stage=stage;table="NONE";field="NONE";subject="NONE";rows=0;event("STAGE","");}
-        void event(String event,String detail){sink.accept("[ApocBR][Reconstruction] "+event+"; request="+request+"; phase="+phase+"; slot="+slot
-            +"; stage="+stage+"; elapsedMs="+(System.nanoTime()-started)/1_000_000L+detail);}
+        void event(String event,String detail){String message="[ApocBR][Reconstruction] "+event+"; request="+request+"; phase="+phase+"; slot="+slot
+            +"; stage="+stage+"; elapsedMs="+(System.nanoTime()-started)/1_000_000L+detail;
+            sink.accept(message);var capture=diagnostics.get();if(capture!=null)capture.accept(event,message);}
         void profile(ApocBRPlayerRelationalReader.Profile profile){
             if(profile==null){event("NO_PROFILE","");return;}
             var metadata=profile.rows("snapshot");if(!metadata.isEmpty()){

@@ -9,6 +9,7 @@ import zombie.inventory.InventoryItem;
 import zombie.inventory.InventoryItemFactory;
 import zombie.inventory.ItemContainer;
 import zombie.inventory.types.InventoryContainer;
+import zombie.inventory.types.Moveable;
 import zombie.iso.IsoWorld;
 import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
@@ -84,7 +85,9 @@ final class ApocBRPlayerRelationalReconstruction {
     private void traits(IsoPlayer player) {
         for(var r:rows("character_trait")) {
             ApocBRPlayerReconstructionLog.field("trait_key");
-            Object trait=registry("zombie.scripting.objects.CharacterTrait",r.get("trait_key"));
+            String key=(String)Objects.requireNonNull(r.get("trait_key"),"Missing trait key");
+            Object trait=staticCall("zombie.scripting.objects.CharacterTrait","get",staticCall("zombie.scripting.objects.ResourceLocation","of",key));
+            if(trait==null){ApocBRPlayerReconstructionLog.missingTrait(key);continue;}
             // Native load uses CharacterTraits.add to restore both the flags and known list.
             call(get(player,"characterTraits"),"add",trait);
         }
@@ -170,9 +173,11 @@ final class ApocBRPlayerRelationalReconstruction {
             project("container",container,r,"id owner_character_id owner_item_id");register(r.get("id"),container);
         }
         Set<Integer> nativeIds=new HashSet<>();
+        Map<Integer,Map<String,Object>> moveables=new HashMap<>();
+        for(var r:rows("moveable_state"))if(moveables.put(id(r.get("item_id")),r)!=null)throw new IllegalStateException("Duplicate Moveable state");
         for(var r:rows("item")) {
             ApocBRPlayerReconstructionLog.subject("item",r.get("id"),r.get("full_type"));
-            InventoryItem item=InventoryItemFactory.CreateItem((String)r.get("full_type"));
+            InventoryItem item=createSavedItem(r,moveables.get(id(r.get("id"))),InventoryItemFactory::CreateItem);
             // One line only when the saved definition cannot be resolved locally.
             if(item==null||!item.getClass().getName().equals(r.get("runtime_class")))trace.event("ITEM_TYPE_MISMATCH","; fullType="+ApocBRPlayerReconstructionLog.token(r.get("full_type"))+"; expectedClass="+ApocBRPlayerReconstructionLog.token(r.get("runtime_class"))+"; actualClass="+(item==null?"MISSING":item.getClass().getName()));
             validateItemType(item,r);
@@ -201,13 +206,56 @@ final class ApocBRPlayerRelationalReconstruction {
             project(table,item,r,"item_id");
         }
         String[][] extras={{"item_extra","extraItems","full_type"},{"food_spice","spices","full_type"},{"literature_recipe","learnedRecipes","recipe_key"}};
-        for(var e:extras)for(var r:rows(e[0])){Object item=ref(r.get("item_id"));Object list=get(item,e[1]);if(list==null){list=new ArrayList<>();set(item,e[1],list);}add(list,r.get(e[2]));}
+        for(var e:extras) {
+            Set<Object> initialized=new HashSet<>();
+            for(var r:rows(e[0]))restoreItemSequence(e,r,initialized.add(r.get("item_id")));
+        }
         for(var r:rows("literature_page")){Object item=ref(r.get("item_id"));Object pages=get(item,"customPages");if(pages==null){pages=new HashMap<>();set(item,"customPages",pages);}put(pages,r.get("page_key"),r.get("text"));}
         for(var r:rows("clothing_patch")){Object item=ref(r.get("item_id")),patch=create("zombie.inventory.types.Clothing$ClothingPatch");project("clothing_patch",patch,r,"item_id body_part_key");Object patches=get(item,"patches");if(patches==null){patches=new HashMap<>();set(item,"patches",patches);}Object part=convert(type("zombie.characterTextures.BloodBodyPartType"),r.get("body_part_key"));put(patches,staticCall("zombie.characterTextures.BloodBodyPartType","ToIndex",part),patch);}
         for(var r:rows("animal_track")){Object track=create("zombie.characters.animals.AnimalTracks");project("animal_track",track,r,"item_id");set(ref(r.get("item_id")),"animalTracks",track);}
         itemMaps();radios();eggs();
         for(var r:rows("container"))set(ref(r.get("id")),"dirty",false);
         call(get(player,"savedInventoryItems"),"addAll",player.getInventory().items);
+    }
+    static InventoryItem createSavedItem(Map<String,Object> row,Map<String,Object> state,
+                                         java.util.function.Function<String,InventoryItem> factory) {
+        String fullType=(String)row.get("full_type");
+        String sprite=state==null?null:(String)state.get("world_sprite");
+        // Moveable.load changes Base.Moveable's runtime full type to Base.<worldSprite>.
+        // That derived name is not a script definition and must not be sent to the factory.
+        boolean dynamic=Moveable.class.getName().equals(row.get("runtime_class"))
+            &&sprite!=null&&!sprite.isBlank()&&("Base."+sprite).equals(fullType);
+        InventoryItem item=factory.apply(dynamic?"Base.Moveable":fullType);
+        if(dynamic&&item!=null&&item.getClass()==Moveable.class) {
+            Moveable furniture=(Moveable)item;
+            if(!furniture.ReadFromWorldSprite(sprite)) {
+                ApocBRPlayerReconstructionLog.moveableFailure(fullType,sprite);
+                throw new IllegalStateException("Invalid saved Moveable sprite");
+            }
+            // Initialize sprite/grid/name properties before projecting saved scalar, light,
+            // visual and component state, so sprite defaults cannot overwrite saved values.
+            set(furniture,"type",sprite);set(furniture,"fullType",fullType);
+        }
+        return item;
+    }
+    private void restoreItemSequence(String[] mapping,Map<String,Object> row,boolean first) {
+        InventoryItem item=(InventoryItem)ref(row.get("item_id"));Object list=null,value=row.get(mapping[2]);
+        ApocBRPlayerReconstructionLog.subject("item",row.get("item_id"),item.getFullType());
+        ApocBRPlayerReconstructionLog.field(mapping[1]);
+        try {
+            list=get(item,mapping[1]);
+            // Factory/script defaults may be immutable. Native load replaces saved sequences;
+            // build each item's own list once, without appending duplicate constructor defaults.
+            if(first||list==null){list=new ArrayList<>();set(item,mapping[1],list);}
+            add(list,value);
+        }catch(RuntimeException failure) {
+            trace.event("ITEM_SEQUENCE_FAILED","; table="+mapping[0]+"; field="+mapping[1]
+                +"; itemOrdinal="+id(row.get("item_id"))+"; nativeId="+item.getID()
+                +"; fullType="+ApocBRPlayerReconstructionLog.token(item.getFullType())
+                +"; collectionClass="+(list==null?"NONE":list.getClass().getName())
+                +"; valueClass="+(value==null?"NONE":value.getClass().getName()));
+            throw failure;
+        }
     }
     static void restoreBag(InventoryContainer bag,ItemContainer contents,int weightReduction) {
         bag.setItemContainer(contents);
@@ -289,7 +337,9 @@ final class ApocBRPlayerRelationalReconstruction {
         for(var r:rows("equipment")) {
             InventoryItem item=(InventoryItem)ref(r.get("item_id"));String slot=(String)r.get("slot");
             switch((String)r.get("kind")) {
-                case "hand" -> {if(slot.equals("primary"))player.setPrimaryHandItem(item);else if(slot.equals("secondary"))player.setSecondaryHandItem(item);else throw new IllegalStateException("Unknown hand slot");}
+                // Match IsoPlayer.load: deserialization must not fire OnEquip* callbacks,
+                // which may replace restored attachments and reapply gameplay modifiers.
+                case "hand" -> {if(slot.equals("primary"))set(player,"leftHandItem",item);else if(slot.equals("secondary"))set(player,"rightHandItem",item);else throw new IllegalStateException("Unknown hand slot");}
                 case "worn" -> call(player.getWornItems(),"setItem",registry("zombie.scripting.objects.ItemBodyLocation",slot),item);
                 case "attached" -> call(player.getAttachedItems(),"setItem",slot,item);
                 default -> throw new IllegalStateException("Unknown equipment relation");

@@ -23,6 +23,24 @@ final class ApocBRPersistence {
     private volatile String replayKind="NONE",lastIssue="NONE";
     private final Thread writer,replay;
     private final Object replayPause=new Object();
+    // Ephemeral mod requests share the replay thread, never the journal writer.
+    private final java.util.ArrayDeque<Runnable> requests=new java.util.ArrayDeque<>();
+    static boolean request(Runnable task) {
+        ApocBRPersistence current=instance;
+        if(current==null||!enabled())return false;
+        synchronized(current.replayPause) {
+            if(current.closed||current.draining||current.state!=State.AVAILABLE||current.requests.size()>=256)return false;
+            current.requests.addLast(task);current.replayPause.notifyAll();return true;
+        }
+    }
+    private boolean requestsEmpty(){synchronized(replayPause){return requests.isEmpty();}}
+    private boolean runRequest() {
+        Runnable task;synchronized(replayPause){task=requests.pollFirst();if(task!=null)inFlight=true;}
+        if(task==null)return false;
+        try{task.run();}catch(RuntimeException error){log("MOD_REQUEST_FAILED; issue="+error.getClass().getName());}
+        finally{inFlight=false;}
+        return true;
+    }
     // Owned by the replay worker. Normal runtime failures do not consume the startup/shutdown budget.
     private UUID retryOperation;
     private int replayFailures;
@@ -140,14 +158,16 @@ final class ApocBRPersistence {
                 // attempt budget, rather than an unbounded probe before it can run.
                 if(!draining&&(state!=State.AVAILABLE||startup))probe();
                 if(!startup&&!draining&&state!=State.AVAILABLE)transition(State.RECOVERING);
+                // At most one mod request between journal entries: neither lane starves.
+                boolean requested=runRequest();
                 ApocBRPersistenceJournal.Entry entry=journal.head();
                 if(entry!=null) {
                     inFlight=true;operation.set(entry.id());replayOperation=entry.id();replayKind=entry.operation().kind();
                     try{replayEntry(entry);}
                     finally{operation.remove();inFlight=false;}
                 } else {
-                    if(!startup&&!draining&&journal.empty())transition(State.AVAILABLE);
-                    pauseReplay(50);
+                    if(!startup&&!draining&&state!=State.UNAVAILABLE&&journal.empty())transition(State.AVAILABLE);
+                    if(!requested)pauseReplay(50);
                 }
                 delay=250;
             }catch(SQLException error){lastIssue=error.getClass().getName();failed(error);if(state!=State.UNAVAILABLE&&!draining)transition(State.RECOVERING);report("REPLAY_DEFERRED",error.getSQLState());pauseReplay(delay);delay=Math.min(30_000,delay*2);}
@@ -226,7 +246,7 @@ final class ApocBRPersistence {
         for(;;) {
             try {
                 background.set(true);if(!draining)probe();
-                if(journal.empty()&&!inFlight)break;
+                if(journal.empty()&&requestsEmpty()&&!inFlight)break;
             }catch(SQLException error){
                 if(startup&&error.getSQLState()!=null&&(error.getSQLState().startsWith("42")||error.getSQLState().startsWith("28")))
                     throw new IllegalStateException("PostgreSQL startup requires compatible migrations and credentials");

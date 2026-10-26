@@ -28,6 +28,7 @@ public final class ApocBRPlayerMigration {
     private static volatile ApocBRPlayerMigration instance;
     private static boolean attempted;
     private final String world,save;
+    private final String mode;
     private final boolean coop;
     private final ZoneId zone;
     private final Path players,accounts,logPath;
@@ -53,11 +54,14 @@ public final class ApocBRPlayerMigration {
     private static final class VerificationRequest {
         final Row row;final ApocBRPlayerRelationalReader.Profile profile;
         final List<String> passed=new ArrayList<>();
+        final List<String> diagnostics=new ArrayList<>();
         final CompletableFuture<ApocBRPlayerMigrationVerification.Restored> result=new CompletableFuture<>();
         volatile String stage="WAIT_SERVER_THREAD";
         VerificationRequest(Row row,ApocBRPlayerRelationalReader.Profile profile){this.row=row;this.profile=profile;}
     }
     private ApocBRPlayerMigration() {
+        mode=System.getProperty("apocbr.postgres.playerMigration.mode","migrate");
+        if(!Set.of("migrate","validate-failed").contains(mode))throw new IllegalArgumentException("Unknown player migration mode");
         world=Core.gameSaveWorld;save=ZomboidFileSystem.instance.getCurrentSaveDir();
         coop=GameServer.coop&&SteamUtils.isSteamModeEnabled();
         zone=ZoneId.systemDefault();
@@ -88,7 +92,7 @@ public final class ApocBRPlayerMigration {
                 if(current.online(check.row)){check.result.complete(null);return;}
                 current.reserved=check.row;
                 check.result.complete(ApocBRPlayerMigrationVerification.reconstruct(check.profile,check.row.slot(),check.row.username(),
-                    stage->check.stage=stage,check.passed::add));
+                    stage->check.stage=stage,check.passed::add,check.diagnostics::add));
             }catch(Exception|LinkageError|AssertionError failure){check.result.completeExceptionally(failure);}
             return;
         }
@@ -216,22 +220,26 @@ public final class ApocBRPlayerMigration {
         try {
             var profile=new ApocBRPlayerRelationalReader().load(world,row.identity(coop),row.slot(),coop);
             stage="PROFILE_IDENTITY";
-            ApocBRPlayerMigrationVerification.identity(profile,character,snapshot,dataset);
+            // Validation pins the logged snapshot, independent of this installation's SQLite dataset path.
+            ApocBRPlayerMigrationVerification.identity(profile,character,snapshot,mode.equals("validate-failed")?null:dataset);
             event("ASSERTION_PASSED",row,ids+"; check=PROFILE_IDENTITY");
             check=new VerificationRequest(row,profile);verification=check;
             ApocBRPlayerMigrationVerification.Restored restored;
             try{restored=check.result.get();}
             finally {
                 // CompletableFuture completion publishes these server-thread assertions, including before an exception.
-                if(check.result.isDone())for(String passed:check.passed)event("ASSERTION_PASSED",row,ids+"; check="+passed);
+                if(check.result.isDone()) {
+                    for(String diagnostic:check.diagnostics)event("RECONSTRUCTION_DIAGNOSTIC",row,ids+"; "+diagnostic);
+                    for(String passed:check.passed)event("ASSERTION_PASSED",row,ids+"; check="+passed);
+                }
             }
-            if(restored==null){event("VERIFICATION_SKIPPED_ONLINE",row,ids);return;}
+            if(restored==null){skipped++;event("VERIFICATION_SKIPPED_ONLINE",row,ids);return;}
             stage="RECAPTURE_RECONSTRUCTED_STATE";
             var graph=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(restored.snapshot(),List.of());
             ApocBRPlayerRelationalCapture.requireComplete(graph,"migration_verification");
             stage="COMPARE_PERSISTED_STATE";
             List<String> passed=new ArrayList<>();
-            try{ApocBRPlayerMigrationVerification.compare(profile,graph,passed::add);}
+            try{ApocBRPlayerMigrationVerification.compare(profile,graph,restored.skippedTraits(),passed::add);}
             finally{for(String assertion:passed)event("ASSERTION_PASSED",row,ids+"; check="+assertion);}
             verified++;event("VERIFIED",row,ids+"; payloadBytes="+restored.payloadBytes());
         }catch(InterruptedException interrupted){throw interrupted;}
@@ -249,7 +257,7 @@ public final class ApocBRPlayerMigration {
             if(depth>0)detail.append("; causedBy=");else detail.append("exception=");
             detail.append(failure.getClass().getName());
             // Only our typed assertions supply identifiers; arbitrary loader messages are never logged.
-            if(failure instanceof ApocBRPlayerMigrationVerification.AssertionFailure assertion)detail.append("; assertion=").append(assertion.code);
+            if(failure instanceof ApocBRPlayerMigrationVerification.AssertionFailure assertion)detail.append("; assertion=").append(assertion.code).append(assertion.diagnostic);
             if(failure instanceof ApocBRPlayerRelationalCapture.IncompleteGraphException graph)detail.append("; ").append(graph.diagnostic());
             if(failure instanceof SQLException sql)detail.append("; SQLState=").append(ApocBRPlayerReconstructionLog.token(sql.getSQLState()));
             detail.append("; frames=");var frames=failure.getStackTrace();
@@ -261,6 +269,8 @@ public final class ApocBRPlayerMigration {
         try {
             output=Files.newBufferedWriter(logPath,StandardCharsets.UTF_8,StandardOpenOption.CREATE,StandardOpenOption.APPEND);
             event("START",null,"server="+clean(GameServer.serverName)+"; world="+clean(world)+"; dataset="+dataset+"; loginTimezone="+zone+"; intervalMs=1000; recentDays=7");
+            event("EXECUTION_MODE",null,"mode="+mode);
+            if(mode.equals("validate-failed")){validateFailed();return;}
             int maximum;
             try(Connection c=readOnly(players);Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT COALESCE(MAX(id),0) FROM networkPlayers")){r.next();maximum=r.getInt(1);}
             var database=new ApocBRPlayerRelationalDatabase(ApocBRPostgresConnector::borrowPlayerConnection);
@@ -291,6 +301,31 @@ public final class ApocBRPlayerMigration {
             stopping=true;request=null;verification=null;reserved=null;
             if(output!=null)try{output.close();}catch(IOException failure){DebugLog.log("[ApocBR][PlayerMigration] LOG_CLOSE_FAILED");}
         }
+    }
+    private void validateFailed()throws IOException,InterruptedException {
+        var reader=new ApocBRPlayerRelationalReader();
+        ApocBRPlayerRelationalCapture.prepare();
+        for(var target:ApocBRPlayerValidationTargets.failedOctober26()) {
+            if(stopping)throw new InterruptedException();
+            selected++;
+            String ids="character="+target.character()+"; snapshot="+target.snapshot()+"; localId="+target.localId();
+            try {
+                event("VALIDATION_TARGET",null,ids);
+                var slot=reader.validationSlot(world,target.character());
+                if(slot==null){skipped++;event("VALIDATION_TARGET_NOT_ACTIVE",null,ids);continue;}
+                if(slot.coop()!=coop||slot.slot()<0||slot.slot()>3||slot.identity()==null||slot.identity().isBlank()) {
+                    skipped++;event("VALIDATION_TARGET_IDENTITY_DENIED",null,ids);continue;
+                }
+                String username=slot.coop()?slot.username():slot.identity();
+                if(username==null||username.isBlank()){skipped++;event("VALIDATION_TARGET_IDENTITY_DENIED",null,ids);continue;}
+                Row row=new Row(target.localId(),world,username,slot.coop()?slot.identity():"",slot.slot(),"<validation>",0,false,0);
+                verify(row,target.character(),target.snapshot());
+            }catch(InterruptedException interrupted){throw interrupted;}
+            catch(IOException auditFailure){throw auditFailure;}
+            catch(Exception|LinkageError failure){failed++;event("VALIDATION_TARGET_FAILED",null,ids+"; "+verificationDiagnostic(failure));}
+            finally{verification=null;reserved=null;if(!stopping)Thread.sleep(1000);}
+        }
+        event("DRAINED",null,summary());
     }
     private String summary(){return "selected="+selected+"; migrated="+migrated+"; skipped="+skipped+"; collisions="+collisions+"; failed="+failed+"; verified="+verified+"; verificationFailed="+verificationFailed;}
     private void event(String code,Row row,String details)throws IOException {

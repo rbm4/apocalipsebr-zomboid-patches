@@ -1467,6 +1467,7 @@ public class GameServer {
         ArrayList<String> mods = new ArrayList<>(ServerMods);
         ZomboidFileSystem.instance.loadMods(mods);
         LuaManager.init();
+        zombie.savefile.ApocBRModEntities.install();
         PerkFactory.init();
         CustomPerks.instance.init();
         CustomPerks.instance.initLua();

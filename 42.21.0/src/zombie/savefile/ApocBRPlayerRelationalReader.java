@@ -10,6 +10,22 @@ public final class ApocBRPlayerRelationalReader {
     private final ApocBRPlayerRelationalDatabase.Connections connections;
     ApocBRPlayerRelationalReader() { this(ApocBRPostgresConnector::borrowPlayerConnection); }
     ApocBRPlayerRelationalReader(ApocBRPlayerRelationalDatabase.Connections connections) { this.connections=connections; }
+    record ValidationSlot(String identity,boolean coop,int slot,String username) {}
+    static final String VALIDATION_SLOT_SQL="SELECT identity_key,identity_mode,player_index,username FROM player_rel.player_slot WHERE world=? AND active_character_id=? LIMIT 2";
+    /** Resolve an allowlisted active character without consulting SQLite or enumerating other profiles. */
+    ValidationSlot validationSlot(String world,UUID character)throws SQLException {
+        try(Connection connection=connections.open();PreparedStatement query=connection.prepareStatement(VALIDATION_SLOT_SQL)) {
+            query.setQueryTimeout(2);query.setString(1,world);query.setObject(2,character);
+            try(ResultSet rows=query.executeQuery()) {
+                if(!rows.next())return null;
+                String mode=rows.getString(2);
+                if(!Set.of("username","steam_coop").contains(mode))throw new SQLException("Invalid player identity mode","22000");
+                var slot=new ValidationSlot(rows.getString(1),mode.equals("steam_coop"),rows.getInt(3),rows.getString(4));
+                if(rows.next())throw new SQLException("Ambiguous active character","22000");
+                return slot;
+            }
+        }
+    }
     public record Profile(Map<String,List<Map<String,Object>>> tables) {
         public Profile {
             Map<String,List<Map<String,Object>>> copy=new LinkedHashMap<>();

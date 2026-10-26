@@ -96,6 +96,54 @@ public class ReconstructionTest {
    for(var col:table.getValue())if(col.type().equals("uuid")&&!col.name().equals("snapshot_id")&&!col.name().startsWith("source_dictionary_")){String alias="r"+reference++;check(section.contains("'"+col.name()+"',"+alias+".ordinal")&&section.contains("LEFT JOIN refs "+alias+" ON "+alias+".id=t."+col.name()),"UUID stays in SQL: "+table.getKey()+"."+col.name());}
   }
  }
+ static void validationLookup()throws Exception {
+  Fixture helper=new Fixture();Map<Integer,Object> bound=new HashMap<>();int[] closed={0};
+  List<Object[]> found=new ArrayList<>();UUID character=UUID.randomUUID();
+  ApocBRPlayerRelationalDatabase.Connections connections=()->(Connection)helper.proxy(Connection.class,(p,m,a)->switch(m.getName()) {
+   case "prepareStatement" -> {
+    check(a[0].equals(ApocBRPlayerRelationalReader.VALIDATION_SLOT_SQL),"targeted lookup uses fixed active-character query");
+    yield helper.proxy(PreparedStatement.class,(q,n,b)->{
+     if(n.getName().equals("setString")||n.getName().equals("setObject")){bound.put((Integer)b[0],b[1]);return null;}
+     if(n.getName().equals("setQueryTimeout")){check(b[0].equals(2),"lookup timeout bounded");return null;}
+     if(n.getName().equals("executeQuery")){int[] index={-1};return helper.proxy(ResultSet.class,(r,f,v)->switch(f.getName()) {
+      case "next"->++index[0]<found.size();case "getString","getInt"->found.get(index[0])[(int)v[0]-1];default->helper.zero(f.getReturnType());});}
+     if(n.getName().startsWith("execute"))throw new AssertionError("validation must only select");
+     return helper.zero(n.getReturnType());
+    });
+   }
+   case "close"->{closed[0]++;yield null;}default->helper.zero(m.getReturnType());
+  });
+  var reader=new ApocBRPlayerRelationalReader(connections);
+  check(reader.validationSlot("world",character)==null,"inactive target is explicit");
+  found.add(new Object[]{"alice","username",0,"alice"});
+  var slot=reader.validationSlot("world",character);
+  check(slot.identity().equals("alice")&&!slot.coop()&&slot.slot()==0,"dedicated identity resolved from DB");
+  check(bound.equals(Map.of(1,"world",2,character)),"UUID and world bound as parameters");
+  found.set(0,new Object[]{"12345","steam_coop",2,"split-user"});slot=reader.validationSlot("world",character);
+  check(slot.coop()&&slot.slot()==2&&slot.username().equals("split-user"),"coop identity and account name resolved");
+  found.add(found.getFirst());
+  try{reader.validationSlot("world",character);throw new AssertionError("ambiguous target accepted");}catch(SQLException expected){checks++;}
+  found.clear();found.add(new Object[]{"alice","invalid",0,"alice"});
+  try{reader.validationSlot("world",character);throw new AssertionError("invalid mode accepted");}catch(SQLException expected){checks++;}
+  check(closed[0]==5,"all lookup leases released");
+ }
+ static void itemSequences()throws Exception {
+  var ctor=ApocBRPlayerRelationalReconstruction.class.getDeclaredConstructor(ApocBRPlayerRelationalReader.Profile.class,ApocBRPlayerReconstructionLog.Attempt.class);ctor.setAccessible(true);
+  var owner=ctor.newInstance(new ApocBRPlayerRelationalReader.Profile(Map.of()),null);
+  var register=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod("register",Object.class,Object.class);register.setAccessible(true);
+  var restore=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod("restoreItemSequence",String[].class,Map.class,boolean.class);restore.setAccessible(true);
+  var book=(zombie.inventory.types.Literature)blank(zombie.inventory.types.Literature.class);
+  List<String> shared=List.of("script-default");book.setLearnedRecipes(shared);register.invoke(owner,1,book);
+  String[] mapping={"literature_recipe","learnedRecipes","recipe_key"};
+  restore.invoke(owner,mapping,Map.of("item_id",1,"recipe_key","saved-one"),true);
+  restore.invoke(owner,mapping,Map.of("item_id",1,"recipe_key","saved-two"),false);
+  check(book.getLearnedRecipes().equals(List.of("saved-one","saved-two")),"immutable factory list replaced by saved sequence in order");
+  check(shared.equals(List.of("script-default")),"shared script list unchanged");
+  book.getLearnedRecipes().add("mutable");check(book.getLearnedRecipes().size()==3,"restored recipes independently mutable");
+  var item=(zombie.inventory.InventoryItem)blank(zombie.inventory.InventoryItem.class);register.invoke(owner,2,item);
+  restore.invoke(owner,new String[]{"item_extra","extraItems","full_type"},Map.of("item_id",2,"full_type","Base.Axe"),true);
+  check(item.extraItems.equals(List.of("Base.Axe")),"null extra item list restored");
+ }
  static Object invoke(String name,Class<?>[] types,Object... args)throws Exception {
   var method=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod(name,types);method.setAccessible(true);return method.invoke(null,args);
  }
@@ -246,15 +294,48 @@ public class ReconstructionTest {
   check(!bytes.hasRemaining()&&client.get(smoker)&&client.get(custom)&&client.getKnownTraits().equals(nativeTraits.getKnownTraits()),"native trait wire round trip preserves relational state");
   Field sink=ApocBRPlayerReconstructionLog.class.getDeclaredField("sink");sink.setAccessible(true);Object previous=sink.get(null);
   List<String> logs=new ArrayList<>();sink.set(null,(java.util.function.Consumer<String>)logs::add);
-  try(var attempt=ApocBRPlayerReconstructionLog.begin("RESTORE_PLAYER",0)) {
+  List<String> audit=new ArrayList<>();
+  try(var capture=ApocBRPlayerReconstructionLog.collect(audit::add);var attempt=ApocBRPlayerReconstructionLog.begin("RESTORE_PLAYER",0)) {
    attempt.stage("RESTORE_CHARACTER_FIELDS");
    var missing=new ApocBRPlayerRelationalReader.Profile(Map.of("character_trait",List.of(Map.of("trait_key","apocbr_fixture:missing_trait"))));
-   try{method.invoke(constructor.newInstance(missing,attempt),player);throw new AssertionError("missing trait accepted");}
-   catch(InvocationTargetException expected){check(expected.getCause() instanceof IllegalStateException,"missing trait has explicit reconstruction failure");attempt.failure(expected.getCause());}
-   check(logs.stream().anyMatch(s->s.contains("MISSING_REGISTRY")&&s.contains("registry=zombie.scripting.objects.CharacterTrait; key=apocbr_fixture:missing_trait")),"missing definition diagnostic identifies registry and key");
-   check(logs.stream().anyMatch(s->s.contains("FAILED")&&s.contains("table=character_trait")&&s.contains("field=trait_key")&&s.contains("reason=Missing registry key")),"failure retains table field and reason");
+   method.invoke(constructor.newInstance(missing,attempt),player);
+   check(capture.skippedTraits.equals(Set.of("apocbr_fixture:missing_trait")),"exact missing trait key carried to verification");
+   check(logs.stream().anyMatch(s->s.contains("MISSING_TRAIT_SKIPPED")&&s.contains("traitKey=apocbr_fixture:missing_trait")),"removed trait logged explicitly");
+   check(audit.stream().anyMatch(s->s.contains("MISSING_TRAIT_SKIPPED")),"skip also reaches persistent migration diagnostic channel");
    check(nativeTraits.getKnownTraits().equals(List.of(smoker,custom)),"missing definition is never added to native trait state");
   }finally{sink.set(null,previous);}
+ }
+ static class NoEquipPlayer extends zombie.characters.IsoPlayer {
+  NoEquipPlayer(){super((zombie.iso.IsoCell)null);}
+  @Override public void setPrimaryHandItem(zombie.inventory.InventoryItem item){throw new AssertionError("deserialization fired primary equip callback");}
+  @Override public void setSecondaryHandItem(zombie.inventory.InventoryItem item){throw new AssertionError("deserialization fired secondary equip callback");}
+ }
+ static void handRestoration()throws Exception {
+  var player=(NoEquipPlayer)blank(NoEquipPlayer.class);
+  var weapon=(zombie.inventory.types.HandWeapon)blank(zombie.inventory.types.HandWeapon.class);
+  var part=(zombie.inventory.types.WeaponPart)blank(zombie.inventory.types.WeaponPart.class);
+  var attachments=new ArrayList<zombie.inventory.types.WeaponPart>();attachments.add(part);
+  ApocBRPlayerRelationalReconstruction.set(weapon,"attachmentList",attachments);
+  ApocBRPlayerRelationalReconstruction.set(part,"id",12345);
+  ApocBRPlayerRelationalReconstruction.set(weapon,"maxDamage",42f);
+  var profile=new ApocBRPlayerRelationalReader.Profile(Map.of("equipment",List.of(
+   Map.of("kind","hand","slot","primary","item_id",1,"position",0),Map.of("kind","hand","slot","secondary","item_id",1,"position",1))));
+  var ctor=ApocBRPlayerRelationalReconstruction.class.getDeclaredConstructor(ApocBRPlayerRelationalReader.Profile.class,ApocBRPlayerReconstructionLog.Attempt.class);ctor.setAccessible(true);
+  var owner=ctor.newInstance(profile,null);var register=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod("register",Object.class,Object.class);register.setAccessible(true);register.invoke(owner,1,weapon);
+  var equipment=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod("equipment",zombie.characters.IsoPlayer.class);equipment.setAccessible(true);equipment.invoke(owner,player);
+  check(player.getPrimaryHandItem()==weapon&&player.getSecondaryHandItem()==weapon,"two-handed weapon identity restored directly");
+  check(ApocBRPlayerRelationalAccess.get(weapon,"attachmentList")==attachments&&attachments.getFirst()==part&&part.getID()==12345,"magazine attachment instance and ID preserved without equip callbacks");
+  check(weapon.getMaxDamage()==42f,"saved weapon modifiers not reapplied during hand restoration");
+ }
+ static void diagnosticCapture()throws Exception {
+  List<String> audit=new ArrayList<>();
+  try(var capture=ApocBRPlayerReconstructionLog.collect(audit::add);var attempt=ApocBRPlayerReconstructionLog.begin("RESTORE_PLAYER",0)) {
+   attempt.event("STAGE","ignored");
+   for(int i=0;i<40;i++)attempt.event("ITEM_TYPE_MISMATCH","; fullType=Base.Missing"+i);
+   check(audit.size()==33&&audit.getLast().contains("DIAGNOSTICS_TRUNCATED"),"diagnostic capture is bounded and explicitly reports truncation");
+  }
+  int before=audit.size();try(var attempt=ApocBRPlayerReconstructionLog.begin("RESTORE_PLAYER",0)){attempt.event("ITEM_TYPE_MISMATCH","; fullType=Base.Other");}
+  check(audit.size()==before,"capture scope never leaks into later logins");
  }
  static void fitnessPersistence()throws Exception {
   var nativeFitness=new zombie.characters.BodyDamage.Fitness(null);
@@ -299,6 +380,54 @@ public class ReconstructionTest {
    try{ApocBRPlayerRelationalReconstruction.validateItemType(item,row);throw new AssertionError("changed runtime class accepted");}catch(IllegalStateException expected){checks++;}
   }
   try{ApocBRPlayerRelationalReconstruction.validateItemType(null,Map.of("save_type",-1));throw new AssertionError("missing factory item accepted");}catch(IllegalStateException expected){checks++;}
+ }
+ static void furnitureRestoration()throws Exception {
+  var aliases=zombie.core.TilePropertyAliasMap.instance;
+  var oldNames=new HashMap<>(aliases.propertyToId);var oldProperties=new ArrayList<>(aliases.properties);
+  var register=aliases.getClass().getDeclaredMethod("register",String.class,ArrayList.class);register.setAccessible(true);
+  String spriteName="apocbr_fixture_furniture_0";
+  var sprites=zombie.iso.sprite.IsoSpriteManager.instance.namedMap;
+  Object previous=sprites.get(spriteName);
+  try {
+   aliases.propertyToId.clear();aliases.properties.clear();
+   register.invoke(aliases,"IsMoveAble",new ArrayList<>(List.of("true")));
+   var sprite=(zombie.iso.sprite.IsoSprite)blank(zombie.iso.sprite.IsoSprite.class);
+   var props=new zombie.core.properties.PropertyContainer();props.set("IsMoveAble","true",false);
+   ApocBRPlayerRelationalReconstruction.set(sprite,"properties",props);sprites.put(spriteName,sprite);
+   var furniture=(zombie.inventory.types.Moveable)blank(zombie.inventory.types.Moveable.class);
+   var texture=(zombie.core.textures.Texture)blank(zombie.core.textures.Texture.class);
+   ApocBRPlayerRelationalReconstruction.set(texture,"name","fixture_icon");
+   ApocBRPlayerRelationalReconstruction.set(furniture,"texture",texture);
+   ApocBRPlayerRelationalReconstruction.set(furniture,"module","Base");
+   var row=new HashMap<String,Object>();row.put("full_type","Base."+spriteName);row.put("runtime_class",furniture.getClass().getName());row.put("save_type",-1);
+   var state=Map.<String,Object>of("world_sprite",spriteName,"is_light",true,"light_power",0.75f);
+   List<String> requests=new ArrayList<>();
+   var result=ApocBRPlayerRelationalReconstruction.createSavedItem(row,state,type->{requests.add(type);return furniture;});
+   check(requests.equals(List.of("Base.Moveable")),"dynamic furniture uses stable generic script instead of sprite-derived full type");
+   ApocBRPlayerRelationalReconstruction.validateItemType(result,row);
+   check(result==furniture&&result.getFullType().equals("Base."+spriteName),"runtime full type restored on same instance");
+   check(furniture.getWorldSprite().equals(spriteName)&&Boolean.TRUE.equals(ApocBRPlayerRelationalAccess.get(furniture,"hasReadWorldSprite")),"real native sprite initialization executes");
+   ApocBRPlayerRelationalReconstruction.project("item",result,Map.of("native_id",1729,"actual_weight",12.5f,"condition",7,"current_uses",2),"");
+   ApocBRPlayerRelationalReconstruction.project("moveable_state",result,state,"");
+   check(result.getID()==1729&&result.getCondition()==7&&result.getCurrentUses()==2,"saved identity and item state survive furniture construction");
+   check(result.getActualWeight()==12.5f&&Boolean.TRUE.equals(ApocBRPlayerRelationalAccess.get(result,"isLight"))&&ApocBRPlayerRelationalAccess.get(result,"lightPower").equals(0.75f),"saved weight/light values override sprite defaults");
+   var root=new zombie.inventory.ItemContainer();ApocBRPlayerRelationalReconstruction.restoreContainerItem(root,result);
+   check(result.getContainer()==root&&root.items.getFirst()==result,"furniture retains native ownership linkage");
+   requests.clear();row.put("full_type","Base.NamedCustomFurniture");
+   ApocBRPlayerRelationalReconstruction.createSavedItem(row,state,type->{requests.add(type);return furniture;});
+   check(requests.equals(List.of("Base.NamedCustomFurniture")),"named script definitions keep normal creation path");
+   row.put("runtime_class","zombie.inventory.types.Clothing");row.put("full_type","Base."+spriteName);requests.clear();
+   check(ApocBRPlayerRelationalReconstruction.createSavedItem(row,state,type->{requests.add(type);return null;})==null&&requests.equals(List.of("Base."+spriteName)),"unrelated missing items are never replaced with furniture");
+   row.put("runtime_class",furniture.getClass().getName());row.put("full_type","Base.fixture_missing_sprite");
+   List<String> audit=new ArrayList<>();
+   try(var capture=ApocBRPlayerReconstructionLog.collect(audit::add);var attempt=ApocBRPlayerReconstructionLog.begin("RESTORE_PLAYER",0)) {
+    try{ApocBRPlayerRelationalReconstruction.createSavedItem(row,Map.of("world_sprite","fixture_missing_sprite"),type->furniture);throw new AssertionError("missing furniture sprite accepted");}
+    catch(IllegalStateException expected){check(audit.stream().anyMatch(s->s.contains("MOVEABLE_RECONSTRUCTION_FAILED")&&s.contains("worldSprite=fixture_missing_sprite")),"invalid sprite retains explicit persisted diagnostic");}
+   }
+  }finally {
+   if(previous==null)sprites.remove(spriteName);else sprites.put(spriteName,(zombie.iso.sprite.IsoSprite)previous);
+   aliases.propertyToId.clear();aliases.propertyToId.putAll(oldNames);aliases.properties.clear();aliases.properties.addAll(oldProperties);
+  }
  }
  static void ownership() {
   Map<String,List<Map<String,Object>>> tables=new HashMap<>();
@@ -361,7 +490,7 @@ public class ReconstructionTest {
    check(ApocBRPlayerReconstructionLog.token("\ud83d\ude00\n").length()<=3,"non-ASCII labels cannot break log formatting");
   }finally{sink.set(null,previous);}
  }
- public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();traitRestoration();fitnessPersistence();itemTypes();nativeFields();jdbc();nonFiniteScalars();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
+ public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();traitRestoration();handRestoration();diagnosticCapture();fitnessPersistence();itemTypes();furnitureRestoration();nativeFields();jdbc();validationLookup();itemSequences();nonFiniteScalars();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
 }
 '''.replace('ROOTS',roots)
 with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:

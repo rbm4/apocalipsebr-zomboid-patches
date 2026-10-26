@@ -29,6 +29,7 @@ snapshot contract; the two features must not be treated as interchangeable.
 
 | Date | Document |
 | --- | --- |
+| 2026-10-26 | [Server Lua entity bridge scaffold](features/2026-10-26-lua-mod-entities.md) |
 | 2026-10-26 | [Offline SQLite character migration](features/2026-10-26-offline-player-migration.md) |
 | 2026-10-26 | [NPC dialogue roster refresh after respawn](features/2026-10-26-npc-dialogue-roster-refresh.md) |
 | 2026-10-26 | [NPC speech engine (42.21.0 server)](features/2026-10-26-npc-speech-engine.md) |
@@ -79,6 +80,8 @@ snapshot contract; the two features must not be treated as interchangeable.
 
 | Date | Document |
 | --- | --- |
+| 2026-10-26 | [Player validation follow-up: 76 verified, Trelai clothing and dynamic Moveable failures](reports/2026-10-26-player-validation-follow-up.md) |
+| 2026-10-26 | [Local player validation: sparse equipment positions, magazine callbacks and compatibility failures](reports/2026-10-26-player-validation-local-analysis.md) |
 | 2026-10-26 | [NPC worker: live-access inventory and snapshot boundary](reports/2026-10-26-npc-async-snapshot-map.md) |
 | 2026-10-21 | [NPC physical capabilities, combat and relationships](reports/2026-10-21-npc-physical-capabilities-and-combat.md) |
 | 2026-10-21 | [Militia patrol, zombie perception and combat design](reports/2026-10-21-npc-militia-patrol-and-threat-perception.md) |

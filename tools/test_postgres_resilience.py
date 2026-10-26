@@ -260,6 +260,26 @@ public class ApocBRResilienceTest {
   check(fake.committed.equals(List.of("startup"))&&fake.receipts.contains(first),"startup replay precedes admission");
   check(fake.sqlQueries.stream().anyMatch(sql->sql.contains("FROM player_rel.apocbr_human_sale WHERE false")),"full startup admits guide with V10 table available only in player_rel");
   until(ApocBRPostgresConnector::acceptingLogins,"startup opens admission after replay");
+  CountDownLatch requestEntered=new CountDownLatch(1),requestRelease=new CountDownLatch(1);
+  List<String> requestThreads=new CopyOnWriteArrayList<>();
+  check(ApocBRPersistence.request(()->{
+   requestThreads.add(Thread.currentThread().getName());requestEntered.countDown();
+   try{requestRelease.await();}catch(InterruptedException e){throw new RuntimeException(e);}
+  }),"mod request admitted without foreground JDBC");
+  check(requestEntered.await(5,TimeUnit.SECONDS),"mod request runs on existing replay worker");
+  java.util.concurrent.atomic.AtomicInteger requestsDone=new java.util.concurrent.atomic.AtomicInteger();
+  for(int i=0;i<256;i++)check(ApocBRPersistence.request(requestsDone::incrementAndGet),"bounded request admission");
+  check(!ApocBRPersistence.request(()->{}),"request lane rejects saturation");
+  requestRelease.countDown();until(()->requestsDone.get()==256,"all accepted mod requests execute");
+  check(requestThreads.equals(List.of("ApocBR-postgres-replay")),"mod requests do not create another database worker");
+  check(ApocBRPersistence.request(()->{throw new IllegalStateException("fixture");}),"failing task admitted");
+  check(ApocBRPersistence.request(requestsDone::incrementAndGet),"task after failure admitted");
+  until(()->requestsDone.get()==257,"request exception does not terminate replay worker");
+  int requestProbeStart=fake.acquired;
+  check(ApocBRPersistence.request(()->{fake.offline=true;ApocBRPersistence.failed(new SQLException("PRIVATE_MOD","08006"));}),"outage-reporting task admitted");
+  until(()->fake.acquired>requestProbeStart&&ApocBRPersistence.state().equals("UNAVAILABLE"),"request outage remains unavailable until a recovery probe succeeds");
+  check(!ApocBRPersistence.request(()->{}),"outage closes mod request admission");
+  fake.offline=false;until(ApocBRPostgresConnector::acceptingLogins,"request outage recovers through existing coordinator");
   try(var budget=ApocBRForegroundDatabase.begin()) {
    Field deadline=ApocBRForegroundDatabase.class.getDeclaredField("deadline");deadline.setAccessible(true);
    @SuppressWarnings("unchecked") ThreadLocal<Long> time=(ThreadLocal<Long>)deadline.get(null);time.set(System.nanoTime()-1);
@@ -341,6 +361,7 @@ public class ApocBRResilienceTest {
   check(stop.isAlive(),"shutdown waits during outage");fake.offline=false;stop.join(15000);
   check(!stop.isAlive()&&fake.committed.getLast().equals("shutdown")&&ApocBRPersistence.state().equals("CLOSED"),"shutdown drains before closing");
   check(shutdownAttempts[0]==2,"connection loss during synchronous shutdown work retries before workers/pool close");
+  check(!ApocBRPersistence.request(()->{}),"closed persistence rejects new mod requests");
  }
  static void deadlines()throws Exception {
   Fake fake=new Fake();

@@ -12,6 +12,28 @@ The read rejects incompatible/incomplete heads, count mismatches and excessive g
 
 Reconstruction restores character state, descriptor, stats, traits, XP, learned/read content, fitness, health, thermal state, visuals, nested inventory, subtype state, equipment, structured mod data and supported entity/animal state. It uses constructors, native setters and version-pinned field writes. Inventory links follow the native load path rather than executing gameplay item-add callbacks. Engine construction and final registration belong on the simulation thread.
 
+As of 2026-10-26, unavailable saved trait definitions are skipped with an explicit
+`MISSING_TRAIT_SKIPPED; traitKey=...` warning so removed trait mods do not block
+character loading. Valid traits remain strict; item and other registry failures
+still reject reconstruction. Hand restoration assigns the saved hand fields as
+native `IsoPlayer.load` does, avoiding equip events that replace attachments or
+reapply gameplay effects. Temporary validation uses the same policies and copies
+bounded failure/skip details into its migration audit file. See the
+[compatibility and verification policy](2026-10-26-offline-player-migration.md#reconstruction-compatibility-fixes-october-26).
+
+Furniture reconstruction also handles native-derived `Base.<worldSprite>` names.
+When the saved runtime class is exactly `Moveable` and its `moveable_state.world_sprite`
+matches that suffix, it creates `Base.Moveable`, runs native `ReadFromWorldSprite`
+to initialize sprite/grid/presentation properties, then restores the saved runtime
+type and projects saved item/light/visual/component values. Native item ID and
+normal container ownership are preserved; sprite defaults are applied before
+saved values. Named script items and other runtime classes retain normal factory
+lookup. Invalid/unavailable sprites reject restoration with a bounded
+`MOVEABLE_RECONSTRUCTION_FAILED` diagnostic, also retained by migration validation.
+No schema migration or furniture deletion is needed. The regression fixture uses
+the actual 42.21.0 sprite reader; the five production snapshots still need a new
+validator run after deployment.
+
 Relational sync now also runs in PostgreSQL player mode, and reconstructed players register with its existing worker. This preserves the existing scalar sampling and graph reconciliation path after login. Keep `apocbr.postgres.playerRelational.enabled` and its mutation/reconciliation settings enabled when relying on relational state. Preserve `apocbr.postgres.playerRelational.sourceDatasetId` (or the original save-directory-derived dataset identity) across migration: worker receipt validation rejects a different source dataset.
 
 ## Current threading and latency
