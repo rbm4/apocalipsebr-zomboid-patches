@@ -49,7 +49,9 @@ STUBS = {
  record Snapshot(int tag){}static Snapshot copy(Object player){return new Snapshot(((zombie.characters.IsoPlayer)player).tag);}}''',
 'zombie/savefile/ApocBRPlayerRelationalCapture.java': '''package zombie.savefile;final class ApocBRPlayerRelationalCapture {
  static class IncompleteGraphException extends java.sql.SQLException {String diagnostic(){return "graphIssues=fixture";}}
- record Graph(int tag){int items(){return 1;}java.util.List<Integer> rows(){return java.util.List.of(1);}}
+ record Row(String table,java.util.Map<String,Object> values){}
+ record Graph(int tag,java.util.List<Row> rows){Graph(int tag){this(tag,java.util.List.of());}int items(){return 0;}
+ java.util.UUID snapshot(){return ApocBRPlayerRelationalDatabase.named("snapshot:"+tag);}}
  static void prepare(){}ApocBRPlayerRelationalCapture(java.util.UUID id,java.util.Map<Integer,java.util.UUID> aliases,long budget){}
  Graph capture(ApocBRPlayerRelationalSnapshot.Snapshot snapshot,java.util.List<String> issues){return new Graph(snapshot.tag());}
  static void requireComplete(Graph graph,String stage)throws java.sql.SQLException {if(graph.tag()==88)throw new java.sql.SQLException("incomplete","22000");}}''',
@@ -58,9 +60,10 @@ import java.util.*;import java.sql.*;
 final class ApocBRPlayerRelationalDatabase {
  interface Connections {Connection open()throws SQLException;}
  record Candidate(UUID dataset,String label,String world,String identity,boolean coop,int slot,int nativeId,int worldVersion,String blobHash,List<String> loadIssues){}
- record Receipt(UUID character,boolean complete){Map<Integer,UUID> aliases(){return Map.of();}}
+ record Receipt(UUID character,boolean complete){Map<Integer,UUID> aliases(){return Map.of();}UUID head(){return named("snapshot:1");}}
  static final List<Candidate> saved=new java.util.concurrent.CopyOnWriteArrayList<>();
  static final List<Long> times=new java.util.concurrent.CopyOnWriteArrayList<>();
+ static final Map<String,ApocBRPlayerRelationalCapture.Graph> graphs=new java.util.concurrent.ConcurrentHashMap<>();
  static final java.util.concurrent.CountDownLatch release=new java.util.concurrent.CountDownLatch(1);
  static volatile boolean persisting;
  ApocBRPlayerRelationalDatabase(Connections c){}
@@ -72,25 +75,96 @@ final class ApocBRPlayerRelationalDatabase {
  boolean persist(Candidate candidate,Receipt r,ApocBRPlayerRelationalCapture.Graph g)throws SQLException {
  if(candidate.identity().equals("failure"))throw new SQLException("injected write failure","08006");
  if(candidate.identity().equals("old")){persisting=true;try{release.await();}catch(InterruptedException stop){throw new SQLException("stopped","57014");}}
- saved.add(candidate);times.add(System.nanoTime());return true;}}
+ saved.add(candidate);graphs.put(candidate.identity(),g);times.add(System.nanoTime());return true;}}
 ''',
+'zombie/savefile/ApocBRPlayerRelationalReader.java': '''package zombie.savefile;import java.util.*;
+public class ApocBRPlayerRelationalReader {
+ public record Profile(Map<String,List<Map<String,Object>>> tables) {
+ List<Map<String,Object>> rows(String table){return tables.getOrDefault(table,List.of());}
+ Map<String,Object> one(String table){return rows(table).getFirst();}}
+ Profile load(String world,String identity,int slot,boolean coop)throws java.sql.SQLException {
+ if(!ApocBRPostgresConnector.background.get())throw new AssertionError("verification JDBC on game thread");
+ if(identity.equals("readfail"))throw new java.sql.SQLException("PRIVATE_READ_DATA","08006");
+ var graph=ApocBRPlayerRelationalDatabase.graphs.get(identity);int tag=graph==null?1:graph.tag();
+ String save=zombie.ZomboidFileSystem.instance.getCurrentSaveDir();
+ return new Profile(Map.of("snapshot",List.of(Map.of("snapshot_id",ApocBRPlayerRelationalDatabase.named("snapshot:"+tag),
+ "persisted_character_id",ApocBRPlayerRelationalDatabase.named(identity.equals("wronghead")?"other":identity),
+ "source_dataset_id",ApocBRPlayerRelationalDatabase.named("sqlite-save:"+save))),"fixture",List.of(Map.of("tag",tag))));
+ }}''',
+'zombie/savefile/ApocBRPlayerRelationalReconstruction.java': '''package zombie.savefile;
+final class ApocBRPlayerRelationalReconstruction {
+ static zombie.characters.IsoPlayer reconstruct(ApocBRPlayerRelationalReader.Profile p,int slot) {
+ if(Thread.currentThread()!=zombie.network.GameServer.mainThread)throw new AssertionError("reconstruction on worker");
+ int tag=((Number)p.one("fixture").get("tag")).intValue();
+ if(tag==81)throw new IllegalStateException("PRIVATE_RECONSTRUCTION_DATA",new java.lang.reflect.InvocationTargetException(new IllegalArgumentException("PRIVATE_NESTED_DATA")));
+ var player=new zombie.characters.IsoPlayer(null);player.tag=tag;player.serverPlayerIndex=slot;return player;
+ }}''',
+'zombie/savefile/ServerPlayerDB.java': '''package zombie.savefile;
+public class ServerPlayerDB {
+ record Encoded(byte[] data){}
+ static Encoded encodePostgresClientProfile(zombie.characters.IsoPlayer player,ApocBRPlayerRelationalReader.Profile profile,int slot,String username)throws java.io.IOException {
+ if(Thread.currentThread()!=zombie.network.GameServer.mainThread)throw new AssertionError("serialize on worker");
+ if(player.tag==82)throw new java.io.IOException("PRIVATE_ENCODING_DATA");return new Encoded(new byte[]{1});
+ }}''',
+'zombie/savefile/ApocBRPlayerReconstructionLog.java': '''package zombie.savefile;class ApocBRPlayerReconstructionLog {static String token(Object value){return String.valueOf(value);}}''',
 'zombie/savefile/MigrationTest.java': r'''package zombie.savefile;
 import java.nio.file.*;import java.time.*;import java.util.*;import zombie.network.GameServer;import zombie.core.raknet.UdpConnection;
 public class MigrationTest {
  static void check(boolean ok,String text){if(!ok)throw new AssertionError(text);}
  static String logs()throws Exception{return Files.readString(Path.of(System.getProperty("fixture"),"save","player-migration.log"));}
+ static void comparisons() {
+  var tables=new LinkedHashMap<String,List<Map<String,Object>>>();
+  tables.put("item",List.of(Map.of("id",1,"native_id",10,"full_type","Base.Axe","condition",5,"current_uses",1,"current_ammo_count",0)));
+  tables.put("equipment",List.of(Map.of("kind","primary","slot","hand","position",0,"item_id",1)));
+  tables.put("character_trait",List.of(Map.of("trait_key","Brave")));
+  tables.put("character_stat",List.of(Map.of("stat_key","Hunger","value",0.25)));
+  tables.put("character_perk",List.of(Map.of("perk_key","Axe","level",3,"xp",125.0)));
+  tables.put("body_part",List.of(Map.of("body_part_key","Head","health",95.0)));
+  tables.put("character_state",List.of(Map.of("is_dead",false,"hours_survived",30.0,"total_xp",125.0,"xp_level",3)));
+  List<ApocBRPlayerRelationalCapture.Row> rows=new ArrayList<>();
+  tables.forEach((table,values)->values.forEach(value->rows.add(new ApocBRPlayerRelationalCapture.Row(table,new HashMap<>(value)))));
+  // Verify allocation differences and float precision do not masquerade as state corruption.
+  UUID item=UUID.randomUUID();rows.get(0).values().put("id",item);rows.get(1).values().put("item_id",item);
+  var profile=new ApocBRPlayerRelationalReader.Profile(tables);var graph=new ApocBRPlayerRelationalCapture.Graph(1,rows);
+  ApocBRPlayerMigrationVerification.compare(profile,graph,step->{});
+  check(ApocBRPlayerMigrationVerification.equalValue(0.1,(float)0.1),"float normalization accepted");
+  check(!ApocBRPlayerMigrationVerification.equalValue(125,126),"real state discrepancy rejected");
+  for(var target:List.of(List.of("item","condition"),List.of("character_trait","trait_key"),List.of("character_stat","value"),List.of("character_perk","xp"),List.of("body_part","health"),List.of("character_state","total_xp"),List.of("equipment","item_id"))) {
+   var row=rows.stream().filter(r->r.table().equals(target.get(0))).findFirst().orElseThrow();
+   String field=target.get(1);Object before=row.values().get(field);row.values().put(field,999);
+   try{ApocBRPlayerMigrationVerification.compare(profile,graph,step->{});throw new AssertionError("comparison accepted mismatch "+target);}
+   catch(IllegalStateException expected){}finally{row.values().put(field,before);}
+  }
+  try{ApocBRPlayerMigrationVerification.identity(profile,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID());throw new AssertionError("missing metadata accepted");}catch(RuntimeException expected){}
+  UUID character=UUID.randomUUID(),snapshot=UUID.randomUUID(),dataset=UUID.randomUUID();
+  var metadata=new HashMap<String,Object>(Map.of("persisted_character_id",character,"snapshot_id",snapshot,"source_dataset_id",dataset));
+  var identified=new ApocBRPlayerRelationalReader.Profile(Map.of("snapshot",List.of(metadata)));
+  ApocBRPlayerMigrationVerification.identity(identified,character,snapshot,dataset);
+  for(String field:List.of("persisted_character_id","snapshot_id","source_dataset_id")) {
+   Object before=metadata.put(field,UUID.randomUUID());
+   try{ApocBRPlayerMigrationVerification.identity(identified,character,snapshot,dataset);throw new AssertionError("changed identity accepted "+field);}
+   catch(ApocBRPlayerMigrationVerification.AssertionFailure expected){}finally{metadata.put(field,before);}
+  }
+ }
  public static void main(String[] args)throws Exception {
  GameServer.mainThread=Thread.currentThread();System.setProperty("apocbr.postgres.enabled","true");
- if(args.length>0&&args[0].equals("stop")) {
+ if(args.length>0&&args[0].startsWith("stop")) {
   System.setProperty("apocbr.postgres.playerMigration.enabled","true");ApocBRPlayerMigration.update();
   var field=ApocBRPlayerMigration.class.getDeclaredField("instance");field.setAccessible(true);
   Object current=field.get(null);var request=ApocBRPlayerMigration.class.getDeclaredField("request");request.setAccessible(true);
   long until=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(8);
   while(request.get(current)==null){check(System.nanoTime()<until,"capture requested without server continuation");Thread.sleep(5);}
+  boolean persisted=args[0].equals("stop-verification");
+  if(persisted) {
+   ApocBRPlayerRelationalDatabase.release.countDown();ApocBRPlayerMigration.update();
+   var verify=ApocBRPlayerMigration.class.getDeclaredField("verification");verify.setAccessible(true);
+   while(verify.get(current)==null){check(System.nanoTime()<until,"verification requested without continuation");Thread.sleep(5);}
+  }
   ApocBRPlayerMigration.shutdown();check(logs().contains("STOPPED"),"shutdown cancels pending capture without deadlock");
-  check(ApocBRPlayerRelationalDatabase.saved.isEmpty(),"cancelled capture never commits");
+  check(ApocBRPlayerRelationalDatabase.saved.size()==(persisted?1:0),"shutdown retains only completed commits");
   System.out.println("Migration shutdown while awaiting server-thread capture passed");return;
  }
+ comparisons();
  check(!ApocBRPlayerMigration.enabled(),"migration defaults off");
  var readOnly=ApocBRPlayerMigration.class.getDeclaredMethod("readOnly",Path.class);readOnly.setAccessible(true);
  try(var c=(java.sql.Connection)readOnly.invoke(null,Path.of(System.getProperty("fixture"),"save","players.db"));var s=c.createStatement()) {
@@ -127,15 +201,20 @@ public class MigrationTest {
  check(ApocBRPlayerMigration.admitLogin(new UdpConnection(),"old"),"login admitted after worker drains");
  String log=logs();
  for(String code:List.of("START","SELECTED","SKIPPED_RECENT_LOGIN","LAST_LOGIN_UNKNOWN","LOADED","PERSISTING","PERSISTED","COLLISION_DISCARDED","SKIPPED_ONLINE_OR_CONNECTING","ALREADY_MIGRATED","FAILED","DRAINED"))check(log.contains(code),"logged "+code);
- check(log.contains("collisions=1; failed=3"),"all failures and collisions reported");
+ check(log.contains("collisions=1; failed=3; verified=4; verificationFailed=4"),"migration and verification failures counted separately");
+ for(String stage:List.of("RECONSTRUCT_PLAYER","ENCODE_CLIENT_PROFILE","READ_PROFILE","PROFILE_IDENTITY"))check(log.contains("stage="+stage),"verification exception stage "+stage);
+ check(log.contains("causedBy=java.lang.reflect.InvocationTargetException")&&log.contains("causedBy=java.lang.IllegalArgumentException"),"nested reconstruction exceptions logged");
+ check(log.contains("ASSERTION_PASSED")&&log.contains("VERIFIED"),"verification successes logged");
+ check(log.indexOf("PERSISTED; localId=2")<log.indexOf("VERIFIED; localId=2"),"verification only after commit");
+ check(!log.contains("PRIVATE_"),"exception messages cannot expose private data");
  var saved=ApocBRPlayerRelationalDatabase.saved;
- check(saved.stream().map(c->c.identity()).toList().equals(List.of("old","unknown")),"only eligible offline complete characters persisted");
+ check(saved.stream().map(c->c.identity()).toList().equals(List.of("old","unknown","restorefail","encodefail","readfail","wronghead","after")),"verification exceptions retain commits and do not stop later characters");
  check(saved.stream().allMatch(c->c.blobHash()!=null),"normal provenance hash");
  check(ApocBRPlayerRelationalDatabase.times.get(1)-ApocBRPlayerRelationalDatabase.times.get(0)>=1_000_000_000L,"fixed interval between characters");
  check(log.indexOf("LOAD_REQUESTED; localId=2")<log.indexOf("PERSISTED; localId=2"),"load and commit log order");
  // Read-only sources: failures and collision must never delete or rewrite a local character.
  try(var c=java.sql.DriverManager.getConnection("jdbc:sqlite:"+System.getProperty("fixture")+"/save/players.db");var s=c.createStatement();var r=s.executeQuery("SELECT count(*) FROM networkPlayers")) {
-  r.next();check(r.getInt(1)==11,"all source rows preserved");
+  r.next();check(r.getInt(1)==16,"all source rows preserved");
  }
  check(zombie.debug.DebugLog.lines.stream().noneMatch(s->s.contains("password")),"no credentials in logs");
  System.out.println("Migration worker: SQLite, recency, collisions, online/pre-auth exclusion, reservation, pacing, failure isolation, provenance and source preservation passed");
@@ -148,7 +227,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_migration_') as folder:
     (target / 'db').mkdir()
     with closing(sqlite3.connect(target / 'save/players.db')) as c, c:
         c.execute('CREATE TABLE networkPlayers(id INTEGER PRIMARY KEY,world TEXT,username TEXT,steamid TEXT,playerIndex INTEGER,name TEXT,worldversion INTEGER,isDead BOOLEAN,data BLOB)')
-        for i, (user, tag) in enumerate([('recent', 1), ('old', 1), ('collision', 1), ('unknown', 1), ('online', 1), ('connecting', 1), ('already', 1), ('corrupt', 99), ('incomplete', 88), ('failure', 1), ('otherworld', 1)], 1):
+        for i, (user, tag) in enumerate([('recent', 1), ('old', 1), ('collision', 1), ('unknown', 1), ('online', 1), ('connecting', 1), ('already', 1), ('corrupt', 99), ('incomplete', 88), ('failure', 1), ('otherworld', 1), ('restorefail', 81), ('encodefail', 82), ('readfail', 83), ('wronghead', 84), ('after', 1)], 1):
             c.execute('INSERT INTO networkPlayers VALUES(?,?,?,?,?,?,?,?,?)', (i, 'elsewhere' if user == 'otherworld' else 'world', user, '', 0, 'Survivor;\n'+user, 249, False, bytes([tag])))
     from datetime import datetime, timedelta
     with closing(sqlite3.connect(target / 'db/fixture.db')) as c, c:
@@ -161,7 +240,8 @@ with tempfile.TemporaryDirectory(prefix='apocbr_migration_') as folder:
         path.write_text(content, encoding='utf-8')
         files.append(str(path))
     source = ROOT / '42.21.0/src/zombie/savefile'
-    files += [str(source / name) for name in ('ApocBRPlayerMigration.java', 'ApocBRPlayerLoadQuality.java', 'ApocBRPlayerRelationalLimits.java')]
+    files += [str(source / name) for name in ('ApocBRPlayerMigration.java', 'ApocBRPlayerMigrationVerification.java', 'ApocBRPlayerLoadQuality.java', 'ApocBRPlayerRelationalLimits.java')]
     subprocess.run([str(JDK/'javac.exe'), '--release', '25', '-cp', str(GAME), '-d', folder, *files], check=True)
     subprocess.run([str(JDK/'java.exe'), '-Dfixture='+folder, '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.MigrationTest'], check=True, timeout=40)
     subprocess.run([str(JDK/'java.exe'), '-Dfixture='+folder, '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.MigrationTest', 'stop'], check=True, timeout=12)
+    subprocess.run([str(JDK/'java.exe'), '-Dfixture='+folder, '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.MigrationTest', 'stop-verification'], check=True, timeout=12)

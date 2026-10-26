@@ -35,9 +35,11 @@ public final class ApocBRPlayerMigration {
     private final Thread worker;
     private volatile boolean stopping;
     private volatile Request request;
+    private volatile VerificationRequest verification;
     private volatile Row reserved;
     private BufferedWriter output; // worker only
     private long selected,migrated,skipped,collisions,failed;
+    private long verified,verificationFailed;
 
     record Row(int id,String world,String username,String steam,int slot,String name,int version,boolean dead,int bytes) {
         String identity(boolean coop){return coop?steam:username;}
@@ -47,6 +49,13 @@ public final class ApocBRPlayerMigration {
         final Row row;final byte[] bytes;
         final CompletableFuture<Captured> result=new CompletableFuture<>();
         Request(Row row,byte[] bytes){this.row=row;this.bytes=bytes;}
+    }
+    private static final class VerificationRequest {
+        final Row row;final ApocBRPlayerRelationalReader.Profile profile;
+        final List<String> passed=new ArrayList<>();
+        final CompletableFuture<ApocBRPlayerMigrationVerification.Restored> result=new CompletableFuture<>();
+        volatile String stage="WAIT_SERVER_THREAD";
+        VerificationRequest(Row row,ApocBRPlayerRelationalReader.Profile profile){this.row=row;this.profile=profile;}
     }
     private ApocBRPlayerMigration() {
         world=Core.gameSaveWorld;save=ZomboidFileSystem.instance.getCurrentSaveDir();
@@ -73,6 +82,16 @@ public final class ApocBRPlayerMigration {
         ApocBRPlayerMigration current=instance;
         if(current==null||current.stopping){LOGIN_ATTEMPTS.clear();return;}
         LOGIN_ATTEMPTS.keySet().removeIf(c->GameServer.udpEngine==null||!GameServer.udpEngine.connections.contains(c));
+        VerificationRequest check=current.verification;
+        if(check!=null&&!check.result.isDone()) {
+            try {
+                if(current.online(check.row)){check.result.complete(null);return;}
+                current.reserved=check.row;
+                check.result.complete(ApocBRPlayerMigrationVerification.reconstruct(check.profile,check.row.slot(),check.row.username(),
+                    stage->check.stage=stage,check.passed::add));
+            }catch(Exception|LinkageError|AssertionError failure){check.result.completeExceptionally(failure);}
+            return;
+        }
         Request next=current.request;
         if(next==null||next.result.isDone())return;
         try {
@@ -165,7 +184,7 @@ public final class ApocBRPlayerMigration {
         if(last==null)event("LAST_LOGIN_UNKNOWN",row,"eligible=true");
         var candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,save,world,row.identity(coop),coop,row.slot(),row.id(),row.version(),null,List.of());
         var receipt=database.inspect(candidate);
-        if(receipt.complete()){skipped++;event("ALREADY_MIGRATED",row,"");return;}
+        if(receipt.complete()){skipped++;event("ALREADY_MIGRATED",row,"");verify(row,receipt.character(),receipt.head());return;}
         if(row.bytes()<1||row.bytes()>ApocBRPlayerRelationalLimits.SOURCE_BYTES)throw new SQLException("Source size budget","22000");
         event("LOAD_REQUESTED",row,"");
         Request capture=new Request(row,payload(row));request=capture;
@@ -177,7 +196,7 @@ public final class ApocBRPlayerMigration {
         candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,save,world,row.identity(coop),coop,row.slot(),row.id(),row.version(),hash,detached.issues());
         // Reinspect after capture; another server may have published a head in the meantime.
         receipt=database.inspect(candidate);
-        if(receipt.complete()){skipped++;event("ALREADY_MIGRATED",row,"");return;}
+        if(receipt.complete()){skipped++;event("ALREADY_MIGRATED",row,"");verify(row,receipt.character(),receipt.head());return;}
         var graph=new ApocBRPlayerRelationalCapture(receipt.character(),receipt.aliases(),Long.MAX_VALUE).capture(detached.snapshot(),detached.issues());
         ApocBRPlayerRelationalCapture.requireComplete(graph,"offline_migration");
         event("PERSISTING",row,"items="+graph.items()+"; rows="+graph.rows().size());
@@ -188,6 +207,55 @@ public final class ApocBRPlayerMigration {
             throw new SQLException("Slot changed during migration","40001");
         }
         migrated++;event("PERSISTED",row,"character="+receipt.character());
+        verify(row,receipt.character(),graph.snapshot());
+    }
+    private void verify(Row row,UUID character,UUID snapshot)throws IOException,InterruptedException {
+        String ids="character="+character+"; snapshot="+snapshot;
+        event("VERIFICATION_STARTED",row,ids);
+        String stage="READ_PROFILE";VerificationRequest check=null;
+        try {
+            var profile=new ApocBRPlayerRelationalReader().load(world,row.identity(coop),row.slot(),coop);
+            stage="PROFILE_IDENTITY";
+            ApocBRPlayerMigrationVerification.identity(profile,character,snapshot,dataset);
+            event("ASSERTION_PASSED",row,ids+"; check=PROFILE_IDENTITY");
+            check=new VerificationRequest(row,profile);verification=check;
+            ApocBRPlayerMigrationVerification.Restored restored;
+            try{restored=check.result.get();}
+            finally {
+                // CompletableFuture completion publishes these server-thread assertions, including before an exception.
+                if(check.result.isDone())for(String passed:check.passed)event("ASSERTION_PASSED",row,ids+"; check="+passed);
+            }
+            if(restored==null){event("VERIFICATION_SKIPPED_ONLINE",row,ids);return;}
+            stage="RECAPTURE_RECONSTRUCTED_STATE";
+            var graph=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(restored.snapshot(),List.of());
+            ApocBRPlayerRelationalCapture.requireComplete(graph,"migration_verification");
+            stage="COMPARE_PERSISTED_STATE";
+            List<String> passed=new ArrayList<>();
+            try{ApocBRPlayerMigrationVerification.compare(profile,graph,passed::add);}
+            finally{for(String assertion:passed)event("ASSERTION_PASSED",row,ids+"; check="+assertion);}
+            verified++;event("VERIFIED",row,ids+"; payloadBytes="+restored.payloadBytes());
+        }catch(InterruptedException interrupted){throw interrupted;}
+        catch(IOException auditFailure){throw auditFailure;}
+        catch(Exception|LinkageError|AssertionError failure) {
+            verificationFailed++;
+            Throwable cause=failure instanceof ExecutionException?failure.getCause():failure;
+            if(failure instanceof ExecutionException&&check!=null)stage=check.stage;
+            event("VERIFICATION_FAILED",row,ids+"; stage="+stage+"; "+verificationDiagnostic(cause)+"; persistedSnapshotRetained=true");
+        }finally{verification=null;}
+    }
+    static String verificationDiagnostic(Throwable failure) {
+        StringBuilder detail=new StringBuilder();Set<Throwable> seen=Collections.newSetFromMap(new IdentityHashMap<>());
+        for(int depth=0;failure!=null&&depth<4&&seen.add(failure);depth++,failure=failure.getCause()) {
+            if(depth>0)detail.append("; causedBy=");else detail.append("exception=");
+            detail.append(failure.getClass().getName());
+            // Only our typed assertions supply identifiers; arbitrary loader messages are never logged.
+            if(failure instanceof ApocBRPlayerMigrationVerification.AssertionFailure assertion)detail.append("; assertion=").append(assertion.code);
+            if(failure instanceof ApocBRPlayerRelationalCapture.IncompleteGraphException graph)detail.append("; ").append(graph.diagnostic());
+            if(failure instanceof SQLException sql)detail.append("; SQLState=").append(ApocBRPlayerReconstructionLog.token(sql.getSQLState()));
+            detail.append("; frames=");var frames=failure.getStackTrace();
+            for(int i=0;i<Math.min(6,frames.length);i++){if(i>0)detail.append('|');detail.append(frames[i].getClassName()).append('.').append(frames[i].getMethodName()).append(':').append(frames[i].getLineNumber());}
+        }
+        return detail.toString();
     }
     private void run() {
         try {
@@ -213,18 +281,18 @@ public final class ApocBRPlayerMigration {
                             :cause instanceof ApocBRPlayerRelationalLimits.SizeExceeded size?"; "+size.diagnostic():"";
                         event("FAILED",row,"issue="+cause.getClass().getSimpleName()+(cause instanceof SQLException sql?"; SQLState="+sql.getSQLState():"")+detail);
                     }
-                }finally{request=null;reserved=null;}
+                }finally{request=null;verification=null;reserved=null;}
                 Thread.sleep(1000); // interval starts after the previous character's terminal outcome
             }
             event("DRAINED",null,summary());
         }catch(InterruptedException interrupted){safeEvent("STOPPED",summary());Thread.currentThread().interrupt();}
         catch(Exception|LinkageError failure){safeEvent("ABORTED",summary()+"; issue="+failure.getClass().getSimpleName());}
         finally {
-            stopping=true;request=null;reserved=null;
+            stopping=true;request=null;verification=null;reserved=null;
             if(output!=null)try{output.close();}catch(IOException failure){DebugLog.log("[ApocBR][PlayerMigration] LOG_CLOSE_FAILED");}
         }
     }
-    private String summary(){return "selected="+selected+"; migrated="+migrated+"; skipped="+skipped+"; collisions="+collisions+"; failed="+failed;}
+    private String summary(){return "selected="+selected+"; migrated="+migrated+"; skipped="+skipped+"; collisions="+collisions+"; failed="+failed+"; verified="+verified+"; verificationFailed="+verificationFailed;}
     private void event(String code,Row row,String details)throws IOException {
         String message=Instant.now()+"; "+code+(row==null?"":"; localId="+row.id()+"; username="+clean(row.username())+"; characterName="+clean(row.name())+"; slot="+row.slot())+"; "+details;
         // Flush before continuing: a broken audit file stops the migration.

@@ -74,7 +74,7 @@ objects safe to construct on a JDBC thread.
 Before loading, the server thread checks live players, connection usernames,
 coop SteamIDs and login attempts registered before asynchronous authentication.
 Online or connecting accounts are skipped. It reserves the eligible account
-until the persistence attempt finishes. A new matching login during that short
+until persistence and reconstruction verification finish. A new matching login during that short
 reservation receives the existing temporary database access denial and must retry;
 unrelated logins continue. Reservations are local to this server, not distributed
 session locks across servers. Complete-import publication uses the relational
@@ -91,6 +91,45 @@ retry on a later restart. The worker waits for each terminal outcome, then waits
 collisions and failures. Shutdown interrupts pending continuations/delays and
 joins the worker before persistence pools drain or close.
 
+## Post-commit reconstruction verification
+
+After each successful commit the worker reads the active relational profile using
+the normal login reader. It requires the character, snapshot and source dataset
+IDs to match the expected import. A changed head is a verification failure;
+the worker does not certify a different character or overwrite the competing head.
+The reader also performs its normal completeness, graph-count and dictionary checks.
+
+The server thread reconstructs a temporary player with the login reconstructor,
+including its ownership, reference and table-coverage checks. It copies the
+reconstructed state and encodes a client profile with the same bounded serializer
+used by ordinary login. No connection is created, no login audit is recorded and
+no live mutation tracker is registered. The worker then projects the detached
+reconstructed state and requires a complete graph before comparing it to the
+database profile:
+
+- Inventory item, container, equipment and item-location row counts.
+- Equipment target identity using native item IDs across reader ordinals and UUIDs.
+- Item types, condition, uses and ammunition; trait keys and stat values.
+- Perk levels, XP, boosts and multipliers; body-part health and core wound flags.
+- Death state, survival hours, kill counts, total XP and XP levels.
+
+These are explicit runtime checks, independent of JVM `-ea`. Floating-point
+comparisons allow a maximum of `1e-5` absolute or `1e-6` relative difference to
+accommodate float/JSON/JDBC representation. This is a selected consistency check,
+not a byte-for-byte comparison or proof that every mod field survives reconstruction.
+
+Already-complete imports encountered during the scan also undergo verification,
+allowing a later run to retry reconstruction without importing the character again.
+The seven-day and online/connecting skip rules remain in force. Verification checks
+online status before reconstruction and retains the account reservation until
+the outcome is logged. Recent accounts are not covered by this migration pass.
+
+Reconstruction, serialization and comparison exceptions are expected per-character
+outcomes: the worker logs them, retains both the committed PostgreSQL snapshot and
+the SQLite source, releases the reservation and advances after the fixed interval.
+There is no deletion, rollback of an already committed import, or automatic repair.
+An interrupted verification is logged as `STOPPED`, rather than certified as success.
+
 ## Audit
 
 The append-only UTF-8 file is `<currentSaveDir>/player-migration.log`, mirrored to
@@ -103,7 +142,14 @@ messages are not logged.
 
 `COLLISION_DISCARDED` identifies incoming characters rejected for a foreign source
 dataset. `FAILED` reports the exception type and SQLState when available.
-`DRAINED` reports selected, migrated, skipped, collision and failure totals;
+`VERIFICATION_STARTED`, `ASSERTION_PASSED`, `VERIFIED` and `VERIFICATION_FAILED`
+record the character and expected snapshot IDs. Verification failures include
+their stage, typed assertion code when applicable, exception types, nested causes
+and bounded stack frames. Arbitrary exception messages are omitted; normal
+reconstruction diagnostics also remain in the server log with detailed table/field
+context. `migrated` counts commits even if their later verification fails.
+`DRAINED` reports selected, migrated, skipped, collision and migration-failure totals,
+plus separate `verified` and `verificationFailed` totals;
 `STOPPED` marks interrupted execution and `ABORTED` marks an enumeration/startup
 failure. Zero failures/collisions in a drain summary does not validate recently
 skipped accounts. The worker flushes every file event before proceeding; audit
@@ -115,11 +161,15 @@ file failures stop the run rather than silently dropping collision reports.
   real temporary read-only SQLite databases, server-thread native-load boundary,
   recency parsing/boundary, unknown dates, collision/failure isolation, online and
   pre-auth exclusion, login reservation, one-second pacing, source preservation,
-  and shutdown while awaiting a server continuation. PostgreSQL/engine ports use
+  post-commit verification, reconstruction/read/encoding/identity exceptions,
+  assertion mismatches, retained failed-verification snapshots, and shutdown while
+  awaiting either native-load or verification continuations. PostgreSQL/engine ports use
   controlled fixtures.
 - `python -B tools/test_postgres_player_relational.py`: production relational
   capture/JDBC behavior, including shared slot locks across source datasets.
 - Exact 42.21.0 game-JAR compile via `patchApocalipseBr.ps1 -DryRun`.
+- `python -B tools/test_postgres_player_reconstruction.py`: production reconstruction checks.
+- `python -B tools/test_postgres_players.py`: native/profile path and shared client serializer.
 
 Live migration, real mod inventory decoding and concurrent login timing still
 require staging-server validation. No live data migration or deployment is part

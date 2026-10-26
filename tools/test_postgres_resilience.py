@@ -519,7 +519,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:
         files.append(path)
     harness = target / 'ApocBRResilienceTest.java'
     harness.write_text(HARNESS, encoding='utf-8')
-    files += [p for p in (SRC / 'savefile').glob('ApocBR*.java') if p.name != 'ApocBRPlayerMigration.java']
+    files += [p for p in (SRC / 'savefile').glob('ApocBR*.java') if p.name not in ('ApocBRPlayerMigration.java','ApocBRPlayerMigrationVerification.java')]
     files += [SRC / 'apocalipse/humans/ServerHumanDefinition.java', SRC / 'apocalipse/humans/HumanLifecycle.java', SRC / 'apocalipse/humans/profiles/HumanProfile.java', SRC / 'apocalipse/humans/profiles/HumanModuleBinding.java']
     files += [SRC / 'apocalipse/humans/dialogue/HumanDialogueCatalog.java']
     files += [SRC / 'apocalipse/humans/encounters/EncounterPolicy.java', SRC / 'apocalipse/humans/encounters/HumanRelationships.java']

@@ -429,6 +429,15 @@ public final class ServerPlayerDB {
         if(profile==null){trace.profile(null);return null;}
         trace.stage("RECONSTRUCT_PLAYER");
         IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
+        return encodePostgresClientProfile(player,profile,slot,username);
+        }catch(IOException|RuntimeException|LinkageError failure){trace.failure(failure);throw failure;}
+        }
+    }
+
+    /** Shared login/migration serializer. The caller owns the temporary player on the server thread. */
+    static ApocBRPlayerDatabase.Profile encodePostgresClientProfile(IsoPlayer player,ApocBRPlayerRelationalReader.Profile profile,int slot,String username) throws IOException {
+        try(var trace=ApocBRPlayerReconstructionLog.begin("CLIENT_PROFILE_SERIALIZE",slot)) {
+        try {
         trace.stage("ENCODE_CLIENT_PAYLOAD");
         for(int capacity=Math.min(32768,ApocBRPlayerRelationalLimits.SOURCE_BYTES);;) {
             ByteBuffer bytes=ByteBuffer.allocate(capacity);
