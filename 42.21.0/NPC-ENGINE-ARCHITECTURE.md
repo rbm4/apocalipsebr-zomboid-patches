@@ -4,6 +4,15 @@ Status: architecture contract for all NPC engine features. Registered profiles,
 generic activity control, logical lifecycle and injected speech are implemented; live multiplayer playback still
 requires validation.
 
+The default runtime now includes an explicitly experimental live-world async
+execution mode. [NPC worker execution](docs/npc-async-worker.md) documents its
+startup flag, limited factory/state locking, failure/shutdown and remaining
+concurrent native access. In this experiment, capability execution and state
+mutation may run on the dedicated NPC worker as well as the server thread;
+references below to simulation-thread ownership describe the original sync
+boundary. The detached [snapshot boundary](docs/npc-async-snapshot-map.md) remains
+the intended migration architecture, not an implemented guarantee.
+
 Every new NPC capability and every change to an existing capability must respect
 these ownership and dependency boundaries. This applies to AI, speech, movement,
 dialogue, trade, transport and future roles. Prefer composition of small contracts

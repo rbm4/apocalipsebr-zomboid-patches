@@ -1,5 +1,14 @@
 # Server telemetry (schema 3)
 
+## Experimental NPC worker diagnostics
+
+NPC simulation defaults to an independent 10 Hz worker; use
+`-Dapocbr.npc.async=false` at startup for synchronous comparison.
+`ServerHumanFactory.simulationStatus()` exposes completed worker ticks, last
+duration in nanoseconds, overruns and failure state. These are separate diagnostic
+values, not new schema-3 JSON fields or per-phase main-thread measurements.
+See [execution, limitations and validation](docs/npc-async-worker.md).
+
 ## Optional radio/backend observation capture
 
 The opt-in [backend bridge](BACKEND-BRIDGE.md) forwards the existing captured

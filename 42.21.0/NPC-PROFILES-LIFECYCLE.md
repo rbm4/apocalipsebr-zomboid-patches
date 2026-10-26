@@ -116,6 +116,13 @@ or actor-key decision is left in the actuator or action executor.
 
 ## Outer lifecycle
 
+Experimental execution note: the default [NPC async worker](docs/npc-async-worker.md)
+can run lifecycle work on the dedicated NPC thread. Factory lifecycle entry
+points serialize against its tick and still accept authenticated server-thread
+callers. Factory-managed physical state stores serialize both authorized callers;
+standalone stores retain their construction-thread guard. Set
+`-Dapocbr.npc.async=false` at startup for the original synchronous execution.
+
 `HumanLifecycle` retains logical definition, state, successful activation count and last bound profile revision
 independently of the active `ServerHuman`. Its read API returns immutable
 `HumanLifecycle.Snapshot` values captured by the independent NPC storage adapter.

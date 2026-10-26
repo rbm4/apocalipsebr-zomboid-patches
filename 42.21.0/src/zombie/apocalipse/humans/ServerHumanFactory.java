@@ -15,9 +15,8 @@ import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
 
 /**
- * Simulation-thread factory and lifecycle owner for server-owned human replicas.
- * Future subscription workers must hand immutable definitions to the simulation
- * thread; they must never construct characters or send packets themselves.
+ * Factory and lifecycle owner for server-owned human replicas. Experimental async
+ * mode runs native NPC simulation on one worker, concurrently with the live world.
  */
 public final class ServerHumanFactory {
     // Vanilla has 255 connection slots with four player IDs each (0..1019).
@@ -28,6 +27,7 @@ public final class ServerHumanFactory {
     static final int MAX_ACTIVE = 64;
     static final long UPDATE_NANOS = 500_000_000L;
     static final long BRAIN_UPDATE_NANOS = 100_000_000L;
+    static final boolean ASYNC = Boolean.parseBoolean(System.getProperty("apocbr.npc.async", "true"));
     static final long CHECKPOINT_NANOS = Math.max(1000,Math.min(60000,
         Long.getLong("apocbr.npc.persistence.checkpointMs",30000L)))*1_000_000L;
     private static final ServerHumanFactory INSTANCE = new ServerHumanFactory();
@@ -37,7 +37,9 @@ public final class ServerHumanFactory {
     private final ServerHumanZombieVictims zombieVictims = new ServerHumanZombieVictims();
     private final zombie.apocalipse.humans.traversal.TraversalWorld traversalWorld = new zombie.apocalipse.humans.traversal.TraversalWorld();
     private final Set<String> reservedNames = new HashSet<>();
-    private Thread owner;
+    private volatile Thread owner;
+    private volatile ServerHumanSimulationWorker worker;
+    private volatile boolean stopping;
     private boolean configured;
     private zombie.savefile.ApocBRNpcStore store;
     private final Map<String,zombie.savefile.ApocBRNpcStore.State> checkpoints=new HashMap<>();
@@ -47,7 +49,7 @@ public final class ServerHumanFactory {
     private final Set<String> retiredKeys=new HashSet<>();
     private record Respawn(String key,long at,String deathId) { }
     private final java.util.PriorityQueue<Respawn> respawns=new java.util.PriorityQueue<>(java.util.Comparator.comparingLong(Respawn::at));
-    public void reputationPort(zombie.apocalipse.humans.death.HumanReputationPort port){requireOwner();ServerHumanDeaths.reputation=java.util.Objects.requireNonNull(port);}
+    public synchronized void reputationPort(zombie.apocalipse.humans.death.HumanReputationPort port){requireOwner();ServerHumanDeaths.reputation=java.util.Objects.requireNonNull(port);}
     private int nextId = FIRST_ID;
     private long nextUpdate;
     private long nextBrainUpdate;
@@ -63,18 +65,62 @@ public final class ServerHumanFactory {
         return INSTANCE;
     }
 
+    public record SimulationStatus(boolean asynchronous,boolean started,boolean failed,long ticks,long lastDurationNanos,long overruns) { }
+    /** Lock-free diagnostics; counters describe the last completed worker tick. */
+    public static SimulationStatus simulationStatus() {
+        var running=INSTANCE.worker;
+        return new SimulationStatus(ASYNC,running!=null,running!=null&&running.failed(),
+            running==null?0:running.ticks(),running==null?0:running.lastDurationNanos(),running==null?0:running.overruns());
+    }
+
     /** Called by GameServer once per active tick, after world initialization. */
     public static void update() {
+        if (INSTANCE.stopping) return;
         if (!GameServer.server || GameServer.udpEngine == null
             || IsoWorld.instance == null || IsoWorld.instance.currentCell == null) return;
-        INSTANCE.tick(System.nanoTime());
+        // Bootstrap/configuration and Lua API installation remain on the calling server thread.
+        if (INSTANCE.worker == null) {
+            INSTANCE.tick(System.nanoTime());
+            if (ASYNC && INSTANCE.configured && !INSTANCE.configurationRejected) INSTANCE.startWorker();
+        } else ServerHumanDialogue.install();
         zombie.apocalipse.zombies.ServerZombieController.getInstance().install(INSTANCE.zombieVictims);
     }
 
-    void tick(long now) {
-        if (owner == null) { owner = Thread.currentThread(); ServerHumanPlayerAttacks.ready(); }
+    private synchronized void startWorker() {
+        if (worker != null || stopping) return;
         requireOwner();
-        ServerHumanDialogue.install();
+        worker = new ServerHumanSimulationWorker(BRAIN_UPDATE_NANOS, this::tick, this::workerFailed);
+        DebugLog.log("[ApocBR][NPC] simulation=async; targetHz=10; thread=ApocBR-NPC-Simulation; live-world experiment");
+        worker.start();
+    }
+
+    private synchronized void workerFailed(Throwable failure) {
+        acceptMutations=false;
+        rejectPending(HumanStateStore.Status.UNAVAILABLE);
+        DebugLog.log("[ApocBR][NPC] async simulation stopped after failure; restart required; ticks="+worker.ticks()
+            +"; lastDurationNanos="+worker.lastDurationNanos()+"; overruns="+worker.overruns());
+        failure.printStackTrace();
+    }
+
+    public static void shutdown() {
+        INSTANCE.stopping=true;
+        var running=INSTANCE.worker;
+        if(running!=null)running.shutdown();
+        synchronized(INSTANCE) {
+            INSTANCE.acceptMutations=false;
+            INSTANCE.rejectPending(HumanStateStore.Status.UNAVAILABLE);
+            for(String key:INSTANCE.instances.keySet())INSTANCE.checkpoint(key,false);
+        }
+    }
+
+    synchronized void tick(long now) {
+        if(stopping)return;
+        if (owner == null) {
+            owner = Thread.currentThread(); ServerHumanPlayerAttacks.ready();
+            if(!ASYNC)DebugLog.log("[ApocBR][NPC] simulation=sync; targetHz=10; thread="+owner.getName());
+        }
+        requireOwner();
+        if(worker==null||!worker.isWorkerThread())ServerHumanDialogue.install();
         if(configurationRejected)return;
         if(!configured) {
             if(zombie.savefile.ApocBRNpcStore.enabled()) {
@@ -196,7 +242,7 @@ public final class ServerHumanFactory {
     }
 
     /** Register logical state independently of a live presentation. Simulation thread only. */
-    public void registerDormant(ServerHumanDefinition definition) {
+    public synchronized void registerDormant(ServerHumanDefinition definition) {
         requireOwner();
         ServerHumanProfiles.registry().require(definition.profileId());
         if(instances.size()+retiredKeys.size()>=256)throw new IllegalStateException("NPC logical instance limit reached");
@@ -205,17 +251,17 @@ public final class ServerHumanFactory {
         String name = canonicalName(definition.username());
         if (reservedNames.contains(name)) throw new IllegalArgumentException("Human username already used in this server process");
         checkOnlineName(definition);
-        instances.put(definition.key(),new HumanLifecycle(definition));
+        instances.put(definition.key(),new HumanLifecycle(definition,this::requireOwner));
         reservedNames.add(name);
     }
 
     /** Compatibility spawn creates a logical instance and activates it immediately. */
-    public short spawn(ServerHumanDefinition definition) {
+    public synchronized short spawn(ServerHumanDefinition definition) {
         registerDormant(definition);
         return activate(definition.key());
     }
 
-    public short activate(String key) {
+    public synchronized short activate(String key) {
         return activate(key,false,System.currentTimeMillis());
     }
     private short activate(String key,boolean respawn,long epochMs) {
@@ -253,14 +299,14 @@ public final class ServerHumanFactory {
         }
     }
 
-    public HumanLifecycle.Snapshot lifecycle(String key) {
+    public synchronized HumanLifecycle.Snapshot lifecycle(String key) {
         requireOwner();
         HumanLifecycle instance = instances.get(key);
         return instance == null ? null : instance.snapshot();
     }
 
-    public boolean deactivate(String key) { return retire(key,false); }
-    public boolean markDead(String key) { return retire(key,true); }
+    public synchronized boolean deactivate(String key) { return retire(key,false); }
+    public synchronized boolean markDead(String key) { return retire(key,true); }
     private boolean retire(String key, boolean death) {
         requireOwner();
         ServerHuman human = humans.remove(key);
@@ -280,7 +326,7 @@ public final class ServerHumanFactory {
     }
 
     /** Permanent administrative removal; dormancy uses deactivate instead. */
-    public boolean remove(String key) {
+    public synchronized boolean remove(String key) {
         requireOwner();
         if (!instances.containsKey(key)) return false;
         deactivate(key);
@@ -326,6 +372,9 @@ public final class ServerHumanFactory {
 
     /** Fallback for vanilla clients discovering/reloading an unknown remote-player ID. */
     public static boolean handleDataRequest(short onlineId, UdpConnection connection) {
+        synchronized(INSTANCE){return INSTANCE.dataRequest(onlineId,connection);}
+    }
+    private boolean dataRequest(short onlineId,UdpConnection connection) {
         if (!GameServer.server || INSTANCE.owner == null) return false;
         INSTANCE.requireOwner();
         ServerHuman human = INSTANCE.byId.get(onlineId);
@@ -348,24 +397,33 @@ public final class ServerHumanFactory {
     }
 
     static java.util.Collection<ServerHuman> dialogueHumans() {
+        synchronized(INSTANCE){return INSTANCE.dialogueSnapshot();}
+    }
+    private java.util.Collection<ServerHuman> dialogueSnapshot() {
         INSTANCE.requireOwner();
         return java.util.List.copyOf(INSTANCE.humans.values());
     }
 
     static java.util.Collection<ServerHuman> activeZombieVictims() {
+        synchronized(INSTANCE){return INSTANCE.zombieSnapshot();}
+    }
+    private java.util.Collection<ServerHuman> zombieSnapshot() {
         if (INSTANCE.owner == null || !INSTANCE.acceptMutations || INSTANCE.persistencePaused) return java.util.List.of();
         INSTANCE.requireOwner();
         return java.util.List.copyOf(INSTANCE.humans.values());
     }
 
     static ServerHuman activeZombieVictim(short id) {
+        synchronized(INSTANCE){return INSTANCE.zombieVictim(id);}
+    }
+    private ServerHuman zombieVictim(short id) {
         if (INSTANCE.owner == null || !INSTANCE.acceptMutations || INSTANCE.persistencePaused) return null;
         INSTANCE.requireOwner();
         return INSTANCE.byId.get(id);
     }
 
     /** Trusted simulation-thread entry point. Network adapters must validate sender/target before calling. */
-    public HumanStateStore.Result mutate(String key,int activation,long expectedRevision,HumanMutation mutation){
+    public synchronized HumanStateStore.Result mutate(String key,int activation,long expectedRevision,HumanMutation mutation){
         requireOwner();java.util.Objects.requireNonNull(mutation);
         var logical=instances.get(key);
         if(logical==null||logical.state()!=HumanLifecycle.State.ACTIVE)return new HumanStateStore.Result(HumanStateStore.Status.INACTIVE,null);
@@ -381,20 +439,26 @@ public final class ServerHumanFactory {
         if(key==null||key.isBlank()||key.length()>128)throw new IllegalArgumentException("Invalid NPC key");
         var result=new java.util.concurrent.CompletableFuture<HumanStateStore.Result>();
         if(!acceptMutations)result.complete(new HumanStateStore.Result(HumanStateStore.Status.UNAVAILABLE,null));
-        else if(!mutations.offer(new PendingMutation(key,activation,revision,mutation,result)))
-            result.complete(new HumanStateStore.Result(HumanStateStore.Status.QUEUE_FULL,null));
+        else {
+            var pending=new PendingMutation(key,activation,revision,mutation,result);
+            if(!mutations.offer(pending))result.complete(new HumanStateStore.Result(HumanStateStore.Status.QUEUE_FULL,null));
+            else if(!acceptMutations&&mutations.remove(pending))result.complete(new HumanStateStore.Result(HumanStateStore.Status.UNAVAILABLE,null));
+        }
         return result;
     }
     private void rejectPending(HumanStateStore.Status status){
         for(int i=0;i<1024;i++){var command=mutations.poll();if(command==null)break;command.result().complete(new HumanStateStore.Result(status,null));}
     }
-    public HumanState state(String key){requireOwner();var logical=instances.get(key);return logical==null?null:logical.physiology().snapshot();}
+    public synchronized HumanState state(String key){requireOwner();var logical=instances.get(key);return logical==null?null:logical.physiology().snapshot();}
     /** Latest immutable sensor sample; reading does not scan or change contact memory. */
-    public zombie.apocalipse.humans.brain.HumanSenses.Frame perception(String key){
+    public synchronized zombie.apocalipse.humans.brain.HumanSenses.Frame perception(String key){
         requireOwner();var human=humans.get(key);return human==null?null:human.perception.snapshot();
     }
 
     static ServerHuman tradingHuman(short id) {
+        synchronized(INSTANCE){return INSTANCE.findTradingHuman(id);}
+    }
+    private ServerHuman findTradingHuman(short id) {
         if (!GameServer.server || INSTANCE.owner == null) return null;
         INSTANCE.requireOwner();
         return INSTANCE.byId.get(id);
@@ -405,8 +469,9 @@ public final class ServerHumanFactory {
     }
 
     private void requireOwner() {
-        if (!GameServer.server || owner == null || Thread.currentThread() != owner) {
-            throw new IllegalStateException("ServerHumanFactory must run on the initialized server simulation thread");
+        var running=worker;
+        if (!GameServer.server || owner == null || Thread.currentThread() != owner && (running==null||!running.isWorkerThread())) {
+            throw new IllegalStateException("ServerHumanFactory requires the initialized server thread or its NPC simulation worker");
         }
     }
 }

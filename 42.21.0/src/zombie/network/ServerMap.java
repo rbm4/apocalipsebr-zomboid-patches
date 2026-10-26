@@ -337,6 +337,7 @@ public class ServerMap {
     }
 
     public void QueuedQuit() {
+        zombie.apocalipse.humans.ServerHumanFactory.shutdown();
         ZipBackup.waitFinish();
         this.QueuedSaveAll(true);
         ByteBufferWriter b = GameServer.udpEngine.startPacket();

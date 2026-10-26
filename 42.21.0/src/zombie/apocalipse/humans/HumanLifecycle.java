@@ -2,7 +2,8 @@ package zombie.apocalipse.humans;
 
 /** Logical NPC state survives presentation removal. Persistence never contains the presentation actor. */
 public final class HumanLifecycle {
-    private zombie.apocalipse.humans.state.HumanStateStore physiology = new zombie.apocalipse.humans.state.HumanStateStore(zombie.apocalipse.humans.state.HumanState.INITIAL);
+    private final Runnable stateAccess;
+    private zombie.apocalipse.humans.state.HumanStateStore physiology;
     private zombie.apocalipse.humans.state.HumanStateStore previousLife;
     private zombie.apocalipse.humans.death.HumanDeathState death=zombie.apocalipse.humans.death.HumanDeathState.NONE;
     public zombie.apocalipse.humans.death.HumanDeathState death(){return death;}
@@ -12,7 +13,7 @@ public final class HumanLifecycle {
         previousLife=physiology;
         var healthy=zombie.apocalipse.humans.state.HumanState.INITIAL;
         physiology=new zombie.apocalipse.humans.state.HumanStateStore(new zombie.apocalipse.humans.state.HumanState(
-            Math.addExact(previousLife.snapshot().revision(),1),healthy.vitals(),healthy.injuries()));state=State.SPAWNING;
+            Math.addExact(previousLife.snapshot().revision(),1),healthy.vitals(),healthy.injuries()),stateAccess);state=State.SPAWNING;
     }
     void spawnFailed(){
         if(state!=State.SPAWNING)throw new IllegalStateException("Not spawning");
@@ -26,7 +27,11 @@ public final class HumanLifecycle {
     private State state = State.DORMANT;
     private int activations;
     private int profileRevision;
-    HumanLifecycle(ServerHumanDefinition definition) { this.definition = definition; }
+    HumanLifecycle(ServerHumanDefinition definition) { this(definition,null); }
+    HumanLifecycle(ServerHumanDefinition definition,Runnable stateAccess) {
+        this.definition = definition;this.stateAccess=stateAccess;
+        physiology=new zombie.apocalipse.humans.state.HumanStateStore(zombie.apocalipse.humans.state.HumanState.INITIAL,stateAccess);
+    }
     void restore(State persisted,int count,int revision) {
         if(state!=State.DORMANT||activations!=0)throw new IllegalStateException("Already initialized");
         state=persisted==State.DEAD?State.DEAD:State.DORMANT;activations=count;profileRevision=revision;
