@@ -60,6 +60,9 @@ protected String characterReaction="",playerReaction="",zombieReaction="";
     player = player.replace('public zombie.characters.IsoGameCharacter getCharacter(){return player;}', '')
     fixture['zombie/characters/IsoPlayer.java'] = fixture['zombie/characters/IsoPlayer.java'].replace('public short id;', 'public short onlineId;public short id;')
     player = player.replace('player=p;id=p.getOnlineID();', 'p.onlineId=p.getOnlineID();super.set(p);player=p;id=p.getOnlineID();')
+    player = player.replace('super.set(p);player=p;id=p.getOnlineID();', 'super.set(p);player=p;id=p.getOnlineID();playerFlags=(short)((p.isAimAtFloor()?1:0)|(p.isDoShove()?2:0));')
+    # Preserve the native attack flags that determine standing-shove immunity.
+    player = player.replace('public void process(){}', 'public void process(){player.setAimAtFloor((playerFlags&1)!=0);player.setDoShove((playerFlags&2)!=0);}')
     player = player.replace('public void parse(zombie.core.network.ByteBufferReader b,zombie.network.IConnection c){}', '')
     player = player.replace('public void write(zombie.core.network.ByteBufferWriter b){}', '')
     extra = '''protected short playerIndex,playerFlags;protected float charge,perkAiming,combatSpeed;protected zombie.AttackType attackType=zombie.AttackType.SHOT;

@@ -20,9 +20,13 @@ public final class ServerHumanPlayerDamage {
         var body=victim.getBodyDamage();
         body.calculateOverallHealth();float before=body.getOverallBodyHealth();
         victim.setAttackedBy(attacker);
+        // IsoGameCharacter.Hit forces ignore-damage for a standing shove even
+        // when positive damage evidence was supplied. Ground stomps are distinct.
+        // Native packet preProcess has already applied this attack's player flags.
+        boolean standingShove=attacker.isDoShove()&&!attacker.isAimAtFloor();
         // Use the same server-side body/armor/PvP damage roll as native IsoPlayer
         // hits. Client damage, knockdown, reaction and fall coordinates are not authority.
-        for(var hit:hits)if(hit.getDamage()>0&&!hit.isDamageIgnored())body.DamageFromWeapon(weapon,-1);
+        for(var hit:hits)if(!standingShove&&hit.getDamage()>0&&!hit.isDamageIgnored())body.DamageFromWeapon(weapon,-1);
         body.calculateOverallHealth();
         float loss=Math.clamp((before-body.getOverallBodyHealth())/100F,0,1);
         if(loss>0)human.state.dispatch(new HumanMutation.Damage(loss,0,0,0));
@@ -37,7 +41,7 @@ public final class ServerHumanPlayerDamage {
         for(var viewer:human.viewers)if(human.isRelevant(viewer)&&viewer!=zombie.network.GameServer.getConnectionFromPlayer(attacker))
             presentation.sendToClient(PacketTypes.PacketType.PlayerHitPlayer,viewer);
         float health=human.state.snapshot().vitals().health();
-        HumanLog.log(HumanLog.Level.INFO,()->"player damage key="+human.definition.key()+"; loss="+loss+"; health="+health);
-        ServerHumanPlayerAttacks.trace(victim,"damage committed; loss="+loss+"; health="+health);
+        HumanLog.log(HumanLog.Level.INFO,()->"player damage key="+human.definition.key()+"; loss="+loss+"; health="+health+"; standingShove="+standingShove);
+        ServerHumanPlayerAttacks.trace(victim,"damage committed; loss="+loss+"; health="+health+"; standingShove="+standingShove);
     }
 }

@@ -37,6 +37,21 @@ on the server for positive hit evidence. Armor and native PvP damage modifiers
 apply. Zero-damage shove evidence adds no wound. Client damage magnitudes do not
 set logical health. Native `ignoreDamage` evidence (shoves or ignored pellets) adds
 no wound, exposed through a read-only getter on the exact native `WeaponHit` patch.
+Standing shoves also force no damage when `isDoShove()` is true and
+`isAimAtFloor()` is false, matching `IsoGameCharacter.Hit()` even if the packet
+contains positive, nonignored damage evidence. Native packet preprocessing applies
+these flags before damage evaluation. This covers bare hands and shoving while
+holding a weapon; aim-at-floor ground attacks remain distinct. Accepted shoves
+still trigger aggression, encounter and speech handling. Damage traces include
+`standingShove` to distinguish this path from a weapon wound.
+
+Standing-shove followup (2026-10-26): `python tools/test_human_retaliation.py`
+passes 65 assertions, including serialized armed/bare-hands shoves with positive
+nonignored hit evidence, preprocessing of attack flags and the distinct ground
+attack. `test_human_speech.py` (75), `test_human_weapon_combat.py` (116) and
+`test_server_humans.py` (92) also pass. `42.21.0/patchApocalipseBr.ps1 -DryRun`
+compiles 296 sources / 874 class files against the installed target game JAR.
+No deployment or live shove/respawn test was performed.
 Native body loss becomes one `HumanMutation.Damage` and is
 projected immediately; existing checkpoints and terminal death lifecycle own
 persistence/removal. This does not add a respawn timer or persist individual native

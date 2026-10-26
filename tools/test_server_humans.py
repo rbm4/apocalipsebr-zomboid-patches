@@ -79,7 +79,7 @@ public class IsoPlayer extends IsoGameCharacter {
  public void setPrimaryHandItem(zombie.inventory.InventoryItem item){primary=item;}public void setSecondaryHandItem(zombie.inventory.InventoryItem item){secondary=item;}
  public void setUseHandWeapon(zombie.inventory.types.HandWeapon weapon){}public void setIsAiming(boolean value){aiming=value;}public boolean isAiming(){return aiming;}
  public void setAttackTargetSquare(IsoGridSquare square){}
- public void setDoShove(boolean value){}public boolean critical;public int critChance=20;public void setCriticalHit(boolean value){critical=value;}public boolean isCriticalHit(){return critical;}public int calculateCritChance(IsoGameCharacter target){return critChance;}public float getHittingMod(){return 1;}public void setAimAtFloor(boolean value){}
+ public boolean doShove,aimAtFloor;public void setDoShove(boolean value){doShove=value;}public boolean isDoShove(){return doShove;}public boolean critical;public int critChance=20;public void setCriticalHit(boolean value){critical=value;}public boolean isCriticalHit(){return critical;}public int calculateCritChance(IsoGameCharacter target){return critChance;}public float getHittingMod(){return 1;}public void setAimAtFloor(boolean value){aimAtFloor=value;}public boolean isAimAtFloor(){return aimAtFloor;}
  public void setAttackType(zombie.AttackType value){}public void setVariable(String key,String value){}
  public zombie.network.fields.hit.AttackVars getAttackVars(){return attackVars;}
  public java.util.List<zombie.network.fields.hit.HitInfo> getHitInfoList(){return hitInfo;}

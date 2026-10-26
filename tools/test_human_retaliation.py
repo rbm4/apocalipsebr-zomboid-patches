@@ -29,7 +29,7 @@ public abstract class PlayerHitCharacter implements HitCharacter,zombie.network.
  public static int ordinaryServer,localHits,sends;
  public void set(IsoPlayer p,HandWeapon w,boolean critical,List<?> tracers,List<WeaponHit> hits){wielder.set(p,critical);weapon=w;this.hits=new ArrayList<>(hits);hitCount=hits.size();}
  public void setData(Object... values){}public void parse(zombie.core.network.ByteBufferReader b,zombie.network.IConnection c){}public void write(zombie.core.network.ByteBufferWriter b){}
- public boolean isConsistent(zombie.network.IConnection c){return true;}public void update(){}public void preProcess(){}public void postProcess(){}public void log(zombie.core.raknet.UdpConnection c){}
+ public boolean isConsistent(zombie.network.IConnection c){return true;}public void update(){}public void preProcess(){wielder.process();}public void postProcess(){}public void log(zombie.core.raknet.UdpConnection c){}
  public void attack(){}public void react(){}public void processTracers(){}public abstract IsoGameCharacter getTargetCharacter();public IsoGameCharacter getTarget(){return getTargetCharacter();}
  public float getDistance(){return 0;}public boolean isMelee(){return !weapon.isRanged();}
  public IsoPlayer getWielder(){return wielder.getPlayer();}public HandWeapon getHandWeapon(){return weapon;}public int getHitCount(){return hitCount;}public byte getShotID(){return shotID;}
@@ -169,6 +169,23 @@ public class RetaliationTest {
   ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(shove));check(h.player.getHealth()==beforeShove,"zero-damage shove does not invent a wound");
   var ignoredHit=new WeaponHit();ignoredHit.set(1,1,0,0,0,false,false,false,true);
   ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(ignoredHit));check(h.player.getHealth()==beforeShove,"native ignore-damage flag prevents positive-damage shove or ignored pellet wounds");
+  // Positive hit evidence with ignoreDamage=false still must not wound a standing
+  // shove. Round-trip packet flags, then clear live flags to prove preProcess restores them.
+  for(var held:List.of(weapon,p.bareHands)){
+   p.setDoShove(true);p.setAimAtFloor(false);
+   var shoveClient=new PlayerHitPlayerPacket();shoveClient.set(p,held,false,List.of(),List.of(hit),h.player);
+   var shoveWriter=new zombie.core.network.ByteBufferWriter();shoveClient.write(shoveWriter);shoveWriter.bb.flip();
+   var shoveServer=new PlayerHitPlayerPacket();shoveServer.parse(new zombie.core.network.ByteBufferReader(shoveWriter.bb),connection);
+   p.setDoShove(false);p.setAimAtFloor(true);int beforeSwings=Player.swings;
+   shoveServer.processServer(PacketTypes.PacketType.PlayerHitPlayer,connection);
+   check(Player.swings==beforeSwings+1&&p.isDoShove()&&!p.isAimAtFloor(),"native standing-shove packet accepted and flags restored before damage");
+   check(h.player.getHealth()==beforeShove&&h.state.snapshot().vitals().health()==beforeShove,"standing shove with positive nonignored hit evidence causes no native or logical wound");
+   check(module.aggressor()!=null,"shove remains an aggression/speech intake event");
+  }
+  p.setAimAtFloor(true);
+  ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(hit));
+  check(h.player.getHealth()<beforeShove,"aim-at-floor ground attack is distinct from standing shove");
+  p.setDoShove(false);p.setAimAtFloor(false);
   for(int n=0;n<12;n++)ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(hit));
   check(h.state.snapshot().dead()&&h.player.getHealth()==0,"incoming body damage can kill durable NPC state");
   ServerHumanPlayerDamage.apply(p,h.player,weapon,List.of(hit));check(h.player.getHealth()==0,"death is terminal and later packets cannot revive");
