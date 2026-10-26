@@ -69,6 +69,7 @@ public final class ServerHumanPlayerAttacks {
         if(human.profile.encounter().enabled())new ServerHumanEncounters(human).record(new zombie.apocalipse.humans.encounters.EncounterPort.Player(
             new HumanObservation.Identity(attacker.getOnlineID(),attacker.getID()),ServerHumanEncounters.key(human,attacker),0,true,false),HumanRelationships.Outcome.ATTACKED,human.profile.encounter());
         ServerHumanDialogue.close(human,"attacked");ServerHumanTrading.close(human);
+        human.speech.attacked(attacker,weapon,now);
         HumanLog.log(HumanLog.Level.INFO,()->"player hit accepted key="+human.definition.key()+"; retaliation="+(module!=null));
         return true;
     }

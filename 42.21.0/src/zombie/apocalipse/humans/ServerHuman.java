@@ -25,6 +25,7 @@ final class ServerHuman {
     final ServerHumanTerritory territory;
     final ServerHumanCombat combat;
     final ServerHumanInventory inventory;
+    final ServerHumanSpeech speech;
     boolean aiming;
     IsoPlayer lastPlayerAttacker;
     byte lastPlayerShot;
@@ -97,6 +98,7 @@ final class ServerHuman {
         this.combat = new ServerHumanCombat(this);
         this.actuator = new ServerHumanActuator(this);
         this.physiology = new ServerHumanPhysiology(this);
+        this.speech = new ServerHumanSpeech(this);
         ServerHumanEncounters.bind(this);
         ServerHumanRetaliation.bind(this);
         // Native Safety starts enabled. A combatant must advertise safety off to
@@ -110,6 +112,7 @@ final class ServerHuman {
 
     void stopActivities() {
         if(activitiesStopped)return;activitiesStopped=true;
+        speech.cancel();
         activity.stop(System.nanoTime(), actuator);
         combat.stop();
         actuator.closeCorpses();

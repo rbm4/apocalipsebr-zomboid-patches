@@ -93,6 +93,7 @@ final class ServerHumanCombatNetwork {
         // HitCharacter's native local path applies WeaponHit -> target.Hit, maintenance, XP hooks and death.
         // It is not sufficient to send the packet: the server must process the same result locally once.
         packet.processClient(null);
+        if(hit)ServerHumanCombatAudio.impact(human,target,weapon);
         float delta=actor.getStats().get(CharacterStat.ENDURANCE)-endurance;
         if(Float.isFinite(delta)&&delta<0)human.state.dispatch(new HumanMutation.Adjust(HumanState.Stat.ENDURANCE,delta));
         actor.getStats().set(CharacterStat.ENDURANCE,human.state.snapshot().vitals().endurance());
@@ -103,6 +104,8 @@ final class ServerHumanCombatNetwork {
                 INetworkPacket.send(viewer,PacketTypes.PacketType.RangedWeaponSound,weapon.getSwingSound(),actor.getX(),actor.getY(),actor.getZ(),actor.getOnlineID(),0F,0F);
         }
         float after=target.getHealth(),packetDamage=committed;
+        if(target instanceof zombie.characters.IsoPlayer player)human.speech.attack(player,weapon,now);
+        else if(before>0&&target.isDead())human.speech.zombieKilled(now);
         HumanLog.log(HumanLog.Level.DEBUG,()->"combat commit key="+human.definition.key()+"; execution="+execution+"; strike="+strike+"; weapon="+weapon.getFullType()
             +"; target="+(target instanceof IsoZombie z?z.getOnlineID():((zombie.characters.IsoPlayer)target).getOnlineID())+"; hit="+hit+"; critical="+critical+"; packetDamage="+packetDamage+"; health="+before+" -> "+after);
         return true;

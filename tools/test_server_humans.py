@@ -22,6 +22,7 @@ public final class ApocBRNpcStore {
  public record DialogueIdentity(String npc,String dialogue,String kind,String account){}
  public static ApocBRNpcStore current(){return null;}
  public zombie.apocalipse.humans.encounters.HumanRelationships relationships(){return new zombie.apocalipse.humans.encounters.HumanRelationships();}
+ public zombie.apocalipse.humans.speech.HumanSpeechMemory speechMemory(){return new zombie.apocalipse.humans.speech.HumanSpeechMemory();}
  public Set<String> dialogueFlags(DialogueIdentity id){return Set.of();}
  public boolean remember(DialogueIdentity id,String flag){return false;}
  public static ApocBRNpcStore start(String s,String w,ServerHumanDefinition d){throw new AssertionError("Unexpected database initialization");}
@@ -158,7 +159,7 @@ public class GameServer {
 """,
     "zombie/network/PacketTypes.java": """package zombie.network;
 public class PacketTypes {public enum PacketType {
- PlayerUpdateReliable,PlayerTimeout,PlayerInjuries,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer,Equip,PlayerHitZombie,PlayerHitPlayer,PlayerHitSquare,RangedWeaponSound;
+ PlayerUpdateReliable,PlayerTimeout,PlayerInjuries,State,RequestTrading,TradingUIUpdateState,RemoveInventoryItemFromContainer,Equip,PlayerHitZombie,PlayerHitPlayer,PlayerHitSquare,RangedWeaponSound,PlaySound;
  public void doPacket(zombie.core.network.ByteBufferWriter b){} public void send(zombie.core.raknet.UdpConnection c){}
  }}
 """,
@@ -397,7 +398,7 @@ public class StatePacket {
  public static class Events {Map<String,String> values=new HashMap<>();public Map<String,String> get(){return values;}}
 }
 """,
-    "zombie/network/chat/ChatType.java": """package zombie.network.chat;public enum ChatType {say}
+    "zombie/network/chat/ChatType.java": """package zombie.network.chat;public enum ChatType {say,shout}
 """,
     "zombie/chat/ChatUtility.java": """package zombie.chat;import zombie.network.chat.ChatType;
 public class ChatUtility {public static boolean enabled=true;public static boolean chatStreamEnabled(ChatType t){return enabled;}}
@@ -407,6 +408,7 @@ public class ChatMessage {public String author,text;public void setAuthor(String
 """,
     "zombie/chat/ChatBase.java": """package zombie.chat;import java.util.*;
 public class ChatBase {
+ public float getRange(){return 60;}
  public static final List<ChatMessage> sent=new ArrayList<>();public static final List<Short> recipients=new ArrayList<>();
  public ChatMessage createMessage(String text){ChatMessage m=new ChatMessage();m.text=text;return m;}
  public void sendMessageToPlayer(short id,ChatMessage m){sent.add(m);recipients.add(id);}
@@ -417,14 +419,14 @@ public class ChatBase {
 # Exercise the production chat bridge method rather than a duplicate implementation.
 chat_source = (ROOT / "42.21.0/src/zombie/network/chat/ChatServer.java").read_text(encoding="utf-8")
 chat_start = chat_source.index("    public boolean sendHumanSay(")
-chat_end = chat_source.index("\n    }", chat_start) + len("\n    }")
+chat_end = chat_source.index("    public void sendMessageFromDiscordToGeneralChat", chat_start)
 FILES["zombie/network/chat/ChatServer.java"] = """package zombie.network.chat;
 import java.util.*;import zombie.chat.*;
 public class ChatServer {
  public static final Set<Short> players=new HashSet<>();public static boolean inited=true;
  public static final Map<ChatType,ChatBase> defaultChats=new HashMap<>();
  private static final ChatServer INSTANCE=new ChatServer();
- static {defaultChats.put(ChatType.say,new ChatBase());}
+ static {defaultChats.put(ChatType.say,new ChatBase());defaultChats.put(ChatType.shout,new ChatBase());}
  public static ChatServer getInstance(){return INSTANCE;}
 """ + chat_source[chat_start:chat_end] + "\n}\n"
 
@@ -620,6 +622,8 @@ FILES.update({
 
 FILES.update({
  "zombie/AttackType.java":"package zombie;public enum AttackType {SHOT,MELEE_TO_FLOOR,MELEE_SWING}",
+ "zombie/audio/parameters/ParameterBulletHitSurface.java":"package zombie.audio.parameters;public class ParameterBulletHitSurface {public enum Material {Flesh}}",
+ "zombie/audio/parameters/ParameterMeleeHitSurface.java":"package zombie.audio.parameters;public class ParameterMeleeHitSurface {public enum Material {Body}}",
  "zombie/core/random/Rand.java":"package zombie.core.random;public class Rand {public static int roll;public static int Next(int max){return roll;}public static float Next(float min,float max){return min;}}",
  "zombie/inventory/types/HandWeapon.java":r"""package zombie.inventory.types;
  public class HandWeapon extends zombie.inventory.InventoryItem {
@@ -630,7 +634,7 @@ FILES.update({
   public boolean isRoundChambered(){return chambered;}public void setRoundChambered(boolean value){chambered=value;}
   public void setContainsClip(boolean value){clip=value;}public void setSpentRoundChambered(boolean value){}
   public float getMinDamage(){return .6f;}public float getMaxDamage(){return 1;}
-  public float getDamageMod(zombie.characters.IsoPlayer actor){return 1;}public float getCriticalChance(){return 20;}public float getCriticalDamageMultiplier(){return 2.5f;}public int getHitChance(){return 50;}public int getSoundRadius(){return 100;}public int getSoundVolume(){return 30;}public String getSwingSound(){return "test-shot";}
+  public float getDamageMod(zombie.characters.IsoPlayer actor){return 1;}public float getCriticalChance(){return 20;}public float getCriticalDamageMultiplier(){return 2.5f;}public int getHitChance(){return 50;}public int getSoundRadius(){return 100;}public int getSoundVolume(){return 30;}public String getSwingSound(){return "test-shot";}public String getZombieHitSound(){return "test-impact";}
  }""",
  "zombie/inventory/InventoryItemFactory.java":r"""package zombie.inventory;
  public class InventoryItemFactory {private static int next=10000;public static boolean fail;

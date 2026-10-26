@@ -100,6 +100,29 @@ final class ServerHumanTransport {
         for(var viewer:human.viewers)if(human.isRelevant(viewer))new ServerHumanAimPacket(human,enabled).sendToClient(PacketTypes.PacketType.State,viewer);
     }
 
+    static void hey(ServerHuman human){
+        // Stock transmitPlayerVoiceSound only transmits from a client. Server-owned actors send directly.
+        for(var viewer:human.viewers)if(human.isRelevant(viewer))
+            zombie.network.packets.INetworkPacket.send(viewer,PacketTypes.PacketType.PlaySound,"ShoutHey",(byte)2,human.player);
+        human.player.addWorldSoundUnlessInvisible(30,30,false);
+    }
+
+    static boolean shout(ServerHuman human,String text){
+        float range=ChatServer.getInstance().humanShoutRange();if(range<=0)return false;
+        boolean sent=false;
+        for(var viewer:human.viewers){
+            if(!human.isRelevant(viewer))continue;
+            for(int slot=0;slot<4;slot++){
+                var listener=viewer.getPlayerAt(slot);
+                if(listener==null||listener.isDead()||listener.getZi()!=human.player.getZi())continue;
+                double dx=listener.getX()-human.player.getX(),dy=listener.getY()-human.player.getY();
+                if(dx*dx+dy*dy>range*range)continue;
+                sent|=ChatServer.getInstance().sendHumanShout(listener.getOnlineID(),human.player.getUsername(),text);break;
+            }
+        }
+        return sent;
+    }
+
     static boolean say(ServerHuman human, String text) {
         boolean sent = false;
         for (UdpConnection connection : human.viewers) {

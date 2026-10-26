@@ -34,6 +34,7 @@ final class ServerHumanZombieVictims implements ZombieVictimPort {
         if(loss>0)human.state.dispatch(new zombie.apocalipse.humans.state.HumanMutation.Damage(loss,0,0,0));
         if(human.player.isDeathDragDown())human.state.dispatch(new zombie.apocalipse.humans.state.HumanMutation.Kill());
         human.physiology.project();
+        if(loss>0)human.speech.damage(null,loss,null,System.nanoTime());
         return hit?"native_damage="+loss:"defended";
     }
 }

@@ -504,6 +504,19 @@ public class ChatServer {
         return true;
     }
 
+    public float humanShoutRange() {
+        ChatBase chat=defaultChats.get(ChatType.shout);
+        return inited&&chat!=null&&ChatUtility.chatStreamEnabled(ChatType.shout)?chat.getRange():0;
+    }
+
+    /** Explicit recipient routing for a detached NPC author, using the ordinary /yell channel. */
+    public boolean sendHumanShout(short recipientId,String author,String text) {
+        if(!inited||!players.contains(recipientId)||!ChatUtility.chatStreamEnabled(ChatType.shout))return false;
+        ChatBase chat=defaultChats.get(ChatType.shout);if(chat==null)return false;
+        ChatMessage message=chat.createMessage(text);message.setAuthor(author);
+        chat.sendMessageToPlayer(recipientId,message);return true;
+    }
+
     public void sendMessageFromDiscordToGeneralChat(String author, String msg) {
         if (author != null && msg != null) {
             logger.write("Got message '" + msg + "' by author '" + author + "' from discord");

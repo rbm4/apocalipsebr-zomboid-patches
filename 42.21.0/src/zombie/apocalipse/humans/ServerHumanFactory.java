@@ -130,6 +130,7 @@ public final class ServerHumanFactory {
                 if(!persistencePaused)for(var human:humans.values()) {
                     ServerHumanDialogue.close(human,"persistence_unavailable");ServerHumanTrading.close(human);
                     human.activity.setBlocked(true,now,human.actuator);
+                    human.speech.cancel();
                     for(var viewer:human.viewers)ServerHumanTransport.idle(human,viewer);
                 }
                 persistencePaused=true;return;
@@ -178,6 +179,7 @@ public final class ServerHumanFactory {
             ServerHumanTrading.update(human, now);
             ServerHumanDialogue.update(human, now);
             human.activity.update(now, human.actuator::observe, human.actuator,human.state.snapshot());
+            human.speech.update(now);
             human.actuator.updateCorpseDrag(now);
             human.movement.refresh(now);
             // Simulate at 10 Hz, but publish routine motion only on the 2 Hz heartbeat.

@@ -62,10 +62,16 @@ public class NpcStoreTest {
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V28__Npc_Player_Encounters.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V29__Npc_Retaliation_And_Longer_Warnings.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V30__Npc_Death_Respawn_And_Loot.sql")));
+   s.execute(Files.readString(Path.of(args[1]).resolveSibling("V31__Npc_Speech_Engine.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
    var profiles=ApocBRNpcStore.readProfiles(c);check(profiles.size()==5,"seed profiles including militia scaffold");
+   var speechCatalog=ApocBRNpcSpeech.catalog(c);
+   for(var event:List.of(zombie.apocalipse.humans.speech.SpeechEvent.ATTACK_PLAYER,zombie.apocalipse.humans.speech.SpeechEvent.ATTACKED_BY_PLAYER,zombie.apocalipse.humans.speech.SpeechEvent.ZOMBIE_KILL,zombie.apocalipse.humans.speech.SpeechEvent.DAMAGE_TAKEN))
+    for(String locale:List.of("EN","PTBR"))check(speechCatalog.lines(event,locale).size()==20,"engine role reads 20 speech variants per locale");
+   for(var event:zombie.apocalipse.humans.speech.SpeechEvent.values())for(String locale:List.of("EN","PTBR"))
+    check(speechCatalog.lines(event,locale).equals(zombie.apocalipse.humans.speech.HumanSpeechDefaults.catalog().lines(event,locale)),"database seeds equal shipped speech defaults");
    var militia=profiles.stream().filter(p->p.id().equals("militia-patrol")).findFirst().orElseThrow();
    check(militia.dialogue()&&!militia.trading()&&militia.modules().getFirst().moduleId().equals("survival"),"database militia profile enables orders and retains survival priority");
    check(militia.modules().stream().anyMatch(m->m.moduleId().equals("assigned-task")),"militia task capability loaded");
@@ -203,11 +209,17 @@ public class NpcStoreTest {
    var deadPhysical=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Kill());
    var deathState=new zombie.apocalipse.humans.death.HumanDeathState(1000,1201000,"12345678-1234-1234-1234-123456789abc");
    apply(c,ApocBRNpcStore.statements("test","world",2,new ApocBRNpcStore.State(deadDefinition,HumanLifecycle.State.DEAD,3,1,110,210,0,5,false,deadPhysical,deathState)));
+   var startupSpeech=new zombie.apocalipse.humans.speech.HumanSpeechMemory();
+   var startupSpeechKey=new zombie.apocalipse.humans.speech.HumanSpeechMemory.Key("guide","username","startup");
+   startupSpeech.attacked(startupSpeechKey,100000);
+   apply(c,List.of(ApocBRNpcSpeech.statement("test","world",2,startupSpeech.pending().getFirst())));
    ApocBRPostgresConnector.url=url;System.setProperty("apocbr.npc.persistence.enabled","true");
    var store=ApocBRNpcStore.start("test","world",d);ApocBRNpcStore.Loaded loaded=null;
    long deadline=System.nanoTime()+10000000000L;
    while(loaded==null&&System.nanoTime()<deadline){Thread.sleep(20);loaded=store.takeLoaded();}
    check(loaded!=null&&loaded.instances().size()==2,"worker hydrates active and dead logical instances");
+   check(store.speechMemory().get(startupSpeechKey).attacks()==1,"speech account memory restored before activation");
+   check(zombie.apocalipse.humans.speech.HumanSpeechCatalog.current().lines(zombie.apocalipse.humans.speech.SpeechEvent.ATTACK_PLAYER,"PTBR").size()==20,"speech catalog hot before startup publication");
    var deadRestored=loaded.instances().stream().filter(i->i.state().definition().key().equals("zzz-dead")).findFirst().orElseThrow();
    check(deadRestored.activate()&&deadRestored.state().lifecycle()==HumanLifecycle.State.DEAD,"restart keeps dead NPC outside active simulation but eligible for scheduler");
    check(deadRestored.state().death().equals(deathState)&&deadRestored.state().physiology().dead(),"death ID, deadline and zero health survive restart exactly");
@@ -233,6 +245,9 @@ public class NpcStoreTest {
    check(number(c,"SELECT epoch FROM npc_engine.scope")==3,"reconnect preserves ownership epoch");c.commit();
    store.offer(state(d,5,150,HumanLifecycle.State.ACTIVE,false));store.offer(state(d,4,140,HumanLifecycle.State.ACTIVE,false));
    check(store.remember(account,"knows_secret"),"trusted selection stages earned fact without SQL on request thread");
+   store.speechMemory().attacked(startupSpeechKey,100001);
+   var speakerKey=new zombie.apocalipse.humans.speech.HumanSpeechMemory.Key("guide","npc","_");
+   store.speechMemory().remember(speakerKey,"attack_player.01");
    check(store.remember(account,"knows_secret")&&store.dialogueFlags(account).size()==2,"repeated earned flag is idempotent");
    var relationshipKey=new zombie.apocalipse.humans.encounters.HumanRelationships.Key("militia","steam","123");
    check(store.relationships().record(relationshipKey,"guard",zombie.apocalipse.humans.encounters.HumanRelationships.Outcome.COMPLIED,100000,militia.encounter()),"relationship outcome captured without request-thread SQL");
@@ -246,11 +261,25 @@ public class NpcStoreTest {
    while(!ApocBRPersistence.queue.isEmpty())apply(c,ApocBRPersistence.queue.remove().statements());
    check(number(c,"SELECT count(*) FROM npc_engine.dialogue_flag WHERE player_identity='123'")==2,"earned facts persist through shared worker/journal using engine role");
    var restoredRelationships=ApocBRNpcRelationships.read(c,"test","world");
+   check(ApocBRNpcSpeech.read(c,"test","world").get(startupSpeechKey).attacks()==2,"worker journals repeated attack memory");
+   check(ApocBRNpcSpeech.read(c,"test","world").get(speakerKey).recent().equals(List.of("attack_player.01")),"worker journals delivered-message history");
    check(restoredRelationships.get(relationshipKey).complied()==1,"relationship worker flush persists as engine role");
    check(restoredRelationships.get(relationshipKey).permissionUntilMs()==0&&restoredRelationships.get(relationshipKey).refused()==0,"attack revokes permission without falsely recording refusal");
    check(number(c,"SELECT count(*) FROM npc_engine.relationship_event WHERE outcome='ATTACKED'")==1,"attack event persists idempotently under V29");
    check(number(c,"SELECT count(*) FROM npc_engine.relationship_event WHERE outcome='KILLED_NPC'")==1,"kill relationship mutation survives worker shutdown and journal staging");
    check(ApocBRNpcRelationships.read(c,"other","world").isEmpty(),"relationship scope isolation");
+   var speechMemory=new zombie.apocalipse.humans.speech.HumanSpeechMemory();
+   var speechKey=new zombie.apocalipse.humans.speech.HumanSpeechMemory.Key("guard","username","Alice");
+   speechMemory.attacked(speechKey,1000);var firstSpeech=speechMemory.pending().getFirst();
+   speechMemory.attacked(speechKey,2000);var latestSpeech=speechMemory.pending().getFirst();
+   apply(c,List.of(ApocBRNpcSpeech.statement("test","world",3,latestSpeech)));
+   apply(c,List.of(ApocBRNpcSpeech.statement("test","world",3,firstSpeech)));
+   apply(c,List.of(ApocBRNpcSpeech.statement("test","world",3,latestSpeech)));
+   check(ApocBRNpcSpeech.read(c,"test","world").get(speechKey).attacks()==2,"speech replay idempotent and older revision fenced");
+   speechMemory.attacked(speechKey,3000);
+   apply(c,List.of(ApocBRNpcSpeech.statement("test","world",2,speechMemory.pending().getFirst())));
+   check(ApocBRNpcSpeech.read(c,"test","world").get(speechKey).attacks()==2,"old epoch cannot overwrite speech memory");
+   check(ApocBRNpcSpeech.read(c,"other","world").isEmpty(),"speech memory scoped by server/world");
    c.commit();
    var relationMemory=new zombie.apocalipse.humans.encounters.HumanRelationships();
    var replayKey=new zombie.apocalipse.humans.encounters.HumanRelationships.Key("militia","steam","replay-account");
@@ -297,6 +326,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     sources += [SRC/'apocalipse/humans/tasks/HumanTaskCommand.java',SRC/'savefile/ApocBRNpcRelationships.java']
     sources += [SRC/'apocalipse/humans/encounters/EncounterPolicy.java',SRC/'apocalipse/humans/encounters/HumanRelationships.java']
     sources += [SRC/'savefile/ApocBRNpcMortality.java'] + list((SRC/'apocalipse/humans/death').glob('*.java'))
+    sources += [SRC/'savefile/ApocBRNpcSpeech.java'] + list((SRC/'apocalipse/humans/speech').glob('*.java'))
     sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java')) + list((SRC/'apocalipse/humans/walking').glob('*.java'))
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')

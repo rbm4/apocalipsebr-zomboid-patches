@@ -21,6 +21,12 @@ per-activation state, not durable semantic memory.
 
 ## Ownership and flow
 
+The reactive [speech engine](docs/npc-speech-engine.md) additionally requires
+manager V31 after V30. Its startup catalog and per-NPC/account semantic memory
+are loaded before activation; delivered-line history and 24-hour attack
+familiarity use a dedicated bounded codec/table and the same worker/journal.
+Active targets, pending speech and monotonic timers remain transient.
+
 ```text
 Database profiles -> NPC worker -> immutable configuration -> simulation-thread registry
 Logical NPC (scope + npc_key) -> lifecycle -> activity ownership -> module arbitration

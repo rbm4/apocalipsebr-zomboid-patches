@@ -28,6 +28,7 @@ public final class ServerHumanPlayerDamage {
         if(loss>0)human.state.dispatch(new HumanMutation.Damage(loss,0,0,0));
         if(human.state.snapshot().dead()&&human.profile.encounter().enabled())human.deathKiller=ServerHumanEncounters.key(human,attacker);
         human.physiology.project();
+        if(loss>0)human.speech.damage(attacker,loss,weapon,System.nanoTime());
         // Rebuild presentation from server state; stock clients only display PvP
         // hit effects. Never call processServer/PlayerHit.attack a second time.
         double dx=victim.getX()-attacker.getX(),dy=victim.getY()-attacker.getY(),distance=Math.max(.001,Math.hypot(dx,dy));

@@ -14,8 +14,11 @@ final class ServerHumanPhysiology {
         float nativeHealth=human.player.getHealth();
         if(human.player.getBodyDamage()!=null)nativeHealth=Math.min(nativeHealth,human.player.getBodyDamage().getOverallBodyHealth()/100F);
         // Import new native loss once. Native regeneration/god-mode resets cannot silently revive/heal logical state.
-        if(Float.isFinite(nativeHealth)&&nativeHealth<projectedHealth-0.000001F)
-            human.state.dispatch(new HumanMutation.Damage(Math.clamp(projectedHealth-nativeHealth,0,1),0,0,0));
+        if(Float.isFinite(nativeHealth)&&nativeHealth<projectedHealth-0.000001F){
+            float loss=Math.clamp(projectedHealth-nativeHealth,0,1);
+            human.state.dispatch(new HumanMutation.Damage(loss,0,0,0));
+            human.speech.damage(null,loss,null,now);
+        }
         float seconds=lastTick==Long.MIN_VALUE?0:(float)Math.max(0,Math.min(.15,(now-lastTick)/1_000_000_000.0));
         lastTick=Math.max(lastTick,now);
         float enduranceRate=switch(human.movement.snapshot().gait()){

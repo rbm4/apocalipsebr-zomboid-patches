@@ -48,6 +48,8 @@ public final class ApocBRNpcStore {
     private final ConcurrentHashMap<EarnedFlag,Boolean> pendingFlags=new ConcurrentHashMap<>();
     private final zombie.apocalipse.humans.encounters.HumanRelationships relationships=new zombie.apocalipse.humans.encounters.HumanRelationships();
     public zombie.apocalipse.humans.encounters.HumanRelationships relationships(){return relationships;}
+    private final zombie.apocalipse.humans.speech.HumanSpeechMemory speechMemory=new zombie.apocalipse.humans.speech.HumanSpeechMemory();
+    public zombie.apocalipse.humans.speech.HumanSpeechMemory speechMemory(){return speechMemory;}
     private int flagCount;
     private final AtomicReference<Loaded> loaded=new AtomicReference<>();
     private final AtomicReference<List<HumanProfile>> profiles=new AtomicReference<>();
@@ -103,7 +105,10 @@ public final class ApocBRNpcStore {
                         var labels=ApocBRNpcDialogues.labels(connection);
                         readDialogueFlags();
                         relationships.restore(ApocBRNpcRelationships.read(connection,server,world));
+                        var speeches=ApocBRNpcSpeech.catalog(connection);
+                        speechMemory.restore(ApocBRNpcSpeech.read(connection,server,world));
                         connection.commit();zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(dialogues,labels);
+                        zombie.apocalipse.humans.speech.HumanSpeechCatalog.publish(speeches);
                         loaded.set(new Loaded(configuration,definitions));initialized=true;nextProfiles=System.nanoTime()+30000000000L;
                     }
                     // Session lock + epoch fence prevent two processes writing the same NPC scope.
@@ -160,6 +165,7 @@ public final class ApocBRNpcStore {
         try{connection.close();}catch(SQLException ignored){}connection=null;locked=false;
     }
     private void flush() {
+        ApocBRNpcSpeech.flush(speechMemory,server,world,epoch);
         ApocBRNpcRelationships.flush(relationships,server,world,epoch);
         for(var flag:pendingFlags.keySet()) {
             var id=flag.identity();
