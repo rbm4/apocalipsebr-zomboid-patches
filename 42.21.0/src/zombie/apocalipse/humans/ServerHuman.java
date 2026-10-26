@@ -13,6 +13,7 @@ import zombie.iso.IsoCell;
 /** A server-owned presentation actor, deliberately outside live-player simulation. */
 final class ServerHuman {
     final ServerHumanDefinition definition;
+    final String incarnation = java.util.UUID.randomUUID().toString();
     final IsoPlayer player;
     final Set<UdpConnection> viewers = Collections.newSetFromMap(new IdentityHashMap<>());
     final java.util.Map<UdpConnection, zombie.apocalipse.humans.movement.MovementModifiers.Animation> movementPresentation = new IdentityHashMap<>();

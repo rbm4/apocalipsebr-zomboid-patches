@@ -29,6 +29,8 @@ snapshot contract; the two features must not be treated as interchangeable.
 
 | Date | Document |
 | --- | --- |
+| 2026-10-26 | [Offline SQLite character migration](features/2026-10-26-offline-player-migration.md) |
+| 2026-10-26 | [NPC dialogue roster refresh after respawn](features/2026-10-26-npc-dialogue-roster-refresh.md) |
 | 2026-10-26 | [NPC speech engine (42.21.0 server)](features/2026-10-26-npc-speech-engine.md) |
 | 2026-10-26 | [NPC death, corpse loot and respawn (42.21.0, V30)](features/2026-10-26-npc-death-respawn-loot.md) |
 | 2026-10-26 | [Experimental NPC simulation worker](features/2026-10-26-npc-async-worker.md) |

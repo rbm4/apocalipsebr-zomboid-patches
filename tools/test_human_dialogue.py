@@ -35,6 +35,9 @@ public class DialogueTest {
   check(api!=null,"bridge installed on simulation thread");
   check(Double.valueOf(4).equals(api.rawget("version")),"server-owned dialogue bridge advertises v4");
   check(LuaEventManager.events.contains("OnApocBRHumanRosterChanged"),"spawn emits roster change");
+  var generationCall=new LuaCallFrame();((JavaFunction)api.rawget("rosterRevision")).call(generationCall,0);
+  long generation=ServerHumanDialogue.rosterRevision();
+  check(generation>0&&Double.valueOf(generation).equals(generationCall.result),"Lua scalar roster revision exposes committed lifecycle changes");
   int changes=java.util.Collections.frequency(LuaEventManager.events,"OnApocBRHumanRosterChanged");
   check(!factory.remove("missing")&&java.util.Collections.frequency(LuaEventManager.events,"OnApocBRHumanRosterChanged")==changes,"missing removal does not emit changes");
   p.x=500;p.z=1;
@@ -42,6 +45,7 @@ public class DialogueTest {
   check(full.values.size()==1&&ServerHumanDialogue.list(p).values.isEmpty(),"world roster independent of player range and floor");
   var publicActor=(KahluaTable)full.values.values().iterator().next();
   check(publicActor.rawget("x")==null&&publicActor.rawget("z")==null&&publicActor.rawget("token")==null,"roster excludes positions and session state");
+  check(publicActor.rawget("incarnation").equals(h.incarnation),"public binding includes immutable per-actor incarnation");
   var rosterCall=new LuaCallFrame();
   ((JavaFunction)api.rawget("roster")).call(rosterCall,0);
   check(rosterCall.result instanceof KahluaTable,"zero-argument roster facade callable");
@@ -83,6 +87,7 @@ public class DialogueTest {
   check(!ServerHumanDialogue.arrive(other,id,nextToken,now),"removed actor token invalid");
   check(ServerHumanDialogue.roster().values.isEmpty(),"removed actor absent from world roster");
   check(java.util.Collections.frequency(LuaEventManager.events,"OnApocBRHumanRosterChanged")==changes+1,"despawn emits one roster change after removal");
+  check(ServerHumanDialogue.rosterRevision()==generation+1,"despawn advances scalar revision independently of event delivery");
   check(LuaEventManager.events.contains("OnApocBRHumanDialogueReserved")
    &&LuaEventManager.events.contains("OnApocBRHumanDialogueOpened")
    &&LuaEventManager.events.contains("OnApocBRHumanDialogueClosed"),"lifecycle events delivered");

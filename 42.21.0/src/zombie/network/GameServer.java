@@ -875,6 +875,7 @@ public class GameServer {
                     long telemetryPacketsStart = System.nanoTime();
                     try(ApocBRServerTelemetryLite.Scope login=ApocBRServerTelemetryLite.phase("database.login.continuations")) {
                         zombie.savefile.ApocBRAsyncLogin.update();
+                        zombie.savefile.ApocBRPlayerMigration.update();
                     }
                     PoolCaps.updateServerCaps();
                     MainLoopNetData2.clear();

@@ -197,7 +197,7 @@ public final class ApocBRPostgresConnector {
             &&!ApocBRPlayerRelationalMutations.hasPending(world,identity,slot,coop));
     }
     public static void awaitPersistence(){ApocBRPersistence.drain();}
-    public static void runShutdownDatabaseWork(Runnable work){ApocBRNpcStore.shutdown();ApocBRAsyncLogin.shutdown();ApocBRPersistence.shutdownWork(work);}
+    public static void runShutdownDatabaseWork(Runnable work){ApocBRPlayerMigration.shutdown();ApocBRNpcStore.shutdown();ApocBRAsyncLogin.shutdown();ApocBRPersistence.shutdownWork(work);}
     /** Dedicated I/O workers use normal pool/socket budgets and may operate during recovery. */
     public static void runBackgroundDatabaseWork(Runnable work){
         boolean previous=ApocBRPersistence.background();ApocBRPersistence.background(true);
@@ -248,6 +248,7 @@ public final class ApocBRPostgresConnector {
     /** Active shutdown replay discards after five failed attempts per operation.
      * The inactive legacy mirror retains its compatibility flush. */
     public static void shutdown() {
+        ApocBRPlayerMigration.shutdown();
         if (ApocBRPersistence.enabled()) ApocBRPersistence.drain();
         if (instance == null) return;
         instance.nextAttemptNanos = 0; // One final attempt even if the normal retry delay has not expired.
@@ -260,6 +261,7 @@ public final class ApocBRPostgresConnector {
 
     /** After native vehicle Reset has flushed its remaining work. */
     public static void closePool() {
+        ApocBRPlayerMigration.shutdown();
         ApocBRNpcStore.shutdown();
         ApocBRAsyncLogin.shutdown();
         ApocBRPersistence.close();

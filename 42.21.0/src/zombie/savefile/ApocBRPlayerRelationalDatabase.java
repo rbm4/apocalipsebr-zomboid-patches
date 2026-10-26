@@ -14,6 +14,8 @@ final class ApocBRPlayerRelationalDatabase {
         Candidate { loadIssues=List.copyOf(loadIssues); }
         String key() { return dataset+":"+world+":"+(coop?"steam_coop":"username")+":"+identity+":"+slot; }
         UUID playerId() { return named("slot:"+key()); }
+        // Shared slot ownership excludes source dataset, including first-insert races across servers.
+        long lockId() { return named("slot-lock:"+world.length()+":"+world+":"+coop+":"+identity.length()+":"+identity+":"+slot).getMostSignificantBits(); }
     }
     record Receipt(UUID character,UUID head,Map<Integer,UUID> aliases,boolean complete,UUID previousCharacter) {
         Receipt(UUID character,UUID head,Map<Integer,UUID> aliases,boolean complete){this(character,head,aliases,complete,head==null?null:character);}
@@ -130,7 +132,7 @@ final class ApocBRPlayerRelationalDatabase {
                 execute(connection,"SET CONSTRAINTS ALL DEFERRED");
                 // Non-waiting per-slot lock. Does not lock public/native tables or other characters.
                 try(PreparedStatement lock=statement(connection,"SELECT pg_try_advisory_xact_lock(?)")) {
-                    lock.setLong(1,candidate.playerId().getMostSignificantBits());
+                    lock.setLong(1,candidate.lockId());
                     try(ResultSet rows=lock.executeQuery()) { if(!rows.next()||!rows.getBoolean(1)) throw new SQLException("Backfill slot busy","55P03"); }
                 }
                 UUID currentCharacter=null,currentHead=null;
@@ -239,7 +241,7 @@ final class ApocBRPlayerRelationalDatabase {
                 execute(connection,"SET LOCAL lock_timeout = '250ms'");
                 execute(connection,"SET CONSTRAINTS ALL DEFERRED");
                 try(PreparedStatement lock=statement(connection,"SELECT pg_try_advisory_xact_lock(?)")) {
-                    lock.setLong(1,candidate.playerId().getMostSignificantBits());
+                    lock.setLong(1,candidate.lockId());
                     try(ResultSet rows=lock.executeQuery()){if(!rows.next()||!rows.getBoolean(1)){connection.rollback();return false;}}
                 }
                 UUID character,head;long revision;String reason;

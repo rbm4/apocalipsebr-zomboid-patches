@@ -42,6 +42,7 @@ public class LoginPacket implements INetworkPacket {
 
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        if(!zombie.savefile.ApocBRPlayerMigration.admitLogin(connection,this.username))return;
         if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
         if(zombie.savefile.ApocBRAsyncLogin.enabled()) {
             LoginPacket request=new LoginPacket();request.username=this.username;request.password=this.password;

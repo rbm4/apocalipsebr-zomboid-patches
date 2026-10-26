@@ -23,6 +23,8 @@ public final class ServerHumanDialogue {
     private static KahluaTable environment;
     private static int sequence;
     private static long contentGeneration;
+    private static final java.util.concurrent.atomic.AtomicLong rosterGeneration = new java.util.concurrent.atomic.AtomicLong();
+    static long rosterRevision(){return rosterGeneration.get();}
     private static final class Session {
         final ServerHuman human;
         final IsoPlayer visitor;
@@ -55,6 +57,7 @@ public final class ServerHumanDialogue {
         KahluaTable api = LuaManager.platform.newTable();
         bind(api, "list", 1, f -> list(player(f)));
         bind(api, "roster", 0, f -> roster());
+        bind(api, "rosterRevision", 0, f -> (double)rosterRevision());
         bind(api, "dialogues", 0, f -> dialogues());
         bind(api, "language", 0, f -> HumanLanguage.locale());
         bind(api, "text", 1, f -> f.get(0) instanceof String key?HumanLanguage.text(key):null);
@@ -121,7 +124,7 @@ public final class ServerHumanDialogue {
             var session=new HumanDialogueSession(content);
             // Roster discovery intentionally excludes actor coordinates and session authority.
             var actor=LuaManager.platform.newTable();actor.rawset("id",(double)h.player.getOnlineID());
-            actor.rawset("key",h.definition.key());actor.rawset("name",h.definition.displayName());
+            actor.rawset("key",h.definition.key());actor.rawset("name",h.definition.displayName());actor.rawset("incarnation",h.incarnation);
             var view=session.view(flags(p,h,session));actor.rawset("dialogue",luaValue(view));
             var nodes=(Map<?,?>)view.get("nodes");var root=(Map<?,?>)nodes.get(view.get("entryNode"));
             actor.rawset("options",luaValue(root.get("options")));result.rawset((double)++i,actor);
@@ -204,6 +207,7 @@ public final class ServerHumanDialogue {
         KahluaTable t = LuaManager.platform.newTable();
         t.rawset("id", (double)h.player.getOnlineID()); t.rawset("key", h.definition.key());
         t.rawset("name", h.definition.displayName());
+        t.rawset("incarnation", h.incarnation);
         t.rawset("profileId", h.profile.id());
         t.rawset("x", (double)h.player.getX()); t.rawset("y", (double)h.player.getY()); t.rawset("z", (double)h.player.getZi());
         return t;
@@ -229,6 +233,7 @@ public final class ServerHumanDialogue {
             KahluaTable actor = LuaManager.platform.newTable();
             actor.rawset("id", (double)h.player.getOnlineID());
             actor.rawset("key", h.definition.key());
+            actor.rawset("incarnation", h.incarnation);
             actor.rawset("name", h.definition.displayName());
             actor.rawset("profileId", h.profile.id());
             result.rawset((double)++i, actor);
@@ -237,6 +242,7 @@ public final class ServerHumanDialogue {
     }
 
     static void rosterChanged() {
+        rosterGeneration.incrementAndGet();
         LuaEventManager.triggerEvent("OnApocBRHumanRosterChanged");
     }
     private static KahluaTable rejected(String reason) {

@@ -64,7 +64,7 @@ public class DeathRespawnTest {
   due.invoke(f,death.respawnAtMs());check(f.lifecycle("guard").state()==HumanLifecycle.State.DEAD&&f.state("guard").dead(),"failed native activation rolls back to dead and retries");
   next.setInt(f,savedNext);due.invoke(f,death.respawnAtMs()+1001);
   var fresh=ServerHumanFactory.dialogueHumans().iterator().next();
-  check(fresh!=old&&fresh.player!=old.player&&fresh.player.getOnlineID()!=id,"respawn uses a fresh native actor and presentation ID");
+  check(fresh!=old&&fresh.player!=old.player&&fresh.player.getOnlineID()!=id&&!fresh.incarnation.equals(old.incarnation),"respawn uses a fresh native actor, presentation ID and dialogue incarnation");
   check(fresh.player.getX()==100&&fresh.player.getY()==200&&f.state("guard").vitals().health()==1,"respawn restores healthy state at authored home");
   check(f.lifecycle("guard").activations()==2&&fresh.inventory.weapons().stream().anyMatch(w->w.ranged()&&w.rounds()>0),"new incarnation receives a fresh finite combat inventory");
   check(IsoDeadBody.created.contains(corpse)&&reputation.size()==1,"respawn keeps the old corpse and does not replay kill reputation");

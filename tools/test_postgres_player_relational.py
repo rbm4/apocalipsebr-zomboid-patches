@@ -1160,6 +1160,10 @@ public class RelationalTest {
  }
  static void database()throws Exception {
   UUID dataset=UUID.randomUUID();var candidate=new ApocBRPlayerRelationalDatabase.Candidate(dataset,"test","world","alice",false,0,1,249,"hash",List.of());
+  var foreignCandidate=new ApocBRPlayerRelationalDatabase.Candidate(UUID.randomUUID(),"other","world","alice",false,0,2,249,"hash",List.of());
+  check(candidate.lockId()==foreignCandidate.lockId(),"competing source datasets lock the same shared player slot");
+  var otherSlot=new ApocBRPlayerRelationalDatabase.Candidate(dataset,"test","world","alice",false,1,1,249,"hash",List.of());
+  check(candidate.lockId()!=otherSlot.lockId(),"independent slots retain independent locks");
   Fake fake=new Fake();fake.dataset=dataset;var db=new ApocBRPlayerRelationalDatabase(fake::open);
   var receipt=db.inspect(candidate);check(!receipt.complete()&&receipt.head()==null,"missing receipt requests capture");
   P player=new P();var graph=new ApocBRPlayerRelationalCapture(receipt.character(),Map.of(),5_000_000_000L).capture(player,List.of());

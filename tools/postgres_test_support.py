@@ -8,6 +8,9 @@ from pathlib import Path
 
 def inactive_persistence_stubs(target: Path, *, mutations=False):
     sources = {
+        'ApocBRPlayerMigration': '''package zombie.savefile; public final class ApocBRPlayerMigration {
+ public static void shutdown(){} public static void update(){} public static boolean admitLogin(Object connection,String username){return true;}
+}''',
         'ApocBRNpcStore': 'package zombie.savefile; public final class ApocBRNpcStore {public static void shutdown(){}}',
         # Inline coordinator for isolated JDBC/wire fixtures; real scheduling is tested by test_postgres_async_login.py.
         'ApocBRAsyncLogin': """package zombie.savefile; public final class ApocBRAsyncLogin {

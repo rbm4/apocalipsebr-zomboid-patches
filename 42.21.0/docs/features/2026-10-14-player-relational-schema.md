@@ -20,6 +20,9 @@ Those families require codecs before a character can be certified complete.
 
 ## Implemented initial-load path
 
+For opt-in startup backfill of offline local characters, see
+[offline SQLite character migration](2026-10-26-offline-player-migration.md).
+
 `ServerPlayerDB.serverLoadNetworkCharacter` calls
 `ApocBRPlayerRelationalSync.offerLoadedPlayer` only in the successful SQLite branch,
 after deserialization and dead/remote state restoration. Native return values and

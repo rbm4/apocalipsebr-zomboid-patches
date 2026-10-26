@@ -1,5 +1,10 @@
 # Cached NPC dialogue graphs (42.21.0)
 
+The 2026-10-26 [respawn roster refresh](2026-10-26-npc-dialogue-roster-refresh.md)
+adds incarnation-aware client rebinding, scalar lifecycle generation detection,
+targeted refresh delivery and bounded recovery. Dialogue definitions and persisted
+flags are unchanged; no new migration or lock/unlock policy is introduced.
+
 ## Emergency interruption
 
 `HumanBehavior.emergency(observation)` is a pure safety query, valid even while
