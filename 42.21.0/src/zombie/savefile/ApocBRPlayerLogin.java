@@ -12,12 +12,17 @@ import zombie.network.GameServer;
 /** Successful-login audit result and native movement. Getters never access JDBC or mod-data. */
 public final class ApocBRPlayerLogin {
     private static final Map<IsoPlayer,Context> LOGINS = new WeakHashMap<>();
+    // Server-thread-owned, at most four slots per live authenticated connection.
+    // A replacement player in an already accepted slot is a same-session respawn.
+    private static final Map<Object,java.util.Set<Integer>> SESSION_SLOTS = new WeakHashMap<>();
     private static final Map<UUID,WeakReference<Context>> WAITING = new ConcurrentHashMap<>();
     private static final class Context {
         final int current;
+        final boolean respawn;
         volatile Integer previous;
         boolean teleported;
-        Context(int current){this.current=current;}
+        Context(int current){this(current,false);}
+        Context(int current,boolean respawn){this.current=current;this.respawn=respawn;}
     }
     private ApocBRPlayerLogin() {}
     private static boolean gameThread() {
@@ -30,12 +35,15 @@ public final class ApocBRPlayerLogin {
     /** Called once after GameServer accepts a real player, for either storage mode. */
     public static void successfulLogin(IsoPlayer player,String world,String identity,boolean coop,int slot,String username,String steam) {
         if(!gameThread()||player==null||LOGINS.containsKey(player))return;
-        Context context=new Context(0);
+        Object connection=GameServer.getConnectionFromPlayer(player);
+        boolean respawn=connection!=null&&slot>=0&&slot<4
+            &&!SESSION_SLOTS.computeIfAbsent(connection,c->new java.util.HashSet<>()).add(slot);
+        Context context=new Context(0,respawn);
         if(!enabled()){context.previous=0;LOGINS.put(player,context);return;}
         UUID event=UUID.randomUUID();
         try {
             int current=ApocBRPayloadProvenance.configuredServerId();
-            context=new Context(current);LOGINS.put(player,context);
+            context=new Context(current,respawn);LOGINS.put(player,context);
             WAITING.entrySet().removeIf(e->e.getValue().get()==null);
             if(WAITING.size()<512)WAITING.put(event,new WeakReference<>(context));
             else DebugLog.log("[ApocBR][LoginHistory] RESULT_CAPACITY; event="+event+"; auditStillQueued=true");
@@ -73,6 +81,12 @@ public final class ApocBRPlayerLogin {
         if(!gameThread()||player==null)return false;
         Context context=LOGINS.get(player);
         return context!=null&&context.previous!=null&&context.previous>0&&context.previous!=context.current;
+    }
+    /** No JDBC or client flags: classification survives history being disabled/pending. */
+    public static boolean isRespawn(IsoPlayer player) {
+        if(!gameThread()||player==null)return false;
+        Context context=LOGINS.get(player);
+        return context!=null&&context.respawn;
     }
     /** Server-initiated native packet, including vanilla movement/anti-cheat resets.
      * Repeated login requests acknowledge the accepted teleport without sending it again. */

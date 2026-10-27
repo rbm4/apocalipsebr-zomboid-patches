@@ -356,3 +356,33 @@ and `Sequence` actions, with a four-second pause instead of concatenating both
 messages into one transmission. See the mandatory
 [NPC engine architecture contract](2026-10-20-npc-engine-architecture.md) for ownership,
 composition, cancellation, bounds and validation requirements for all NPC work.
+
+
+### Automatic lobby fence policy (2026-10-26)
+
+`getLobbyFenceState()` is an additive, server-only, cached Lua API returning
+`OPEN`, `CLOSED`, or `UNKNOWN`. It performs no JDBC or world edits. The background
+worker still publishes immutable observations; the server thread installs them
+and owns Lua decisions.
+
+A fresh manager agenda with a valid active name and future active-end estimate
+returns `OPEN`, even when a different operation is queued. No active entry (or
+an expired estimate) returns `CLOSED`. Engine or manager staleness, unavailable
+startup data, future manager timestamps, and a new due operation awaiting
+acceptance/publication return `UNKNOWN`, preserving the current world state.
+Manager freshness remains 60 seconds. An old release receipt alone never counts
+as an active operation. The end timestamp remains an estimate; this policy
+does not stop objectives or add a completion lifecycle.
+
+The companion ExtractionMapUtils mod checks this at startup and every two
+seconds, resets saved release flags and rebuilds the perimeter when closed, and
+rejects obsolete receipt replays while closed. Manual releases are also reclosed
+by this policy. Deploy both changes together and restart the server; older
+engines retain the mod's prior release persistence. No database migration.
+
+Verification on 2026-10-26: `python tools/test_lobby_event_control.py` passed 265
+production assertions; the companion lobby Lua/RCON harness passed startup and
+runtime reclosure, active/unknown preservation, old receipt suppression, token
+stability and late-loaded reconstruction. `42.21.0/patchApocalipseBr.ps1 -DryRun`
+compiled all 301 server sources against the installed 42.21.0 game JAR. No live
+deployment or dedicated-server/client validation was performed.

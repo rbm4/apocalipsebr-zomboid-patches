@@ -107,3 +107,37 @@ Validation on 2026-10-21: all checks above passed, including 24 bridge/store/jou
 checks, 531 reconstruction checks, persistence resilience/recovery fixtures,
 the final full patch dry-run compile, and both backend migration tests on disposable
 PostgreSQL 14.24 with zero skips. Extraction `tests/login-and-maps.lua` also passed.
+
+
+## Independent death-respawn policy (2026-10-26)
+
+The additive `ApocBRPlayerLogin.isRespawn(IsoPlayer)` API distinguishes first
+accepted characters from replacements in an already accepted slot of the same
+authenticated connection. Connection identity comes from the server, not Lua
+commands. Duplicate acceptance of an existing player does not mark it as a
+respawn. A different connection is a new login, and each co-op slot is separate.
+This classification describes same-session slot re-entry; modified character
+switching that reuses a connection/slot is also treated as a respawn.
+
+A server-thread-owned `WeakHashMap` stores accepted slots (at most four per live
+connection). Cached per-player contexts retain the resulting boolean. Workers
+never access the map; the getter checks game-thread/server ownership and does
+no JDBC. Classification works with audit disabled, pending, or queue failure.
+Existing audit operations, previous-server history and native teleport
+idempotency are preserved. No schema change.
+
+The companion ExtractionMapUtils `RelocateOnRespawn` sandbox option defaults to
+false. Disabled respawns preserve the safehouse/map/mod-selected position even
+when the lobby is closed, skipping cross-server/geometry placement overrides.
+When enabled, respawns use lobby placement independently of `RelocateOnLogin`
+and do not wait for history readiness. Deploy the updated bridge and mod together
+and restart; older bridges cannot supply authoritative respawn classification.
+
+Validation: `python tools/test_player_login_origin.py` passes 31 production
+checks covering same-session replacement, new connection, co-op, duplicate
+acceptance, disabled audit and worker access. Companion Lua login-position and
+client login-lobby-state regressions pass, including closed-lobby preservation
+and independently enabled respawns. Full 301-source `patchApocalipseBr.ps1
+-DryRun` compilation passes against the installed 42.21.0 JAR. These fixtures
+mock engine/transport/JDBC boundaries; live safehouse/mod spawn, movement,
+anti-cheat and death/reconnection timing remain untested. No deployment performed.

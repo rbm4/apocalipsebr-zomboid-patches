@@ -60,6 +60,23 @@ public class LoginTest {
   check(ApocBRPlayerLogin.teleportToLobby(foreign,100.5,200.5,0)&&GameServer.packets==1,"teleport once");
   Thread other=new Thread(()->check(!ApocBRPlayerLogin.isReady(foreign)&&!ApocBRPlayerLogin.hasChangedServer(foreign),"worker cannot read engine state"));other.start();other.join();
   System.setProperty("apocbr.postgres.loginHistory.enabled","false");check(ApocBRPlayerLogin.isReady(new IsoPlayer()),"disabled retains geometry fallback");
+  Object session=new Object();
+  IsoPlayer initial=new IsoPlayer();initial.connection=session;
+  ApocBRPlayerLogin.successfulLogin(initial,"world","user",false,0,"user",null);
+  check(!ApocBRPlayerLogin.isRespawn(initial),"first accepted character is a login");
+  ApocBRPlayerLogin.successfulLogin(initial,"world","user",false,0,"user",null);
+  check(!ApocBRPlayerLogin.isRespawn(initial),"duplicate acceptance cannot become a respawn");
+  IsoPlayer respawn=new IsoPlayer();respawn.connection=session;
+  ApocBRPlayerLogin.successfulLogin(respawn,"world","user",false,0,"user",null);
+  check(ApocBRPlayerLogin.isRespawn(respawn),"replacement in same authenticated slot is respawn even with auditing disabled");
+  IsoPlayer coop=new IsoPlayer();coop.connection=session;
+  ApocBRPlayerLogin.successfulLogin(coop,"world","user",true,1,"user2",null);
+  check(!ApocBRPlayerLogin.isRespawn(coop),"new co-op slot is independent");
+  IsoPlayer reconnected=new IsoPlayer();
+  ApocBRPlayerLogin.successfulLogin(reconnected,"world","user",false,0,"user",null);
+  check(!ApocBRPlayerLogin.isRespawn(reconnected),"new connection is a login");
+  check(!ApocBRPlayerLogin.isRespawn(new IsoPlayer()),"unknown character is not a respawn");
+  Thread reader=new Thread(()->check(!ApocBRPlayerLogin.isRespawn(respawn),"worker cannot read respawn classification"));reader.start();reader.join();
   System.out.println("PASS: successful-login audit, journal replay, async readiness and native teleport; checks="+checks);
  }
 }'''
@@ -69,10 +86,10 @@ with tempfile.TemporaryDirectory(prefix='apocbr_login_') as folder:
  files.update({
   'zombie/debug/DebugLog.java': 'package zombie.debug; public class DebugLog {public static void log(String s){}}',
   'zombie/characters/IsoPlayer.java': '''package zombie.characters; public class IsoPlayer {
-   public boolean dead,connected=true;public boolean isDead(){return dead;}public Object getNetworkCharacterAI(){return this;} }''',
+   public Object connection=this; public boolean dead,connected=true;public boolean isDead(){return dead;}public Object getNetworkCharacterAI(){return this;} }''',
   'zombie/network/GameServer.java': '''package zombie.network; public class GameServer {
    public static boolean server=true;public static Thread mainThread=Thread.currentThread();public static int packets;
-   public static Object getConnectionFromPlayer(zombie.characters.IsoPlayer p){return p.connected?p:null;}
+   public static Object getConnectionFromPlayer(zombie.characters.IsoPlayer p){return p.connected?p.connection:null;}
    public static void sendTeleport(zombie.characters.IsoPlayer p,float a,float b,float c){packets++;} }''',
   'LoginTest.java': HARNESS,
  })

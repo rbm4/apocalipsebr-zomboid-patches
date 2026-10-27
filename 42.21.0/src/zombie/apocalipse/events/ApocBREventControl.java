@@ -243,6 +243,24 @@ public final class ApocBREventControl {
     public static String getEventName() { var c = current(); return c == null || c.active == null ? null : c.active.schedule.name; }
     public static double getStartsAtMillis() { var c = current(); return c == null || c.active == null ? 0 : c.active.schedule.startsAt; }
     public static String getScheduleState() { var c = current(); return c == null || c.active == null ? null : c.active.schedule.state; }
+    /** Main-thread cached lobby policy; UNKNOWN preserves the current world state. */
+    public static String getLobbyFenceState() {
+        var c = current();
+        if (c == null || !c.fresh()) return "UNKNOWN";
+        var snapshot = c.active;
+        long now = c.wallClock.getAsLong();
+        Guide guide = snapshot.guide;
+        if (guide.updatedAt <= 0 || now < guide.updatedAt || now - guide.updatedAt > 60000) return "UNKNOWN";
+        if (validName(guide.activeName) && guide.activeEnd > now) return "OPEN";
+        Schedule s = snapshot.schedule;
+        // Let a newly due operation release the perimeter before the manager's
+        // next publication; an old receipt alone must never keep it open forever.
+        if ("scheduled".equals(s.state) && now >= s.startsAt
+                && (!new Receipt(s.id, s.revision).equals(c.applied)
+                    && !new Receipt(s.id, s.revision).equals(snapshot.reported)
+                    || guide.updatedAt < s.startsAt)) return "UNKNOWN";
+        return "CLOSED";
+    }
     /** Fresh matching desired specification, including before its deadline. No JDBC or JSON parsing. */
     public static KahluaTable getEventContext(String id, double revision) {
         var c = current();

@@ -96,9 +96,11 @@ public class EventControlTest {
   db.row=new ApocBREventControl.Schedule(ID,1,"Extraction",start,"scheduled",metadata);
   check(ApocBREventControl.DEFAULT_POLL_MILLIS==30000&&ApocBREventControl.DEFAULT_FRESH_MILLIS==90000,"30 second polling with compatible freshness");
   check(ApocBREventControl.getStatus().equals("STARTING"),"starting without a database result");
+  check(ApocBREventControl.getLobbyFenceState().equals("UNKNOWN"),"no cached agenda preserves fence state");
   poll(c);check(ApocBREventControl.getEventId()==null,"worker cannot install main-thread snapshot");
   ApocBREventControl.update();check(LuaEventManager.calls==0&&ApocBREventControl.getStatus().equals("READY"),"future schedule");
   check(db.openingThread!=Thread.currentThread(),"connection only used on worker");
+  check(ApocBREventControl.getLobbyFenceState().equals("CLOSED"),"queued operation without active operation needs fence");
   int queries=db.queries;
   String greeting=ApocBREventControl.guideAnnouncement();
   check(greeting.contains("A pr\u00f3xima opera\u00e7\u00e3o")&&greeting.contains("1s")&&greeting.contains("Extraction"),"relative countdown without greeting");
@@ -113,6 +115,7 @@ public class EventControlTest {
   check(!ApocBREventControl.isDue(ID,1)&&!ApocBREventControl.acknowledgeRelease(ID,1),"do not activate early");
   check(db.queries==queries,"Lua getters/greetings perform no SQL");
   clock[0]=start;ApocBREventControl.update();check(LuaEventManager.calls==1,"deadline signal without clients/game-time progression");
+  check(ApocBREventControl.getLobbyFenceState().equals("UNKNOWN"),"new due release waits for manager confirmation");
   check(LuaEventManager.event.equals("OnApocBRLobbyEventDue")&&LuaEventManager.arguments[0].equals(ID),"typed event signal");
   check(LuaEventManager.arguments.length==3&&context().rawget("metadataJson").equals(metadata)
     &&Boolean.FALSE.equals(context().rawget("isReplay")),"third argument is matching metadata table");
@@ -126,6 +129,7 @@ public class EventControlTest {
   check(db.reported==0,"failed receipt write is not a fabricated acknowledgement");db.fail=false;
   db.activeName="Extraction";db.activeEnd=start+3600000;db.nextName="Next";db.nextStart=start+7200000;
   poll(c);ApocBREventControl.update();
+  check(ApocBREventControl.getLobbyFenceState().equals("OPEN"),"active operation keeps fence open despite next queued operation");
   String both=ApocBREventControl.guideAnnouncement();
   var phrases=ApocBREventControl.guideAnnouncementLines();
   check(phrases.size()==2&&phrases.get(0).contains("est\u00e1 ativa")&&phrases.get(1).contains("A pr\u00f3xima opera\u00e7\u00e3o"),"active and next operation exposed as two ordered phrases");
@@ -139,6 +143,7 @@ public class EventControlTest {
   check(phrases.get(1).contains("Next")&&!phrases.get(1).contains("Changed"),"previous phrase snapshot survives schedule changes");
   db.row=new ApocBREventControl.Schedule(ID,2,"Changed",start+60000,"scheduled");poll(c);ApocBREventControl.update();
   check(!ApocBREventControl.isDue(ID,1)&&ApocBREventControl.guideGreeting("Oi!").contains("Changed"),"reschedule invalidates old activation");
+  check(ApocBREventControl.getLobbyFenceState().equals("CLOSED"),"old receipt cannot keep queued-only lobby open");
   db.row=new ApocBREventControl.Schedule(ID,3,"Changed",start,"cancelled");poll(c);ApocBREventControl.update();
   db.nextName=null;db.nextStart=0;poll(c);ApocBREventControl.update();
   check(!ApocBREventControl.isDue(ID,3)&&ApocBREventControl.guideAnnouncement().contains("N\u00e3o h\u00e1 pr\u00f3ximas"),"cancel clears next announcement");
@@ -176,10 +181,13 @@ public class EventControlTest {
   check(ApocBREventControl.isReleaseAuthorized(OTHER,6),"clearing desired schedule must not rebuild a released perimeter");
   db.activeName="Expired";db.activeEnd=clock[0];poll(c);ApocBREventControl.update();
   check(ApocBREventControl.guideAnnouncement().contains("N\u00e3o h\u00e1 pr\u00f3ximas"),"expired active estimate omitted");
+  check(ApocBREventControl.getLobbyFenceState().equals("CLOSED"),"expired active operation restores fence");
   db.updatedAt=clock[0]-60001;poll(c);ApocBREventControl.update();
   check(ApocBREventControl.getStatus().equals("READY")&&ApocBREventControl.guideAnnouncement().contains("temporariamente indispon\u00edvel"),"manager snapshot ages even with healthy engine polling");
+  check(ApocBREventControl.getLobbyFenceState().equals("UNKNOWN"),"stale manager agenda preserves fence");
   db.updatedAt=clock[0]+1000;poll(c);ApocBREventControl.update();
   check(ApocBREventControl.guideAnnouncement().contains("temporariamente indispon\u00edvel"),"future manager timestamps fail closed");
+  check(ApocBREventControl.getLobbyFenceState().equals("UNKNOWN"),"future manager timestamp preserves fence");
   check(db.opened==db.closed,"all JDBC leases closed, including failure");
   invalid(()->new ApocBREventControl.Schedule(ID,0,"Bad",start,"scheduled"));
   invalid(()->new ApocBREventControl.Schedule(ID,1,"Bad\nTitle",start,"scheduled"));
@@ -196,6 +204,7 @@ public class EventControlTest {
   clock[1]=-20_000_000_000L;c=control(db);poll(c);before=LuaEventManager.calls;ApocBREventControl.update();
   check(LuaEventManager.calls==before+1,"System.nanoTime may be negative; first signal must still run");
   GameServer.server=false;check(ApocBREventControl.getStatus().equals("DISABLED")&&!ApocBREventControl.isDue(OTHER,6),"client guard");
+  check(ApocBREventControl.getLobbyFenceState().equals("UNKNOWN"),"client bridge preserves fence");
   check(ApocBREventControl.guideGreeting("Oi!").equals("Oi!"),"disabled greeting preserves native text");
   check(ApocBREventControl.guideAnnouncementLines().isEmpty(),"disabled controller supplies empty announcement");
   GameServer.server=true;ApocBREventControl.shutdown();check(ApocBREventControl.getStatus().equals("DISABLED"),"shutdown");
