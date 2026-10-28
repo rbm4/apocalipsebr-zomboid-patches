@@ -16,9 +16,8 @@ import zombie.debug.DebugLog;
 import zombie.inventory.InventoryItem;
 import zombie.network.GameServer;
 import zombie.network.PacketTypes;
-import zombie.network.fields.character.PlayerID;
+import zombie.network.fields.character.OnlinePlayer;
 import zombie.network.packets.INetworkPacket;
-import zombie.network.packets.RequestTradingPacket;
 import zombie.savefile.ApocBRHumanSales;
 import zombie.savefile.ApocBRPayloadProvenance;
 import zombie.savefile.ServerPlayerDB;
@@ -40,9 +39,11 @@ public final class ServerHumanTrading {
     }
 
     /** Only the target of a trading packet may resolve an NPC. Other protocols stay untouched. */
-    public static void resolveTarget(PlayerID target) {
-        if (!GameServer.server || target.getPlayer() != null || target.getPlayerIndex() != -1) return;
-        ServerHuman human = ServerHumanFactory.tradingHuman(target.getID());
+    public static void resolveTarget(OnlinePlayer target) {
+        if (!GameServer.server || target.getPlayer() != null
+            || target.getId() < ServerHumanPresentationIds.FIRST_ID
+            || target.getId() > ServerHumanPresentationIds.LAST_ID) return;
+        ServerHuman human = ServerHumanFactory.tradingHuman(target.getId());
         if (human != null) target.set(human.player);
     }
 
@@ -111,12 +112,8 @@ public final class ServerHumanTrading {
     }
 
     private static void reply(ServerHuman human, IsoPlayer visitor, UdpConnection connection, boolean accepted) {
-        RequestTradingPacket packet=new RequestTradingPacket();
-        if (accepted) packet.accept(human.player,visitor); else packet.reject(human.player,visitor);
-        var writer=connection.startPacket();
-        PacketTypes.PacketType.RequestTrading.doPacket(writer);
-        packet.write(writer);
-        PacketTypes.PacketType.RequestTrading.send(connection);
+        INetworkPacket.send(connection, accepted ? PacketTypes.PacketType.AcceptTrading : PacketTypes.PacketType.RejectTrading,
+            human.player, visitor);
     }
 
     private static boolean intercepted(IsoPlayer visitor, IsoPlayer target) {

@@ -2,19 +2,24 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "Reviews 01-09, 12-19 and 21-36 merged; reviews 10-11 and 20 retired to native vanilla with cleanup tracked but unimplemented. Review37 SyncPlayerStatsPacket adapted ownership guard awaits approval; native-retirement recommendation withdrawn; 12 changed reviews, 3 removed targets and support adaptations remain. Vehicle PostgreSQL gaps user-deferred while disabled; broader square-position/network-ID cache remains in scope.",
+  "workflow": "Reviews 01-09, 12-19 and 21-46 merged; 10-11 and 20 retired to native vanilla. Review38 applied 16-file NPC combat port, fixed IDs 768..1023 and no recycling (256 incarnation IDs/process, 64 active, 192 real connection slots); GameServer has reservation only, broader integration remains review48. Removed WeaponHit and Trading intents resolved through native hit and per-packet trade adapters. Review39 miss diagnostic is applied; review40 four-file trading handshake is applied with 131 assertions; review41 add-item is applied with 105 assertions; review42 remove-item is applied with 120 assertions; review43 state/finalization is applied with 195 assertions; review44 ChatServer is applied with 43 assertions; review45 AdvancedAnimator optional-folder guard is applied/source-verified; review46 LuaManager is applied with 33 assertions; review47 IngameState instrumentation candidate is source-verified and awaits approval. 2 changed reviews, 1 removed target and remaining support/native integration remain. Vehicle PostgreSQL gaps remain user-deferred while disabled; square cache remains in scope.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 12,
-    "awaiting_removed_design": 3,
-    "copied_with_known_adaptations": 10,
-    "merged_replacements": 33,
-    "target_java_files": 283,
+    "awaiting_merges": 2,
+    "awaiting_removed_design": 1,
+    "copied_with_known_adaptations": 4,
+    "merged_replacements": 43,
+    "target_java_files": 302,
     "retired_replacements": 3,
-    "reviewed_replacements": 36
+    "reviewed_replacements": 46,
+    "resolved_removed_design": 2,
+    "additional_native_replacements": 4,
+    "new_support_helpers": 4,
+    "partial_prerequisite_replacements": 1,
+    "adapted_copied_support": 9
   },
   "classes": [
     {
@@ -85,7 +90,11 @@
       "verification": {
         "target_compile": false,
         "target_runtime": false
-      }
+      },
+      "exposure_review_proposal": 46,
+      "integration_pending": "Review46 server-only Lua registration is applied; no API implementation/JAR/Kahlua/backend/SQL/login validation is implied.",
+      "metadata_followup": "Review copied engine_version 42.21.0/event-control-v2 for target feature integration; not changed by exposure candidate.",
+      "exposure_review_applied": 46
     },
     {
       "path": "zombie/apocalipse/humans/brain/EngageZombiesModule.java",
@@ -1214,15 +1223,34 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "649dc5a665ed5b2ba13f9e0406e9d012907714fd7ac39553f76ea1cb7a8b56ec",
-      "copy_state": "copied-exact",
-      "target_sha256": "649dc5a665ed5b2ba13f9e0406e9d012907714fd7ac39553f76ea1cb7a8b56ec",
-      "port_state": "copied-unverified",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "bbd47e3b15f49e89a42f3bef85c80af975d8fb38097853babe1eb45c8ef0fb75",
+      "port_state": "adapted-unverified",
       "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
+      },
+      "adaptation_review": 38,
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanActuator.java",
@@ -1424,15 +1452,34 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "74f3879dc90361f3818d6cc1e7b0efe909ae706cc05bf1eae8e8ab142de467e7",
-      "copy_state": "copied-exact",
-      "target_sha256": "74f3879dc90361f3818d6cc1e7b0efe909ae706cc05bf1eae8e8ab142de467e7",
-      "port_state": "adaptation-required",
-      "known_required_change": "Removed WeaponHit model and changed native hit processing.",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "dbfd2bfa531e9c3cab188ebe0cc5cfb7419bb25c0e7e96602949186fee4102b3",
+      "port_state": "adapted-unverified",
+      "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
+      },
+      "adaptation_review": 38,
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanCorpseDrag.java",
@@ -1711,15 +1758,34 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "5231b35a10dc280ad1edfe7a263e4ede07e6013fd08b3d7b1c6f04206a98ce79",
-      "copy_state": "copied-exact",
-      "target_sha256": "5231b35a10dc280ad1edfe7a263e4ede07e6013fd08b3d7b1c6f04206a98ce79",
-      "port_state": "copied-unverified",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "66e8a8cf7757fe2df60a44c71097c53df894422f4b85c267bf066c6bcd0fafe0",
+      "port_state": "adapted-unverified",
       "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
+      },
+      "adaptation_review": 38,
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanHitPacket.java",
@@ -1733,15 +1799,34 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "fae3434a6327751830cfa333bedf8d44468fc8f7628c32790e6d66876b28d88c",
-      "copy_state": "copied-exact",
-      "target_sha256": "fae3434a6327751830cfa333bedf8d44468fc8f7628c32790e6d66876b28d88c",
-      "port_state": "adaptation-required",
-      "known_required_change": "Removed WeaponHit and obsolete zombie-hit setter.",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "38ea36faa30c043be4a1c8ae0eab9ef9f2124a755e710307ca38573aab121bed",
+      "port_state": "adapted-unverified",
+      "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
+      },
+      "adaptation_review": 38,
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanInventory.java",
@@ -1780,15 +1865,34 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "ddbe44872d2c2cb5c056647ee5cb65db1cea8052e3d6389ee621803aa41ceb78",
-      "copy_state": "copied-exact",
-      "target_sha256": "ddbe44872d2c2cb5c056647ee5cb65db1cea8052e3d6389ee621803aa41ceb78",
-      "port_state": "adaptation-required",
-      "known_required_change": "Obsolete PlayerHitSquarePacket.set overload.",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "90e0df04f82105cc41d816d3a4625cdafa32a0336a326c991ece5fec900ed613",
+      "port_state": "adapted-unverified",
+      "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
+      },
+      "adaptation_review": 38,
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanMovement.java",
@@ -1911,15 +2015,34 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "00a587cb928d3f9e1eb9c2a2528511bfc31dd5f8533ad3c14aa826e038d0a72c",
-      "copy_state": "copied-exact",
-      "target_sha256": "00a587cb928d3f9e1eb9c2a2528511bfc31dd5f8533ad3c14aa826e038d0a72c",
-      "port_state": "copied-unverified",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "d3922d381d5c416964fe57e023fa1f0457fd0e44da3f8151ceb8dc759bf90576",
+      "port_state": "adapted-unverified",
       "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
+      },
+      "adaptation_review": 38,
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanPlayerDamage.java",
@@ -1944,15 +2067,34 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "d444a40cc2b14dc1f7a87b61d543ff6ce45212481fa2ff95321b4e65e490126c",
-      "copy_state": "copied-exact",
-      "target_sha256": "d444a40cc2b14dc1f7a87b61d543ff6ce45212481fa2ff95321b4e65e490126c",
-      "port_state": "adaptation-required",
-      "known_required_change": "Removed WeaponHit payload model.",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "dd28b5a67cc163deb976d26108b0b64bf2c8cd4816aff2dd84855e93c6e1c766",
+      "port_state": "adapted-unverified",
+      "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
+      },
+      "adaptation_review": 38,
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java",
@@ -1967,15 +2109,34 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "b63e1fac6836b9d07151f04c22b6922231468b7dee6b9737a3390d136eb6d80d",
-      "copy_state": "copied-exact",
-      "target_sha256": "b63e1fac6836b9d07151f04c22b6922231468b7dee6b9737a3390d136eb6d80d",
-      "port_state": "adaptation-required",
-      "known_required_change": "Removed WeaponHit and obsolete PvP setter.",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "d790a5c0fbc61493e23b4867b686bda22c1d298f5946886f78e6281974b5c0ea",
+      "port_state": "adapted-unverified",
+      "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
+      },
+      "adaptation_review": 38,
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanProfiles.java",
@@ -2228,15 +2389,35 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "138cfeb43fbb067d9a089ecd9f79ef00feafc812a7acc43b0c3de52dc5ff47b2",
-      "copy_state": "copied-exact",
-      "target_sha256": "138cfeb43fbb067d9a089ecd9f79ef00feafc812a7acc43b0c3de52dc5ff47b2",
-      "port_state": "adaptation-required",
-      "known_required_change": "Removed RequestTradingPacket.accept/reject and changed identity fields.",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "8ef4f28b766b8f05cb585288045155e52f26c7483c681b009112cb210cbef332",
+      "port_state": "adapted-unverified",
+      "known_required_change": null,
       "merge_review": null,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_request_trading_port.py",
+          "passed": true,
+          "assertions": 131,
+          "scope": "Complete candidate handshake packets and actual NPC trading adapter/HumanTradeOffer, native PlayerRequestPacket/ConnectionPlayer/OnlinePlayer/Player/Requests/TradingRequests/TradingState; inventory/actor/Lua/transport/journal/DB doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "review": 40,
+        "decision": "approved",
+        "user_instruction": "these changes support our bot engine, you may apply them to the new version",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-40-request-trading.md"
+      },
+      "adaptation_review": 40,
+      "integration_pending": "Reviews41-43 target resolution/interception; full native client UI, journal/receipt and game-JAR/lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/apocalipse/humans/ServerHumanTransport.java",
@@ -3767,13 +3948,55 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "fc2de4fa153d98def47e912957d931d4b6b686526444d50143ae3e12c3aa8492",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "ae7e23ea6f839b617bb76dd8e827c20ceba7e4376a78f700e0714f7783004f67",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 45,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_check_passed": true,
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 45,
+        "state": "approved-applied",
+        "path": "zombie/core/skinnedmodel/advancedanimation/AdvancedAnimator.java",
+        "recommendation": "Retain the existing Files.notExists guard for absent optional animation/action-group paths; keep all target-native animation logic and Collections.emptyList replacement.",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "target_vanilla_sha256": "31d635a210e85cca6a2260a47c963d3e207ee5112a301f6b2828cf61c470965e",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-45-advanced-animator.diff",
+        "candidate_diff_sha256": "c12f49775e74855df983ff36646e10e49c4be87e86895c25f161e3fc166735e6",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-45-advanced-animator.md",
+        "verification": {
+          "source_check_passed": true,
+          "candidate_applies_cleanly": true,
+          "old_guard_identical": true,
+          "remaining_target_text_unchanged": true,
+          "new_fixture_added": false,
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "scope": "Only paths reported absent by Files.notExists return an empty result early. Existing-path walker, XML filtering/normalization, sorting/callers and native failure logging otherwise stay unchanged. No animation gameplay change or broad loader-error recovery is proposed.",
+        "target_source_sha256": "ae7e23ea6f839b617bb76dd8e827c20ceba7e4376a78f700e0714f7783004f67",
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "yes",
+          "date": "2026-10-28",
+          "baseline_commit": "2b55f41732ed0acf4718e6e543cdbf5b346fbdf1",
+          "installed_files_modified": false
+        }
+      },
+      "approval": {
+        "review": 45,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "2b55f41732ed0acf4718e6e543cdbf5b346fbdf1",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-45-advanced-animator.md"
       }
     },
     {
@@ -4412,6 +4635,59 @@
       "verification": {
         "target_compile": false,
         "target_runtime": false
+      },
+      "candidate_resolutions": {
+        "review": 47,
+        "state": "candidate-awaiting-approval",
+        "path": "zombie/gameStates/IngameState.java",
+        "recommendation": "Restore the same 19 telemetry scopes on exact target control flow; retain target tutorial/exit changes and all existing update calls, profilers, guards and catches.",
+        "source_applied": false,
+        "installed_files_modified": false,
+        "target_vanilla_sha256": "4b0364db7e8b03a4d7f27b0c32496148521b9bbc631f168b1ec9b239de01fa76",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-47-ingame-state.diff",
+        "candidate_diff_sha256": "a4b51eb1f27a8f28a109b91b0a27cb13a7aeb95236a8c0d7b9e81ac854be7efb",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-47-ingame-state.md",
+        "phase_keys": [
+          "simulation.misc.gameTime",
+          "simulation.misc.scripts",
+          "simulation.worldSounds",
+          "simulation.fire",
+          "simulation.misc.rain",
+          "simulation.misc.meta",
+          "simulation.zombies.virtual",
+          "simulation.collision.main",
+          "simulation.zombies.population",
+          "simulation.pathfinding.nativeMain",
+          "simulation.pathfinding.javaMain",
+          "simulation.lootRespawn",
+          "simulation.world",
+          "simulation.entities",
+          "simulation.animals.sync",
+          "simulation.radio",
+          "simulation.misc",
+          "simulation.onTick",
+          "simulation.managers"
+        ],
+        "verification": {
+          "source_check_passed": true,
+          "candidate_applies_cleanly": true,
+          "phase_names_match_old_patch": true,
+          "strip_added_scopes_restores_exact_target_text": true,
+          "new_fixture_added": false,
+          "full_game_jar_compile": false,
+          "target_runtime": false
+        },
+        "native_retained": [
+          "Core.isTutorial startup music selection",
+          "No reintroduction of Core.lastStand exit assignment",
+          "All call ordering, conditions, catches, profiler regions and pathfinding branch choices"
+        ],
+        "scope_limits": [
+          "Instrumentation only; no simulation scheduling or speedup claim.",
+          "Current helper phase() allocates/records whenever reached; no implicit client/output-disabled no-op guard.",
+          "Nested phases may overlap; not additive exclusive timings.",
+          "IngameState paths only; telemetry/server-loop bootstrap and independent GameServer integration remain review48."
+        ]
       }
     },
     {
@@ -5798,13 +6074,85 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "c761e5e5ce8c2eb4beed1516d5a8a01dbaf051d70dc0b20b5f8165bd469396fd",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "fb9a4ec784ed38216c11e8b528ddc7a9d1d693a85ca0edef49b0a1be19e7d0a5",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 46,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_lua_manager_port.py",
+          "passed": true,
+          "assertions": 33,
+          "cache_assertions": 21,
+          "load_order_exposure_assertions": 12,
+          "scope": "Exact extracted target candidate RunLua wrapper/internal and LoadDirBase plus added exposure branch; Lua/filesystem/checksum/exposer marker doubles. No old-JAR bytecode check executed.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 46,
+        "state": "approved-applied",
+        "path": "zombie/Lua/LuaManager.java",
+        "recommendation": "Retain the previous requested-key Lua cache reconstruction and server-only exposure of existing event/radio/login APIs on the exact target class; include only the existing typed-list/logger overload compilation repairs.",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "target_vanilla_sha256": "50f780df0d34d89c457b8a81c70792d09f39a4c6a464b485076ea649c9816670",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-46-lua-manager.diff",
+        "candidate_diff_sha256": "3005e370fa78ca676cc265dcd7392cb500de432e66109905e6db3202e64d4d49",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-46-lua-manager.md",
+        "candidate_fixture": {
+          "script": "tools/test_lua_manager_port.py",
+          "passed": true,
+          "assertions": 33,
+          "cache_assertions": 21,
+          "load_order_exposure_assertions": 12,
+          "scope": "Exact extracted target candidate RunLua wrapper/internal and LoadDirBase plus added exposure branch; Lua/filesystem/checksum/exposer marker doubles. No old-JAR bytecode check executed.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "intent": [
+          "Keep normalized requested filename as loaded/loadedReturn key, physical path for IO and filenameToClosure.",
+          "Expose ApocBREventControl, ApocBRRadioBridge and ApocBRPlayerLogin only on server.",
+          "Repair decompiled File-to-List local reuse with typed modFiles and disambiguate four Logger.log null overloads."
+        ],
+        "native_retained": [
+          "All unrelated target bindings/exposures, including Hit/climb/door and action/item sync changes",
+          "Normal loading recursion guard, file IO, Lua execution, dirty flags, physical closure map and failure flow",
+          "Base game first, sorted per-mod common/version merge, checksum exclusion and onlyChecksum behavior"
+        ],
+        "scope_limits": [
+          "The target decompiled source is tested; shipped 42.22 JAR cache bytecode has not been verified. Do not claim this proves an upstream cache bug or a measured speedup.",
+          "Distinct requested aliases to the same physical path remain separate keys.",
+          "Real Kahlua reflection exposure and API implementations, JDBC/event control, radio delivery and login flow are unverified.",
+          "Full reloadLuaFile/reloadServerLuaFile path validation and Windows alias behavior are not executed; requested-key invalidation is covered."
+        ],
+        "support_followups": [
+          "Copied ApocBREventControl registration metadata still says 42.21.0/event-control-v2; review that label in its target integration rather than assuming exposure ports the implementation.",
+          "Remaining relational reconstruction/database/dictionary metadata, bootstrap and broader runtime integration remain tracked separately."
+        ],
+        "target_source_sha256": "fb9a4ec784ed38216c11e8b528ddc7a9d1d693a85ca0edef49b0a1be19e7d0a5",
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "yes",
+          "date": "2026-10-28",
+          "baseline_commit": "aca4626fa0ce4c0cea8a9ace394ef19ebcb4b719",
+          "installed_files_modified": false
+        }
+      },
+      "approval": {
+        "review": 46,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "aca4626fa0ce4c0cea8a9ace394ef19ebcb4b719",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-46-lua-manager.md"
       }
     },
     {
@@ -6045,7 +6393,10 @@
       "verification": {
         "target_compile": false,
         "target_runtime": false
-      }
+      },
+      "exposure_review_proposal": 46,
+      "integration_pending": "Review46 server-only Lua registration is applied; no API implementation/JAR/Kahlua/backend/SQL/login validation is implied.",
+      "exposure_review_applied": 46
     },
     {
       "path": "zombie/network/chat/ChatServer.java",
@@ -6063,13 +6414,80 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "94f5a88f700a97c94cb79daf4e74bb0c82a5bdce3fcdfe7656e469631fbae032",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "6b828ffc3581c4e4e7cd52bbd4fe7f999e24bd3bc8e716ffae9984bdc574e42a",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 44,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_chat_server_port.py",
+          "passed": true,
+          "assertions": 43,
+          "scope": "Exact extracted candidate player dispatch, whisper, sendMessage and added NPC helper bodies plus native ChatBase short-recipient method; recording chat/filter/connection/backend ports. Whole ChatServer/JAR/UI/backend not run.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 44,
+        "state": "approved-applied",
+        "path": "zombie/network/chat/ChatServer.java",
+        "recommendation": "Retain the new native chat/whisper ownership and channel checks; restore only the existing filtered-general backend callback and trusted explicit-recipient NPC say/shout APIs.",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "target_vanilla_sha256": "ddadfb9b38dc683d39dac4d44baab4f88c378213fef3d8f7c08787df6d1b5830",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-44-chat-server.diff",
+        "candidate_diff_sha256": "738bf094769b57b48723e914946e5dd3f681e848bf42c155f48de4c33523c619",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-44-chat-server.md",
+        "candidate_fixture": {
+          "script": "tools/test_chat_server_port.py",
+          "passed": true,
+          "assertions": 43,
+          "scope": "Exact extracted candidate player dispatch, whisper, sendMessage and added NPC helper bodies plus native ChatBase short-recipient method; recording chat/filter/connection/backend ports. Whole ChatServer/JAR/UI/backend not run.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "native_retained": [
+          "Unknown-chat guard before unpack",
+          "Membership and non-server-channel checks before unpack",
+          "Connection ownership of unpacked author",
+          "Disabled-channel/filter/bad-word native flow including mute null-check fix",
+          "Whisper signature includes connection and enforces author ownership",
+          "Remaining native text unchanged after removing the audited custom additions"
+        ],
+        "custom_intent": [
+          "After native send, publish only filtered general player chat through existing backend hook.",
+          "Provide trusted server NPC say/shout by explicit real recipient, without chat-account registration for NPC author.",
+          "Expose configured native shout range; existing transport retains range/relevance/floor filtering."
+        ],
+        "scope_limits": [
+          "Backend publisher/HTTP, real filters/channel fanout, network encoding and live client speech display are not executed.",
+          "NPC helper range/relevance filtering belongs to callers; helpers only gate initialization, recipient registration and enabled/default channel.",
+          "True from sendHumanSay/Shout means routing attempt; native short-recipient method can silently drop a vanished connection.",
+          "No NPC attribution or author fallback is added to untrusted incoming client messages."
+        ],
+        "target_source_sha256": "6b828ffc3581c4e4e7cd52bbd4fe7f999e24bd3bc8e716ffae9984bdc574e42a",
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "yes",
+          "date": "2026-10-28",
+          "baseline_commit": "196d5da3dc6dace45ee4d76fe3f4a80a5f5ee14f",
+          "installed_files_modified": false
+        }
+      },
+      "approval": {
+        "review": 44,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "196d5da3dc6dace45ee4d76fe3f4a80a5f5ee14f",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-44-chat-server.md"
       }
     },
     {
@@ -6091,12 +6509,20 @@
       "source_sha256": "ae552a3755651f992bd5036bc0cb384b2e7d3680cf3416eb156d6cd619d69e4f",
       "copy_state": "not-copied",
       "target_sha256": null,
-      "port_state": "awaiting-removed-class-design",
-      "known_required_change": null,
+      "port_state": "removed-target-intent-migrated",
+      "known_required_change": "Old ignore-damage accessor is obsolete; review38 uses native Hit evidence and body-loss import. Do not recreate WeaponHit. Stale loose class cleanup remains pending.",
       "merge_review": null,
       "verification": {
         "target_compile": false,
         "target_runtime": false
+      },
+      "resolved_review": 38,
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md"
       }
     },
     {
@@ -6113,12 +6539,20 @@
       "source_sha256": "6a3e6106cd80561b1aecc8c663cc02807f33047a920f58214816e91c9722e1c0",
       "copy_state": "not-copied",
       "target_sha256": null,
-      "port_state": "awaiting-removed-class-design",
-      "known_required_change": null,
+      "port_state": "removed-target-intent-migrated",
+      "known_required_change": "Old destination-resolution intent migrated to request/accept/reject and UI add/remove/state overrides. No obsolete Trading class recreated; stale loose class cleanup remains pending.",
       "merge_review": null,
       "verification": {
         "target_compile": false,
         "target_runtime": false
+      },
+      "resolved_review": 43,
+      "approval": {
+        "review": 43,
+        "decision": "approved",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-43-trading-update-state.md"
       }
     },
     {
@@ -6195,14 +6629,39 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "ad60663af690eeb635dbce39bb882881969b4d1ac4fd3091af08ae1dbf8e4110",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
-      "known_required_change": null,
+      "target_sha256": "66eb05d5b9e6c51d50ef3554080ad3af9f133d2007aecaa5f3315548fa80b653",
+      "port_state": "partial-prerequisite-unverified",
+      "known_required_change": "Native getFreeSlot reservation applied in review38; full custom GameServer merge remains review48. Extend this source, preserving reservation.",
       "merge_review": 48,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "review38_prerequisite_proposal": {
+        "state": "approved-applied",
+        "change": "Only getFreeSlot reserves NPC slots 192..255; full old GameServer integration remains review48.",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md",
+        "baseline_commit": "a5e10000d67ce8674d477b9d6bf818c7f2540e2f"
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md",
+        "baseline_commit": "a5e10000d67ce8674d477b9d6bf818c7f2540e2f"
+      },
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/network/NetworkPlayerManager.java",
@@ -6682,14 +7141,161 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "55ed1b1fd4c57b5cae1160ebd198aa5b33090bc1a1761475a44ce1098a28c903",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "b05a124893d42c2260e228e34942ab873d6cef30f2b2cd48110074e801a83d98",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 38,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 38,
+        "state": "approved-applied",
+        "path": "zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+        "recommendation": "Approved coordinated NPC combat port and fixed 768..1023 NPC reservation are applied. Preserve no-reuse/process-capacity policy; full GameServer custom integrations still await review48.",
+        "target_vanilla_sha256": "5be8205b8cdfc621eff94b04e92efa6cf720a7bdd6c551e24c655501cd2235d1",
+        "old_patch_intent": [
+          "Resolve detached NPC victim after native target parsing.",
+          "Validate incoming attack ownership/equipped weapon/count/range/PvP/line and deduplicate before logical damage.",
+          "Consume native attack once and import body loss into NPC state; send presentation without attacking twice."
+        ],
+        "affected_sources": [
+          "zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+          "zombie/network/packets/hit/PlayerHitPacket.java",
+          "zombie/network/fields/hit/Hit.java",
+          "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+          "zombie/apocalipse/humans/ServerHuman.java",
+          "zombie/apocalipse/humans/ServerHumanAttackReplay.java",
+          "zombie/apocalipse/humans/ServerHumanPlayerDamage.java",
+          "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java",
+          "zombie/apocalipse/humans/ServerHumanHitPacket.java",
+          "zombie/apocalipse/humans/ServerHumanMissPacket.java",
+          "zombie/apocalipse/humans/ServerHumanCommittedHit.java",
+          "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java",
+          "zombie/apocalipse/humans/ServerHumanCombatNetwork.java",
+          "zombie/apocalipse/humans/ServerHumanPresentationIds.java",
+          "zombie/apocalipse/humans/ServerHumanFactory.java",
+          "zombie/network/GameServer.java"
+        ],
+        "native_entry_points_to_audit": [
+          "zombie/network/packets/hit/PlayerHitPacket.java",
+          "zombie/network/packets/hit/PlayerHit.java",
+          "zombie/network/packets/hit/HitCharacter.java",
+          "zombie/network/fields/hit/Hit.java",
+          "zombie/network/fields/hit/Player.java",
+          "zombie/network/fields/character/CharacterID.java"
+        ],
+        "required_decisions": [],
+        "verification": "Candidate compiled (excluding full GameServer/factory composition) and 1,725 assertions passed with explicit doubles; no exact-JAR/runtime validation.",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.diff",
+        "candidate_diff_sha256": "893460dbcc06e872941fb0766540d82742a7d36453991b7b2c8914869a63588b",
+        "baseline_replacements": [
+          "zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+          "zombie/network/packets/hit/PlayerHitPacket.java",
+          "zombie/network/fields/hit/Hit.java",
+          "zombie/network/GameServer.java"
+        ],
+        "source_applied": true,
+        "installed_files_modified": false,
+        "duplicate_policy": {
+          "decision": "user-selected",
+          "window_ms": 500,
+          "scope": "Exact original NPC child payload SHA-256, attacker/connection/weapon identity, per-victim incarnation, at most 128 live entries; saturation rejects. One NPC child per victim per envelope.",
+          "limitation": "Identical legitimate rapid attacks can be rejected; altered or later payloads are not prevented. No protocol nonce exists."
+        },
+        "known_gap": {
+          "factory_ids": [
+            1024,
+            32766
+          ],
+          "native_client_max_id_exclusive": 1024,
+          "reproduced": true,
+          "description": "Old IDs >=1024 remain rejected; proposed reserved IDs 768 and 1023 pass actual native client ConnectionPlayer/envelope consistency with engine doubles. Live-client validation remains pending.",
+          "status": "addressed-in-applied-source-parser-fixture"
+        },
+        "candidate_fixture": {
+          "script": "tools/test_player_hit_player_port.py",
+          "passed": true,
+          "assertions": 1725,
+          "includes_known_failure_regression": true,
+          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+          "applied_candidate_equivalence": true
+        },
+        "client_policy": {
+          "decision": "user-selected-stock-clients",
+          "user_instruction": "Preserve stock clients; investigate reserved IDs below 1024",
+          "date": "2026-10-28"
+        },
+        "identity_proposal": {
+          "state": "approved-applied",
+          "npc_id_first": 768,
+          "npc_id_last": 1023,
+          "fresh_process_ids": 256,
+          "active_npc_limit": 64,
+          "real_connection_slots": 192,
+          "real_player_ids": [
+            0,
+            767
+          ],
+          "recycle": false,
+          "exhaustion": "Reject further activation; restart required. Skips and post-allocation failures consume IDs.",
+          "policy": "Fixed process-lifetime reservation, including when no NPC is active; full restart required."
+        },
+        "review48_dependency": "GameServer now has the applied native slot-reservation change only; review48 must extend it without overwriting that prerequisite.",
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+          "date": "2026-10-28",
+          "source_applied": true,
+          "installed_files_modified": false,
+          "baseline_commits": {
+            "zombie/network/packets/hit/PlayerHitPlayerPacket.java": "22a379e29fa2d662df7e72fe41866c39c1904be2",
+            "zombie/network/packets/hit/PlayerHitPacket.java": "499906390dd084b7359ab040ce17ae85f51e980d",
+            "zombie/network/fields/hit/Hit.java": "8a6561fb3c59dc50247b5614120b3d80d166bc08",
+            "zombie/network/GameServer.java": "a5e10000d67ce8674d477b9d6bf818c7f2540e2f"
+          },
+          "candidate_equivalence_files": 16
+        },
+        "target_source_hashes": {
+          "zombie/network/packets/hit/PlayerHitPlayerPacket.java": "b05a124893d42c2260e228e34942ab873d6cef30f2b2cd48110074e801a83d98",
+          "zombie/network/packets/hit/PlayerHitPacket.java": "0d401b6dc927903a40d67f2bed5fc9797071386d8f97f1ab46282c85b2900395",
+          "zombie/network/fields/hit/Hit.java": "3a6a3771493a44b865a01e0f562ce8db22f8a145735eb380b6872333a6faa06e",
+          "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java": "d3922d381d5c416964fe57e023fa1f0457fd0e44da3f8151ceb8dc759bf90576",
+          "zombie/apocalipse/humans/ServerHuman.java": "bbd47e3b15f49e89a42f3bef85c80af975d8fb38097853babe1eb45c8ef0fb75",
+          "zombie/apocalipse/humans/ServerHumanAttackReplay.java": "bcf9ec01344019ca4b632add177237cc06a20850c2618cb83952f2c677280d91",
+          "zombie/apocalipse/humans/ServerHumanPlayerDamage.java": "dd28b5a67cc163deb976d26108b0b64bf2c8cd4816aff2dd84855e93c6e1c766",
+          "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java": "d790a5c0fbc61493e23b4867b686bda22c1d298f5946886f78e6281974b5c0ea",
+          "zombie/apocalipse/humans/ServerHumanHitPacket.java": "38ea36faa30c043be4a1c8ae0eab9ef9f2124a755e710307ca38573aab121bed",
+          "zombie/apocalipse/humans/ServerHumanMissPacket.java": "90e0df04f82105cc41d816d3a4625cdafa32a0336a326c991ece5fec900ed613",
+          "zombie/apocalipse/humans/ServerHumanCommittedHit.java": "7d02350efa9bde164e4a38e5376c747072c1d0b5dbd7ea61f1e7a32b08ac925f",
+          "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java": "676238390afca5731ec0829af1ec1a0b920e95a33cba7f8d89a202eb4eb21e16",
+          "zombie/apocalipse/humans/ServerHumanCombatNetwork.java": "dbfd2bfa531e9c3cab188ebe0cc5cfb7419bb25c0e7e96602949186fee4102b3",
+          "zombie/apocalipse/humans/ServerHumanPresentationIds.java": "818232939dec91e2979a1ef3720f2129cf1f407ceff2d18e21326a2ed01d87c5",
+          "zombie/apocalipse/humans/ServerHumanFactory.java": "66e8a8cf7757fe2df60a44c71097c53df894422f4b85c267bf066c6bcd0fafe0",
+          "zombie/network/GameServer.java": "66eb05d5b9e6c51d50ef3554080ad3af9f133d2007aecaa5f3315548fa80b653"
+        }
+      },
+      "approval": {
+        "review": 38,
+        "decision": "approved",
+        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md",
+        "baseline_commit": "22a379e29fa2d662df7e72fe41866c39c1904be2"
+      },
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/network/packets/hit/PlayerHitSquarePacket.java",
@@ -6705,13 +7311,59 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "e4a1835331db782bd95f4170ddf6209a7f7e8dd769da7b7c60abafb1d885ddc0",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "7030df62b9d226508795eeec4896f44def4166b9f200ebcc85db120082c4c29d",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 39,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_check_passed": true,
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 39,
+        "state": "approved-applied",
+        "path": "zombie/network/packets/hit/PlayerHitSquarePacket.java",
+        "recommendation": "Retain the existing server-side throttled miss diagnostic on the native 42.22 envelope child. No NPC damage/retaliation inferred from this packet.",
+        "target_source_should_exist": true,
+        "target_vanilla_sha256": "34f152157f44a46943ee01b6043c2ce252c6fdfdd3be034d9ba110f808186e62",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-39-player-hit-square.diff",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-39-player-hit-square.md",
+        "verification": {
+          "source_check_passed": true,
+          "change": "Exactly one existing helper call before native parsing; all remaining target class text unchanged.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "new_fixture_added": false,
+          "applied_candidate_equivalence": true
+        },
+        "native_retained": [
+          "handlingType=0 child within PlayerHit envelope",
+          "TargetHitList constructor/set signatures",
+          "getTarget null",
+          "native getCharacter processing and getX/getY distance",
+          "native consistency, writer and anti-cheat declarations"
+        ],
+        "scope_limit": "Parse-time diagnostic precedes packet validation and is not evidence of an authenticated attack or actual NPC miss. No wire or damage change.",
+        "source_applied": true,
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "yes",
+          "date": "2026-10-28",
+          "baseline_commit": "ae6e61a389eaf5d14c70fafcad188a94bf48450a",
+          "installed_files_modified": false
+        },
+        "target_source_sha256": "7030df62b9d226508795eeec4896f44def4166b9f200ebcc85db120082c4c29d"
+      },
+      "approval": {
+        "review": 39,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "ae6e61a389eaf5d14c70fafcad188a94bf48450a",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-39-player-hit-square.md"
       }
     },
     {
@@ -6728,14 +7380,99 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "1d3b9117f7a73319cbd4ba9b66ba74747065c4e3dba30b10797ec02bba771e4f",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "caa44163d001735f15a7a753565843e9bd3f5ea76915b1ef0d5bf122f48a24d2",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 40,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_request_trading_port.py",
+          "passed": true,
+          "assertions": 131,
+          "scope": "Complete candidate handshake packets and actual NPC trading adapter/HumanTradeOffer, native PlayerRequestPacket/ConnectionPlayer/OnlinePlayer/Player/Requests/TradingRequests/TradingState; inventory/actor/Lua/transport/journal/DB doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 40,
+        "state": "approved-applied",
+        "path": "zombie/network/packets/RequestTradingPacket.java",
+        "recommendation": "Port the native request/accept/reject handshake together with the NPC adapter. Preserve native ConnectionPlayer sender ownership, pending-response checks for ordinary trades, and keep detached NPCs out of TradingManager.",
+        "affected_sources": [
+          "zombie/network/packets/RequestTradingPacket.java",
+          "zombie/network/packets/AcceptTradingPacket.java",
+          "zombie/network/packets/RejectTradingPacket.java",
+          "zombie/apocalipse/humans/ServerHumanTrading.java"
+        ],
+        "baseline_replacements": [
+          "zombie/network/packets/RequestTradingPacket.java",
+          "zombie/network/packets/AcceptTradingPacket.java",
+          "zombie/network/packets/RejectTradingPacket.java"
+        ],
+        "target_vanilla_sha256": "84358cead537eec52cd9b657d9b9aafc945458f7a9ee8bf01d2ef2610f8f7991",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-40-request-trading.diff",
+        "candidate_diff_sha256": "27cab2cebd5ee87779e85e64095b87085bee2fcba30f8b8afdade2045bcc3574",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-40-request-trading.md",
+        "native_changes": [
+          "Old RequestType enum replaced by three packet types.",
+          "PlayerRequestPacket uses sender ConnectionPlayer and destination OnlinePlayer, two shorts, no legacy index or request enum bytes.",
+          "Native ordinary-player Accept/Reject uses TradingRequests.response; preserve unsolicited/duplicate-response rejection."
+        ],
+        "candidate_fixture": {
+          "script": "tools/test_request_trading_port.py",
+          "passed": true,
+          "assertions": 131,
+          "scope": "Complete candidate handshake packets and actual NPC trading adapter/HumanTradeOffer, native PlayerRequestPacket/ConnectionPlayer/OnlinePlayer/Player/Requests/TradingRequests/TradingState; inventory/actor/Lua/transport/journal/DB doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "pending_integrations": [
+          "Reviews41-43: TradingUI add/remove/finalize target resolution and adapter interception.",
+          "Removed Trading field design remains open until all its old target-resolution uses are migrated.",
+          "Live client UI/network, actual durability/persistence/receipt and complete NPC lifecycle/thread validation remain pending."
+        ],
+        "scope_limits": [
+          "NPC lookup restricted to recognized reserved destination IDs in these trading packet parse overrides; global OnlinePlayer and shared PlayerRequestPacket stay vanilla.",
+          "No sales policy, quantities, item ownership, consent, receipt format or persistence ordering changes.",
+          "No review41-43 sources are part of this candidate."
+        ],
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "these changes support our bot engine, you may apply them to the new version",
+          "date": "2026-10-28",
+          "baseline_commits": {
+            "zombie/network/packets/RequestTradingPacket.java": "2e1008f551769a1681e5c7585aba470e96be61db",
+            "zombie/network/packets/AcceptTradingPacket.java": "960fd499c17e9c1720a76498f2d30267ade90d74",
+            "zombie/network/packets/RejectTradingPacket.java": "67deb11dfab0c5979d6293131bd29fcbf4a4d1dc"
+          },
+          "installed_files_modified": false,
+          "candidate_equivalence_files": 4
+        },
+        "target_source_hashes": {
+          "zombie/network/packets/RequestTradingPacket.java": "caa44163d001735f15a7a753565843e9bd3f5ea76915b1ef0d5bf122f48a24d2",
+          "zombie/network/packets/AcceptTradingPacket.java": "29137ecab23cb8d35c25433a883c780a8faae6b56791ca46b6bd85c04720550e",
+          "zombie/network/packets/RejectTradingPacket.java": "9809e079d64fd729d8c68757a50b193c46cf89f99674d455a49b8aa8bb403ba3",
+          "zombie/apocalipse/humans/ServerHumanTrading.java": "8ef4f28b766b8f05cb585288045155e52f26c7483c681b009112cb210cbef332"
+        }
+      },
+      "approval": {
+        "review": 40,
+        "decision": "approved",
+        "user_instruction": "these changes support our bot engine, you may apply them to the new version",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-40-request-trading.md",
+        "baseline_commit": "2e1008f551769a1681e5c7585aba470e96be61db"
+      },
+      "integration_pending": "Reviews41-43 target resolution/interception; full native client UI, journal/receipt and game-JAR/lifecycle/thread validation remain pending."
     },
     {
       "path": "zombie/network/packets/safehouse/SafehouseChangeOwnerPacket.java",
@@ -6775,16 +7512,23 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "e6fe320eb1319c99a083704470fcd6ff6ca792469597076e42cf2cf96287c540",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "11e8f823f3e1ad2f4debc7b0b73095780829c0df86d64b9dca88803290132494",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 37,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_sync_player_stats_port.py",
+          "passed": true,
+          "assertions": 20,
+          "scope": "Complete owner-only alternative + native OnlinePlayer/Player + actual guard with stat/connection doubles. Capability manager/native runtime not executed."
+        },
+        "candidate_equivalence": true
       },
       "candidate_resolutions": {
-        "state": "proposed-unapplied",
+        "state": "approved-applied",
         "review_document": "42.22.0/docs/reports/2026-10-28-merge-37-sync-player-stats.md",
         "proposal_record": "42.22.0/docs/reports/2026-10-28-merge-37-sync-player-stats.json",
         "recommendation": "Retain adapted connection-ownership guard on native OnlinePlayer protocol; capability authorization is not target ownership.",
@@ -6797,7 +7541,17 @@
           "scope": "Complete owner-only alternative + native OnlinePlayer/Player + actual guard with stat/connection doubles. Capability manager/native runtime not executed."
         },
         "policy_issue": "Retirement recommendation withdrawn: capability checks existed in old vanilla and do not enforce target ownership. Native OnlinePlayer still resolves globally; preserve sender-owned target restriction. No source or retirement applied."
-      }
+      },
+      "approval": {
+        "review": 37,
+        "decision": "approved",
+        "user_instruction": "ok, so you can move into implementing now so we can go to the next review",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "02103745436c4fb858167d2d0c4724c6a928f53d",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-37-sync-player-stats.md"
+      },
+      "integration_pending": "Native capability/role/connection/real stats/JAR/multiplayer validation; owner restriction retained, no retirement."
     },
     {
       "path": "zombie/network/packets/TradingUIAddItemPacket.java",
@@ -6816,13 +7570,79 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "efe297bf1a358c2fbae9639e40f0f26af6814f0ca5660dc6a407df15331126cb",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "0b57139a517b86b72eb97f6de962cec3913aeee0db86d8e996a188914c4da530",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 41,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_trading_add_item_port.py",
+          "passed": true,
+          "assertions": 105,
+          "scope": "Complete candidate packet and applied handshake/adapter/offer; native player fields and exact extracted TradingManager pair/item methods with actor/inventory/transport/Lua/persistence doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 41,
+        "state": "approved-applied",
+        "path": "zombie/network/packets/TradingUIAddItemPacket.java",
+        "recommendation": "Retain the target sender-inventory lookup, item reset/consistency, version251 loading and exact native trade-pair validation; add only NPC destination fallback and existing offer-adapter interception.",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "target_vanilla_sha256": "a2a96789b126c79ee9ca540450b2fdd4e8f2f524a6c8ca5805bc50918b5165e6",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-41-trading-add-item.diff",
+        "candidate_diff_sha256": "d4b277303ae7855fcc03622a5730791329b6bb76cd6285019fdf630eda5828a7",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-41-trading-add-item.md",
+        "dependencies": [
+          "Review40 applied NPC OnlinePlayer resolver and trading adapter; reviews42-43 remain separate."
+        ],
+        "candidate_fixture": {
+          "script": "tools/test_trading_add_item_port.py",
+          "passed": true,
+          "assertions": 105,
+          "scope": "Complete candidate packet and applied handshake/adapter/offer; native player fields and exact extracted TradingManager pair/item methods with actor/inventory/transport/Lua/persistence doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "native_retained": [
+          "ConnectionPlayer sender, OnlinePlayer destination",
+          "Server resolves item ID only from sender inventory",
+          "item=null before each parse and native item consistency",
+          "TradingManager.isInvalid exact participant pair check",
+          "Client writes item ID; server writes item data; native client load version251",
+          "Native writer/client event/capability/reliability unchanged"
+        ],
+        "behavioral_difference_from_old": "Unknown/missing item IDs fail target-native isConsistent before processServer, so they do not reach the NPC adapter to cancel an existing session. Existing offer remains unchanged until valid edit/cancel/timeout.",
+        "scope_limits": [
+          "No global OnlinePlayer/PlayerRequestPacket patch or item ownership bypass.",
+          "No inventory consumption from add-item packet; only actual existing sale-finalization adapter can consume items.",
+          "Missing native item/actor/pair checks are not bypassed for NPCs.",
+          "Fixture inventory serialization and persistence are doubles; real engine item encoding/durability/UI remain unverified."
+        ],
+        "target_source_sha256": "0b57139a517b86b72eb97f6de962cec3913aeee0db86d8e996a188914c4da530",
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "yes",
+          "date": "2026-10-28",
+          "baseline_commit": "300b6192bace4548c6e2673bcc845e63e981927f",
+          "installed_files_modified": false
+        }
+      },
+      "approval": {
+        "review": 41,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "300b6192bace4548c6e2673bcc845e63e981927f",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-41-trading-add-item.md"
       }
     },
     {
@@ -6841,13 +7661,77 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "62b4e80053228354ec7f1d22500af9e1c3dd221089d197509daee2d53480a5ab",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "926a2714ada1c05341b4c28858282284a21251e263ab1daf12c09140bb7cdb68",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 42,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_trading_remove_item_port.py",
+          "passed": true,
+          "assertions": 120,
+          "scope": "Full candidate remove packet and temporary approved add packet, applied handshake/adapter/offer; native identity fields and exact extracted TradingManager pair/add/remove bodies; engine/inventory/Lua/transport/persistence doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 42,
+        "state": "approved-applied",
+        "path": "zombie/network/packets/TradingUIRemoveItemPacket.java",
+        "recommendation": "Add the NPC destination fallback and existing remove-offer hook on target-native packet APIs, preserving sender scope, exact native trade-pair checks and ID-only payload.",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "target_vanilla_sha256": "03270af1c7249ee0bf4ee3f65c98506a95f779c52c10347b8364b5ef81a087f7",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-42-trading-remove-item.diff",
+        "candidate_diff_sha256": "b41a1775ee2fd6990a8fac23aa808e8a966dfd2cb6d52189bbbc2fc40229f003",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-42-trading-remove-item.md",
+        "dependencies": [
+          "Applied review40 NPC resolver/session adapter and review41 add-item integration. Review43 state/finalize remains separate."
+        ],
+        "candidate_fixture": {
+          "script": "tools/test_trading_remove_item_port.py",
+          "passed": true,
+          "assertions": 120,
+          "scope": "Full candidate remove packet and temporary approved add packet, applied handshake/adapter/offer; native identity fields and exact extracted TradingManager pair/add/remove bodies; engine/inventory/Lua/transport/persistence doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "native_retained": [
+          "PlayerRequestPacket sender ConnectionPlayer and destination OnlinePlayer",
+          "Integer item ID setData and two shorts plus int wire body",
+          "Exact TradingManager.isInvalid participant-pair check before ordinary remove/relay",
+          "Native remove affects only the sending participant offer list",
+          "Writer/client event/capability/reliability unchanged"
+        ],
+        "offer_contract": "Withdraw an ID from the offer, not inventory. Any valid removal (including absent/repeated/negative ID) invalidates consent, matching existing helper behavior. No item object/inventory lookup required for withdrawal.",
+        "scope_limits": [
+          "Keep NPC sessions outside native TradingManager.",
+          "No change to sale/receipt/durability policy. Test persistence/encoding are doubles.",
+          "Review43 and removed Trading field design remain pending."
+        ],
+        "target_source_sha256": "926a2714ada1c05341b4c28858282284a21251e263ab1daf12c09140bb7cdb68",
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "yes",
+          "date": "2026-10-28",
+          "baseline_commit": "a78d82e37a4c6ccb5dd676c54ba672d067484b73",
+          "installed_files_modified": false
+        }
+      },
+      "approval": {
+        "review": 42,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "a78d82e37a4c6ccb5dd676c54ba672d067484b73",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-42-trading-remove-item.md"
       }
     },
     {
@@ -6864,13 +7748,89 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "bdd9e50cd923dfd6b07093761b1ac73f1e17557411ed0cb9ebfe8cc65924fa43",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "af27b59b76f43533d69564c76ba5a61f154784f3ad48d9799155df7c27919f19",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 43,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_trading_update_state_port.py",
+          "passed": true,
+          "assertions": 195,
+          "scope": "Full candidate state packet, native identity/reader/enum and extracted manager state methods; applied handshake and actual NPC adapter/offer, with engine/inventory/Lua/transport/recording persistence doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 43,
+        "state": "approved-applied",
+        "path": "zombie/network/packets/TradingUIUpdateStatePacket.java",
+        "recommendation": "Restore only the NPC destination fallback and existing state-adapter hook; preserve native pending-request cleanup on WindowWasClosed and exact ordinary trade-pair/state handling.",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "target_vanilla_sha256": "b9531aeaa52a519a97444a061990a9e917c24c5e1db4e53eca1b7950ed5b7fd8",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-43-trading-update-state.diff",
+        "candidate_diff_sha256": "3bee88a81c3f520084d5c831e0e6b675e2c08087e08cca8eb252a5d47c39d36f",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-43-trading-update-state.md",
+        "dependencies": [
+          "Applied review40 handshake/session adapter, review41 add-item and review42 remove-item."
+        ],
+        "candidate_fixture": {
+          "script": "tools/test_trading_update_state_port.py",
+          "passed": true,
+          "assertions": 195,
+          "scope": "Full candidate state packet, native identity/reader/enum and extracted manager state methods; applied handshake and actual NPC adapter/offer, with engine/inventory/Lua/transport/recording persistence doubles.",
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
+        },
+        "native_retained": [
+          "PlayerRequestPacket ConnectionPlayer sender and OnlinePlayer destination",
+          "Native five-byte body: two shorts and TradingState enum byte",
+          "Ordinary WindowWasClosed clears TradingRequests pending pair before manager checks",
+          "Exact ordinary TradingManager participant pair and state transitions",
+          "Writer/client event/capability/reliability unchanged"
+        ],
+        "sale_policy_unchanged": [
+          "Consent and live owned inventory required; edits/unseal invalidate consent.",
+          "Money/bundle IDs recorded; non-money offered items disposed without money receipt.",
+          "Existing sale enqueue before inventory removal/player snapshot is retained.",
+          "Failure before handoff leaves items and closes offer; failure after handoff logs CONSUMPTION_REQUIRES_REVIEW and closes, with no automatic retry.",
+          "Duplicate finalization after session close cannot enqueue a second sale."
+        ],
+        "removed_target_resolution_on_approval": {
+          "path": "zombie/network/fields/Trading.java",
+          "reason": "All old NPC trading target-resolution uses migrate into request/accept/reject and UI add/remove/state packet overrides; shared native fields remain unpatched.",
+          "cleanup_manifest_update_pending_approval": false,
+          "state": "approved-intent-migrated-cleanup-pending"
+        },
+        "scope_limits": [
+          "Existing adapter sales/journal/credit policy is unchanged.",
+          "Recording persistence tests are not real durability, receipt processing or credit-delivery validation.",
+          "Review43 source applied; removed Trading intent migrated, with stale class-family cleanup tracked but unimplemented."
+        ],
+        "target_source_sha256": "af27b59b76f43533d69564c76ba5a61f154784f3ad48d9799155df7c27919f19",
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "yes",
+          "date": "2026-10-28",
+          "baseline_commit": "d26bfff5017a6f0573821a2d6d95e6fa193c41a4",
+          "installed_files_modified": false
+        }
+      },
+      "approval": {
+        "review": 43,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "d26bfff5017a6f0573821a2d6d95e6fa193c41a4",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-43-trading-update-state.md"
       }
     },
     {
@@ -7968,7 +8928,10 @@
       "verification": {
         "target_compile": false,
         "target_runtime": false
-      }
+      },
+      "exposure_review_proposal": 46,
+      "integration_pending": "Review46 server-only Lua registration is applied; no API implementation/JAR/Kahlua/backend/SQL/login validation is implied.",
+      "exposure_review_applied": 46
     },
     {
       "path": "zombie/savefile/ApocBRPlayerMigration.java",
@@ -9573,5 +10536,96 @@
       "state": "historical-reference-not-target-validation"
     }
   ],
-  "retirement_manifest": "42.22.0/tools/retired-class-families.json"
+  "retirement_manifest": "42.22.0/tools/retired-class-families.json",
+  "counts_semantics": "Copy counts record initial provenance. Nine copied support files were adapted in reviews38/40. Target source count also includes four additional native combat/handshake replacements, four new helpers and partial GameServer prerequisite; its full review48 merge is not counted as complete. Three changed replacements retired to vanilla are separate from two resolved removed targets (WeaponHit and Trading).",
+  "additional_sources": [
+    {
+      "path": "zombie/network/packets/hit/PlayerHitPacket.java",
+      "subsystem": "BOT-COMBAT",
+      "review": 38,
+      "kind": "native-replacement",
+      "port_state": "applied-unverified",
+      "target_sha256": "0d401b6dc927903a40d67f2bed5fc9797071386d8f97f1ab46282c85b2900395",
+      "baseline_commit": "499906390dd084b7359ab040ce17ae85f51e980d",
+      "target_compile": false,
+      "target_runtime": false
+    },
+    {
+      "path": "zombie/network/fields/hit/Hit.java",
+      "subsystem": "BOT-COMBAT",
+      "review": 38,
+      "kind": "native-replacement",
+      "port_state": "applied-unverified",
+      "target_sha256": "3a6a3771493a44b865a01e0f562ce8db22f8a145735eb380b6872333a6faa06e",
+      "baseline_commit": "8a6561fb3c59dc50247b5614120b3d80d166bc08",
+      "target_compile": false,
+      "target_runtime": false
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanAttackReplay.java",
+      "subsystem": "BOT-COMBAT",
+      "review": 38,
+      "kind": "new-support",
+      "port_state": "applied-unverified",
+      "target_sha256": "bcf9ec01344019ca4b632add177237cc06a20850c2618cb83952f2c677280d91",
+      "baseline_commit": null,
+      "target_compile": false,
+      "target_runtime": false
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanCommittedHit.java",
+      "subsystem": "BOT-COMBAT",
+      "review": 38,
+      "kind": "new-support",
+      "port_state": "applied-unverified",
+      "target_sha256": "7d02350efa9bde164e4a38e5376c747072c1d0b5dbd7ea61f1e7a32b08ac925f",
+      "baseline_commit": null,
+      "target_compile": false,
+      "target_runtime": false
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java",
+      "subsystem": "BOT-COMBAT",
+      "review": 38,
+      "kind": "new-support",
+      "port_state": "applied-unverified",
+      "target_sha256": "676238390afca5731ec0829af1ec1a0b920e95a33cba7f8d89a202eb4eb21e16",
+      "baseline_commit": null,
+      "target_compile": false,
+      "target_runtime": false
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanPresentationIds.java",
+      "subsystem": "BOT-COMBAT",
+      "review": 38,
+      "kind": "new-support",
+      "port_state": "applied-unverified",
+      "target_sha256": "818232939dec91e2979a1ef3720f2129cf1f407ceff2d18e21326a2ed01d87c5",
+      "baseline_commit": null,
+      "target_compile": false,
+      "target_runtime": false
+    },
+    {
+      "path": "zombie/network/packets/AcceptTradingPacket.java",
+      "subsystem": "BOT-INTERACT",
+      "review": 40,
+      "kind": "native-replacement",
+      "port_state": "applied-unverified",
+      "target_sha256": "29137ecab23cb8d35c25433a883c780a8faae6b56791ca46b6bd85c04720550e",
+      "baseline_commit": "960fd499c17e9c1720a76498f2d30267ade90d74",
+      "target_compile": false,
+      "target_runtime": false
+    },
+    {
+      "path": "zombie/network/packets/RejectTradingPacket.java",
+      "subsystem": "BOT-INTERACT",
+      "review": 40,
+      "kind": "native-replacement",
+      "port_state": "applied-unverified",
+      "target_sha256": "9809e079d64fd729d8c68757a50b193c46cf89f99674d455a49b8aa8bb403ba3",
+      "baseline_commit": "67deb11dfab0c5979d6293131bd29fcbf4a4d1dc",
+      "target_compile": false,
+      "target_runtime": false
+    }
+  ]
 }

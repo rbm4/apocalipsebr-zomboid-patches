@@ -1,0 +1,35 @@
+{
+  "review": 39,
+  "state": "approved-applied",
+  "path": "zombie/network/packets/hit/PlayerHitSquarePacket.java",
+  "recommendation": "Retain the existing server-side throttled miss diagnostic on the native 42.22 envelope child. No NPC damage/retaliation inferred from this packet.",
+  "target_source_should_exist": true,
+  "target_vanilla_sha256": "34f152157f44a46943ee01b6043c2ce252c6fdfdd3be034d9ba110f808186e62",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-39-player-hit-square.diff",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-39-player-hit-square.md",
+  "verification": {
+    "source_check_passed": true,
+    "change": "Exactly one existing helper call before native parsing; all remaining target class text unchanged.",
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "new_fixture_added": false,
+    "applied_candidate_equivalence": true
+  },
+  "native_retained": [
+    "handlingType=0 child within PlayerHit envelope",
+    "TargetHitList constructor/set signatures",
+    "getTarget null",
+    "native getCharacter processing and getX/getY distance",
+    "native consistency, writer and anti-cheat declarations"
+  ],
+  "scope_limit": "Parse-time diagnostic precedes packet validation and is not evidence of an authenticated attack or actual NPC miss. No wire or damage change.",
+  "source_applied": true,
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "yes",
+    "date": "2026-10-28",
+    "baseline_commit": "ae6e61a389eaf5d14c70fafcad188a94bf48450a",
+    "installed_files_modified": false
+  },
+  "target_source_sha256": "7030df62b9d226508795eeec4896f44def4166b9f200ebcc85db120082c4c29d"
+}

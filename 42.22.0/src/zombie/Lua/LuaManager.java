@@ -1148,7 +1148,7 @@ public final class LuaManager {
         }
 
         List<String> gameFiles = loadList;
-        fo = new ArrayList();
+        List<String> modFiles = new ArrayList<>();
         loadList = new ArrayList<>();
         List<String> root = ZomboidFileSystem.instance.getModIDs();
 
@@ -1187,12 +1187,12 @@ public final class LuaManager {
                 }
 
                 Collections.sort(loadList, String.CASE_INSENSITIVE_ORDER);
-                PZArrayUtil.addAll(fo, loadList);
+                PZArrayUtil.addAll(modFiles, loadList);
             }
         }
 
         Collections.sort(gameFiles, String.CASE_INSENSITIVE_ORDER);
-        PZArrayUtil.addAll(gameFiles, fo);
+        PZArrayUtil.addAll(gameFiles, modFiles);
         loadList.clear();
         loadList = gameFiles;
         HashSet<String> done = new HashSet<>();
@@ -1353,6 +1353,8 @@ public final class LuaManager {
         } else {
             FuncState.currentFile = filename.substring(filename.lastIndexOf(47) + 1);
             FuncState.currentfullFile = filename;
+            // Preserve the normalized lookup key while resolving the physical file.
+            String requestedFilename = filename;
             filename = ZomboidFileSystem.instance.getString(filename.replace("\\", "/"));
 
             InputStreamReader isr;
@@ -1369,7 +1371,7 @@ public final class LuaManager {
             try (BufferedReader bufferedReader = new BufferedReader(isr)) {
                 closure = LuaCompiler.loadis(bufferedReader, filename.substring(filename.lastIndexOf(47) + 1), env);
             } catch (Exception var10) {
-                Logger.getLogger(LuaManager.class.getName()).log(Level.SEVERE, "Error found in LUA file: " + filename, null);
+                Logger.getLogger(LuaManager.class.getName()).log(Level.SEVERE, "Error found in LUA file: " + filename, (Object)null);
                 ExceptionLogger.logException(var10);
                 thread.debugException(var10);
                 return null;
@@ -1386,20 +1388,20 @@ public final class LuaManager {
             ZombiesZoneDefinition.dirty = true;
             LuaReturn ret = caller.protectedCall(thread, closure);
             if (!ret.isSuccess()) {
-                Logger.getLogger(IsoWorld.class.getName()).log(Level.SEVERE, ret.getErrorString(), null);
+                Logger.getLogger(IsoWorld.class.getName()).log(Level.SEVERE, ret.getErrorString(), (Object)null);
                 if (ret.getJavaException() != null) {
-                    Logger.getLogger(IsoWorld.class.getName()).log(Level.SEVERE, ret.getJavaException().toString(), null);
+                    Logger.getLogger(IsoWorld.class.getName()).log(Level.SEVERE, ret.getJavaException().toString(), (Object)null);
                 }
 
-                Logger.getLogger(IsoWorld.class.getName()).log(Level.SEVERE, ret.getLuaStackTrace(), null);
+                Logger.getLogger(IsoWorld.class.getName()).log(Level.SEVERE, ret.getLuaStackTrace(), (Object)null);
             }
 
-            loaded.add(filename);
+            loaded.add(requestedFilename);
             Object retVal = ret.isSuccess() && !ret.isEmpty() ? ret.getFirst() : null;
             if (retVal != null) {
-                loadedReturn.put(filename, retVal);
+                loadedReturn.put(requestedFilename, retVal);
             } else {
-                loadedReturn.remove(filename);
+                loadedReturn.remove(requestedFilename);
             }
 
             LuaCompiler.rewriteEvents = false;
@@ -2712,6 +2714,11 @@ public final class LuaManager {
             this.setExposed(DigType.class);
             this.setExposed(WorldMapVisitedServer.class);
             this.setExposed(TradingState.class);
+            if (GameServer.server) {
+                this.setExposed(zombie.apocalipse.events.ApocBREventControl.class);
+                this.setExposed(zombie.network.ApocBRRadioBridge.class);
+                this.setExposed(zombie.savefile.ApocBRPlayerLogin.class);
+            }
 
             for (Class<?> clazz : this.exposed) {
                 this.exposeLikeJavaRecursively(clazz, LuaManager.env);

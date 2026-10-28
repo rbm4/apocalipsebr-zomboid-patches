@@ -49,6 +49,7 @@ public class TradingUIAddItemPacket extends PlayerRequestPacket {
     @Override
     public void parse(ByteBufferReader b, IConnection connection) {
         super.parse(b, connection);
+        zombie.apocalipse.humans.ServerHumanTrading.resolveTarget(this.destination);
         this.item = null;
         if (GameServer.server) {
             this.itemId = b.getInt();
@@ -84,6 +85,9 @@ public class TradingUIAddItemPacket extends PlayerRequestPacket {
 
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        if (zombie.apocalipse.humans.ServerHumanTrading.addItem(
+            this.sender.getPlayer(), this.destination.getPlayer(), connection, this.item
+        )) return;
         if (!TradingManager.getInstance().isInvalid(this.sender.getPlayer(), this.destination.getPlayer())) {
             if (TradingManager.getInstance().addItem(this.sender.getPlayer(), this.item)) {
                 this.sendToClient(PacketTypes.PacketType.TradingUIAddItem, this.destination.getPlayer());

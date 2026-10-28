@@ -50,6 +50,7 @@ public class PlayerHitSquarePacket extends PlayerHit implements AntiCheatHitLong
 
     @Override
     public void parse(ByteBufferReader b, IConnection connection) {
+        zombie.apocalipse.humans.ServerHumanPlayerAttacks.missed();
         super.parse(b, connection);
         this.square.parse(b, connection);
     }

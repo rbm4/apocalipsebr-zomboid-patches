@@ -34,6 +34,7 @@ public class TradingUIUpdateStatePacket extends PlayerRequestPacket {
     @Override
     public void parse(ByteBufferReader b, IConnection connection) {
         super.parse(b, connection);
+        zombie.apocalipse.humans.ServerHumanTrading.resolveTarget(this.destination);
         this.state = b.getEnum(TradingState.class);
     }
 
@@ -44,6 +45,9 @@ public class TradingUIUpdateStatePacket extends PlayerRequestPacket {
 
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        if (zombie.apocalipse.humans.ServerHumanTrading.state(
+            this.sender.getPlayer(), this.destination.getPlayer(), connection, this.state
+        )) return;
         if (this.state == TradingState.WindowWasClosed) {
             TradingRequests.getInstance().response(this.sender.getPlayer(), this.destination.getPlayer());
         }

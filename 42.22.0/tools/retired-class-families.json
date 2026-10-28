@@ -30,6 +30,24 @@
       "source_retirement_approved": true,
       "installed_files_modified": false,
       "cleanup_verified": false
+    },
+    {
+      "class_root": "zombie/network/fields/hit/WeaponHit.class",
+      "include_nested_classes": true,
+      "reason": "Removed native target. Old ignore-damage accessor intent is migrated to target Hit/server-body-loss adapters in approved review38; no obsolete WeaponHit class is recreated.",
+      "review": 38,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
+    },
+    {
+      "class_root": "zombie/network/fields/Trading.class",
+      "include_nested_classes": true,
+      "reason": "Removed native target. Old NPC destination fallback is migrated to packet-specific request/accept/reject and UI add/remove/state overrides through approved review43; obsolete shared Trading field not recreated.",
+      "review": 43,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
     }
   ]
 }

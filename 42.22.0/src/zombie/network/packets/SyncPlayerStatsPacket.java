@@ -9,6 +9,7 @@ import zombie.core.network.ByteBufferReader;
 import zombie.core.network.ByteBufferWriter;
 import zombie.debug.DebugType;
 import zombie.network.IConnection;
+import zombie.network.ApocBRPacketOwnershipGuard;
 import zombie.network.JSONField;
 import zombie.network.PacketSetting;
 import zombie.network.fields.character.OnlinePlayer;
@@ -46,6 +47,12 @@ public class SyncPlayerStatsPacket implements INetworkPacket {
     public void parse(ByteBufferReader b, IConnection connection) {
         this.player.parse(b, connection);
         this.syncParams = b.getInt();
+        if (!ApocBRPacketOwnershipGuard.validate(
+            "SyncPlayerStats", connection, this.player.getId(), (byte)-1, this.player.getPlayer()
+        )) {
+            return;
+        }
+
         IsoPlayer isoPlayer = this.player.getPlayer();
         if (isoPlayer == null) {
             DebugType.Multiplayer.error("player not found");

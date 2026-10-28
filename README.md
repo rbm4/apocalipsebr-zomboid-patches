@@ -23,8 +23,8 @@ You do **not** need to know Java or programming to use these. Just follow the st
 ## Patches Included
 
 - Build 42.22.0 pre-release: [current development target and migration status](42.22.0/docs/README.md).
-- Build 42.22.0: [subsystem tracker and individual merge queue](42.22.0/docs/features/2026-10-27-subsystem-port-tracker.md). 250 exact carry-overs, 33 reviewed merges and 3 native retirements; review 37 SyncPlayerStatsPacket authorization policy is next. Vehicle PostgreSQL gaps are user-deferred while disabled. Migration and runtime validation remain incomplete.
-- Build 42.22.0: [class-by-class compatibility audit from 42.21.0](42.22.0/docs/reports/2026-10-27-port-42-21-to-42-22.md). Patches are not ported or deployment-validated yet.
+- Build 42.22.0: [subsystem tracker and individual merge queue](42.22.0/docs/features/2026-10-27-subsystem-port-tracker.md). 250 original carry-overs, 43 reviewed merges, 3 native retirements and 2 resolved removed targets. Review38 NPC combat/reserved IDs is applied; review39 miss diagnostic is applied; review40 trading handshake is applied; review41 add-item is applied; review42 remove-item is applied; review43 state/finalization is applied; review44 ChatServer is applied; review45 AdvancedAnimator is applied; review46 LuaManager is applied; review47 IngameState awaits approval. Vehicle PostgreSQL gaps are user-deferred while disabled. Migration and runtime validation remain incomplete.
+- Build 42.22.0: [class-by-class compatibility audit from 42.21.0](42.22.0/docs/reports/2026-10-27-port-42-21-to-42-22.md). Migration and deployment validation remain incomplete.
 - Build 42.21.0: [feature guides, reports and issue index](42.21.0/docs/README.md).
 - Build 42.21.0: [character login origin and native lobby teleport](42.21.0/docs/features/2026-10-21-player-login-origin.md).
 

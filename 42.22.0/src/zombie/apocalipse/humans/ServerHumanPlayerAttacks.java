@@ -13,7 +13,7 @@ public final class ServerHumanPlayerAttacks {
     private ServerHumanPlayerAttacks(){ }
     static void ready(){
         if(Boolean.parseBoolean(System.getProperty("apocbr.npc.playerHitTrace","true")))
-            zombie.debug.DebugLog.log("[ApocBR][NPC][PlayerHit] server intake ready; native PlayerHitPlayer damage and PlayerHitSquare diagnostics; trace=true");
+            zombie.debug.DebugLog.log("[ApocBR][NPC][PlayerHit] server intake ready; native PlayerHit envelope / NPC damage; trace=true");
     }
     private static long nextReceiveTrace;
     public static void received(){
@@ -27,7 +27,7 @@ public final class ServerHumanPlayerAttacks {
     public static void resolve(Player field){
         if(!GameServer.server||field.getPlayer()!=null)return;
         var human=ServerHumanFactory.tradingHuman(field.getID());
-        if(human!=null){field.set(human.player,false);trace(human,"parsed native PlayerHitPlayer target");}
+        if(human!=null){field.set(human.player);trace(human,"parsed native PlayerHitPlayer target");}
     }
     public static void trace(IsoPlayer victim,String reason){if(isNpc(victim))trace(ServerHumanFactory.tradingHuman(victim.getOnlineID()),reason);}
     private static void trace(ServerHuman human,String reason){
@@ -44,7 +44,15 @@ public final class ServerHumanPlayerAttacks {
         zombie.debug.DebugLog.log("[ApocBR][NPC][PlayerHit] native PlayerHitSquare; client reported no character hit; no NPC damage or retaliation inferred");
     }
     private static boolean reject(IsoPlayer victim,String reason){trace(victim,"rejected: "+reason);return false;}
-    public static boolean receive(IsoPlayer attacker,IsoPlayer victim,HandWeapon weapon,UdpConnection connection,int hits,byte shot){
+    /** SHA-256 of the original child bytes, before server rolls/target sanitization. */
+    public static byte[] fingerprint(java.nio.ByteBuffer source,int start,int end){
+        try {
+            var bytes=source.duplicate();bytes.position(start);bytes.limit(end);
+            var digest=java.security.MessageDigest.getInstance("SHA-256");digest.update(bytes);
+            return digest.digest();
+        } catch(java.security.NoSuchAlgorithmException impossible){throw new IllegalStateException(impossible);}
+    }
+    public static boolean receive(IsoPlayer attacker,IsoPlayer victim,HandWeapon weapon,UdpConnection connection,int hits,byte[] fingerprint){
         if(!isNpc(victim))return false;
         if(victim.isGodMod())return reject(victim,"NPC god mode");
         if(attacker==null||connection==null||!connection.isFullyConnected()
@@ -58,11 +66,11 @@ public final class ServerHumanPlayerAttacks {
         if(human.state.snapshot().dead())return reject(victim,"logical death");
         if(!ServerHumanRetaliation.pvp(attacker,victim,weapon.isRanged()))return reject(victim,"PvP/safety/faction/non-PvP zone");
         if(!Float.isFinite(attacker.getX())||!Float.isFinite(attacker.getY())
+            ||!Float.isFinite(attacker.getZ())||!Float.isFinite(victim.getZ())||!Float.isFinite(victim.getX())||!Float.isFinite(victim.getY())||!Float.isFinite(weapon.getMaxRange(attacker))
             ||Math.hypot(attacker.getX()-victim.getX(),attacker.getY()-victim.getY())>Math.min(32,weapon.getMaxRange(attacker)+1.2))return reject(victim,"weapon range/position");
         if(!ServerHumanAttackLine.clear(human,attacker,victim.getX(),victim.getY(),weapon.isRanged()))return reject(victim,"attack line/bystander");
         long now=System.nanoTime();
-        if(human.lastPlayerAttacker==attacker&&human.lastPlayerShot==shot&&human.lastPlayerWeapon==weapon.getID()&&now-human.lastPlayerAttackAt<500_000_000L)return reject(victim,"duplicate shot");
-        human.lastPlayerAttacker=attacker;human.lastPlayerShot=shot;human.lastPlayerWeapon=weapon.getID();human.lastPlayerAttackAt=now;
+        if(!human.playerAttackReplay.accept(attacker,connection,weapon,fingerprint,now))return reject(victim,"exact payload repeated within 500ms");
         var module=ServerHumanRetaliation.module(human);
         if(module!=null)module.attacked(new HumanObservation.Identity(attacker.getOnlineID(),attacker.getID()),now);
         trace(human,"accepted; retaliationModule="+(module!=null)+"; attackerGod="+attacker.isGodMod()+"; attackerInvisible="+attacker.isInvisible());

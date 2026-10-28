@@ -32,6 +32,7 @@ public class TradingUIRemoveItemPacket extends PlayerRequestPacket {
     @Override
     public void parse(ByteBufferReader b, IConnection connection) {
         super.parse(b, connection);
+        zombie.apocalipse.humans.ServerHumanTrading.resolveTarget(this.destination);
         this.itemId = b.getInt();
     }
 
@@ -42,6 +43,9 @@ public class TradingUIRemoveItemPacket extends PlayerRequestPacket {
 
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        if (zombie.apocalipse.humans.ServerHumanTrading.removeItem(
+            this.sender.getPlayer(), this.destination.getPlayer(), connection, this.itemId
+        )) return;
         if (!TradingManager.getInstance().isInvalid(this.sender.getPlayer(), this.destination.getPlayer())) {
             if (TradingManager.getInstance().removeItem(this.sender.getPlayer(), this.itemId)) {
                 this.sendToClient(PacketTypes.PacketType.TradingUIRemoveItem, this.destination.getPlayer());

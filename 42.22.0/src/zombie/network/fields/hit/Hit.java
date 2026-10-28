@@ -121,6 +121,10 @@ public class Hit implements INetworkPacketField {
             if (rolledHitData == null) {
                 return false;
             } else {
+                if (target instanceof IsoPlayer npc && zombie.apocalipse.humans.ServerHumanPlayerAttacks.isNpc(npc)) {
+                    this.hitHead = rolledHitData.hitHead();
+                    this.isHitLegs = rolledHitData.hitLegs();
+                }
                 this.isIgnoreDamage = rolledHitData.isIgnoreDamage();
                 this.hitData = rolledHitData;
                 return true;
@@ -159,6 +163,12 @@ public class Hit implements INetworkPacketField {
             }
 
             float damage = target.Hit(weapon, wielder, damageSplit, this.hitData.isIgnoreDamage(), hitDamageData.rangeDel(), isRemoteDamage);
+            if (GameServer.server && target instanceof IsoPlayer npc
+                && zombie.apocalipse.humans.ServerHumanPlayerAttacks.isNpc(npc)) {
+                this.hitForce = target.getHitForce();
+                this.hitDirectionX = target.getHitDir().x;
+                this.hitDirectionY = target.getHitDir().y;
+            }
             this.process(wielder, target);
             if (wielder.isAimAtFloor() && !weapon.isRanged() && wielder.isNpc()) {
                 CombatManager.getInstance().splash(target, weapon, wielder);
@@ -187,7 +197,9 @@ public class Hit implements INetworkPacketField {
             if (GameServer.server) {
                 this.hitDamage = damage;
                 CombatManager.getInstance().applyMeleeEnduranceLoss(wielder, target, weapon, damage);
-                if (targetPlayer != null && !targetPlayer.isAnimal() && GameServer.getConnectionFromPlayer(targetPlayer) == null) {
+                if (targetPlayer != null && !targetPlayer.isAnimal()
+                    && !zombie.apocalipse.humans.ServerHumanPlayerAttacks.isNpc(targetPlayer)
+                    && GameServer.getConnectionFromPlayer(targetPlayer) == null) {
                     if (target.isDead()) {
                         target.die();
                         GameServer.doDelayedDisconnect(targetPlayer);

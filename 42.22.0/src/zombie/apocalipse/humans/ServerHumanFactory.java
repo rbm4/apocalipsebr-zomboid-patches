@@ -19,11 +19,11 @@ import zombie.network.GameServer;
  * mode runs native NPC simulation on one worker, concurrently with the live world.
  */
 public final class ServerHumanFactory {
-    // Vanilla has 255 connection slots with four player IDs each (0..1019).
-    // Stay below Short.MAX_VALUE: native VoiceManagerData increments a short index.
-    // Incarnations consume fresh IDs; the active actor budget is independent.
-    static final int FIRST_ID = 1024;
-    static final int LAST_ID = 32766;
+    // Stock 42.22 clients require PlayerHit envelope IDs below 1024.
+    // GameServer excludes the matching whole connection slots from login allocation.
+    // Do not recycle IDs: the 256-ID process budget is separate from 64 active actors.
+    static final int FIRST_ID = ServerHumanPresentationIds.FIRST_ID;
+    static final int LAST_ID = ServerHumanPresentationIds.LAST_ID;
     static final int MAX_ACTIVE = 64;
     static final long UPDATE_NANOS = 500_000_000L;
     static final long BRAIN_UPDATE_NANOS = 100_000_000L;

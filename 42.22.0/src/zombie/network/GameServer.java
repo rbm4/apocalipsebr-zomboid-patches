@@ -2700,7 +2700,8 @@ public class GameServer {
 
     private static short getFreeSlot() {
         for (short n = 0; n < udpEngine.getMaxConnections(); n++) {
-            if (SlotToConnection[n] == null) {
+            if (SlotToConnection[n] == null
+                && !zombie.apocalipse.humans.ServerHumanPresentationIds.reservesConnectionSlot(n)) {
                 return n;
             }
         }

@@ -10,9 +10,9 @@ import zombie.core.random.Rand;
 import zombie.inventory.types.HandWeapon;
 import zombie.network.PacketTypes;
 import zombie.network.fields.hit.HitInfo;
-import zombie.network.fields.hit.WeaponHit;
+import zombie.network.fields.hit.Hit;
+import zombie.network.packets.hit.PlayerHit;
 import zombie.network.packets.INetworkPacket;
-import zombie.network.packets.hit.HitCharacter;
 import zombie.apocalipse.humans.state.*;
 
 /** Native packet construction and local native processing, never a fake client receive/ownership path. */
@@ -56,7 +56,6 @@ final class ServerHumanCombatNetwork {
         if(target.isOnFloor())vars.targetOnGround.set(target);else vars.targetStanding.set(target);
         actor.getHitInfoList().clear();
         actor.getHitInfoList().add(new HitInfo().init(target,1,vars.targetDistance*vars.targetDistance,target.getX(),target.getY(),target.getZ()));
-        actor.getNetworkCharacterAI().setShotID((byte)(actor.getNetworkCharacterAI().getShotID()+1));
         boolean hit=!weapon.isRanged()||Rand.Next(100)<Math.clamp(weapon.getHitChance(),5,95);
         // Native ranged calculateCritChance reads client lighting using playerIndex.
         // Detached server actors have index -1: use the authored firearm chance instead.
@@ -65,7 +64,7 @@ final class ServerHumanCombatNetwork {
         actor.setCriticalHit(critical);
         float before=target.getHealth();
         float committed=0;
-        var hits=new ArrayList<WeaponHit>();
+        var hits=new ArrayList<Hit>();
         if(hit){
             actor.setVariable("ZombieHitReaction",weapon.isRanged()&&target instanceof IsoZombie?"Shot":"HeadLeft");
             // "Shot" is the attacker's unresolved marker, not a playable victim
@@ -80,19 +79,22 @@ final class ServerHumanCombatNetwork {
             float damage=target instanceof IsoZombie?zombie.apocalipse.humans.brain.HumanCombatDamage.packetDamage(resolved,weapon.isRanged()):Math.clamp(resolved,0,100);
             committed=damage;
             double dx=target.getX()-actor.getX(),dy=target.getY()-actor.getY(),distance=Math.max(.001,Math.hypot(dx,dy));
-            var wound=new WeaponHit();wound.set(damage,1,target.getHitForce(),(float)(dx/distance),(float)(dy/distance),false,false,false,false);hits.add(wound);
+            hits.add(new ServerHumanCommittedHit(damage,target.getHitForce(),(float)(dx/distance),(float)(dy/distance)));
         }
         actor.setAttackTargetSquare(target.getCurrentSquare());
-        HitCharacter packet=hit?(target instanceof IsoZombie z?new ServerHumanHitPacket(actor,weapon,z,hits):new ServerHumanPlayerHitPacket(actor,weapon,(zombie.characters.IsoPlayer)target,hits)):new ServerHumanMissPacket(actor,weapon);
+        PlayerHit packet=hit?(target instanceof IsoZombie z?new ServerHumanHitPacket(actor,weapon,z,hits):new ServerHumanPlayerHitPacket(actor,weapon,(zombie.characters.IsoPlayer)target,hits)):new ServerHumanMissPacket(actor,weapon);
         var packetType=hit?(target instanceof IsoZombie?PacketTypes.PacketType.PlayerHitZombie:PacketTypes.PacketType.PlayerHitPlayer):PacketTypes.PacketType.PlayerHitSquare;
         ServerHumanTransport.equipment(human);
         // Native client attack presentation is driven by this event, independently of the 500ms movement heartbeat.
-        for(var viewer:human.viewers)if(human.isRelevant(viewer))packet.sendToClient(packetType,viewer);
         float endurance=actor.getStats().get(CharacterStat.ENDURANCE);
         CombatManager.getInstance().processWeaponEndurance(actor,weapon);
-        // HitCharacter's native local path applies WeaponHit -> target.Hit, maintenance, XP hooks and death.
-        // It is not sufficient to send the packet: the server must process the same result locally once.
+        // Commit the authored hit locally once; serialization must contain the resulting target state.
+        PlayerHit.resetAttackState();
         packet.processClient(null);
+        if(packet instanceof ServerHumanHitPacket zombiePacket)zombiePacket.refreshTarget();
+        if(packet instanceof ServerHumanPlayerHitPacket playerPacket)playerPacket.target.set((zombie.characters.IsoPlayer)target);
+        var envelope=new ServerHumanCombatEnvelope(actor,weapon,packetType,packet);
+        for(var viewer:human.viewers)if(human.isRelevant(viewer))envelope.sendToClient(PacketTypes.PacketType.PlayerHit,viewer);
         if(hit)ServerHumanCombatAudio.impact(human,target,weapon);
         float delta=actor.getStats().get(CharacterStat.ENDURANCE)-endurance;
         if(Float.isFinite(delta)&&delta<0)human.state.dispatch(new HumanMutation.Adjust(HumanState.Stat.ENDURANCE,delta));

@@ -1,0 +1,53 @@
+{
+  "review": 47,
+  "state": "candidate-awaiting-approval",
+  "path": "zombie/gameStates/IngameState.java",
+  "recommendation": "Restore the same 19 telemetry scopes on exact target control flow; retain target tutorial/exit changes and all existing update calls, profilers, guards and catches.",
+  "source_applied": false,
+  "installed_files_modified": false,
+  "target_vanilla_sha256": "4b0364db7e8b03a4d7f27b0c32496148521b9bbc631f168b1ec9b239de01fa76",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-47-ingame-state.diff",
+  "candidate_diff_sha256": "a4b51eb1f27a8f28a109b91b0a27cb13a7aeb95236a8c0d7b9e81ac854be7efb",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-47-ingame-state.md",
+  "phase_keys": [
+    "simulation.misc.gameTime",
+    "simulation.misc.scripts",
+    "simulation.worldSounds",
+    "simulation.fire",
+    "simulation.misc.rain",
+    "simulation.misc.meta",
+    "simulation.zombies.virtual",
+    "simulation.collision.main",
+    "simulation.zombies.population",
+    "simulation.pathfinding.nativeMain",
+    "simulation.pathfinding.javaMain",
+    "simulation.lootRespawn",
+    "simulation.world",
+    "simulation.entities",
+    "simulation.animals.sync",
+    "simulation.radio",
+    "simulation.misc",
+    "simulation.onTick",
+    "simulation.managers"
+  ],
+  "verification": {
+    "source_check_passed": true,
+    "candidate_applies_cleanly": true,
+    "phase_names_match_old_patch": true,
+    "strip_added_scopes_restores_exact_target_text": true,
+    "new_fixture_added": false,
+    "full_game_jar_compile": false,
+    "target_runtime": false
+  },
+  "native_retained": [
+    "Core.isTutorial startup music selection",
+    "No reintroduction of Core.lastStand exit assignment",
+    "All call ordering, conditions, catches, profiler regions and pathfinding branch choices"
+  ],
+  "scope_limits": [
+    "Instrumentation only; no simulation scheduling or speedup claim.",
+    "Current helper phase() allocates/records whenever reached; no implicit client/output-disabled no-op guard.",
+    "Nested phases may overlap; not additive exclusive timings.",
+    "IngameState paths only; telemetry/server-loop bootstrap and independent GameServer integration remain review48."
+  ]
+}

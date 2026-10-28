@@ -307,7 +307,7 @@ A patch is not automatically valid for a newer build even if the class name is u
 
 The user explicitly authorized exact carry-over of the 50 replacements with
 byte-identical vanilla baselines and 200 ApocalipseBR-only support files after
-the source audit. These 250 files are staged without compatibility adaptations.
+the source audit. Those 250 files were initially copied unchanged; review38 has since adapted eight support sources.
 Follow the [subsystem tracker](42.22.0/docs/features/2026-10-27-subsystem-port-tracker.md)
 and its per-class copy receipt. Copied does not mean compiled or ported.
 
@@ -415,13 +415,93 @@ remains pending. Review35 PlayerEffectsPacket is approved/applied on 2026-10-28
 after baseline 2c2180d; candidate equality and 62 ownership assertions passed.
 Calendar gate retained. Review36 PlayerStatsPacket is approved/applied on
 2026-10-28 after baseline 006e586; candidate equality and 42 ownership assertions
-passed. Review37 SyncPlayerStatsPacket guard candidate remains unapplied.
+passed. Review37 SyncPlayerStatsPacket ownership guard is approved/applied on
+2026-10-28 after baseline 0210374; candidate equality and 20 assertions passed.
 The prior retirement recommendation is WITHDRAWN: CanModifyBodyStats and
 pre-parse authorization already existed in 42.21.0 and do not enforce target
 ownership; native OnlinePlayer still resolves global IDs. User requires guarding
 against cross-connection target manipulation. Recommend keeping the adapted
-owner guard (20 assertions passed); no admin exception or retirement authorized.
-Do not apply the candidate until individual approval.
+owner guard is applied; no admin exception or retirement authorized.
+Review38 PlayerHitPlayerPacket requires coordinated NPC combat adaptation: new
+PlayerHit/Hit/envelope protocol, removed WeaponHit/shot IDs/setter APIs and
+server roll lifecycle. The user approved preparing a coordinated candidate and
+selected a 500ms exact-payload guard, accepting identical rapid-attack suppression.
+The user approved review38 and the stock-client capacity tradeoff on 2026-10-28.
+All 16 files are applied and equal the reviewed candidate; 1,725 assertions passed
+after application with native packet/Hit sources, engine doubles and extracted
+allocation methods. Baselines: PlayerHitPlayerPacket 22a379e, PlayerHitPacket
+4999063, Hit 8a6561f, GameServer a5e1000. Fixed NPC IDs 768..1023 retain 64 active
+NPCs, reserve whole connection slots leaving 192 real connection slots, and
+permit 256 fresh incarnation IDs per process. Do not recycle IDs; skips and
+post-allocation failures consume IDs. Exhaustion rejects activation; restart
+required. These are stock-client player replicas, outside the live-player registry;
+no real bot connection is created. The 500ms exact-payload guard can suppress
+identical legitimate rapid attacks; altered/later replay is not comprehensively
+prevented. Full restart required for ID policy changes.
+GameServer currently contains only the native slot-reservation prerequisite;
+review48 MUST extend it and preserve reservation while porting the remaining old
+custom integrations. Do not overwrite it with another baseline. WeaponHit's old
+accessor intent is covered by new native Hit adapters; removed design resolved,
+with stale WeaponHit.class cleanup tracked but unimplemented. There are 302 target
+Java files, 43 reviewed merges, 3 changed-class retirements, 2 resolved removed
+targets, 2 pending changed reviews and 1 remaining removed-target design.
+Review39 PlayerHitSquarePacket is approved/applied on 2026-10-28 after baseline
+ae6e61a. The single missed() diagnostic call preserves all other target text;
+applied-candidate equality and source checks passed, with no new fixture.
+Review40 RequestTradingPacket/NPC trading handshake is approved/applied on
+2026-10-28. Baselines: RequestTradingPacket 2e1008f, AcceptTradingPacket 960fd49,
+RejectTradingPacket 67deb11. All four files equal the approved candidate and 131
+assertions passed again. Sender is ConnectionPlayer, destination OnlinePlayer;
+resolve only reserved NPC trading destinations in the packet-specific overrides.
+Global OnlinePlayer and PlayerRequestPacket remain vanilla. Native real-player
+pending-response checks stay intact. NPC replies use native AcceptTrading/
+RejectTrading setData(NPC,visitor); NPC sessions bypass TradingManager intentionally.
+Review41 TradingUIAddItemPacket is approved/applied on 2026-10-28 after exact
+baseline 300b619; candidate equality and 105 assertions passed again. Native
+sender-inventory lookup, item=null reset, item consistency, exact ordinary trade
+pair checks and version251 loader remain intact; NPC destination/offer hooks use
+the applied review40 adapter. Missing item IDs fail native consistency before
+adapter cancellation, leaving existing offers unchanged.
+Review42 TradingUIRemoveItemPacket is approved/applied on 2026-10-28 after exact
+baseline a78d82e; candidate equality and 120 assertions passed again. Keeps native
+fields, Integer ID, fixed body and ordinary trade-pair check. Existing NPC hook
+withdraws offer IDs without deleting inventory and unseals even absent IDs.
+Review43 TradingUIUpdateStatePacket is approved/applied on 2026-10-28 after exact
+baseline d26bfff; candidate equality and 195 assertions passed again. Ordinary
+native pending-request cleanup/pair/state logic stays intact; NPC state handling
+uses the applied adapter and unchanged consent/sale/failure policy. Removed
+Trading field intent is resolved through all narrow trade packet overrides;
+stale Trading.class cleanup is tracked (five families total), not implemented.
+PZArrayList is the sole remaining removed-target design. Full trade runtime/
+durability/credit validation is still open; no production-ready claim.
+Review44 ChatServer is approved/applied on 2026-10-28 after exact baseline
+196d5da; candidate equality and 43 extracted-method assertions passed again.
+Preserves native unknown-channel/membership/author and whisper ownership guards.
+Only filtered general player chat reaches the old backend hook after native send;
+trusted NPC say/shout/range helpers keep explicit real-recipient routing. Real
+backend worker, fanout/filtering/network/UI and full class/JAR remain untested;
+helper true is an attempt, not delivery acknowledgement.
+Review45 AdvancedAnimator is approved/applied on 2026-10-28 after exact baseline
+2b55f41; candidate/source equality passed. Adds only the old Files.notExists guard
+for optional missing folders, preserving native Collections.emptyList and other
+logic. No new fixture for that small diagnostic guard; no crash-fix claim.
+Review46 LuaManager is approved/applied on 2026-10-28 after exact baseline
+aca4626; candidate equality and 33 assertions passed again (21 cache,12 order/
+exposure). Restores requested-key cache source semantics, server-only existing
+APIs and decompiler typing/logging repairs. No shipped 42.22 bytecode/JAR/Kahlua
+or API implementation verification; event-control metadata followup remains.
+Review47 IngameState is the current unapplied one-class candidate: restore the
+same 19 old timing scopes (17 extra profiler resources, GameTime/world wrappers)
+on target flow. Reversing scopes restores all native text, including isTutorial
+music selection and removal of lastStand cleanup. Phase names match old patch;
+source checks only, no new fixture or runtime overhead/capture claim. Current
+Scope allocates/records whenever reached; do not call output-disabled/client
+paths no-op or claim an optimization. Nested timings overlap. Discuss/apply
+review47 individually, then prepare review48 GameServer. MUST extend the existing
+GameServer reservation prerequisite and preserve it, not recopy a vanilla baseline.
+Actual JAR, live client UI, full factory/GameServer composition, real journal/SQL
+receipt durability and native threading remain unverified. No installed files or
+production settings changed.
 After each approved patch, prepare the next individual review automatically,
 as the user requested; do not infer approval of that next merge.
 Upstream List traversal obsoletes these audited raw readers, not the separate

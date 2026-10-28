@@ -186,8 +186,38 @@ public class PlayerHitPacket implements INetworkPacket {
         }
     }
 
+    /** Keep rejected NPC claims out of both relay and common attack-state calculations. */
+    private void apocbrFilterNpcHits(UdpConnection connection) {
+        java.util.Set<IsoPlayer> targets = null;
+        boolean removed = false;
+        for (var iterator = this.packets.iterator(); iterator.hasNext();) {
+            Packet packet = iterator.next();
+            if (packet.playerHitPacket() instanceof PlayerHitPlayerPacket hit && hit.apocbrNpcTarget()) {
+                if (targets == null) targets = java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<>());
+                if (!targets.add(hit.target.getPlayer()) || !hit.apocbrAccept(connection, this.player.getPlayer())) {
+                    iterator.remove();
+                    removed = true;
+                }
+            }
+        }
+        if (removed) {
+            this.closestTarget = null;
+            float distanceToClosestTarget = 0.0F;
+            for (Packet packet : this.packets) {
+                if (packet.playerHitPacket().getTarget() instanceof IsoGameCharacter target) {
+                    float distance = packet.playerHitPacket().getDistance();
+                    if (this.closestTarget == null || distance < distanceToClosestTarget) {
+                        this.closestTarget = target;
+                        distanceToClosestTarget = distance;
+                    }
+                }
+            }
+        }
+    }
+
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        this.apocbrFilterNpcHits(connection);
         IsoPlayer isoPlayer = this.player.getPlayer();
         STATISTIC.clear();
         if (!this.packets.isEmpty()) {
@@ -233,6 +263,8 @@ public class PlayerHitPacket implements INetworkPacket {
             packet.playerHitPacket().processServer(packet.packetType(), connection);
         }
 
+        this.packets.removeIf(packet -> packet.playerHitPacket() instanceof PlayerHitPlayerPacket hit
+            && !hit.apocbrRelayAllowed());
         this.sendToRelativeClients(packetType, connection, this.player.getX(), this.player.getY());
         if (!STATISTIC.isEmpty()) {
             INetworkPacket.send(

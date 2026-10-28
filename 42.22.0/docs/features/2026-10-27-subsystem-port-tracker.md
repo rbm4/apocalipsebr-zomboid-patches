@@ -8,14 +8,17 @@ Every subsystem remains in scope, including smaller fixes and diagnostic feature
 ## Current checkpoint and workflow
 
 The authorized carry-over copies **50 old patched classes with byte-identical
-vanilla baselines and 200 ApocalipseBR-only support classes**. Every copied file
-retains the exact old patched bytes, including known obsolete APIs and build
-literals. This is source staging, not a compatibility repair or deployable build.
+vanilla baselines and 200 ApocalipseBR-only support classes**. Each initial copy retained the old patched bytes. Reviews38/40 subsequently adapted
+nine support sources; remaining copied files may retain obsolete APIs/build
+literals. Staging and partial integration do not establish a deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01-09, 12-19 and 21-36 merged; 10-11 and 20 retired to target vanilla; 37 SyncPlayerStats ownership guard awaiting approval**.
-There are 283 Java files present (250 exact carry-overs plus thirty-three reviewed merges),
-and three approved retirements with no target source override.
+Current review checkpoint: **01-09, 12-19 and 21-46 merged; 10-11 and 20 retired to target vanilla; 47 IngameState candidate**.
+There are 302 Java files: 250 original carry-overs (nine support files adapted),
+43 reviewed merges and nine additional combat/trading helpers/replacements/prerequisites.
+Three changed replacements retired to vanilla; removed WeaponHit and Trading
+intents are resolved by hit/trade adapters. Five stale class families await
+deployment cleanup.
 The target using-player fixture passed 190,141 assertions, including pending-add
 reset; the old-target fixture passed 190,136. These execute production methods
 with engine stubs and do not establish full-class or runtime compatibility.
@@ -71,7 +74,7 @@ the proposed combination, shared subsystems and necessary validation. Discuss
 one class at a time and record the user's decision before applying that merge.
 Do not infer acceptance of the remaining queue from acceptance of one class.
 
-After those reviews, address the three removed-class designs, support-class API
+After those reviews, address the remaining PZArrayList removed-class design, support-class API
 adaptations, additional patch points, fixtures and target integration. Dependencies
 that would make an approved merge unusable must be identified during its review;
 ordering can change by agreement. Never mark a whole subsystem complete merely
@@ -324,8 +327,18 @@ Review 33 [WorldDictionary](../reports/2026-10-28-merge-33-world-dictionary.md) 
 Review 34 [PlayerDamagePacket](../reports/2026-10-28-merge-34-player-damage-packet.md) is approved/applied; candidate equality and 26 complete-packet/native-field fixture assertions passed.
 Review 35 [PlayerEffectsPacket](../reports/2026-10-28-merge-35-player-effects-packet.md) is approved/applied; candidate equality and 62 fixture assertions passed, calendar gate retained.
 Review 36 [PlayerStatsPacket](../reports/2026-10-28-merge-36-player-stats-packet.md) is approved/applied; candidate equality and 42 complete-packet/field fixture assertions passed.
-Review 37 [SyncPlayerStatsPacket](../reports/2026-10-28-merge-37-sync-player-stats.md) retains an unapplied ownership guard; prior retirement recommendation withdrawn. Capability checks already existed and do not constrain globally resolved OnlinePlayer targets. Candidate passed 20 assertions; no source/retirement applied.
-The remaining 12 entries await individual discussion. Exact-JAR compilation/runtime remain pending.
+Review 37 [SyncPlayerStatsPacket](../reports/2026-10-28-merge-37-sync-player-stats.md) is approved/applied with ownership guard; prior retirement recommendation withdrawn. Capability checks already existed and do not constrain global targets. Applied-candidate equality and 20 assertions passed; no retirement.
+Review 38 [PlayerHitPlayerPacket/NPC combat](../reports/2026-10-28-merge-38-player-hit-player.md) is approved/applied: all 16 files equal the reviewed diff and 1,725 assertions passed after application. Fixed NPC IDs 768..1023 reserve whole connection slots (192 real connections), retain 64 active NPCs, and allow 256 fresh IDs per process without reuse. The user approved the capacity tradeoff and 500ms exact-payload guard with rapid-attack limitation. Four native baseline commits: 22a379e, 4999063, 8a6561f and a5e1000. GameServer's broader custom integration remains review48; extend its reservation source. Removed WeaponHit intent is covered; stale loose-class cleanup remains pending.
+Review 39 [PlayerHitSquarePacket](../reports/2026-10-28-merge-39-player-hit-square.md) is approved/applied after baseline ae6e61a. The only custom change is the existing server-throttled missed() call before native parsing; applied-candidate/source equality passed. No new fixture was added for the diagnostic-only hook.
+Review 40 [RequestTradingPacket/NPC handshake](../reports/2026-10-28-merge-40-request-trading.md) is approved/applied: all four files equal the reviewed diff and 131 assertions passed again. Native baselines 2e1008f, 960fd49 and 67deb11. Resolve only reserved trading destinations, use native Accept/Reject replies, keep real-player pending response checks and NPC offer guards. Item/remove/finalize ports remain separate.
+Review 41 [TradingUIAddItemPacket](../reports/2026-10-28-merge-41-trading-add-item.md) is approved/applied after native baseline 300b619; candidate equality and 105 assertions passed again. Retains native sender-inventory lookup, item reset/consistency, exact ordinary trade-pair checks and client item version251; connects recognized NPC destinations to the existing offer adapter.
+Review 42 [TradingUIRemoveItemPacket](../reports/2026-10-28-merge-42-trading-remove-item.md) is approved/applied after native baseline a78d82e; candidate equality and 120 assertions passed again. Native field/pair checks remain; withdrawals only alter the offer and invalidate consent without consuming inventory.
+Review 43 [TradingUIUpdateStatePacket](../reports/2026-10-28-merge-43-trading-update-state.md) is approved/applied after native baseline d26bfff; candidate equality and 195 assertions passed again. Keeps native ordinary pending-request cleanup and trade-pair/state logic. NPC state handling uses existing consent/sale/failure policy; actual durability/credit remains unverified. Removed Trading intent is resolved through narrow packet overrides; stale class-family cleanup tracked but unimplemented.
+Review 44 [ChatServer](../reports/2026-10-28-merge-44-chat-server.md) is approved/applied after native baseline 196d5da; candidate equality and 43 extracted-method assertions passed again. Preserves new native message/whisper ownership and channel checks, with filtered-general backend capture and trusted explicit-recipient NPC say/shout helpers. Real backend delivery, client UI and full-JAR remain unverified.
+Review 45 [AdvancedAnimator](../reports/2026-10-28-merge-45-advanced-animator.md) is approved/applied after exact native baseline 2b55f41; candidate/source equality passed. Only the old missing-optional-folder guard is added; native Collections.emptyList and other class text stay unchanged. No new fixture for this small diagnostic guard.
+Review 46 [LuaManager](../reports/2026-10-28-merge-46-lua-manager.md) is approved/applied after exact native baseline aca4626; candidate equality and 33 assertions passed again. Requested-key cache/source repairs, typed modFiles/logging overloads and server-only event/radio/login exposure are applied. Real Kahlua/JAR/API implementations and event-control metadata remain unverified; the old-JAR bytecode test is not target evidence.
+Review 47 [IngameState](../reports/2026-10-28-merge-47-ingame-state.md) proposes the same 19 timing scopes on exact target flow, retaining tutorial/exit changes. Clean application, phase-key equality and reversible scope-only source delta verified; no new fixture or runtime timing capture. Current helper allocates/records whenever scopes are reached; no zero-cost/client no-op or speedup claim. Candidate remains unapplied; GameServer bootstrap/integration stays review48.
+The remaining 2 entries await individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
@@ -364,24 +377,24 @@ The remaining 12 entries await individual discussion. Exact-JAR compilation/runt
 | 33 | [world/WorldDictionary.java](../../decompiled/zombie/world/WorldDictionary.java) | DB-DICT | clean | Approved/applied; source checks passed |
 | 34 | [network/packets/character/PlayerDamagePacket.java](../../decompiled/zombie/network/packets/character/PlayerDamagePacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Approved/applied; ownership fixture passed |
 | 35 | [network/packets/character/PlayerEffectsPacket.java](../../decompiled/zombie/network/packets/character/PlayerEffectsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Approved/applied; ownership fixture passed |
-| 36 | [network/packets/character/PlayerStatsPacket.java](../../decompiled/zombie/network/packets/character/PlayerStatsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
-| 37 | [network/packets/SyncPlayerStatsPacket.java](../../decompiled/zombie/network/packets/SyncPlayerStatsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
-| 38 | [network/packets/hit/PlayerHitPlayerPacket.java](../../decompiled/zombie/network/packets/hit/PlayerHitPlayerPacket.java) | BOT-COMBAT | 1 conflict region(s) | Awaiting individual discussion |
-| 39 | [network/packets/hit/PlayerHitSquarePacket.java](../../decompiled/zombie/network/packets/hit/PlayerHitSquarePacket.java) | BOT-COMBAT | clean | Awaiting individual discussion |
-| 40 | [network/packets/RequestTradingPacket.java](../../decompiled/zombie/network/packets/RequestTradingPacket.java) | BOT-INTERACT | 2 conflict region(s) | Awaiting individual discussion |
-| 41 | [network/packets/TradingUIAddItemPacket.java](../../decompiled/zombie/network/packets/TradingUIAddItemPacket.java) | BOT-INTERACT | 1 conflict region(s) | Awaiting individual discussion |
-| 42 | [network/packets/TradingUIRemoveItemPacket.java](../../decompiled/zombie/network/packets/TradingUIRemoveItemPacket.java) | BOT-INTERACT | 1 conflict region(s) | Awaiting individual discussion |
-| 43 | [network/packets/TradingUIUpdateStatePacket.java](../../decompiled/zombie/network/packets/TradingUIUpdateStatePacket.java) | BOT-INTERACT | 1 conflict region(s) | Awaiting individual discussion |
-| 44 | [network/chat/ChatServer.java](../../decompiled/zombie/network/chat/ChatServer.java) | BOT-SPEECH | 1 conflict region(s) | Awaiting individual discussion |
-| 45 | [core/skinnedmodel/advancedanimation/AdvancedAnimator.java](../../decompiled/zombie/core/skinnedmodel/advancedanimation/AdvancedAnimator.java) | FIX-LOADING | clean | Awaiting individual discussion |
-| 46 | [Lua/LuaManager.java](../../decompiled/zombie/Lua/LuaManager.java) | INTEGRATION | clean | Awaiting individual discussion |
-| 47 | [gameStates/IngameState.java](../../decompiled/zombie/gameStates/IngameState.java) | INTEGRATION | clean | Awaiting individual discussion |
-| 48 | [network/GameServer.java](../../decompiled/zombie/network/GameServer.java) | INTEGRATION | 1 conflict region(s) | Awaiting individual discussion |
+| 36 | [network/packets/character/PlayerStatsPacket.java](../../decompiled/zombie/network/packets/character/PlayerStatsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Approved/applied; ownership fixture passed |
+| 37 | [network/packets/SyncPlayerStatsPacket.java](../../decompiled/zombie/network/packets/SyncPlayerStatsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Approved/applied; ownership retained |
+| 38 | [network/packets/hit/PlayerHitPlayerPacket.java](../../decompiled/zombie/network/packets/hit/PlayerHitPlayerPacket.java) | BOT-COMBAT | 1 conflict region(s) | Approved/applied; 16-file NPC integration and reserved capacity; 1,725 assertions |
+| 39 | [network/packets/hit/PlayerHitSquarePacket.java](../../decompiled/zombie/network/packets/hit/PlayerHitSquarePacket.java) | BOT-COMBAT | clean | Approved/applied; one-call diagnostic; source equivalence verified |
+| 40 | [network/packets/RequestTradingPacket.java](../../decompiled/zombie/network/packets/RequestTradingPacket.java) | BOT-INTERACT | 2 conflict region(s) | Approved/applied; four-file handshake; 131 assertions |
+| 41 | [network/packets/TradingUIAddItemPacket.java](../../decompiled/zombie/network/packets/TradingUIAddItemPacket.java) | BOT-INTERACT | 1 conflict region(s) | Approved/applied; NPC offer hook; 105 assertions |
+| 42 | [network/packets/TradingUIRemoveItemPacket.java](../../decompiled/zombie/network/packets/TradingUIRemoveItemPacket.java) | BOT-INTERACT | 1 conflict region(s) | Approved/applied; offer withdrawal; 120 assertions |
+| 43 | [network/packets/TradingUIUpdateStatePacket.java](../../decompiled/zombie/network/packets/TradingUIUpdateStatePacket.java) | BOT-INTERACT | 1 conflict region(s) | Approved/applied; NPC state hook; 195 assertions |
+| 44 | [network/chat/ChatServer.java](../../decompiled/zombie/network/chat/ChatServer.java) | BOT-SPEECH | 1 conflict region(s) | Approved/applied; NPC speech/general bridge; 43 assertions |
+| 45 | [core/skinnedmodel/advancedanimation/AdvancedAnimator.java](../../decompiled/zombie/core/skinnedmodel/advancedanimation/AdvancedAnimator.java) | FIX-LOADING | clean | Approved/applied; optional-folder guard; source equivalence |
+| 46 | [Lua/LuaManager.java](../../decompiled/zombie/Lua/LuaManager.java) | INTEGRATION | clean | Approved/applied; cache/server API source repairs; 33 assertions |
+| 47 | [gameStates/IngameState.java](../../decompiled/zombie/gameStates/IngameState.java) | INTEGRATION | clean | Nineteen telemetry scopes; source verified; awaiting approval |
+| 48 | [network/GameServer.java](../../decompiled/zombie/network/GameServer.java) | INTEGRATION | 1 conflict region(s) | Review38 reservation prerequisite applied; full integration awaits discussion |
 
 ### Removed replacement designs, after the merge queue
 
-- `zombie/network/fields/hit/WeaponHit.java`: not copied; upstream replacement contract needs a separate design decision.
-- `zombie/network/fields/Trading.java`: not copied; upstream replacement contract needs a separate design decision.
+- `zombie/network/fields/hit/WeaponHit.java`: resolved in applied review38 through native Hit/server-body-loss adapters; no obsolete class recreated. Stale class-family cleanup remains pending.
+- `zombie/network/fields/Trading.java`: resolved in applied review43 through narrow request/accept/reject and UI add/remove/state packet hooks; stale class-family cleanup remains pending.
 - `zombie/util/list/PZArrayList.java`: not copied; upstream replacement contract needs a separate design decision.
 
 ### Exact support assets
@@ -393,16 +406,16 @@ The remaining 12 entries await individual discussion. Exact-JAR compilation/runt
 - [lib/HikariCP-7.1.0.jar](../../lib/HikariCP-7.1.0.jar): already-present-exact; not executed.
 - [lib/postgresql-42.7.14.jar](../../lib/postgresql-42.7.14.jar): already-present-exact; not executed.
 
-### Copied files already known to need adaptation
+### Initially identified copied-support adaptations (four remain)
 
 | Copied source | Required later work |
 | --- | --- |
-| [zombie/apocalipse/humans/ServerHumanCombatNetwork.java](../../src/zombie/apocalipse/humans/ServerHumanCombatNetwork.java) | Removed WeaponHit model and changed native hit processing. |
-| [zombie/apocalipse/humans/ServerHumanHitPacket.java](../../src/zombie/apocalipse/humans/ServerHumanHitPacket.java) | Removed WeaponHit and obsolete zombie-hit setter. |
-| [zombie/apocalipse/humans/ServerHumanMissPacket.java](../../src/zombie/apocalipse/humans/ServerHumanMissPacket.java) | Obsolete PlayerHitSquarePacket.set overload. |
-| [zombie/apocalipse/humans/ServerHumanPlayerDamage.java](../../src/zombie/apocalipse/humans/ServerHumanPlayerDamage.java) | Removed WeaponHit payload model. |
-| [zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java](../../src/zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java) | Removed WeaponHit and obsolete PvP setter. |
-| [zombie/apocalipse/humans/ServerHumanTrading.java](../../src/zombie/apocalipse/humans/ServerHumanTrading.java) | Removed RequestTradingPacket.accept/reject and changed identity fields. |
+| [zombie/apocalipse/humans/ServerHumanCombatNetwork.java](../../src/zombie/apocalipse/humans/ServerHumanCombatNetwork.java) | Adapted in applied review38; native/runtime validation remains pending. |
+| [zombie/apocalipse/humans/ServerHumanHitPacket.java](../../src/zombie/apocalipse/humans/ServerHumanHitPacket.java) | Adapted in applied review38; native/runtime validation remains pending. |
+| [zombie/apocalipse/humans/ServerHumanMissPacket.java](../../src/zombie/apocalipse/humans/ServerHumanMissPacket.java) | Adapted in applied review38; native/runtime validation remains pending. |
+| [zombie/apocalipse/humans/ServerHumanPlayerDamage.java](../../src/zombie/apocalipse/humans/ServerHumanPlayerDamage.java) | Adapted in applied review38; native/runtime validation remains pending. |
+| [zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java](../../src/zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java) | Adapted in applied review38; native/runtime validation remains pending. |
+| [zombie/apocalipse/humans/ServerHumanTrading.java](../../src/zombie/apocalipse/humans/ServerHumanTrading.java) | Adapted in applied review40; native replies and OnlinePlayer. Packet integrations remain reviews41-43. |
 | [zombie/popman/NetworkZombiePacker.java](../../src/zombie/popman/NetworkZombiePacker.java) | Snapshot calls removed ZombiePacket.write(ByteBuffer). |
 | [zombie/savefile/ApocBRPlayerRelationalDatabase.java](../../src/zombie/savefile/ApocBRPlayerRelationalDatabase.java) | Old game_build literal for newly captured datasets. |
 | [zombie/savefile/ApocBRPlayerRelationalReconstruction.java](../../src/zombie/savefile/ApocBRPlayerRelationalReconstruction.java) | Reflective hand fields renamed in new IsoGameCharacter. |

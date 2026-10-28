@@ -1,0 +1,31 @@
+{
+  "review": 45,
+  "state": "approved-applied",
+  "path": "zombie/core/skinnedmodel/advancedanimation/AdvancedAnimator.java",
+  "recommendation": "Retain the existing Files.notExists guard for absent optional animation/action-group paths; keep all target-native animation logic and Collections.emptyList replacement.",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "target_vanilla_sha256": "31d635a210e85cca6a2260a47c963d3e207ee5112a301f6b2828cf61c470965e",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-45-advanced-animator.diff",
+  "candidate_diff_sha256": "c12f49775e74855df983ff36646e10e49c4be87e86895c25f161e3fc166735e6",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-45-advanced-animator.md",
+  "verification": {
+    "source_check_passed": true,
+    "candidate_applies_cleanly": true,
+    "old_guard_identical": true,
+    "remaining_target_text_unchanged": true,
+    "new_fixture_added": false,
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "applied_candidate_equivalence": true
+  },
+  "scope": "Only paths reported absent by Files.notExists return an empty result early. Existing-path walker, XML filtering/normalization, sorting/callers and native failure logging otherwise stay unchanged. No animation gameplay change or broad loader-error recovery is proposed.",
+  "target_source_sha256": "ae7e23ea6f839b617bb76dd8e827c20ceba7e4376a78f700e0714f7783004f67",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "yes",
+    "date": "2026-10-28",
+    "baseline_commit": "2b55f41732ed0acf4718e6e543cdbf5b346fbdf1",
+    "installed_files_modified": false
+  }
+}

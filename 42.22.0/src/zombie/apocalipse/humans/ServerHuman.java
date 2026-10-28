@@ -28,10 +28,7 @@ final class ServerHuman {
     final ServerHumanInventory inventory;
     final ServerHumanSpeech speech;
     boolean aiming;
-    IsoPlayer lastPlayerAttacker;
-    byte lastPlayerShot;
-    int lastPlayerWeapon;
-    long lastPlayerAttackAt;
+    final ServerHumanAttackReplay playerAttackReplay = new ServerHumanAttackReplay();
     long nextPlayerHitTrace;
     int playerHitTraceLines;
     final java.util.Map<UdpConnection,ServerHumanTransport.Equipment> equipmentPresentation=new IdentityHashMap<>();

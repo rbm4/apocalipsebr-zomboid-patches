@@ -1,0 +1,10 @@
+--- a/42.22.0/src/zombie/network/packets/hit/PlayerHitSquarePacket.java
++++ b/42.22.0/src/zombie/network/packets/hit/PlayerHitSquarePacket.java
+@@ -50,6 +50,7 @@
+ 
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
++        zombie.apocalipse.humans.ServerHumanPlayerAttacks.missed();
+         super.parse(b, connection);
+         this.square.parse(b, connection);
+     }

@@ -1,8 +1,9 @@
 # Review 37/48: SyncPlayerStatsPacket connection ownership
 
-Created 2026-10-28. Status: **guard candidate proposed; not applied**.
+Created 2026-10-28. Status: **ownership guard approved/applied on 2026-10-28**.
 The earlier native-retirement recommendation is withdrawn. Review36 is applied;
-review37 has no target replacement or retirement. See the
+review37 source matches the reviewed guard candidate after exact baseline `0210374`.
+No retirement was applied. See the
 [tracker](../features/2026-10-27-subsystem-port-tracker.md).
 
 ## Corrected decision and threat model
@@ -59,7 +60,7 @@ stats/nutrition, cross-connection target rejection, invalid/missing IDs, hasPlay
 mismatch, null connection, client updates and online-ID writing. It does not run
 the full capability manager, real stats serializer or network exploit replay.
 
-No target source or installed files were changed; no retirement or cleanup family
-was recorded for this class. Full dispatch/role/connection and native multiplayer
-validation remain pending. Decision requested: apply the adapted ownership guard,
-preserving native protocol and the user's sender-bound target restriction.
+The user approved implementation of the adapted guard. Applied-candidate
+equality and 20 assertions passed again. Target source and tracking are updated;
+no installed files, retirement or cleanup family changed. Full dispatch/role/
+connection and native multiplayer validation remain pending.

@@ -2,13 +2,17 @@
 
 42.22.0 is the current server development target (pre-release). The vanilla
 baseline is `../decompiled/zombie/`; replacement sources belong in `../src/zombie/`.
-The source tree contains 283 Java files: 50 replacements whose vanilla
-baselines are unchanged and 200 ApocalipseBR support classes, copied byte for byte
-from 42.21.0, plus thirty-three individually approved merges, including PlayerStatsPacket.
-Reviews 10-11 and 20 retired LoadGridsquarePerformanceWorkaround, LootRespawn and IsoGenerator to vanilla
-with no source overrides. Another 12 changed reviews and 3 removed targets await decisions. Reviews 01-04
-and 06-09, 12-13, 15-16, 18-19, 22-26, 28-32 and 34-36 passed target fixtures; SpriteConfig's diagnostic-only changes passed source
-verification; IsoWorld, IsoAnimal, IsoDoor, ZombieCountOptimiser and WorldDictionary also passed source checks. Exact-target JAR compilation and runtime verification remain pending.
+The source tree contains 302 Java files: 250 original carry-overs, 43 individually
+approved replacement merges, and nine additional combat/trading helpers/replacements or
+prerequisites. Nine copied support sources were adapted in reviews38/40. Its
+GameServer source currently contains only the native connection-slot reservation;
+the full custom integration remains review48. Reviews 10-11 and 20 retired three
+changed replacements to vanilla, and reviews38/43 resolved removed WeaponHit/Trading through
+native hit and packet-specific trading adapters. Another 2 changed reviews and
+1 removed target await decisions.
+Reviews 01-04, 06-09, 12-13, 15-16, 18-19, 22-26, 28-32, 34-38 and 40-44 and 46 passed target
+fixtures with explicit doubles; other applied merges passed source checks.
+Exact-target JAR compilation and runtime verification remain pending.
 This directory is under migration and is not a deployable or validated release.
 
 Start with the class-by-class migration report before carrying over any source.
@@ -29,7 +33,17 @@ No complete feature has been compiled and runtime-verified for this target yet.
 
 | Date | Document |
 | --- | --- |
-| 2026-10-28 | [Review 37/48: SyncPlayerStatsPacket (ownership guard; retirement recommendation withdrawn)](reports/2026-10-28-merge-37-sync-player-stats.md) |
+| 2026-10-28 | [Review 47/48: IngameState (telemetry scopes candidate)](reports/2026-10-28-merge-47-ingame-state.md) |
+| 2026-10-28 | [Review 46/48: LuaManager (applied; cache/server API source repairs)](reports/2026-10-28-merge-46-lua-manager.md) |
+| 2026-10-28 | [Review 45/48: AdvancedAnimator (applied; optional-folder guard)](reports/2026-10-28-merge-45-advanced-animator.md) |
+| 2026-10-28 | [Review 44/48: ChatServer (applied; NPC speech/general bridge)](reports/2026-10-28-merge-44-chat-server.md) |
+| 2026-10-28 | [Review 43/48: TradingUIUpdateStatePacket (applied; trade state)](reports/2026-10-28-merge-43-trading-update-state.md) |
+| 2026-10-28 | [Review 42/48: TradingUIRemoveItemPacket (applied; offer withdrawal)](reports/2026-10-28-merge-42-trading-remove-item.md) |
+| 2026-10-28 | [Review 41/48: TradingUIAddItemPacket (applied; NPC offer)](reports/2026-10-28-merge-41-trading-add-item.md) |
+| 2026-10-28 | [Review 40/48: RequestTradingPacket (applied handshake)](reports/2026-10-28-merge-40-request-trading.md) |
+| 2026-10-28 | [Review 39/48: PlayerHitSquarePacket (applied; miss diagnostic)](reports/2026-10-28-merge-39-player-hit-square.md) |
+| 2026-10-28 | [Review 38/48: PlayerHitPlayerPacket (applied; reserved IDs and NPC combat)](reports/2026-10-28-merge-38-player-hit-player.md) |
+| 2026-10-28 | [Review 37/48: SyncPlayerStatsPacket (guard applied; ownership retained)](reports/2026-10-28-merge-37-sync-player-stats.md) |
 | 2026-10-28 | [Review 36/48: PlayerStatsPacket (applied; ownership fixture passed)](reports/2026-10-28-merge-36-player-stats-packet.md) |
 | 2026-10-28 | [Review 35/48: PlayerEffectsPacket (applied; ownership fixture passed)](reports/2026-10-28-merge-35-player-effects-packet.md) |
 | 2026-10-28 | [Review 34/48: PlayerDamagePacket (applied; ownership fixture passed)](reports/2026-10-28-merge-34-player-damage-packet.md) |
@@ -89,7 +103,8 @@ Applied: [ServerMap review](reports/2026-10-28-merge-13-server-map.md) and [diff
 Applied: [IsoWorld review](reports/2026-10-28-merge-14-iso-world.md).
 IsoGenerator: [approved retirement](reports/2026-10-28-merge-20-iso-generator.json).
 VehiclesDB2 gap repairs are user-deferred while the vehicle PostgreSQL backend remains disabled by default; production settings were not changed.
-Next: [SyncPlayerStats ownership review](reports/2026-10-28-merge-37-sync-player-stats.md), [corrected guard proposal](reports/2026-10-28-merge-37-sync-player-stats.json) and [candidate diff](reports/2026-10-28-merge-37-sync-player-stats.diff).
+Applied: [SyncPlayerStats ownership guard](reports/2026-10-28-merge-37-sync-player-stats.json).
+Applied: [review38 NPC combat and reserved IDs](reports/2026-10-28-merge-38-player-hit-player.md); all 16 files match the approved diff and 1,725 assertions passed after application. IDs 768..1023, 192 real connection slots, 64 active NPCs and 256 fresh IDs per process are approved. Applied: [review39 miss diagnostic](reports/2026-10-28-merge-39-player-hit-square.md), baseline ae6e61a and source-equivalence verified. Applied: [review40 trade handshake](reports/2026-10-28-merge-40-request-trading.md), all four files match and 131 assertions passed again. Applied: [review41 add-item](reports/2026-10-28-merge-41-trading-add-item.md), baseline 300b619, candidate equality and 105 assertions. Applied: [review42 remove-item](reports/2026-10-28-merge-42-trading-remove-item.md), baseline a78d82e, candidate equality and 120 assertions. Applied: [review43 state/finalization](reports/2026-10-28-merge-43-trading-update-state.md), baseline d26bfff, candidate equality and 195 assertions. Applied: [review44 ChatServer](reports/2026-10-28-merge-44-chat-server.md), baseline 196d5da, candidate equality and 43 assertions. Applied: [review45 AdvancedAnimator](reports/2026-10-28-merge-45-advanced-animator.md), baseline 2b55f41 and source-equivalence checks. Applied: [review46 LuaManager](reports/2026-10-28-merge-46-lua-manager.md), baseline aca4626, candidate equality and 33 assertions. Next: [review47 IngameState](reports/2026-10-28-merge-47-ingame-state.md), source-verified 19 telemetry scopes, unapplied.
 
 ## Issues
 

@@ -200,6 +200,9 @@ public class ChatServer {
                             WordsFilter.getInstance().hideBadWords(message.getText(), result, ServerOptions.getInstance().badWordReplacement.getValue())
                         );
                         this.sendMessage(message);
+                        if (chat.getType() == ChatType.general) {
+                            zombie.network.ApocBRBackendBridgeHooks.onChat(connection, message.getAuthor(), message.getText(), "general");
+                        }
                         logger.write("Message " + message + " sent to chat (id = " + chat.getID() + ") members", "info");
                     }
                 }
@@ -504,6 +507,31 @@ public class ChatServer {
     public void sendMessageToServerChat(String msg) {
         ServerChatMessage chatMessage = serverChat.createServerMessage(msg, false);
         serverChat.sendMessageToChatMembers(chatMessage);
+    }
+
+    /** Server-owned presentation actors have no chat account; the recipient must. */
+    public boolean sendHumanSay(short recipientId, String author, String text) {
+        if (!inited || !players.contains(recipientId) || !ChatUtility.chatStreamEnabled(ChatType.say)) return false;
+        ChatBase say = defaultChats.get(ChatType.say);
+        if (say == null) return false;
+        ChatMessage message = say.createMessage(text);
+        message.setAuthor(author);
+        // Explicit recipient routing avoids RangeBasedChat's real-player author lookup.
+        say.sendMessageToPlayer(recipientId, message);
+        return true;
+    }
+
+    public float humanShoutRange() {
+        ChatBase chat=defaultChats.get(ChatType.shout);
+        return inited&&chat!=null&&ChatUtility.chatStreamEnabled(ChatType.shout)?chat.getRange():0;
+    }
+
+    /** Explicit recipient routing for a detached NPC author, using the ordinary /yell channel. */
+    public boolean sendHumanShout(short recipientId,String author,String text) {
+        if(!inited||!players.contains(recipientId)||!ChatUtility.chatStreamEnabled(ChatType.shout))return false;
+        ChatBase chat=defaultChats.get(ChatType.shout);if(chat==null)return false;
+        ChatMessage message=chat.createMessage(text);message.setAuthor(author);
+        chat.sendMessageToPlayer(recipientId,message);return true;
     }
 
     public void sendMessageFromDiscordToGeneralChat(String author, String msg) {

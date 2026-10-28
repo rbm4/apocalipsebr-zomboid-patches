@@ -1,12 +1,12 @@
 {
   "review": 37,
-  "state": "proposed-unapplied",
+  "state": "approved-applied",
   "path": "zombie/network/packets/SyncPlayerStatsPacket.java",
   "recommendation": "Retain adapted connection-ownership guard on native OnlinePlayer protocol; capability authorization is not target ownership.",
   "target_source_should_exist": true,
   "target_vanilla_sha256": "a411ac35e298cfa5703fd8293378709bd6c2e430962e6c11bd2dc24ec0abe8b5",
   "source_evidence": "CanModifyBodyStats and the pre-parse capability/co-op-host check already existed in 42.21.0. In 42.22.0 this packet still resolves OnlinePlayer from global GameServer.IDToPlayerMap. Only the ordinary damage/effects/stats packets moved to sender-scoped ConnectionPlayer. Capability checks do not enforce target connection membership.",
-  "deployment_dependency": "No retirement proposed; no class-family cleanup entry added. Guard candidate remains unapplied pending individual approval.",
+  "deployment_dependency": "No retirement proposed; no class-family cleanup entry added. Ownership guard is applied following individual approval.",
   "review_document": "42.22.0/docs/reports/2026-10-28-merge-37-sync-player-stats.md",
   "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-37-sync-player-stats.diff",
   "candidate_fixture": {
@@ -15,5 +15,13 @@
     "assertions": 20,
     "scope": "Complete owner-only alternative + native OnlinePlayer/Player + actual guard with stat/connection doubles. Capability manager/native runtime not executed."
   },
-  "review_correction": "Prior recommendation to retire based on native capability authorization withdrawn after user clarified the cross-connection manipulation threat. No exploit-path/root-cause or security-equivalence claim established."
+  "review_correction": "Prior recommendation to retire based on native capability authorization withdrawn after user clarified the cross-connection manipulation threat. No exploit-path/root-cause or security-equivalence claim established.",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "ok, so you can move into implementing now so we can go to the next review",
+    "date": "2026-10-28",
+    "baseline_commit": "0210374",
+    "source_applied": true,
+    "installed_files_modified": false
+  }
 }
