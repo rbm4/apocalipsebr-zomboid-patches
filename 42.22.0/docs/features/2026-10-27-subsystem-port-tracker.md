@@ -13,8 +13,8 @@ retains the exact old patched bytes, including known obsolete APIs and build
 literals. This is source staging, not a compatibility repair or deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01-03 approved/applied; 04 CraftLogicSystem awaiting discussion**.
-There are 253 Java files present (250 exact carry-overs plus three reviewed merges).
+Current review checkpoint: **01-07 approved/applied; 08 IsoGridSquare awaiting discussion**.
+There are 257 Java files present (250 exact carry-overs plus seven reviewed merges).
 The target using-player fixture passed 190,141 assertions, including pending-add
 reset; the old-target fixture passed 190,136. These execute production methods
 with engine stubs and do not establish full-class or runtime compatibility.
@@ -27,6 +27,19 @@ The target manager lifecycle fixture passed 31 assertions using extracted manage
 methods and the actual EngineEntityManager/clock/throttle with engine doubles.
 It covers batching, client suppression, refreshed lookups, pending cancellation,
 meta loading and immediate/deferred release; exact-JAR/runtime checks remain open.
+The target crafting fixture passed 21 assertions with the complete CraftLogicSystem
+and real clock/throttle, using explicit bucket/recipe/resource/world doubles.
+Review 04 was verified after the power interruption. Review 05 is applied and
+source-verified: its only changes suppress three diagnostics while retaining sync
+format 251. No SpriteConfig gameplay fixture was needed or run. Review 06 is applied with
+31 target inventory/container assertions passing; insertion/fluid/native integration
+remains pending. The user accepts these staged dependencies while preserving
+individual review of subsequent classes. Review 07 is applied with 35 parser/
+provenance/fluid assertions passing, combining loadByteCount with quality diagnostics
+and new payload metadata 251. The user explicitly expects PostgreSQL reconstruction
+to consume these hooks later; full routing/reconstruction remains pending.
+Review 08 is an unapplied List/LOS candidate; its raw-array conflict resolutions
+do not retire the separate List-compatible identity/mutation cache work.
 
 The [copy receipt and per-class ownership/dependency ledger](../reports/2026-10-27-carryover.json)
 tracks all 301 Java source files, their original hashes, subsystem, baseline
@@ -235,21 +248,21 @@ copy provenance; record future merge decisions in both places.
 | DB-LOGIN | 9 | 9 | 0 | 0 | 0 |
 | DB-MOD | 1 | 1 | 0 | 0 | 0 |
 | DB-NPC | 6 | 6 | 0 | 0 | 0 |
-| DB-PLAYER | 26 | 25 | 0 | 1 | 0 |
+| DB-PLAYER | 26 | 25 | 1 | 0 | 0 |
 | DB-VEHICLE | 2 | 1 | 0 | 1 | 0 |
 | FIX-LOADING | 2 | 1 | 0 | 1 | 0 |
 | FIX-SAFEHOUSE | 3 | 3 | 0 | 0 | 0 |
 | FIX-TROUGH | 1 | 1 | 0 | 0 | 0 |
-| INTEGRATION | 8 | 0 | 0 | 8 | 0 |
+| INTEGRATION | 8 | 0 | 1 | 7 | 0 |
 | NETWORK-GUARDS | 5 | 1 | 0 | 4 | 0 |
 | OBS-CLIENT | 2 | 2 | 0 | 0 | 0 |
 | OBS-TELEMETRY | 3 | 3 | 0 | 0 | 0 |
 | OPT-ANIMAL | 7 | 5 | 0 | 2 | 0 |
-| OPT-ENTITY | 15 | 12 | 2 | 1 | 0 |
+| OPT-ENTITY | 15 | 12 | 3 | 0 | 0 |
 | OPT-LOS | 2 | 2 | 0 | 0 | 0 |
 | OPT-MOVE | 4 | 3 | 0 | 1 | 0 |
 | OPT-PATH | 4 | 3 | 0 | 1 | 0 |
-| OPT-PLAYER | 8 | 7 | 0 | 1 | 0 |
+| OPT-PLAYER | 8 | 7 | 1 | 0 | 0 |
 | OPT-REGISTRY | 5 | 0 | 0 | 4 | 1 |
 | OPT-STREAM | 2 | 0 | 0 | 2 | 0 |
 | OPT-USING | 3 | 2 | 1 | 0 | 0 |
@@ -262,18 +275,22 @@ copy provenance; record future merge decisions in both places.
 Review 01 [GameEntity](../reports/2026-10-27-merge-01-game-entity.md) is approved/applied; its target using-player fixture passed.
 Review 02 [EngineEntityManager](../reports/2026-10-27-merge-02-engine-entity-manager.md) is approved/applied; its target removal fixture passed.
 Review 03 [GameEntityManager](../reports/2026-10-27-merge-03-game-entity-manager.md) is approved/applied; its target lifecycle fixture passed.
-Review 04 [CraftLogicSystem](../reports/2026-10-27-merge-04-craft-logic-system.md) awaits individual discussion; its candidate is unapplied.
-The other 44 entries also await individual discussion. Exact-JAR compilation/runtime remain pending.
+Review 04 [CraftLogicSystem](../reports/2026-10-27-merge-04-craft-logic-system.md) is approved/applied; its target crafting fixture passed.
+Review 05 [SpriteConfig](../reports/2026-10-27-merge-05-sprite-config.md) is approved/applied; source verification passed.
+Review 06 [ItemContainer](../reports/2026-10-27-merge-06-item-container.md) is approved/applied; its target fixture passed.
+Review 07 [InventoryItem](../reports/2026-10-27-merge-07-inventory-item.md) is approved/applied; its target parser fixture passed, with reconstruction integration pending.
+Review 08 [IsoGridSquare](../reports/2026-10-27-merge-08-iso-grid-square.md) awaits individual discussion; its resolved candidate is unapplied.
+The other 40 entries also await individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
 | 01 | [entity/GameEntity.java](../../src/zombie/entity/GameEntity.java) | OPT-USING | clean | Approved/applied; target fixture passed; full-class/runtime pending |
 | 02 | [entity/EngineEntityManager.java](../../src/zombie/entity/EngineEntityManager.java) | OPT-ENTITY | clean | Approved/applied; target fixture passed; target-JAR/runtime pending |
 | 03 | [entity/GameEntityManager.java](../../src/zombie/entity/GameEntityManager.java) | OPT-ENTITY | clean | Approved/applied; target fixture passed; target-JAR/runtime pending |
-| 04 | [entity/components/crafting/CraftLogicSystem.java](../../decompiled/zombie/entity/components/crafting/CraftLogicSystem.java) | OPT-ENTITY | clean | Awaiting individual discussion |
-| 05 | [entity/components/spriteconfig/SpriteConfig.java](../../decompiled/zombie/entity/components/spriteconfig/SpriteConfig.java) | INTEGRATION | clean | Awaiting individual discussion |
-| 06 | [inventory/ItemContainer.java](../../decompiled/zombie/inventory/ItemContainer.java) | OPT-PLAYER | clean | Awaiting individual discussion |
-| 07 | [inventory/InventoryItem.java](../../decompiled/zombie/inventory/InventoryItem.java) | DB-PLAYER | 1 conflict region(s) | Awaiting individual discussion |
+| 04 | [entity/components/crafting/CraftLogicSystem.java](../../src/zombie/entity/components/crafting/CraftLogicSystem.java) | OPT-ENTITY | clean | Approved/applied; target fixture passed; target-JAR/runtime pending |
+| 05 | [entity/components/spriteconfig/SpriteConfig.java](../../src/zombie/entity/components/spriteconfig/SpriteConfig.java) | INTEGRATION | clean | Approved/applied; source verified; target-JAR/runtime pending |
+| 06 | [inventory/ItemContainer.java](../../src/zombie/inventory/ItemContainer.java) | OPT-PLAYER | clean | Approved/applied; target fixture passed; target-JAR/runtime pending |
+| 07 | [inventory/InventoryItem.java](../../src/zombie/inventory/InventoryItem.java) | DB-PLAYER | 1 conflict region(s) | Approved/applied; parser fixture passed; reconstruction/target-JAR pending |
 | 08 | [iso/IsoGridSquare.java](../../decompiled/zombie/iso/IsoGridSquare.java) | OPT-REGISTRY | 9 conflict region(s) | Awaiting individual discussion |
 | 09 | [iso/IsoObject.java](../../decompiled/zombie/iso/IsoObject.java) | OPT-REGISTRY | clean | Awaiting individual discussion |
 | 10 | [LoadGridsquarePerformanceWorkaround.java](../../decompiled/zombie/LoadGridsquarePerformanceWorkaround.java) | OPT-REGISTRY | 1 conflict region(s) | Awaiting individual discussion |

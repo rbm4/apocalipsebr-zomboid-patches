@@ -6,7 +6,6 @@ import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import zombie.UsedFromLua;
 import zombie.core.network.ByteBufferReader;
-import zombie.debug.DebugType;
 import zombie.debug.objects.DebugClassFields;
 import zombie.entity.Component;
 import zombie.entity.ComponentType;
@@ -66,7 +65,6 @@ public class SpriteConfig extends Component {
             }
 
             if (!this.isValid()) {
-                DebugType.General.warn("Invalid SpriteConfig object! scripted object = " + (this.objectInfo != null ? this.objectInfo.getName() : "null"));
                 this.resetObjectInfo();
             }
         }
@@ -277,7 +275,6 @@ public class SpriteConfig extends Component {
     @Override
     protected void load(ByteBuffer input, int worldVersion) throws IOException {
         if (input.get() == 0) {
-            DebugType.General.error("Sprite config has no script saved.");
         } else {
             SpriteConfigScript script = ScriptsDictionary.spriteConfigs.loadScript(input, worldVersion);
             long scriptVersion = input.getLong();
@@ -287,7 +284,6 @@ public class SpriteConfig extends Component {
                 if (script.getScriptVersion() != scriptVersion) {
                 }
             } else {
-                DebugType.General.error("Could not load script for sprite config.");
             }
         }
     }

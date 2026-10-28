@@ -2,12 +2,12 @@
 
 42.22.0 is the current server development target (pre-release). The vanilla
 baseline is `../decompiled/zombie/`; replacement sources belong in `../src/zombie/`.
-The source tree contains 253 Java files: 50 replacements whose vanilla
+The source tree contains 257 Java files: 50 replacements whose vanilla
 baselines are unchanged and 200 ApocalipseBR support classes, copied byte for byte
-from 42.21.0, plus approved GameEntity, EngineEntityManager and GameEntityManager
-merges. Another 45 changed replacements and 3 removed targets await review. All three approved merges
-passed their target fixtures; exact-target JAR compilation and runtime verification
-remain pending.
+from 42.21.0, plus seven individually approved merges through InventoryItem.
+Another 41 changed replacements and 3 removed targets await review. Reviews 01-04,
+06 and 07 passed target fixtures; SpriteConfig's diagnostic-only changes passed source
+verification. Exact-target JAR compilation and runtime verification remain pending.
 This directory is under migration and is not a deployable or validated release.
 
 Start with the class-by-class migration report before carrying over any source.
@@ -28,7 +28,11 @@ No complete feature has been compiled and runtime-verified for this target yet.
 
 | Date | Document |
 | --- | --- |
-| 2026-10-27 | [Merge review 04/48: CraftLogicSystem (awaiting discussion)](reports/2026-10-27-merge-04-craft-logic-system.md) |
+| 2026-10-27 | [Merge review 08/48: IsoGridSquare (resolved candidate awaiting discussion)](reports/2026-10-27-merge-08-iso-grid-square.md) |
+| 2026-10-27 | [Merge review 07/48: InventoryItem (applied; parser fixture passed)](reports/2026-10-27-merge-07-inventory-item.md) |
+| 2026-10-27 | [Merge review 06/48: ItemContainer (applied; target fixture passed)](reports/2026-10-27-merge-06-item-container.md) |
+| 2026-10-27 | [Merge review 05/48: SpriteConfig (applied; source verification passed)](reports/2026-10-27-merge-05-sprite-config.md) |
+| 2026-10-27 | [Merge review 04/48: CraftLogicSystem (applied; target fixture passed)](reports/2026-10-27-merge-04-craft-logic-system.md) |
 | 2026-10-27 | [Merge review 03/48: GameEntityManager (applied; target fixture passed)](reports/2026-10-27-merge-03-game-entity-manager.md) |
 | 2026-10-27 | [Merge review 02/48: EngineEntityManager (applied; target fixture passed)](reports/2026-10-27-merge-02-engine-entity-manager.md) |
 | 2026-10-27 | [Merge review 01/48: GameEntity (applied; target fixture passed)](reports/2026-10-27-merge-01-game-entity.md) |
@@ -41,7 +45,11 @@ Current artifacts: [copy receipt and 301-class subsystem ledger](reports/2026-10
 and [applied GameEntity diff](reports/2026-10-27-merge-01-game-entity.diff).
 Also: [applied EngineEntityManager diff](reports/2026-10-27-merge-02-engine-entity-manager.diff)
 and [applied GameEntityManager diff](reports/2026-10-27-merge-03-game-entity-manager.diff).
-Next: [unapplied CraftLogicSystem candidate](reports/2026-10-27-merge-04-craft-logic-system.diff).
+Also: [applied CraftLogicSystem diff](reports/2026-10-27-merge-04-craft-logic-system.diff).
+Also: [applied SpriteConfig diff](reports/2026-10-27-merge-05-sprite-config.diff).
+Also: [applied ItemContainer diff](reports/2026-10-27-merge-06-item-container.diff).
+Also: [applied InventoryItem resolution](reports/2026-10-27-merge-07-inventory-item.diff).
+Next: [unapplied IsoGridSquare candidate](reports/2026-10-27-merge-08-iso-grid-square.diff).
 
 ## Issues
 

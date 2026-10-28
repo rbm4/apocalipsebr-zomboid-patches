@@ -1,0 +1,49 @@
+--- a/42.22.0/src/zombie/inventory/ItemContainer.java
++++ b/42.22.0/src/zombie/inventory/ItemContainer.java
+@@ -93,7 +93,7 @@
+     public float cookingFactor = 1.0F;
+     public int capacity = 50;
+     public InventoryItem containingItem;
+-    public ArrayList<InventoryItem> items = new ArrayList<>();
++    public ArrayList<InventoryItem> items = new ServerInventoryUpdateIndex.Items();
+     public ArrayList<InventoryItem> includingObsoleteItems = new ArrayList<>();
+     public IsoObject parent;
+     public IsoGridSquare sourceGrid;
+@@ -2289,13 +2289,21 @@
+ 
+     public float getContentsWeight() {
+         float total = 0.0F;
+-
+-        for (int i = 0; i < this.items.size(); i++) {
+-            InventoryItem item = this.items.get(i);
+-            total += item.getUnequippedWeight();
+-        }
+-
+-        return total;
++        long weightStarted = GameServer.server ? System.nanoTime() : 0L;
++        long entriesVisited = 0L;
++        try {
++            for (int i = 0; i < this.items.size(); i++) {
++                InventoryItem item = this.items.get(i);
++                if (weightStarted != 0L) entriesVisited++;
++                total += item.getUnequippedWeight();
++            }
++            return total;
++        } finally {
++            if (weightStarted != 0L) {
++                zombie.ApocBRServerTelemetryLite.recordPhase("inventory.contentsWeight", System.nanoTime() - weightStarted);
++                zombie.ApocBRServerTelemetryLite.count("inventory.contentsWeight.entriesVisited", entriesVisited);
++            }
++        }
+     }
+ 
+     public float getMaxWeight() {
+@@ -3410,7 +3418,7 @@
+     }
+ 
+     public void emptyIt() {
+-        this.items = new ArrayList<>();
++        this.items = new ServerInventoryUpdateIndex.Items();
+     }
+ 
+     public LinkedHashMap<String, InventoryItem> getItems4Admin() {

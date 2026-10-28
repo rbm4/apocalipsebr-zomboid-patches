@@ -2,17 +2,17 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "Reviews 01-03 approved/applied; review 04 CraftLogicSystem awaits individual discussion; 45 changed merges, 3 removed targets and support adaptations remain.",
+  "workflow": "Reviews 01-07 approved/applied; review 08 IsoGridSquare awaits individual discussion of resolved List/LOS candidate; 41 changed merges, 3 removed targets and support adaptations remain. InventoryItem PostgreSQL reconstruction integration is explicitly deferred.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 45,
+    "awaiting_merges": 41,
     "awaiting_removed_design": 3,
     "copied_with_known_adaptations": 10,
-    "merged_replacements": 3,
-    "target_java_files": 253
+    "merged_replacements": 7,
+    "target_java_files": 257
   },
   "classes": [
     {
@@ -3688,13 +3688,27 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "0cee38fc477c007017accf2354993f60de4e23fffd404ddb956a8238d4efd281",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "7d3f963242bca9d8fe21a197e7ef361e32992286db7111f978fb9884ea58e1a0",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 4,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_craft_logic_system.py",
+          "passed": true,
+          "assertions": 21,
+          "scope": "Complete target crafting system with real clock/throttle and explicit bucket/recipe/resource/world doubles; not actual index or exact-JAR/runtime validation."
+        }
+      },
+      "approval": {
+        "review": 4,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "baseline_commit": "a1289d170a71f13e63ff65519cd9b047f48a0de9",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-04-craft-logic-system.md"
       }
     },
     {
@@ -3870,13 +3884,25 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "5666215141567a9cbe1863c1828e3fb7c40c5e0a36fa754429eb9f8db8fde26c",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "e2ab94018351081ed70886f4f1c57dde4cf2a71b3d78a548199d9689e74a56c9",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 5,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_review": {
+          "passed": true,
+          "scope": "Exact reviewed diff; only unused import/three diagnostic statements deleted; sync version 251 and loader/reset behavior retained. No gameplay fixture or exact-JAR/runtime validation."
+        }
+      },
+      "approval": {
+        "review": 5,
+        "decision": "approved",
+        "user_instruction": "yes, continue",
+        "applied": true,
+        "baseline_commit": "c2ad1d637452d1dbf2d2dea9f708f7134bdbff6c",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-05-sprite-config.md"
       }
     },
     {
@@ -4306,14 +4332,35 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "6ed7b96e3551ec234baa0f5d7c339d15ce328303e8030e35bb4ed01e7cde8d37",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "d2a4cc2157956f3e85db33235561d7478ba07a67519e56623cf1e5c911205f0f",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 7,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_inventory_item_port.py",
+          "passed": true,
+          "assertions": 35,
+          "scope": "Extracted target parser/encoder/fluid predicate, real provenance/load-quality helpers; routing/virtual decoder/world are doubles; not full instance decode or PostgreSQL reconstruction."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "length_conflict": "Preserve upstream loadByteCount assignment/predicate and add ITEM_LENGTH_MISMATCH before native recovery.",
+        "new_encoding_metadata": "Tag storeInByteData output as 251 to match its new native header; preserve historical payload metadata.",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-07-inventory-item.md"
+      },
+      "approval": {
+        "review": 7,
+        "decision": "approved",
+        "user_instruction": "apply, this wil hook into our reconstruction algorithm later inside the postgresql changes",
+        "applied": true,
+        "baseline_commit": "50799c971ec9d14d0f4796912065dfcd9deebb91",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-07-inventory-item.md"
+      },
+      "integration_pending": "Full dictionary routing, nested native decode and PostgreSQL relational reconstruction/save-load integration; user explicitly expects this in later PostgreSQL work."
     },
     {
       "path": "zombie/inventory/ItemContainer.java",
@@ -4352,13 +4399,27 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "c95664a7afe3d4e284b7f4d0f6132bdfc14139ff58de1c55a4c381e62d2f7c8c",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "876300d20475e4c262368ae963b03a5be66a7bcd8def3e631c7c87130f07193a",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 6,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_item_container_port.py",
+          "passed": true,
+          "assertions": 31,
+          "scope": "Extracted target container methods and actual sparse-update/list helpers with item/service doubles; insertion/fluid and exact-JAR/runtime integration remain pending."
+        }
+      },
+      "approval": {
+        "review": 6,
+        "decision": "approved",
+        "user_instruction": "yes, i expect to merge the other upcoming integrations so it should be fine in the end, keep going",
+        "applied": true,
+        "baseline_commit": "d5f5cd7e0511d6d4b0b99c5a597a391706bc5df5",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-06-item-container.md"
       }
     },
     {
@@ -4674,6 +4735,13 @@
       "verification": {
         "target_compile": false,
         "target_runtime": false
+      },
+      "candidate_resolutions": {
+        "state": "proposed-unapplied",
+        "array_conflicts": "Keep target List traversal in all nine conflicts; old raw-array reader wrappers have no target API.",
+        "retained_patch": "Parallel LOS slots, thread-local scratch vectors, server exploration guard and player-aware room-seen overload.",
+        "pending_collection_cache": "List-compatible mutation/identity adapter remains in scope for later IsoObject/removed-PZArrayList work; vanilla ArrayList storage retained for now.",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-08-iso-grid-square.md"
       }
     },
     {

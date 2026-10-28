@@ -321,7 +321,17 @@ is approved/applied, with the target using-player fixture passing; full-class
 compilation/runtime remain pending. Review 02 (EngineEntityManager) is also
 approved/applied; its target engine-removal fixture passes. Review 03
 (GameEntityManager) is approved/applied with the target lifecycle fixture passing.
-Review 04 (CraftLogicSystem) awaits individual discussion and has not been applied.
+Review 04 (CraftLogicSystem) is approved/applied with the target crafting fixture
+passing. Review 05 (SpriteConfig) is approved/applied with source verification
+only (diagnostic suppression, preserved 251 loader). Review 06 (ItemContainer)
+is approved/applied with its target fixture passing. The user accepts staged
+integration dependencies being completed by later ports; each later class still
+requires individual review. Review 07 (InventoryItem) is approved/applied, with
+the resolved length check, new-encoding metadata 251 and parser fixture passing.
+Its PostgreSQL reconstruction integration remains later work, as the user stated.
+Review 08 (IsoGridSquare) awaits individual discussion: target List traversal plus
+existing LOS/visibility hooks; the List-compatible identity/mutation adapter is
+explicitly deferred, not silently retired. The candidate is unapplied.
 Prioritize optimizations, NPCs and PostgreSQL, with telemetry verification
 secondary, while retaining all subsystems in scope. Update this checkpoint as
 decisions are implemented so it does not become a stale approval instruction.
@@ -379,6 +389,8 @@ There is no substitute for runtime testing of timing, threading, streaming, netw
 
 Most current `tools/test_*.py` scripts target **42.21.0** explicitly. They are standalone Python entry points, not a pytest suite. Exceptions: `test_using_player_algorithms.py` accepts `--version 42.21.0` (default) or `--version 42.22.0`, reads that version's production/vanilla files, and covers the newer pending-add reset predicate. `test_unload_simulation_algorithms.py --version 42.22.0 --engine-only` compiles both target manager classes with engine doubles and exercises removal/cancellation; its default full suite remains 42.21.0. `test_entity_manager_lifecycle.py` targets 42.22.0 explicitly, extracting manager methods and using actual EngineEntityManager/clock/throttle with engine doubles. Do not assume the other fixtures validate another build when porting a patch.
 
+`test_craft_logic_system.py` also targets 42.22.0 explicitly; its bucket, recipe, resource and world collaborators are doubles. `test_item_container_port.py` also targets 42.22.0, using extracted container methods and actual index/list helpers with item/service doubles. `test_inventory_item_port.py` targets 42.22.0 parser/encoder/fluid methods with actual provenance/load-quality helpers and explicit routing/engine doubles.
+
 Each script uses Python's standard library to create a temporary Java fixture, compile production Java sources or methods extracted from production sources, and execute Java assertions. Some fixtures also compile or extract the exact target-version vanilla implementation for differential comparison. Small engine stubs supply dependencies without initializing the game or loading native libraries. Temporary source and class files are cleaned up automatically.
 
 Prerequisites are Python 3 and the repository JDK 25 at `jdk/bin/javac.exe` and `jdk/bin/java.exe`. The scripts currently use those Windows executable paths and compile with `--release 25`; installing a JDK on `PATH` alone does not satisfy them. They require the selected fixture target's `src` and `decompiled` files (usually 42.21.0; see the exceptions above). If the repository JDK is missing, inspect the target patch script's tooling setup rather than changing Java versions to make a fixture pass.
@@ -411,6 +423,9 @@ Use this map as a starting point, then inspect the script's production source li
 | `test_human_trading.py` | Production native NPC trade adapter, mixed-item destruction, money-only receipt capture, ownership/consent, duplicates, cancellation and persistence refusal. |
 | `test_unload_simulation_algorithms.py` | Entity removal versus vanilla, animal-zone topology and geometry invalidation, sound expiration, thumpable no-work predicates, vehicle telemetry batching, and source contracts preserving vehicle/thumpable update behavior. |
 | `test_entity_manager_lifecycle.py` | 42.22.0 manager update/lookup/register/unregister methods with actual EngineEntityManager/clock/throttle: batching, changed-ID lookup, pending cancellation, meta load and immediate/deferred release. Engine collaborators are doubles. |
+| `test_craft_logic_system.py` | 42.22.0 complete CraftLogicSystem with real clock/throttle and explicit recipe/resource/bucket/world doubles; elapsed progress, meta throttling, drying cleanup and recipe transitions. No real bucket-index or native validation. |
+| `test_item_container_port.py` | 42.22.0 extracted container reset/weight/parent/recursive methods plus actual sparse-update/list helpers; callback/list mutation, cycle/depth boundaries and nested query/removal. Native items/services are doubles; fluid/insertion integration remains pending. |
+| `test_inventory_item_port.py` | 42.22.0 extracted native item parser/encoder/fluid predicate with actual provenance/load-quality helpers; consumed lengths, failure recovery, metadata and scope contract. Dictionary routing/virtual decode/world are doubles; reconstruction integration remains pending. |
 | `test_vehicle_idle_algorithms.py` | Idle vehicle part selection versus vanilla under live activation, callback mutations and nested updates; capability hooks, elapsed-minute cooling, same-call square reuse, first-model indexing and work-counter batching. Imports the method extractor from `test_unload_simulation_algorithms.py`. |
 | `test_iso_entity_registry.py` | Production registry/lifecycle methods, square mutation hooks and server ID getter: shifted lookups before getters, raw arrays, cyclic reorder, re-add, detachment, coordinate changes, collision ownership, exceptions/retry, reset and client behavior. |
 
