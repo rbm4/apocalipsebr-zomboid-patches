@@ -338,8 +338,12 @@ vanilla; no target override exists. Its class family is recorded in
 `42.22.0/tools/retired-class-families.json`. The manifest is not yet consumed by
 deployment scripts; stale loose-class backup/cleanup must be implemented and
 verified before deployment. No installed files were changed.
-Review 11 (LootRespawn) awaits individual discussion of the same no-override
-outcome; it is not retired and has not been added to the cleanup manifest yet.
+Review 11 (LootRespawn) is approved/retired to vanilla and recorded in the
+cleanup manifest. The user explicitly retired the reader patch only; the broader
+cache remains in scope. Review 12 (IsoChunk) is approved/applied on 2026-10-28 after vanilla baseline
+commit 345374b. Its extracted unload fixture passed 437,322 assertions across
+6,000 differential scenarios; exact-JAR/native-runtime checks remain pending.
+Review 13 (ServerMap) is next and has not been approved.
 Upstream List traversal obsoletes these audited raw readers, not the separate
 identity/mutation cache adapter that remains in scope.
 Prioritize optimizations, NPCs and PostgreSQL, with telemetry verification

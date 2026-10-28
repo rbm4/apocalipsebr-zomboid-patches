@@ -13,9 +13,9 @@ retains the exact old patched bytes, including known obsolete APIs and build
 literals. This is source staging, not a compatibility repair or deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01-09 merged; 10 retired to target vanilla; 11 LootRespawn awaiting decision**.
-There are 259 Java files present (250 exact carry-overs plus nine reviewed merges),
-and one approved retirement with no target source override.
+Current review checkpoint: **01-09 and 12 merged; 10-11 retired to target vanilla; 13 ServerMap next**.
+There are 260 Java files present (250 exact carry-overs plus ten reviewed merges),
+and two approved retirements with no target source override.
 The target using-player fixture passed 190,141 assertions, including pending-add
 reset; the old-target fixture passed 190,136. These execute production methods
 with engine stubs and do not establish full-class or runtime compatibility.
@@ -50,8 +50,11 @@ target vanilla without an override because the old reader patch is obsolete;
 review 10 source retirement is now approved. Its family is recorded in the
 [retirement manifest](../../tools/retired-class-families.json), which deployment
 scripts do not yet consume. Cleanup/backup implementation and validation remain
-required before deployment; no installed files were changed. Review 11 has the
-same vanilla-only source outcome but still awaits its own retirement decision.
+required before deployment; no installed files were changed. Review 11 is also approved/retired and recorded in the manifest. The user
+explicitly retired only the reader patch; the broader lookup/ID cache remains
+in scope. Review 12 IsoChunk is approved/applied on 2026-10-28; its extracted unload
+fixture passed 437,322 assertions across 6,000 differential scenarios.
+Full-JAR and native runtime verification remain pending.
 
 The [copy receipt and per-class ownership/dependency ledger](../reports/2026-10-27-carryover.json)
 tracks all 301 Java source files, their original hashes, subsystem, baseline
@@ -295,8 +298,9 @@ Review 07 [InventoryItem](../reports/2026-10-27-merge-07-inventory-item.md) is a
 Review 08 [IsoGridSquare](../reports/2026-10-27-merge-08-iso-grid-square.md) is approved/applied; its grid fixture passed.
 Review 09 [IsoObject](../reports/2026-10-27-merge-09-iso-object.md) is approved/applied; its object fixture passed.
 Review 10 [LoadGridsquarePerformanceWorkaround](../reports/2026-10-27-merge-10-load-gridsquare.md) is approved/retired to vanilla; stale-override cleanup remains tracked and unimplemented.
-Review 11 [LootRespawn](../reports/2026-10-27-merge-11-loot-respawn.md) awaits its own no-override/retirement decision.
-The other 37 entries also await individual discussion. Exact-JAR compilation/runtime remain pending.
+Review 11 [LootRespawn](../reports/2026-10-27-merge-11-loot-respawn.md) is approved/retired to vanilla; cleanup remains pending.
+Review 12 [IsoChunk](../reports/2026-10-27-merge-12-iso-chunk.md) is approved/applied, preserving upstream and unload optimization/telemetry; its target fixture passed.
+The remaining 36 entries await individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
@@ -310,8 +314,8 @@ The other 37 entries also await individual discussion. Exact-JAR compilation/run
 | 08 | [iso/IsoGridSquare.java](../../src/zombie/iso/IsoGridSquare.java) | OPT-REGISTRY | 9 conflict region(s) | Approved/applied; grid fixture passed; adapter/native integration pending |
 | 09 | [iso/IsoObject.java](../../src/zombie/iso/IsoObject.java) | OPT-REGISTRY | clean | Approved/applied with List adaptation; object fixture passed; adapter/native pending |
 | 10 | [LoadGridsquarePerformanceWorkaround.java](../../decompiled/zombie/LoadGridsquarePerformanceWorkaround.java) | OPT-REGISTRY | 1 conflict region(s) | Retired to target vanilla; no source override; deployment cleanup pending |
-| 11 | [LootRespawn.java](../../decompiled/zombie/LootRespawn.java) | OPT-REGISTRY | 1 conflict region(s) | Awaiting individual discussion |
-| 12 | [iso/IsoChunk.java](../../decompiled/zombie/iso/IsoChunk.java) | OPT-STREAM | 1 conflict region(s) | Awaiting individual discussion |
+| 11 | [LootRespawn.java](../../decompiled/zombie/LootRespawn.java) | OPT-REGISTRY | 1 conflict region(s) | Approved: retired to target vanilla |
+| 12 | [iso/IsoChunk.java](../../decompiled/zombie/iso/IsoChunk.java) | OPT-STREAM | 1 conflict region(s) | Approved/applied; fixture passed |
 | 13 | [network/ServerMap.java](../../decompiled/zombie/network/ServerMap.java) | OPT-STREAM | 4 conflict region(s) | Awaiting individual discussion |
 | 14 | [iso/IsoWorld.java](../../decompiled/zombie/iso/IsoWorld.java) | OPT-WORLD | 2 conflict region(s) | Awaiting individual discussion |
 | 15 | [iso/IsoCell.java](../../decompiled/zombie/iso/IsoCell.java) | OPT-WORLD | clean | Awaiting individual discussion |

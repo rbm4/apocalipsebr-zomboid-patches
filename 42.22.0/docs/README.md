@@ -2,12 +2,12 @@
 
 42.22.0 is the current server development target (pre-release). The vanilla
 baseline is `../decompiled/zombie/`; replacement sources belong in `../src/zombie/`.
-The source tree contains 259 Java files: 50 replacements whose vanilla
+The source tree contains 260 Java files: 50 replacements whose vanilla
 baselines are unchanged and 200 ApocalipseBR support classes, copied byte for byte
-from 42.21.0, plus nine individually approved merges through IsoObject.
-Review 10 retired LoadGridsquarePerformanceWorkaround to vanilla with no source
-override. Another 38 changed reviews and 3 removed targets await decisions. Reviews 01-04
-and 06-09 passed target fixtures; SpriteConfig's diagnostic-only changes passed source
+from 42.21.0, plus ten individually approved merges, including IsoChunk.
+Reviews 10-11 retired LoadGridsquarePerformanceWorkaround and LootRespawn to vanilla
+with no source overrides. Another 36 changed reviews and 3 removed targets await decisions. Reviews 01-04
+and 06-09 and 12 passed target fixtures; SpriteConfig's diagnostic-only changes passed source
 verification. Exact-target JAR compilation and runtime verification remain pending.
 This directory is under migration and is not a deployable or validated release.
 
@@ -29,7 +29,8 @@ No complete feature has been compiled and runtime-verified for this target yet.
 
 | Date | Document |
 | --- | --- |
-| 2026-10-27 | [Review 11/48: LootRespawn (vanilla-only proposal awaiting discussion)](reports/2026-10-27-merge-11-loot-respawn.md) |
+| 2026-10-27 | [Review 12/48: IsoChunk (applied; unload fixture passed)](reports/2026-10-27-merge-12-iso-chunk.md) |
+| 2026-10-27 | [Review 11/48: LootRespawn (retired to vanilla; deployment cleanup pending)](reports/2026-10-27-merge-11-loot-respawn.md) |
 | 2026-10-27 | [Review 10/48: LoadGridsquarePerformanceWorkaround (retired to vanilla; deployment cleanup pending)](reports/2026-10-27-merge-10-load-gridsquare.md) |
 | 2026-10-27 | [Merge review 09/48: IsoObject (applied; object fixture passed)](reports/2026-10-27-merge-09-iso-object.md) |
 | 2026-10-27 | [Merge review 08/48: IsoGridSquare (applied; grid fixture passed)](reports/2026-10-27-merge-08-iso-grid-square.md) |
@@ -57,7 +58,9 @@ Also: [applied IsoGridSquare resolution](reports/2026-10-27-merge-08-iso-grid-sq
 Also: [applied IsoObject diff](reports/2026-10-27-merge-09-iso-object.diff).
 Retirement: [LoadGridsquare decision](reports/2026-10-27-merge-10-load-gridsquare.json)
 and [class-family cleanup manifest](../tools/retired-class-families.json) (not yet consumed by scripts).
-Next: [LootRespawn no-override proposal](reports/2026-10-27-merge-11-loot-respawn.json).
+Applied: [IsoChunk diff](reports/2026-10-27-merge-12-iso-chunk.diff).
+LootRespawn: [approved retirement](reports/2026-10-27-merge-11-loot-respawn.json).
+Next: review 13, ServerMap, in the [individual merge queue](features/2026-10-27-subsystem-port-tracker.md).
 
 ## Issues
 

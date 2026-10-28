@@ -2,19 +2,19 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "Reviews 01-09 merged; review 10 retired to target vanilla with deployment cleanup tracked but unimplemented. Review 11 LootRespawn awaits individual retirement decision; 38 changed reviews, 3 removed targets and support adaptations remain.",
+  "workflow": "Reviews 01-09 and 12 merged; reviews 10-11 retired to target vanilla with deployment cleanup tracked but unimplemented. Review 13 ServerMap is next; 36 changed reviews, 3 removed targets and support adaptations remain. Broader square-position/network-ID cache remains in scope.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 38,
+    "awaiting_merges": 36,
     "awaiting_removed_design": 3,
     "copied_with_known_adaptations": 10,
-    "merged_replacements": 9,
-    "target_java_files": 259,
-    "retired_replacements": 1,
-    "reviewed_replacements": 10
+    "merged_replacements": 10,
+    "target_java_files": 260,
+    "retired_replacements": 2,
+    "reviewed_replacements": 12
   },
   "classes": [
     {
@@ -4673,13 +4673,36 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "19ab15fb25fc8f909bdfee8c236dbb39fa0f351123c8dc73bb214bf8357fc8a7",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "61b51db38a4cef2af2e5ec57df2839f3d2b84ee20d36bf93cdb0d6c3aa34fce3",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 12,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_iso_chunk_port.py",
+          "passed": true,
+          "assertions": 437322,
+          "differential_scenarios": 6000,
+          "scope": "Extracted target vanilla/patched moving-object unload loops and native removeFromSquare; engine doubles; unique membership, current/last relationships, early detach callbacks, survivor/animal/vehicle effects and server/client/single-player guards. Duplicate entries and arbitrary membership-changing callbacks remain outside the equivalence guarantee."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-12-iso-chunk.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-27-merge-12-iso-chunk.diff",
+        "action": "Retain unload predicate, phase telemetry and explicit vehicle cases; resolve sole raw-reader conflict to native List traversal; preserve upstream format 251 and other changes.",
+        "validation": "437322 assertions passed across 6000 differential unload scenarios; extracted production loops/native removal with engine doubles; full-JAR/runtime checks pending."
+      },
+      "approval": {
+        "review": 12,
+        "decision": "approved",
+        "user_instruction": "agreed, apply the merge",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "345374b412037e126a69803f4da73f8efc0e11c3",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-12-iso-chunk.md"
       }
     },
     {
@@ -5286,19 +5309,42 @@
       "source_sha256": "2ea201a80fc2fb36cd45cbb99488f8d087029926ec2e4ce23cc140b515a98839",
       "copy_state": "not-copied",
       "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "port_state": "retired-use-target-vanilla",
       "known_required_change": null,
       "merge_review": 11,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "native_source_equivalence": {
+          "passed": true,
+          "scope": "Choosing target List traversal at the sole raw-reader conflict yields the complete target vanilla file; no custom source remains."
+        }
       },
       "candidate_resolutions": {
-        "state": "proposed-unapplied",
-        "action": "Retire obsolete audited raw-reader wrapper; use target vanilla without override.",
-        "evidence": "Full resolved file equals target vanilla after choosing List traversal at sole conflict.",
-        "deployment_dependency": "Add family to cleanup manifest only after approval; no source retirement or installation change applied yet.",
+        "state": "approved-source-retirement",
+        "action": "Use target vanilla directly; omit redundant target Java replacement.",
+        "evidence": "Only old patch is an audited raw-array reader; sole conflict resolved to target List traversal makes full class equal target vanilla.",
+        "deployment_dependency": "Track cleanup/restore of prior loose zombie/LootRespawn*.class family before deployment; current source-based deploy/revert must not be assumed to prune it.",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-11-loot-respawn.md",
+        "proposal_record": "42.22.0/docs/reports/2026-10-27-merge-11-loot-respawn.json"
+      },
+      "target_source_should_exist": false,
+      "target_vanilla_sha256": "a55e670efbec7f91d7a02f6deabd3fceb9646ea38dad264107d89da9fc807cff",
+      "approval": {
+        "review": 11,
+        "decision": "approved-retirement",
+        "user_instruction": "Retire the reader patch only",
+        "applied": true,
+        "source_override_created": false,
+        "installed_files_modified": false,
         "review_document": "42.22.0/docs/reports/2026-10-27-merge-11-loot-respawn.md"
+      },
+      "deployment_cleanup_pending": {
+        "manifest": "42.22.0/tools/retired-class-families.json",
+        "class_root": "zombie/LootRespawn.class",
+        "include_nested_classes": true,
+        "implemented": false,
+        "verified": false
       }
     },
     {

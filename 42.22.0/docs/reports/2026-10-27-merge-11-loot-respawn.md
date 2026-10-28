@@ -1,7 +1,8 @@
 # Review 11/48: LootRespawn
 
-Status: **awaiting individual user decision; not retired or changed**. Reviews
-01-09 are applied; review 10 is retired to target vanilla. See the
+Status: **approved retirement; target vanilla used without a source override**.
+The user clarified: "Retire the reader patch only". The broader square-position/
+network-ID cache remains in scope. See the
 [tracker](../features/2026-10-27-subsystem-port-tracker.md).
 
 ## Inputs and proposal
@@ -11,7 +12,7 @@ Status: **awaiting individual user decision; not retired or changed**. Reviews
 - [Target vanilla](../../decompiled/zombie/LootRespawn.java).
 - [Machine-readable no-override proposal](2026-10-27-merge-11-loot-respawn.json).
 
-Proposed decision: **retire this old replacement and use the target vanilla
+Approved decision: **retire this old replacement and use the target vanilla
 LootRespawn directly**, without copying a redundant Java source into the target.
 There is no candidate code diff because choosing the new traversal at the sole
 conflict produces a complete file identical to target vanilla.
@@ -35,7 +36,7 @@ to preserve a custom behavior because none remains after this adaptation.
 
 ## Deployment and validation
 
-If accepted, add `zombie/LootRespawn.class` and its nested class family to the
+Recorded `zombie/LootRespawn.class` and its nested class family in the
 [retirement manifest](../../tools/retired-class-families.json). The manifest is
 tracking data and is not yet consumed by deployment scripts. Cleanup/restore of
 stale old loose overrides must be implemented and verified before deployment;
@@ -46,5 +47,4 @@ target traversal; the proposal pins the native SHA-256. No new gameplay fixture
 is required for an omitted custom replacement. Runtime loot respawn and stale
 override cleanup remain deployment/integration checks.
 
-Decision requested: retire the LootRespawn replacement and use vanilla, adding
-its family to tracked deployment cleanup only after this decision is accepted.
+Decision applied at source-tracking level only. No installed files were changed.
