@@ -33,6 +33,8 @@ snapshot contract; the two features must not be treated as interchangeable.
 
 | Date | Document |
 | --- | --- |
+| 2026-10-28 | [Player inventory SpriteConfig persistence](features/2026-10-28-player-sprite-config-persistence.md) |
+| 2026-10-28 | [Discard rejected player saves and release legacy quarantine](features/2026-10-28-player-save-discard-recovery.md) |
 | 2026-10-26 | [Server Lua entity bridge scaffold](features/2026-10-26-lua-mod-entities.md) |
 | 2026-10-26 | [Offline SQLite character migration](features/2026-10-26-offline-player-migration.md) |
 | 2026-10-26 | [NPC dialogue roster refresh after respawn](features/2026-10-26-npc-dialogue-roster-refresh.md) |
@@ -105,6 +107,7 @@ snapshot contract; the two features must not be treated as interchangeable.
 
 | Date | Document |
 | --- | --- |
+| 2026-10-28 | [Read-only quarantine item inspection](issues/2026-10-28-quarantine-item-inspection.md) |
 | 2026-10-26 | [NPC collision scratch race and per-thread helpers](issues/2026-10-26-npc-collision-scratch-race.md) |
 | 2026-10-24 | [NPC corpse grapple compatibility assessment](issues/2026-10-24-npc-corpse-grapple-compatibility.md) |
 | 2026-10-19 | [PostgreSQL character reconstruction diagnostics (42.21.0)](issues/2026-10-19-player-reconstruction-diagnostics.md) |

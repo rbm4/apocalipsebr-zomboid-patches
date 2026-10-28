@@ -1,5 +1,10 @@
 # Runtime replay failure isolation (42.21.0 server)
 
+For identifying items in retained records, see the
+[read-only quarantine inspector](../issues/2026-10-28-quarantine-item-inspection.md).
+The [SpriteConfig codec addition](2026-10-28-player-sprite-config-persistence.md)
+documents support for new captures and the separate handling of older archives.
+
 For native-ID changes and the policy for external mod-data references, see
 [player-scoped item lifecycles](2026-10-17-persistence-player-items.md). Vanilla assignment
 paths are documented in the [item identity investigation](../reports/2026-10-17-item-identity-investigation.md).
@@ -28,38 +33,41 @@ a crash between archive and checkpoint completion resumes quarantine without
 executing the rejected operation again. Existing journal records/checkpoints are
 compatible; no PostgreSQL migration is needed.
 
-For player operations, a small checksummed `.pending` marker also protects that
-identity/slot against loading an older relational head. Other identities remain
-readable. This marker survives journal compaction and process restart. A later
-successfully committed full live graph, or a newly published character life,
-clears that player's marker. Scalar-only patches and legacy native blob saves do
-not clear it. An existing SQLite backfill can skip writing an already complete
-head, so it resolves the marker through its next complete live graph instead.
+Updated 2026-10-28: rejected player saves no longer create persistent reload
+blocks. Their immutable payloads stay archived, but the failed database mutation
+is abandoned. Once other active saves for that player finish, loading uses the
+last committed database state. Changes present only in rejected captures are
+lost; no success receipt is fabricated and no archived capture is reapplied.
 
-The affected player's simulation/capture continues while this marker exists.
-If no later complete capture can commit, that player's reload remains blocked
-until the underlying capture/data problem is corrected. The rejected payload is
-retained even after resolution. It is not automatically replayed later: applying
-an old capture after newer state would risk reverting the player.
+At journal initialization, old checksummed `.pending` markers are validated and
+atomically renamed to `<marker>.<operation UUID>.released`. Each release logs
+`PLAYER_REJECTION_RELEASED` with the operation UUID and `recovery=last_committed`.
+This scans outstanding markers, not the full contents of every historical record.
+Original `.record` files and released marker bytes are preserved. An interrupted
+upgrade resumes on the remaining markers. Active journal entries still contribute
+to the normal per-player pending count, even if their old rejection marker was
+retired. No database head validation or reconstruction is performed by this
+migration: absence/corruption of an actual saved character can still fail loading.
+See [discard-and-reload policy](2026-10-28-player-save-discard-recovery.md).
 
 `REPLAY_FAILED` retains the original detailed diagnosis. `REPLAY_QUARANTINED`
-reports UUID, kind, attempts, SQLState, sanitized capture issues and whether a
-player reload was blocked. Periodic progress includes `blockedPlayers`. Existing
+reports UUID, kind, attempts, SQLState, sanitized capture issues, `discarded=true`, `reloadBlocked=false`, and
+`recovery=last_committed` for player operations. Periodic progress includes `blockedPlayers`. Existing
 `persistenceStatus()` durable/staged totals count the active replay queue, not
-retained quarantine archives. A zero active backlog can therefore coexist with
-a quarantined player's reload block. Do not remove the journal or its quarantine
+retained quarantine archives. The `blockedPlayers` field now reports zero; active pending-player guards are
+separate from rejected captures. Do not remove the journal or its quarantine
 files as an outage workaround.
 
 Startup/shutdown retain their existing five-attempt discard policy for active
 entries; see [startup and shutdown retries](2026-10-17-persistence-shutdown.md). Already
 quarantined operations are excluded from active replay in every phase, while
-their player reload markers remain enforced. Filesystem/corrupt-journal failures
+their old player reload markers are retired at initialization. Filesystem/corrupt-journal failures
 still require intervention because safe advancement cannot be guaranteed.
 
 `python tools/test_postgres_resilience.py` exercises the production coordinator,
 journal and projection adapters with fake JDBC. It reproduces a real incomplete
 live graph, verifies unrelated SQL/native progress and login availability,
 retention without success receipts, bounded local retries, transport recovery,
-quarantine/checkpoint crash recovery, persistent player guards, and resolution
-only by a newer committed full capture. Exact-game-JAR compilation validates
+quarantine/checkpoint crash recovery, same-player successor guards, bulk legacy
+marker retirement, idempotent restart, and last-committed reload availability. Exact-game-JAR compilation validates
 binary compatibility; a deployed multiplayer trial is still required.

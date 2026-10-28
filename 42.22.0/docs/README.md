@@ -36,7 +36,8 @@ No complete feature has been compiled and runtime-verified for this target yet.
 
 | Date | Document |
 | --- | --- |
-| 2026-10-28 | [Follow-up review56: square mutation tracking/entity-ID cache (candidate)](reports/2026-10-28-merge-56-square-mutation-tracking.md) |
+| 2026-10-28 | [Cross-build character reconstruction: failure paths and recovery design](reports/2026-10-28-cross-build-character-reconstruction.md) |
+| 2026-10-28 | [Follow-up review56: square mutation tracking/entity-ID cache (unapplied; review queue stopped)](reports/2026-10-28-merge-56-square-mutation-tracking.md) |
 | 2026-10-28 | [Follow-up review55: event-control engine metadata (applied)](reports/2026-10-28-merge-55-event-control-metadata.md) |
 | 2026-10-28 | [Pathfinding thread-local audit: prior collision fix preserved](reports/2026-10-28-pathfinding-thread-local-audit.md) |
 | 2026-10-28 | [Follow-up review 54: zombie native path argument (applied; full build passes)](reports/2026-10-28-merge-54-zombie-path.md) |
@@ -121,5 +122,9 @@ Applied: [SyncPlayerStats ownership guard](reports/2026-10-28-merge-37-sync-play
 Applied: [review38 NPC combat and reserved IDs](reports/2026-10-28-merge-38-player-hit-player.md); all 16 files match the approved diff and 1,725 assertions passed after application. IDs 768..1023, 192 real connection slots, 64 active NPCs and 256 fresh IDs per process are approved. Applied: [review39 miss diagnostic](reports/2026-10-28-merge-39-player-hit-square.md), baseline ae6e61a and source-equivalence verified. Applied: [review40 trade handshake](reports/2026-10-28-merge-40-request-trading.md), all four files match and 131 assertions passed again. Applied: [review41 add-item](reports/2026-10-28-merge-41-trading-add-item.md), baseline 300b619, candidate equality and 105 assertions. Applied: [review42 remove-item](reports/2026-10-28-merge-42-trading-remove-item.md), baseline a78d82e, candidate equality and 120 assertions. Applied: [review43 state/finalization](reports/2026-10-28-merge-43-trading-update-state.md), baseline d26bfff, candidate equality and 195 assertions. Applied: [review44 ChatServer](reports/2026-10-28-merge-44-chat-server.md), baseline 196d5da, candidate equality and 43 assertions. Applied: [review45 AdvancedAnimator](reports/2026-10-28-merge-45-advanced-animator.md), baseline 2b55f41 and source-equivalence checks. Applied: [review46 LuaManager](reports/2026-10-28-merge-46-lua-manager.md), baseline aca4626, candidate equality and 33 assertions. Applied: [review47 IngameState](reports/2026-10-28-merge-47-ingame-state.md), baseline d95d7a9 and scope/source equivalence. Applied: [review48 GameServer and packer API](reports/2026-10-28-merge-48-game-server.md), 824 counted assertions plus continuation/source checks. Follow-ups49-55 are applied, including API/build repairs, namespace validation and version metadata. Actual303-source build passed after54; proposed56 square tracking also builds and passes33 focused cache/constructor assertions. Review56 remains unapplied.
 
 ## Issues
+
+| Date | Issue |
+| --- | --- |
+| 2026-10-28 | [Dictionary startup build constraint: backend V34 correction](issues/2026-10-28-dictionary-build-constraint-startup.md) |
 
 Remaining limitations are tracked in the subsystem tracker and linked reports.

@@ -550,12 +550,27 @@ source candidate build passed (895 classes). Activates existing server entity-ID
 cache only; identity-position index/PZArrayList design remains pending. No list
 thread-safety or measured performance claim. Remaining:
 List-cache and full runtime/deployment-cleanup validation still pending. No deployment
-or runtime; continue reviews individually, historical-data migration plan deferred.
+or runtime. Latest user instruction now prioritizes cross-build recovery and ends
+individual reviews; the later checkpoint overrides earlier deferral/queue notes.
 Live client UI, full factory/GameServer composition, real journal/SQL
 receipt durability and native threading remain unverified. No installed files or
 production settings changed.
-After each approved patch, prepare the next individual review automatically,
-as the user requested; do not infer approval of that next merge.
+Runtime startup now reaches WorldDictionary mirror but DB rejects target metadata:
+PROVISION_NAMESPACE SQLState23514 world_dictionary_namespace_game_build_check.
+Manager V6 pinned42.21.0/249; new manager V34 admits exact pairs42.21/249 and42.22/251
+without rewriting namespace rows. See target issues/2026-10-28-dictionary-build-
+constraint-startup.md. Backend must apply game-runtime Flyway before server retry;
+no live schema/deploy/restart executed by this source fix.
+On2026-10-28 the user STOPPED the individual review queue and shifted to runtime
+validation/cross-build character recovery. Do NOT prepare further numbered reviews
+or request approval for pending review56; it remains unapplied. Prioritize making
+42.21 relational characters recover on42.22. Source investigation is recorded in
+42.22.0/docs/reports/2026-10-28-cross-build-character-reconstruction.md; recovery
+is not implemented. The user raised selective item omission as a possibility,
+not authorization to delete source snapshots or live character data. Keep source
+provenance/version and graph dependencies coherent; do not merely suppress errors.
+Review51 currently blocks historical dictionary namespace reads and must be
+revisited separately from target publication checks for cross-build recovery.
 Upstream List traversal obsoletes these audited raw readers, not the separate
 identity/mutation cache adapter that remains in scope.
 Prioritize optimizations, NPCs and PostgreSQL, with telemetry verification

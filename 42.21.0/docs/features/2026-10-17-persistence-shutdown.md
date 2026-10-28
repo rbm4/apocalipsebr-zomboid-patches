@@ -31,7 +31,9 @@ Startup still checks database availability/schema/credentials. Normal runtime
 retains connection failures for recovery, while operation-specific failures use
 [durable quarantine](2026-10-17-persistence-runtime.md) so the running server can continue
 unrelated synchronization and admission. Already quarantined entries do not
-re-enter startup/shutdown replay; player reload markers remain enforced.
+re-enter startup/shutdown replay. As of 2026-10-28, old player reload markers are
+retired during journal initialization under the
+[discard-and-reload policy](2026-10-28-player-save-discard-recovery.md).
 
 Startup probes must succeed before an operation is executed. Failed connection or
 receipt-schema probes do not count as operation attempts and cannot discard queued

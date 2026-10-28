@@ -443,7 +443,8 @@ public class RelationalTest {
   var ctor=type.getDeclaredConstructor();ctor.setAccessible(true);return ctor.newInstance();
  }
  static void field(Object object,String name,Object value)throws Exception {
-  Field f=object.getClass().getDeclaredField(name);f.setAccessible(true);f.set(object,value);
+  Field f=null;for(Class<?> c=object.getClass();c!=null&&f==null;c=c.getSuperclass())try{f=c.getDeclaredField(name);}catch(NoSuchFieldException ignored){}
+  if(f==null)throw new NoSuchFieldException(name);f.setAccessible(true);f.set(object,value);
  }
  static byte[] nativeAttributes(zombie.entity.components.attributes.AttributeContainer container) {
   var buffer=java.nio.ByteBuffer.allocate(16384);container.save(buffer);return Arrays.copyOf(buffer.array(),buffer.position());
@@ -519,6 +520,26 @@ public class RelationalTest {
   Class<?> type=component.getClass();Method save=null;
   while(type!=null&&save==null){try{save=type.getDeclaredMethod("save",java.nio.ByteBuffer.class);}catch(NoSuchMethodException ignored){type=type.getSuperclass();}}
   save.setAccessible(true);var buffer=java.nio.ByteBuffer.allocate(65536);save.invoke(component,buffer);return Arrays.copyOf(buffer.array(),buffer.position());
+ }
+ static void spriteConfigCodec()throws Exception {
+  var component=nativeComponent(zombie.entity.components.spriteconfig.SpriteConfig.class);
+  check(ApocBRPlayerRelationalCodecs.supports(component),"SpriteConfig supports carried world-object components even though not inventory-valid in ComponentType");
+  check(ApocBRPlayerRelationalCodecs.component(component).equals(Map.of("hasScript",false)),"absent SpriteConfig script has explicit coverage");
+  var script=nativeComponent(zombie.scripting.entity.components.spriteconfig.SpriteConfigScript.class);
+  field(script,"fullTypeDirty",false);field(script,"fullTypeCache","Base.SpriteFixture.SpriteConfig");
+  field(script,"scriptVersion",Long.MIN_VALUE);
+  field(component,"configScript",script);
+  var state=ApocBRPlayerRelationalCodecs.component(component);
+  check(state.get("scriptFullType").equals("Base.SpriteFixture.SpriteConfig")&&state.get("scriptVersion").equals(Long.MIN_VALUE),"sprite script uses full dictionary name and exact long version");
+  check(state.get("wasLoadedAsMaster").equals(false),"carried component captures native isMultiSquareMaster rather than stale loaded flag");
+  P player=new P();Item item=new Item(1);player.inventory.items.add(item);item.components.add(component);item.componentSize=1;
+  UUID character=UUID.randomUUID();var before=liveGraph(player,character);
+  check(before.issues().isEmpty(),"carried SpriteConfig no longer quarantines live graph");
+  var frozen=ApocBRPlayerRelationalSnapshot.copy(player);detached(frozen.player(),Collections.newSetFromMap(new IdentityHashMap<>()));
+  field(script,"scriptVersion",5L);field(component,"configScript",null);
+  var after=new ApocBRPlayerRelationalCapture(character,Map.of(),Long.MAX_VALUE).capture(frozen,List.of());
+  check(canonical(before).equals(canonical(after)),"SpriteConfig detached state survives live script/component mutation");
+  check(after.rows().stream().anyMatch(r->r.table().equals("component")&&r.values().get("kind").equals("entity.SpriteConfig")&&r.values().get("coverage").equals("complete")),"SpriteConfig uses existing complete structured component rows");
  }
  static void remainingComponentCodecs()throws Exception {
   P player=new P();Item item=new Item(1);player.inventory.items.add(item);UUID character=UUID.randomUUID();int audited=0;
@@ -1341,7 +1362,7 @@ public class RelationalTest {
   check(live.opened==live.closed,"live worker returns its lease at shutdown");
  }
 
- public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();orphanEquipment();duplicateNativeItems();graphQueue();liveVehicle();characterLives();playerItemLifecycles();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
+ public static void main(String[] args)throws Exception {if(args.length>0&&args[0].startsWith("size-")){sizeLimits(args[0]);System.out.println("Size checks="+checks);return;}if(args.length>0){worker();System.out.println("Worker checks="+checks);return;}writeDiagnostics();accessors();captures();snapshots();payloadOrigins();componentCodecs();spriteConfigCodec();remainingComponentCodecs();embeddedAnimalCodec();sharedLuaState();mutationQueue();mutationDatabase();extendedMutations();graphMutations();orphanEquipment();duplicateNativeItems();graphQueue();liveVehicle();characterLives();playerItemLifecycles();aliasGenerations();sqlMetrics();largeImport();database();System.out.println("Relational checks="+checks);}
 }
 '''
 with tempfile.TemporaryDirectory(prefix='apocbr_rel_') as folder:

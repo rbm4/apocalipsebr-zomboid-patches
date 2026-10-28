@@ -37,32 +37,53 @@ public class ApocBRResilienceTest {
  record PlayerValue(String playerKey,boolean completePlayerState,String state) implements ApocBRPersistenceJournal.Operation {
   public String kind(){return "fixture-player-v1";}public long estimatedBytes(){return 128;}
  }
+ static Path legacyMarker(Path directory,String key,UUID id)throws Exception {
+  Path marker=directory.resolve("quarantine").resolve(UUID.nameUUIDFromBytes(key.getBytes(java.nio.charset.StandardCharsets.UTF_8))+".pending");
+  var bytes=new ByteArrayOutputStream();try(var out=new DataOutputStream(bytes)){out.writeUTF(key);out.writeLong(id.getMostSignificantBits());out.writeLong(id.getLeastSignificantBits());}
+  var write=ApocBRPersistenceJournal.class.getDeclaredMethod("writeRecord",Path.class,byte[].class);write.setAccessible(true);write.invoke(null,marker,bytes.toByteArray());return marker;
+ }
  static void quarantine(Path root)throws Exception {
-  Path directory=root.resolve("isolation");UUID rejected;
-  try(var journal=new ApocBRPersistenceJournal(directory,256,s->{})) {
-   rejected=journal.submit(new PlayerValue("blocked",true,"bad-capture"));journal.submit(new Value(1));journal.flush();
-   // Simulate failure after archive/marker fsync but before the active checkpoint advances.
+  Path directory=root.resolve("isolation");UUID rejected;List<String> logs=new ArrayList<>();
+  try(var journal=new ApocBRPersistenceJournal(directory,256,logs::add)) {
+   rejected=journal.submit(new PlayerValue("blocked",true,"bad-capture"));
+   journal.submit(new PlayerValue("blocked",false,"newer-active-save"));journal.submit(new Value(1));journal.flush();
    Files.createDirectory(directory.resolve("checkpoint.tmp"));
    try{journal.quarantine(rejected);throw new AssertionError("checkpoint failure ignored");}catch(IOException expected){}
-   check(journal.head().id().equals(rejected)&&journal.quarantined(rejected),"checkpoint failure keeps original head plus durable rejected payload");
+   check(journal.head().id().equals(rejected)&&journal.quarantined(rejected)&&journal.pendingPlayer("blocked"),"checkpoint failure keeps original head, archive and active player guard");
    Files.delete(directory.resolve("checkpoint.tmp"));
   }
-  try(var journal=new ApocBRPersistenceJournal(directory,256,s->{})) {
-   check(journal.head().id().equals(rejected)&&journal.pendingPlayer("blocked"),"restart recovers rejected head and player reload marker");
+  Path marker=legacyMarker(directory,"blocked",rejected);byte[] markerBytes=Files.readAllBytes(marker);
+  Path archive=directory.resolve("quarantine").resolve(rejected+".record");byte[] original=Files.readAllBytes(archive);
+  try(var journal=new ApocBRPersistenceJournal(directory,256,logs::add)) {
+   check(journal.head().id().equals(rejected)&&journal.pendingPlayer("blocked"),"legacy block release cannot clear an active journal head");
+   check(!Files.exists(marker)&&Files.exists(marker.resolveSibling(marker.getFileName()+"."+rejected+".released")),"startup atomically retires legacy marker while preserving evidence");
+   check(logs.stream().filter(x->x.contains("PLAYER_REJECTION_RELEASED")&&x.contains(rejected.toString())&&x.contains("recovery=last_committed")).count()==1,"legacy release logs operation and explicit rollback policy");
    journal.quarantine(rejected);
-   check(((Value)journal.head().operation()).value()==1,"idempotent quarantine completes acknowledgement and exposes next operation");
+   check(journal.pendingPlayer("blocked"),"newer active save for same player remains guarded after rejected head discarded");
    journal.acknowledgeCommitted(journal.head().id());
-   check(journal.empty()&&journal.pendingPlayer("blocked")&&!journal.pendingPlayer("unrelated"),"quarantined player does not obstruct active queue or unrelated identities");
-   journal.submit(new PlayerValue("blocked",false,"scalar-only"));journal.flush();journal.acknowledgeCommitted(journal.head().id());
-   check(journal.pendingPlayer("blocked"),"scalar-only commit cannot authorize loading an older incomplete graph");
+   check(!journal.pendingPlayer("blocked")&&journal.pendingPlayer("identity-1"),"abandoned capture no longer blocks player after active successor commits");
+   journal.acknowledgeCommitted(journal.head().id());
+   check(journal.empty()&&journal.blockedPlayers()==0,"no persistent rejected-player locks remain");
+   check(Arrays.equals(original,Files.readAllBytes(archive)),"abandoning save preserves exact rejected archive bytes");
+   check(Arrays.equals(markerBytes,Files.readAllBytes(marker.resolveSibling(marker.getFileName()+"."+rejected+".released"))),"legacy marker contents retained unchanged");
   }
-  try(var journal=new ApocBRPersistenceJournal(directory,256,s->{})) {
-   check(journal.pendingPlayer("blocked"),"reload protection persists even after active journal compaction/restart");
-   journal.submit(new PlayerValue("blocked",true,"new-full-capture"));journal.flush();journal.acknowledgeCommitted(journal.head().id());
-   check(!journal.pendingPlayer("blocked"),"newer committed full capture resolves only the affected reload protection");
-   check(journal.quarantined(rejected),"superseded rejected payload is retained for diagnosis and never re-executed automatically");
+  int count=logs.size();
+  try(var journal=new ApocBRPersistenceJournal(directory,256,logs::add)) {
+   check(journal.empty()&&!journal.pendingPlayer("blocked")&&logs.size()==count,"restart does not reblock player or repeat release migration");
+   UUID next=journal.submit(new PlayerValue("blocked",true,"new-invalid-save"));journal.flush();journal.quarantine(next);
+   check(!journal.pendingPlayer("blocked")&&journal.quarantined(next),"new rejected save is retained without persistent reload block");
+   try(var files=Files.newDirectoryStream(directory.resolve("quarantine"),"*.pending")){check(!files.iterator().hasNext(),"new quarantine never creates legacy pending markers");}
   }
-  try(var journal=new ApocBRPersistenceJournal(directory,256,s->{})){check(journal.empty()&&!journal.pendingPlayer("blocked"),"resolved reload protection survives restart");}
+  Path bulk=root.resolve("bulk-quarantine");
+  try(var journal=new ApocBRPersistenceJournal(bulk,256,s0->{})) {
+   for(int i=0;i<30;i++) {String key="player-"+(i%3);UUID id=journal.submit(new PlayerValue(key,true,"rejected-"+i));journal.flush();journal.quarantine(id);legacyMarker(bulk,key,id);}
+  }
+  List<String> releases=new ArrayList<>();
+  try(var journal=new ApocBRPersistenceJournal(bulk,256,releases::add)) {
+   check(journal.empty()&&releases.size()==3,"many archives resolve by outstanding marker, without replay or database inserts");
+   for(int i=0;i<3;i++)check(!journal.pendingPlayer("player-"+i),"all legacy player blocks released at startup");
+   try(var files=Files.list(bulk.resolve("quarantine"))){check(files.filter(x->x.toString().endsWith(".record")).count()==30,"bulk release retains all historical rejected saves");}
+  }
  }
  static void journal(Path root)throws Exception {
   Path directory=root.resolve("journal");List<UUID> ids=new ArrayList<>();
@@ -349,7 +370,7 @@ public class ApocBRResilienceTest {
   ApocBRPostgresConnector.enqueuePlayerSnapshot(new ApocBRPostgresConnector.Snapshot("world","blocked",null,0,"player",1,2,0,249,false,"fixture",false,0,new byte[]{9}));
   until(()->fake.committed.size()==310&&ApocBRPostgresConnector.acceptingLogins(),"actual incomplete live graph cannot block following SQL or native player saves");
   check(Files.isRegularFile(root.resolve("runtime/quarantine/"+invalidPlayer+".record"))&&!fake.receipts.contains(invalidPlayer),"real SQLState 22000 graph is retained without being reported committed");
-  check(!ApocBRPostgresConnector.playerReadable("world","blocked",0,false)&&ApocBRPostgresConnector.playerReadable("world","other",0,false),"only affected identity stays protected against stale relational reload; a legacy blob does not clear that guard");
+  check(ApocBRPostgresConnector.playerReadable("world","blocked",0,false)&&ApocBRPostgresConnector.playerReadable("world","other",0,false),"rejected player save permits last-committed reload after active operations finish");
   UUID runtimeFailure=ApocBRPersistence.submit(write("runtime-failure"));ApocBRPersistence.submit(write("runtime-retry-four"));
   until(()->fake.committed.size()==311&&ApocBRPostgresConnector.acceptingLogins(),"local operation failure is bounded and retryable lock failure may succeed on fifth try");
   check(fake.writeAttempts.get("runtime-failure")==5&&Files.isRegularFile(root.resolve("runtime/quarantine/"+runtimeFailure+".record")),"local operation failure gets five attempts then durable isolation");
@@ -481,6 +502,9 @@ public class ApocBRResilienceTest {
   System.setProperty("apocbr.postgres.enabled","true");System.setProperty("apocbr.postgres.journalDirectory",root.toString());
   UUID bad;
   try(var journal=new ApocBRPersistenceJournal(root,256,s->{})){
+   String legacyKey=ApocBRPersistenceOperations.key("world","legacy-player",0,false);
+   UUID legacy=journal.submit(new PlayerValue(legacyKey,true,"old-rejected-capture"));journal.flush();journal.quarantine(legacy);
+   legacyMarker(root,legacyKey,legacy);
    journal.submit(write("barrier"));bad=journal.submit(write("constraint-one"));
    journal.submit(write("constraint-two"));journal.submit(write("incomplete-live"));journal.submit(write("transient-four"));
    journal.submit(write("runtime-failure"));journal.submit(write("after-failures"));
@@ -499,6 +523,7 @@ public class ApocBRResilienceTest {
   check(fake.committed.equals(List.of("barrier","transient-four","after-failures")),"startup progresses through failed heads in FIFO order");
   check(!fake.receipts.contains(bad),"startup discard does not fabricate a success receipt");
   check(ApocBRPersistence.status().durable()==0&&ApocBRPostgresConnector.acceptingLogins(),"startup opens admission after journal exhaustion");
+  check(ApocBRPostgresConnector.playerReadable("world","legacy-player",0,false),"real startup releases legacy player quarantine before opening login admission");
   ApocBRPersistence.close();
   try(var journal=new ApocBRPersistenceJournal(root,256,s->{})){check(journal.empty(),"startup discards remain removed after reopen");}
  }

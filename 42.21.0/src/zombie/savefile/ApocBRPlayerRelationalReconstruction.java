@@ -407,12 +407,34 @@ final class ApocBRPlayerRelationalReconstruction {
     @SuppressWarnings("unchecked")
     private static void restoreComponentState(Object component,String name,Object state) {
         Map<String,Object> fields=(Map<String,Object>)state;
+        if(name.equals("SpriteConfig")){restoreSpriteConfig(component,fields);return;}
         if(name.equals("AttributeContainer")){restoreAttributes(component,(List<Object>)fields.get("attributes"));return;}
         if(name.equals("FluidContainer")){restoreFluid(component,fields);return;}
         for(var e:fields.entrySet()) {
             if(name.equals("CraftBench")&&e.getValue() instanceof Map<?,?> channel){Object target=get(component,e.getKey());set(target,"bits",channel.get("nativeBits"));}
             else set(component,e.getKey(),e.getValue());
         }
+    }
+    private static void restoreSpriteConfig(Object component,Map<String,Object> state) {
+        if(!(state.get("hasScript") instanceof Boolean present))throw new IllegalStateException("Missing SpriteConfig script presence");
+        Object script=null;
+        boolean master=false;
+        if(present) {
+            if(!(state.get("scriptFullType") instanceof String fullType)||fullType.isBlank()
+                    ||!(state.get("scriptVersion") instanceof Long)||!(state.get("wasLoadedAsMaster") instanceof Boolean))
+                throw new IllegalStateException("Invalid saved SpriteConfig state");
+            script=zombie.world.ScriptsDictionary.spriteConfigs.get(fullType);
+            if(script==null)throw new IllegalStateException("Missing SpriteConfig script: "+fullType);
+            master=(Boolean)state.get("wasLoadedAsMaster");
+        }
+        // Match native load: resolve the current script and retain the saved master flag.
+        // Native 42.21.0 reads scriptVersion but does not reject a version mismatch.
+        if(script!=null)invokeDeclared(component,"readFromScript",script);
+        else set(component,"configScript",null);
+        set(component,"wasLoadedAsMaster",master);
+        // Restore into an existing component as well as a newly allocated one. These
+        // caches belong to the current owner/sprite and must never come from SQL.
+        invokeDeclared(component,"initObjectInfo");
     }
     @SuppressWarnings("unchecked")
     private static void restoreAttributes(Object component,List<Object> attributes) {

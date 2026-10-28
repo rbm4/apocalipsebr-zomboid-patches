@@ -173,6 +173,41 @@ public class ReconstructionTest {
   f.rows=List.<Object[]>of(new Object[]{"snapshot",metadata},new Object[]{"clothing_state","{\"wetness\":\"invalid\"}"});
   try{reader.load("world","alice",0,false);throw new AssertionError("malformed numeric data accepted");}catch(SQLException expected){checks++;}
  }
+ @SuppressWarnings("unchecked") static void spriteConfig()throws Exception {
+  Object script=blank(zombie.scripting.entity.components.spriteconfig.SpriteConfigScript.class);
+  String key="Base.RelationalSpriteFixture.SpriteConfig";
+  ApocBRPlayerRelationalReconstruction.set(script,"fullTypeDirty",false);ApocBRPlayerRelationalReconstruction.set(script,"fullTypeCache",key);
+  ApocBRPlayerRelationalReconstruction.set(script,"scriptVersion",Long.MIN_VALUE);
+  var register=zombie.world.ScriptsDictionary.spriteConfigs;
+  Map<String,Object> named=(Map<String,Object>)ApocBRPlayerRelationalAccess.get(register,"namedMap");
+  Map<Short,Object> ids=(Map<Short,Object>)ApocBRPlayerRelationalAccess.get(register,"idMap");
+  Object info=new zombie.world.DictionaryScriptInfo<>();
+  ApocBRPlayerRelationalReconstruction.set(info,"script",script);ApocBRPlayerRelationalReconstruction.set(info,"registryId",(short)31000);
+  named.put(key,info);Object previous=ids.put((short)31000,info);
+  try {
+   Object component=ApocBRPlayerRelationalReconstruction.create("zombie.entity.components.spriteconfig.SpriteConfig");
+   ApocBRPlayerRelationalReconstruction.set(component,"configScript",script);
+   var state=ApocBRPlayerRelationalCodecs.component(component);
+   Object restored=ApocBRPlayerRelationalReconstruction.create("zombie.entity.components.spriteconfig.SpriteConfig");
+   invoke("restoreComponentState",new Class[]{Object.class,String.class,Object.class},restored,"SpriteConfig",state);
+   check(ApocBRPlayerRelationalAccess.get(restored,"configScript")==script,"sprite script resolves by full dictionary name");
+   var save=zombie.entity.components.spriteconfig.SpriteConfig.class.getDeclaredMethod("save",java.nio.ByteBuffer.class);save.setAccessible(true);
+   var before=java.nio.ByteBuffer.allocate(64);var after=java.nio.ByteBuffer.allocate(64);save.invoke(component,before);save.invoke(restored,after);
+   check(Arrays.equals(Arrays.copyOf(before.array(),before.position()),Arrays.copyOf(after.array(),after.position())),"SpriteConfig codec round trip matches native save bytes");
+   Map<String,Object> master=new HashMap<>(state);master.put("wasLoadedAsMaster",true);master.put("scriptVersion",7L);
+   invoke("restoreComponentState",new Class[]{Object.class,String.class,Object.class},restored,"SpriteConfig",master);
+   check((Boolean)ApocBRPlayerRelationalAccess.call(restored,"isWasLoadedAsMaster"),"saved master flag retained and changed script version accepted as in vanilla");
+   Map<String,Object> missing=new HashMap<>(state);missing.put("scriptFullType",key+".missing");
+   try{invoke("restoreComponentState",new Class[]{Object.class,String.class,Object.class},restored,"SpriteConfig",missing);throw new AssertionError("missing sprite script accepted");}
+   catch(InvocationTargetException expected){check(expected.getCause() instanceof IllegalStateException,"missing sprite script fails closed");}
+   check(ApocBRPlayerRelationalAccess.get(restored,"configScript")==script,"failed resolution leaves component state untouched");
+   invoke("restoreComponentState",new Class[]{Object.class,String.class,Object.class},restored,"SpriteConfig",Map.of("hasScript",false));
+   check(ApocBRPlayerRelationalAccess.get(restored,"configScript")==null&&!(Boolean)ApocBRPlayerRelationalAccess.get(restored,"wasLoadedAsMaster"),"absent script clears existing configuration and master flag");
+   for(String cache:List.of("objectInfo","faceInfo","tileInfo"))check(ApocBRPlayerRelationalAccess.get(restored,cache)==null,"derived sprite cache not restored from persistence: "+cache);
+   try{invoke("restoreComponentState",new Class[]{Object.class,String.class,Object.class},restored,"SpriteConfig",Map.of());throw new AssertionError("missing state accepted");}
+   catch(InvocationTargetException expected){check(expected.getCause() instanceof IllegalStateException,"old missing SpriteConfig state cannot silently become complete");}
+  } finally {named.remove(key);if(previous==null)ids.remove((short)31000);else ids.put((short)31000,previous);}
+ }
  static void components()throws Exception {
   Object attributes=ApocBRPlayerRelationalReconstruction.create("zombie.entity.components.attributes.AttributeContainer");
   var attr=zombie.entity.components.attributes.Attribute.TestUses;
@@ -490,7 +525,7 @@ public class ReconstructionTest {
    check(ApocBRPlayerReconstructionLog.token("\ud83d\ude00\n").length()<=3,"non-ASCII labels cannot break log formatting");
   }finally{sink.set(null,previous);}
  }
- public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();traitRestoration();handRestoration();diagnosticCapture();fitnessPersistence();itemTypes();furnitureRestoration();nativeFields();jdbc();validationLookup();itemSequences();nonFiniteScalars();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
+ public static void main(String[] args)throws Exception{collectionAccess();bagLinks();fluidBag();traitRestoration();handRestoration();diagnosticCapture();fitnessPersistence();itemTypes();furnitureRestoration();nativeFields();jdbc();validationLookup();itemSequences();nonFiniteScalars();spriteConfig();components();ownership();diagnostics();System.out.println("Reconstruction checks="+checks);}
 }
 '''.replace('ROOTS',roots)
 with tempfile.TemporaryDirectory(prefix='apocbr_reconstruct_') as folder:
