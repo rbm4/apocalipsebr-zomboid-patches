@@ -9,7 +9,7 @@ import zombie.network.packets.INetworkPacket;
 import zombie.network.packets.character.PlayerPacketReliable;
 import zombie.network.chat.ChatServer;
 
-/** Only vanilla 42.21.0 packets cross the wire; clients need no new Java classes. */
+/** Only vanilla 42.22.0 packets cross the wire; clients need no new Java classes. */
 final class ServerHumanTransport {
     record Equipment(int primary,int secondary,int condition,int ammo,boolean chambered,boolean jammed) { }
     private ServerHumanTransport() {
@@ -31,8 +31,7 @@ final class ServerHumanTransport {
 
     static void idle(ServerHuman human, UdpConnection connection) {
         PlayerPacketReliable packet = new PlayerPacketReliable();
-        packet.id.set(human.player);
-        packet.id.setPlayerIndex((byte)-1);
+        packet.player.set(human.player);
         // Native prediction, clipped to a collision-checked straight segment.
         packet.prediction.type = 0;
         packet.prediction.x = human.player.getX();

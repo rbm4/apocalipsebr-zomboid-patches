@@ -3517,8 +3517,6 @@ public class IsoDoor extends IsoObject implements BarricadeAble, Thumpable, IHas
                     }
 
                     return 0;
-                default:
-                    throw new MatchException(null, null);
             }
         }
     }

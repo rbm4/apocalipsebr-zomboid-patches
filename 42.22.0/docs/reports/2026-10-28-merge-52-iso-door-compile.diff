@@ -1,0 +1,11 @@
+--- a/42.22.0/src/zombie/iso/objects/IsoDoor.java
++++ b/42.22.0/src/zombie/iso/objects/IsoDoor.java
+@@ -3517,8 +3517,6 @@
+                     }
+ 
+                     return 0;
+-                default:
+-                    throw new MatchException(null, null);
+             }
+         }
+     }

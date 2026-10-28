@@ -69,6 +69,7 @@ public class NetworkZombiePacker {
     private final Map<UdpConnection, ConnectionState> connectionStates = new IdentityHashMap<>();
     private final Map<ServerZombieAsyncSender.Lane, ConnectionState> statesByLane = new IdentityHashMap<>();
     private final ByteBuffer snapshotBuffer = ByteBuffer.allocate(ServerZombieAsyncSender.MAX_PACKET_BYTES);
+    private final ByteBufferWriter snapshotWriter = new ByteBufferWriter(this.snapshotBuffer);
     private final ServerZombiePacketPreparation packetPreparation = new ServerZombiePacketPreparation();
 
     public static NetworkZombiePacker getInstance() {
@@ -489,7 +490,7 @@ public class NetworkZombiePacker {
             if (zombie.onlineId == -1 || ServerMap.instance.zombieMap.get(zombie.onlineId) != zombie) continue;
             this.packetPreparation.prepare(zombie);
             this.snapshotBuffer.clear();
-            zombie.zombiePacket.write(this.snapshotBuffer);
+            zombie.zombiePacket.write(this.snapshotWriter);
             int bytes = this.snapshotBuffer.position();
             if (packetBytes + bytes > ServerZombieAsyncSender.MAX_PACKET_BYTES) {
                 this.restoreRequests(connection, List.of(new RequestedZombie(zombie)));

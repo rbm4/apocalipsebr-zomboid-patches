@@ -83,10 +83,11 @@ public class CollisionThreadsTest {
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pz-dir", type=Path, default=Path("Z:/SteamLibrary/steamapps/common/ProjectZomboid"))
+    parser.add_argument("--version", choices=["42.21.0", "42.22.0"], default="42.21.0")
     args = parser.parse_args()
     jar = args.pz_dir / "projectzomboid.jar"
     jdk = ROOT / "jdk" / "bin"
-    src = ROOT / "42.21.0" / "src" / "zombie" / "pathfind"
+    src = ROOT / args.version / "src" / "zombie" / "pathfind"
     # Cover every production boundary, including the debug query and standing check.
     source = (src / "PolygonalMap2.java").read_text(encoding="utf-8")
     assert source.count("this.lccMain.get().") == 4

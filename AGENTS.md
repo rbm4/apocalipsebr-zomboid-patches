@@ -438,13 +438,12 @@ required. These are stock-client player replicas, outside the live-player regist
 no real bot connection is created. The 500ms exact-payload guard can suppress
 identical legitimate rapid attacks; altered/later replay is not comprehensively
 prevented. Full restart required for ID policy changes.
-GameServer currently contains only the native slot-reservation prerequisite;
-review48 MUST extend it and preserve reservation while porting the remaining old
-custom integrations. Do not overwrite it with another baseline. WeaponHit's old
+GameServer now contains the review48 integration and review38 slot reservation.
+Future changes MUST preserve both. Do not overwrite it with another baseline. WeaponHit's old
 accessor intent is covered by new native Hit adapters; removed design resolved,
-with stale WeaponHit.class cleanup tracked but unimplemented. There are 302 target
-Java files, 43 reviewed merges, 3 changed-class retirements, 2 resolved removed
-targets, 2 pending changed reviews and 1 remaining removed-target design.
+with stale WeaponHit.class cleanup tracked but unimplemented. There are 303 target
+Java files, 45 reviewed merges, 3 changed-class retirements, 2 resolved removed
+targets, 0 pending original changed reviews and 1 remaining removed-target design.
 Review39 PlayerHitSquarePacket is approved/applied on 2026-10-28 after baseline
 ae6e61a. The single missed() diagnostic call preserves all other target text;
 applied-candidate equality and source checks passed, with no new fixture.
@@ -490,16 +489,69 @@ aca4626; candidate equality and 33 assertions passed again (21 cache,12 order/
 exposure). Restores requested-key cache source semantics, server-only existing
 APIs and decompiler typing/logging repairs. No shipped 42.22 bytecode/JAR/Kahlua
 or API implementation verification; event-control metadata followup remains.
-Review47 IngameState is the current unapplied one-class candidate: restore the
-same 19 old timing scopes (17 extra profiler resources, GameTime/world wrappers)
-on target flow. Reversing scopes restores all native text, including isTutorial
-music selection and removal of lastStand cleanup. Phase names match old patch;
-source checks only, no new fixture or runtime overhead/capture claim. Current
-Scope allocates/records whenever reached; do not call output-disabled/client
-paths no-op or claim an optimization. Nested timings overlap. Discuss/apply
-review47 individually, then prepare review48 GameServer. MUST extend the existing
-GameServer reservation prerequisite and preserve it, not recopy a vanilla baseline.
-Actual JAR, live client UI, full factory/GameServer composition, real journal/SQL
+Review47 IngameState is approved/applied on 2026-10-28 after exact native
+baseline d95d7a9; source/candidate equality passed. Same 19 old telemetry scopes,
+all target flow/tutorial/exit changes kept. No runtime overhead/capture validation.
+Review48 GameServer is approved/applied on 2026-10-28; the numbered queue is complete.
+Two-file diff includes GameServer startup/login/NPC/backend/telemetry hooks plus
+NetworkZombiePacker API adaptation (one reused writer on snapshotBuffer). Against
+current GameServer reservation source, not vanilla; DO NOT call baseline helper
+on either existing custom source. Preserve review38 slot reservation and all target
+silent-player, disconnect, role, inventory/save251 and chat changes. One RCON
+conflict resolved with native var118 and old timing scope. Candidate/source hashes
+in review48 JSON. tools/test_game_server_port.py passes 824 counted assertions:
+38 actual target async coordinator,18 extracted login dispatch,768 native writer/
+packet-body snapshots; plus deferred ConnectPacket and source ordering contracts.
+No entire GameServer/Packer compile, actual native player activation, live SQL,
+RakNet/world or schema/durability validation. Both files equal the reviewed diff and all fixture checks passed after application.
+GameServer is merged-unverified, partial prerequisite count0 and the packer known
+API gap is adapted. Physical source count stays303 (both files already exist).
+It does NOT complete migration: PZArrayList/List cache design, remaining copied
+relational/dictionary support gaps, event metadata, full target JAR/build/native
+validation, disabled/deferred vehicle PG repairs and cleanup implementation remain.
+No production settings/game files/DB changed. Review49 two-field reconstruction adaptation is approved/applied on2026-10-28;
+source equals candidate and target native storage/load contracts passed. Fifteen copied
+support files are adapted; all initial copied gaps are addressed. Full compile
+discovered two further copied API gaps (ServerHumanTransport and ServerZombiePath). Review50 new
+source_dataset game_build42.22.0 insertion metadata is approved/applied on2026-10-28;
+exact candidate equality passed. Existing
+ON CONFLICT DO NOTHING preserves reused dataset metadata. Review51 is approved/applied on2026-10-28: dictionary insert/reuse/load42.22.0/251 plus early locked-namespace
+metadata validation. Exact candidate equivalence and8 extracted JDBC-double cases/source contracts
+passed after application. User requests viability/running before historical-data
+migration planning; keep that work deferred.
+Existing older namespaces fail22023 without automatic rollover/relabel; default
+namespace excludes build. Old payload provenance/decoding still needs a separate
+upgrade plan; do not imply changing namespace migrates historical payloads. Discuss support/design work individually instead of declaring migration done.
+Installed JAR identified via javap Core42.22 and world251; SHA recorded in
+2026-10-28-build-check.json. Full303-source Java25 compile failed with4 errors:
+IsoDoor redundant decompiler default,2 removed transport id references,1 native
+path addRequest boolean argument. Review52 IsoDoor default removal is approved/applied on2026-10-28; exact two-line
+equivalence passed. Applied source equals the previously compiled overlay, leaving
+3 errors. Review53 transport is approved/applied on2026-10-28: packet.player.set replaces
+old packet.id/setPlayerIndex, keeping native2-byte field layout and ID range.
+Exact candidate equivalence and773 exact-native Player/ConnectionPlayer checks
+with engine/network doubles passed after application;
+303-source overlay with53 leaves only ServerZombiePath boolean API error.
+No full packet or live client execution; incoming ownership resolution unchanged.
+Review54 native path addRequest(...,false) is approved/applied on2026-10-28. False preserves old custom-Mover default and target non-player policy.
+303-source Java25 overlay compilation succeeds: exit0, zero errors,895 classes.
+Actual approved303-source compilation also passes, producing895 classes. No known
+copied API compile gaps remain (15 copied support files adapted). Prior collision
+ThreadLocal helper/map byte-identical to42.21 fix; target four-thread/80000-query
+regression passed via test_pathfind_collision_threads.py --version42.22.0 (space
+before version value). PathFindBehavior2 static scratch is still shared as in old
+patch; do not claim all vectors/native world state are thread-safe. Audit report
+2026-10-28-pathfinding-thread-local-audit.md documents limits. Review55 event-control
+build-prefix metadata is approved/applied on2026-10-28; exact candidate equality
+passed (42.22.0/event-control-v2). Review56 proposes two existing-source edits:
+square.objects uses MutationTrackedArrayList(2), helper gains default/capacity
+constructors. NOT applied.33 extracted cache/constructor assertions and full303-
+source candidate build passed (895 classes). Activates existing server entity-ID
+cache only; identity-position index/PZArrayList design remains pending. No list
+thread-safety or measured performance claim. Remaining:
+List-cache and full runtime/deployment-cleanup validation still pending. No deployment
+or runtime; continue reviews individually, historical-data migration plan deferred.
+Live client UI, full factory/GameServer composition, real journal/SQL
 receipt durability and native threading remain unverified. No installed files or
 production settings changed.
 After each approved patch, prepare the next individual review automatically,

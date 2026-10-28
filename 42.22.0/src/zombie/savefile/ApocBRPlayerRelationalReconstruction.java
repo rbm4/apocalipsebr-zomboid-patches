@@ -339,7 +339,7 @@ final class ApocBRPlayerRelationalReconstruction {
             switch((String)r.get("kind")) {
                 // Match IsoPlayer.load: deserialization must not fire OnEquip* callbacks,
                 // which may replace restored attachments and reapply gameplay modifiers.
-                case "hand" -> {if(slot.equals("primary"))set(player,"leftHandItem",item);else if(slot.equals("secondary"))set(player,"rightHandItem",item);else throw new IllegalStateException("Unknown hand slot");}
+                case "hand" -> {if(slot.equals("primary"))set(player,"primaryHandItem",item);else if(slot.equals("secondary"))set(player,"secondaryHandItem",item);else throw new IllegalStateException("Unknown hand slot");}
                 case "worn" -> call(player.getWornItems(),"setItem",registry("zombie.scripting.objects.ItemBodyLocation",slot),item);
                 case "attached" -> call(player.getAttachedItems(),"setItem",slot,item);
                 default -> throw new IllegalStateException("Unknown equipment relation");

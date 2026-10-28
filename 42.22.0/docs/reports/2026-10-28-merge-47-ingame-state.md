@@ -1,7 +1,7 @@
 # Review 47/48: IngameState
 
-Created 2026-10-28. Status: **candidate ready for individual approval**.
-Review46 is applied. This one-class candidate is not applied. See the
+Created 2026-10-28. Status: **approved and applied on 2026-10-28**.
+Review46 is applied. This one-class patch is also applied after baseline d95d7a9. See the
 [subsystem tracker](../features/2026-10-27-subsystem-port-tracker.md),
 [candidate diff](2026-10-28-merge-47-ingame-state.diff) and
 [source verification/phase list](2026-10-28-merge-47-ingame-state.json).
@@ -52,7 +52,10 @@ API was source-reviewed. No new fixture is added for these observational wrapper
 no full-JAR compilation, real simulation execution, telemetry capture, timing
 accuracy or overhead validation is claimed.
 
-Recommendation: apply this one-class instrumentation candidate after its exact
-native baseline. Then prepare review48 GameServer, preserving the already-applied
-review38 connection-slot reservation when integrating its remaining custom hooks.
-Do not overwrite that existing source with another vanilla baseline.
+The user approved this instrumentation. Exact native baseline d95d7a9 was
+committed locally, then the reviewed diff applied. Applied-candidate/source
+checks passed. No new fixture, runtime timing capture, deployment or installed-file
+changes occurred.
+
+Next is [review48: GameServer](2026-10-28-merge-48-game-server.md), extending its
+already-applied review38 NPC slot reservation. Do not recopy that existing source.

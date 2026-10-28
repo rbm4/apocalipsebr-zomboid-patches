@@ -1,0 +1,34 @@
+{
+  "review": 51,
+  "state": "approved-applied-unverified",
+  "path": "zombie/savefile/ApocBRWorldDictionaryDatabase.java",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "preimage_sha256": "f573063a572e524bd3c361fc2f300a6122abae13e5ba96d5c0a67278f1ab9165",
+  "candidate_diff_sha256": "0a7fe619c1728b73437c9cd99566146a4b8ed7249fd369f3e06511baeff9d0aa",
+  "change": "Use target42.22.0/world251 insertion and read filters; validate existing namespace build/world/format under its lock before publication.",
+  "verification": {
+    "source_contracts": true,
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "target_fixture": {
+      "script": "tools/test_dictionary_version_port.py",
+      "passed": true,
+      "cases": 8,
+      "scope": "Extracted candidate namespace validation with JDBC ResultSet doubles, plus insert/reuse/load metadata source checks. No full repository, SQL or game runtime."
+    }
+  },
+  "scope_limits": [
+    "Existing incompatible namespace fails with SQLState22023; no relabel, automatic rollover or historical migration.",
+    "Default namespace UUID excludes build, so upgrading the same server/save can hit this rejection; a new configured namespace and a separate historical payload migration plan are needed.",
+    "No SQL execution, real dictionary load or mixed-build decode validation."
+  ],
+  "applied_sha256": "ddf091c75005931acc47ce9f17ff4f9bfc5c342ab13859beedaf37641e88fbd0",
+  "approval": {
+    "date": "2026-10-28",
+    "user_instruction": "apply, i want to make everything viable and running before moving into a plan for that",
+    "decision": "apply target metadata and namespace guard; defer historical-data migration planning"
+  },
+  "applied_candidate_equivalence": true,
+  "post_application_fixture_passed": true
+}

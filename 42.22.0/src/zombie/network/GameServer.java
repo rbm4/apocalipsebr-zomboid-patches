@@ -30,6 +30,7 @@ import se.krka.kahlua.vm.KahluaTable;
 import se.krka.kahlua.vm.KahluaTableIterator;
 import zombie.AmbientSoundManager;
 import zombie.AmbientStreamManager;
+import zombie.ApocBRServerTelemetryLite;
 import zombie.DebugFileWatcher;
 import zombie.GameProfiler;
 import zombie.GameTime;
@@ -196,6 +197,7 @@ import zombie.network.statistics.StatisticManager;
 import zombie.network.statistics.data.NetworkStatistic;
 import zombie.pathfind.nativeCode.PathfindNative;
 import zombie.popman.NetworkZombieManager;
+import zombie.popman.NetworkZombiePacker;
 import zombie.popman.PoolCaps;
 import zombie.popman.ZombiePopulationManager;
 import zombie.popman.animal.AnimalInstanceManager;
@@ -733,14 +735,19 @@ public class GameServer {
             ZipBackup.onStartup();
             ZipBackup.onVersion();
             int updateDBCount = 0;
+            zombie.savefile.ApocBRPostgresConnector.prepareStartup();
 
             try {
                 ServerWorldDatabase.instance.create();
             } catch (ClassNotFoundException | SQLException var44) {
+                if (zombie.savefile.ApocBRServerDatabase.enabled()) {
+                    throw new IllegalStateException("PostgreSQL server database startup failed; complete backend migrations before starting the server");
+                }
                 DebugType.General.printException(var44, "", LogSeverity.Error);
             }
 
             Roles.init();
+            zombie.savefile.ApocBRPostgresConnector.finishStartup();
             if (ServerOptions.instance.uPnp.getValue()) {
                 DebugLog.log("Router detection/configuration starting.");
                 DebugLog.log("If the server hangs here, set UPnP=false.");
@@ -868,14 +875,23 @@ public class GameServer {
             LuaManager.GlobalObject.refreshAnimSets(true);
 
             while (!done) {
+                long startServerCycle = System.nanoTime();
                 try {
-                    long startServerCycle = System.nanoTime();
+                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("network.zombies.awaitAndSend")) {
+                        NetworkZombiePacker.getInstance().awaitWorkers();
+                    }
+                    long telemetryPacketsStart = System.nanoTime();
+                    try(ApocBRServerTelemetryLite.Scope login=ApocBRServerTelemetryLite.phase("database.login.continuations")) {
+                        zombie.savefile.ApocBRAsyncLogin.update();
+                        zombie.savefile.ApocBRPlayerMigration.update();
+                    }
                     PoolCaps.updateServerCaps();
                     MainLoopNetData2.clear();
 
                     for (IZomboidPacket data = MainLoopNetDataHighPriorityQ.poll(); data != null; data = MainLoopNetDataHighPriorityQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
+                    ApocBRServerTelemetryLite.count("packets.highPriority.drained", MainLoopNetData2.size());
 
                     Iterator<Entry<String, GameServer.DelayedConnection>> iterator = MainLoopDelayedDisconnectQ.entrySet().iterator();
 
@@ -939,6 +955,7 @@ public class GameServer {
                     for (IZomboidPacket data = MainLoopPlayerUpdateQ.poll(); data != null; data = MainLoopPlayerUpdateQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
+                    ApocBRServerTelemetryLite.count("packets.playerUpdate.drained", MainLoopNetData2.size());
 
                     NetworkStatistic.getInstance().packets.increase(MainLoopNetData2.size());
 
@@ -955,6 +972,7 @@ public class GameServer {
                     for (IZomboidPacket data = MainLoopNetDataQ.poll(); data != null; data = MainLoopNetDataQ.poll()) {
                         MainLoopNetData2.add(data);
                     }
+                    ApocBRServerTelemetryLite.count("packets.normal.drained", MainLoopNetData2.size());
 
                     for (int nxxx = 0; nxxx < MainLoopNetData2.size(); nxxx++) {
                         if (nxxx % 10 == 0 && (System.nanoTime() - startServerCycle) / 1000000L > 70L) {
@@ -970,6 +988,7 @@ public class GameServer {
                             }
 
                             droppedPackets += 2;
+                            ApocBRServerTelemetryLite.count("packets.dropped", MainLoopNetData2.size() - nxxx);
                             countOfDroppedPackets = countOfDroppedPackets + (MainLoopNetData2.size() - nxxx);
                             break;
                         }
@@ -995,6 +1014,7 @@ public class GameServer {
                     }
 
                     droppedPackets = Math.max(0, Math.min(1000, droppedPackets - 1));
+                    ApocBRServerTelemetryLite.recordPhase("network.incoming", System.nanoTime() - telemetryPacketsStart);
                     if (!serverUpdateLimiter.Check()) {
                         long delay = PZMath.clamp((5000000L - System.nanoTime() + startServerCycle) / 1000000L, 0L, 100L);
                         if (delay > 0L) {
@@ -1010,7 +1030,9 @@ public class GameServer {
 
                         try (AbstractPerformanceProfileProbe var110 = GameServer.s_performance.frameStep.profile()) {
                             timeSinceKeepAlive = timeSinceKeepAlive + GameTime.getInstance().getMultiplier();
-                            ServerMap.instance.preupdate();
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.preupdate")) {
+                                ServerMap.instance.preupdate();
+                            }
                             synchronized (consoleCommands) {
                                 for (int i = 0; i < consoleCommands.size(); i++) {
                                     String command = consoleCommands.get(i);
@@ -1053,72 +1075,82 @@ public class GameServer {
                             }
 
                             try (AbstractPerformanceProfileProbe var118 = GameServer.s_performance.RCONServerUpdate.profile()) {
-                                RCONServer.update();
+                                try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("rcon.update")) {
+                                    RCONServer.update();
+                                }
                             }
 
                             try {
-                                MapCollisionData.instance.updateGameState();
-                                statex.update();
-                                VehicleManager.instance.serverUpdate();
+                                try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("collision.updateGameState")) {
+                                    MapCollisionData.instance.updateGameState();
+                                }
+                                try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("simulation.update")) {
+                                    statex.update();
+                                }
+                                try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("vehicles.update")) {
+                                    VehicleManager.instance.serverUpdate();
+                                }
                                 ObjectIDManager.getInstance().checkForSaveDataFile(false);
                             } catch (Exception var38) {
                                 DebugType.General.printException(var38, "", LogSeverity.Error);
                             }
 
-                            int asleepCount = 0;
-                            int playerCount = 0;
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("players.relevanceAndDownloads")) {
+                                int asleepCount = 0;
+                                int playerCount = 0;
 
-                            for (int nxxx = 0; nxxx < Players.size(); nxxx++) {
-                                IsoPlayer p = Players.get(nxxx);
-                                if (p.isAlive()) {
-                                    if (!IsoWorld.instance.currentCell.getObjectList().contains(p)) {
-                                        IsoWorld.instance.currentCell.getObjectList().add(p);
+                                for (int nxxx = 0; nxxx < Players.size(); nxxx++) {
+                                    IsoPlayer p = Players.get(nxxx);
+                                    if (p.isAlive()) {
+                                        if (!IsoWorld.instance.currentCell.getObjectList().contains(p)) {
+                                            IsoWorld.instance.currentCell.getObjectList().add(p);
+                                        }
+
+                                        playerCount++;
+                                        if (p.isAsleep()) {
+                                            asleepCount++;
+                                        }
                                     }
 
-                                    playerCount++;
-                                    if (p.isAsleep()) {
-                                        asleepCount++;
+                                    ServerMap.instance.characterIn(p);
+                                }
+
+                                ImportantAreaManager.getInstance().process(statex.paused);
+                                setFastForward(ServerOptions.instance.sleepAllowed.getValue() && playerCount > 0 && asleepCount == playerCount);
+                                boolean needCalcCountPlayersInRelevantPosition = calcCountPlayersInRelevantPositionLimiter.Check();
+
+                                for (int nxxx = 0; nxxx < udpEngine.connections.size(); nxxx++) {
+                                    UdpConnection c = udpEngine.connections.get(nxxx);
+                                    if (needCalcCountPlayersInRelevantPosition) {
+                                        c.calcCountPlayersInRelevantPosition();
+                                    }
+
+                                    for (int playerIndex = 0; playerIndex < 4; playerIndex++) {
+                                        Vector3 area = c.connectArea[playerIndex];
+                                        if (area != null) {
+                                            ServerMap.instance.characterIn(PZMath.fastfloor(area.x), PZMath.fastfloor(area.y), PZMath.fastfloor(area.z));
+                                        }
+
+                                        ClientServerMap.characterIn(c, playerIndex);
+                                    }
+
+                                    if (c.getPlayerDownloadServer() != null) {
+                                        c.getPlayerDownloadServer().update();
                                     }
                                 }
 
-                                ServerMap.instance.characterIn(p);
-                            }
+                                Set<IsoMovingObject> toRemove = new HashSet<>();
 
-                            ImportantAreaManager.getInstance().process(statex.paused);
-                            setFastForward(ServerOptions.instance.sleepAllowed.getValue() && playerCount > 0 && asleepCount == playerCount);
-                            boolean needCalcCountPlayersInRelevantPosition = calcCountPlayersInRelevantPositionLimiter.Check();
-
-                            for (int nxxx = 0; nxxx < udpEngine.connections.size(); nxxx++) {
-                                UdpConnection c = udpEngine.connections.get(nxxx);
-                                if (needCalcCountPlayersInRelevantPosition) {
-                                    c.calcCountPlayersInRelevantPosition();
-                                }
-
-                                for (int playerIndex = 0; playerIndex < 4; playerIndex++) {
-                                    Vector3 area = c.connectArea[playerIndex];
-                                    if (area != null) {
-                                        ServerMap.instance.characterIn(PZMath.fastfloor(area.x), PZMath.fastfloor(area.y), PZMath.fastfloor(area.z));
+                                for (IsoMovingObject o : IsoWorld.instance.currentCell.getObjectList()) {
+                                    if (!(o instanceof IsoAnimal) && o instanceof IsoPlayer && !Players.contains(o)) {
+                                        DebugLog.log("Disconnected player in CurrentCell.getObjectList() removed");
+                                        toRemove.add(o);
                                     }
-
-                                    ClientServerMap.characterIn(c, playerIndex);
                                 }
 
-                                if (c.getPlayerDownloadServer() != null) {
-                                    c.getPlayerDownloadServer().update();
-                                }
+                                IsoWorld.instance.currentCell.getObjectList().removeAll(toRemove);
+                                toRemove.clear();
                             }
-
-                            Set<IsoMovingObject> toRemove = new HashSet<>();
-
-                            for (IsoMovingObject o : IsoWorld.instance.currentCell.getObjectList()) {
-                                if (!(o instanceof IsoAnimal) && o instanceof IsoPlayer && !Players.contains(o)) {
-                                    DebugLog.log("Disconnected player in CurrentCell.getObjectList() removed");
-                                    toRemove.add(o);
-                                }
-                            }
-
-                            IsoWorld.instance.currentCell.getObjectList().removeAll(toRemove);
-                            toRemove.clear();
                             if (++updateDBCount > 150) {
                                 for (int nxxx = 0; nxxx < udpEngine.connections.size(); nxxx++) {
                                     UdpConnection connection = udpEngine.connections.get(nxxx);
@@ -1140,7 +1172,9 @@ public class GameServer {
                                 updateDBCount = 0;
                             }
 
-                            ServerMap.instance.postupdate();
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.postupdate")) {
+                                ServerMap.instance.postupdate();
+                            }
 
                             try {
                                 ServerGUI.update();
@@ -1198,14 +1232,27 @@ public class GameServer {
                             }
 
                             LoginQueue.update();
-                            ZipBackup.onPeriod();
+                            zombie.savefile.ApocBRCreatedPlayerHandoff.update();
+                            zombie.apocalipse.events.ApocBREventControl.update();
+                            zombie.apocalipse.humans.ServerHumanFactory.update();
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("backup.onPeriod")) {
+                                ZipBackup.onPeriod();
+                            }
                             SteamUtils.runLoop();
-                            TradingManager.getInstance().update();
-                            WarManager.update();
-                            SafeHouse.update();
-                            NetworkPlayerManager.getInstance().update();
-                            GameWindow.fileSystem.updateAsyncTransactions();
-                            WorldMapVisitedServer.getInstance().update();
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("world.socialSystems")) {
+                                TradingManager.getInstance().update();
+                                WarManager.update();
+                                SafeHouse.update();
+                            }
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("network.players.update")) {
+                                NetworkPlayerManager.getInstance().update();
+                            }
+                            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("world.asyncAndMap")) {
+                                GameWindow.fileSystem.updateAsyncTransactions();
+                                WorldMapVisitedServer.getInstance().update();
+                            }
+                            ApocBRBackendBridgeHooks.onTick();
+                            ApocBRServerTelemetryLite.recordTick(System.nanoTime() - startServerCycle);
                         } catch (Exception var59) {
                             if (mainCycleExceptionLogCount-- > 0) {
                                 DebugType.Multiplayer.printException(var59, "Server processing error", LogSeverity.Error);
@@ -1216,6 +1263,8 @@ public class GameServer {
                     if (mainCycleExceptionLogCount-- > 0) {
                         DebugType.Multiplayer.printException(var61, "Server error", LogSeverity.Error);
                     }
+                } finally {
+                    ApocBRServerTelemetryLite.recordLoop(System.nanoTime() - startServerCycle);
                 }
             }
 
@@ -1456,6 +1505,7 @@ public class GameServer {
         ArrayList<String> mods = new ArrayList<>(ServerMods);
         ZomboidFileSystem.instance.loadMods(mods);
         LuaManager.init();
+        zombie.savefile.ApocBRModEntities.install();
         PerkFactory.init();
         CustomPerks.instance.init();
         CustomPerks.instance.initLua();
@@ -1571,6 +1621,8 @@ public class GameServer {
             }
         }
 
+        zombie.apocalipse.events.ApocBREventControl.start();
+        ApocBRBackendBridgeHooks.initialize();
         LuaEventManager.triggerEvent("OnServerStarted");
         if (SteamUtils.isSteamModeEnabled()) {
             CoopSlave.status("UI_ServerStatus_Started");
@@ -1816,6 +1868,7 @@ public class GameServer {
     }
 
     public static void sendHelicopter(float x, float y, boolean active) {
+        ApocBRBackendBridgeHooks.onHelicopter(active);
         HelicopterPacket packet = new HelicopterPacket();
         packet.set(x, y, active);
 
@@ -2645,6 +2698,7 @@ public class GameServer {
 
     public static void disconnectPlayer(IsoPlayer player, IConnection connection) {
         if (player != null) {
+            ApocBRBackendBridgeHooks.onConnection(player, false);
             SafetySystemManager.storeSafety(player);
             ChatServer.getInstance().disconnectPlayer(player.getOnlineID());
             if (player.getVehicle() != null) {
@@ -2710,6 +2764,7 @@ public class GameServer {
     }
 
     public static void receiveClientConnect(UdpConnection connection, ServerWorldDatabase.LogonResult r) {
+        if(!zombie.savefile.ApocBRLoginGuard.continueRequest(connection))return;
         ConnectionManager.log("receive-packet", "client-connect", connection);
         int slot = getFreeSlot();
         if (slot == -1) {
@@ -2826,6 +2881,45 @@ public class GameServer {
     }
 
     public static void receivePlayerConnect(ByteBufferReader bb, IConnection connection, String username) {
+        receivePlayerConnect(bb,connection,username,()->{});
+    }
+
+    public static void receivePlayerConnect(ByteBufferReader bb,IConnection connection,String username,Runnable connected) {
+        if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
+            receivePlayerConnectDatabase(bb,connection,username,connected);
+        }catch(RuntimeException failure) {
+            if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
+            zombie.savefile.ApocBRLoginGuard.deny(connection);
+        }
+    }
+
+    private static void receivePlayerConnectDatabase(ByteBufferReader bb,IConnection connection,String username,Runnable connected) {
+        if(zombie.savefile.ApocBRPlayerDatabase.enabled()&&connection instanceof UdpConnection udp) {
+            java.nio.ByteBuffer copy=java.nio.ByteBuffer.allocate(bb.remaining());copy.put(bb.bb.duplicate());copy.flip();
+            if(copy.remaining()<3){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+            int slot=copy.get(0);
+            if(slot<0||slot>=4||connection.getPlayerAt(slot)!=null){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+            // A newly created character is already durable and held in simulation-thread memory.
+            IsoPlayer created=zombie.savefile.ApocBRCreatedPlayerHandoff.take(udp,slot);
+            if(created!=null){receivePlayerConnectReady(new ByteBufferReader(copy),connection,username,created,connected);return;}
+            String world=Core.gameSaveWorld;
+            boolean steamCoop=coop&&SteamUtils.isSteamModeEnabled();
+            String identity=steamCoop?connection.getIDStr():connection.getUserName();
+            zombie.savefile.ApocBRAsyncLogin.submit(udp,"player-connect:"+slot,
+                ()->ServerPlayerDB.getInstance().readPostgresProfile(world,identity,slot,steamCoop),
+                profile->{
+                    if(connection.getPlayerAt(slot)!=null)return;
+                    if(!java.util.Objects.equals(connection.getUserName(slot),username)){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+                    IsoPlayer player=ServerPlayerDB.getInstance().finishPostgresPlayer(profile,slot,identity,steamCoop);
+                    receivePlayerConnectReady(new ByteBufferReader(copy),connection,username,player,connected);
+                });
+            return;
+        }
+        receivePlayerConnectReady(bb,connection,username,null,connected);
+    }
+
+    private static void receivePlayerConnectReady(ByteBufferReader bb,IConnection connection,String username,IsoPlayer loaded,Runnable connected) {
         ConnectionManager.log("receive-packet", "player-connect", connection);
         if (SteamUtils.isSteamModeEnabled() && !coop && connection.getSteamId() <= 0L) {
             LoggerManager.getLogger("user")
@@ -2844,11 +2938,13 @@ public class GameServer {
             if (playerIndex >= 0 && playerIndex < 4 && connection.getPlayerAt(playerIndex) == null) {
                 byte range = (byte)Math.max(12, Math.min(20, bb.getByte()));
                 connection.setRelevantRange((byte)(range / 2 + 2));
-                IsoPlayer player;
-                if (coop && SteamUtils.isSteamModeEnabled()) {
-                    player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getIDStr());
-                } else {
-                    player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getUserName());
+                IsoPlayer player=loaded;
+                if (player==null&&!zombie.savefile.ApocBRPlayerDatabase.enabled()) {
+                    if (coop && SteamUtils.isSteamModeEnabled()) {
+                        player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getIDStr());
+                    } else {
+                        player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getUserName());
+                    }
                 }
 
                 if (player == null) {
@@ -2887,6 +2983,7 @@ public class GameServer {
                     player.username = username;
                     ChatServer.getInstance().initPlayer(player.onlineId);
                     connection.setFullyConnected();
+                    ApocBRBackendBridgeHooks.onConnection(player, true);
                     sendWeather(connection);
                     SafetySystemManager.restoreSafety(player);
                     if (!connection.getRole().hasCapability(Capability.HideFromSteamUserList)) {
@@ -2936,6 +3033,11 @@ public class GameServer {
 
                     LoggerManager.getLogger("user")
                         .write(connection.getIDStr() + " \"" + player.username + "\" fully connected " + LoggerManager.getPlayerCoords(player));
+                    zombie.savefile.ApocBRPlayerLogin.successfulLogin(player,Core.gameSaveWorld,
+                        coop&&SteamUtils.isSteamModeEnabled()?connection.getIDStr():connection.getUserName(),
+                        coop&&SteamUtils.isSteamModeEnabled(),playerIndex,username,
+                        connection.getSteamId()>0?Long.toUnsignedString(connection.getSteamId()):null);
+                    connected.run();
                 }
             }
         }

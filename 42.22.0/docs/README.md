@@ -2,17 +2,20 @@
 
 42.22.0 is the current server development target (pre-release). The vanilla
 baseline is `../decompiled/zombie/`; replacement sources belong in `../src/zombie/`.
-The source tree contains 302 Java files: 250 original carry-overs, 43 individually
-approved replacement merges, and nine additional combat/trading helpers/replacements or
-prerequisites. Nine copied support sources were adapted in reviews38/40. Its
-GameServer source currently contains only the native connection-slot reservation;
-the full custom integration remains review48. Reviews 10-11 and 20 retired three
+The source tree contains 303 Java files: 250 original carry-overs, 45 individually
+approved replacement merges, and eight additional combat/trading helpers/replacements.
+Fifteen copied support sources were adapted in reviews38/40/49/50/51/53/54/55, and one copied
+identical-baseline replacement was adapted in review48. GameServer integration
+and the coupled packer writer adaptation are applied. Reviews 10-11 and 20 retired three
 changed replacements to vanilla, and reviews38/43 resolved removed WeaponHit/Trading through
-native hit and packet-specific trading adapters. Another 2 changed reviews and
-1 removed target await decisions.
-Reviews 01-04, 06-09, 12-13, 15-16, 18-19, 22-26, 28-32, 34-38 and 40-44 and 46 passed target
+native hit and packet-specific trading adapters. All 48 numbered decisions are
+complete; one removed target design and copied-support repairs remain open.
+Reviews 01-04, 06-09, 12-13, 15-16, 18-19, 22-26, 28-32, 34-38, 40-44, 46 and 48 passed target
 fixtures with explicit doubles; other applied merges passed source checks.
-Exact-target JAR compilation and runtime verification remain pending.
+The installed JAR is identified as42.22/world251; a303-source compilation failed
+with four initial errors; applied52-54 resolve all four. The actual approved303
+sources compile successfully (895 class files). Runtime verification remains
+pending. The prior collision thread-local fix passed the target four-thread test.
 This directory is under migration and is not a deployable or validated release.
 
 Start with the class-by-class migration report before carrying over any source.
@@ -33,7 +36,18 @@ No complete feature has been compiled and runtime-verified for this target yet.
 
 | Date | Document |
 | --- | --- |
-| 2026-10-28 | [Review 47/48: IngameState (telemetry scopes candidate)](reports/2026-10-28-merge-47-ingame-state.md) |
+| 2026-10-28 | [Follow-up review56: square mutation tracking/entity-ID cache (candidate)](reports/2026-10-28-merge-56-square-mutation-tracking.md) |
+| 2026-10-28 | [Follow-up review55: event-control engine metadata (applied)](reports/2026-10-28-merge-55-event-control-metadata.md) |
+| 2026-10-28 | [Pathfinding thread-local audit: prior collision fix preserved](reports/2026-10-28-pathfinding-thread-local-audit.md) |
+| 2026-10-28 | [Follow-up review 54: zombie native path argument (applied; full build passes)](reports/2026-10-28-merge-54-zombie-path.md) |
+| 2026-10-28 | [Follow-up review 53: NPC transport native player field (applied)](reports/2026-10-28-merge-53-npc-transport.md) |
+| 2026-10-28 | [Follow-up review 52: IsoDoor decompiler compile repair (applied)](reports/2026-10-28-merge-52-iso-door-compile.md) |
+| 2026-10-28 | [Full build checkpoint: identified target JAR; four compilation errors](reports/2026-10-28-build-check.md) |
+| 2026-10-28 | [Follow-up review 51: dictionary build/version and namespace guard (applied)](reports/2026-10-28-merge-51-dictionary-build-version.md) |
+| 2026-10-28 | [Follow-up review 50: relational dataset build metadata (applied)](reports/2026-10-28-merge-50-relational-dataset-build.md) |
+| 2026-10-28 | [Follow-up review 49: reconstruction hand-field compatibility (applied)](reports/2026-10-28-merge-49-reconstruction-hand-fields.md) |
+| 2026-10-28 | [Review 48/48: GameServer (applied; startup/login/NPC hooks and packer API)](reports/2026-10-28-merge-48-game-server.md) |
+| 2026-10-28 | [Review 47/48: IngameState (applied; telemetry scopes)](reports/2026-10-28-merge-47-ingame-state.md) |
 | 2026-10-28 | [Review 46/48: LuaManager (applied; cache/server API source repairs)](reports/2026-10-28-merge-46-lua-manager.md) |
 | 2026-10-28 | [Review 45/48: AdvancedAnimator (applied; optional-folder guard)](reports/2026-10-28-merge-45-advanced-animator.md) |
 | 2026-10-28 | [Review 44/48: ChatServer (applied; NPC speech/general bridge)](reports/2026-10-28-merge-44-chat-server.md) |
@@ -104,8 +118,8 @@ Applied: [IsoWorld review](reports/2026-10-28-merge-14-iso-world.md).
 IsoGenerator: [approved retirement](reports/2026-10-28-merge-20-iso-generator.json).
 VehiclesDB2 gap repairs are user-deferred while the vehicle PostgreSQL backend remains disabled by default; production settings were not changed.
 Applied: [SyncPlayerStats ownership guard](reports/2026-10-28-merge-37-sync-player-stats.json).
-Applied: [review38 NPC combat and reserved IDs](reports/2026-10-28-merge-38-player-hit-player.md); all 16 files match the approved diff and 1,725 assertions passed after application. IDs 768..1023, 192 real connection slots, 64 active NPCs and 256 fresh IDs per process are approved. Applied: [review39 miss diagnostic](reports/2026-10-28-merge-39-player-hit-square.md), baseline ae6e61a and source-equivalence verified. Applied: [review40 trade handshake](reports/2026-10-28-merge-40-request-trading.md), all four files match and 131 assertions passed again. Applied: [review41 add-item](reports/2026-10-28-merge-41-trading-add-item.md), baseline 300b619, candidate equality and 105 assertions. Applied: [review42 remove-item](reports/2026-10-28-merge-42-trading-remove-item.md), baseline a78d82e, candidate equality and 120 assertions. Applied: [review43 state/finalization](reports/2026-10-28-merge-43-trading-update-state.md), baseline d26bfff, candidate equality and 195 assertions. Applied: [review44 ChatServer](reports/2026-10-28-merge-44-chat-server.md), baseline 196d5da, candidate equality and 43 assertions. Applied: [review45 AdvancedAnimator](reports/2026-10-28-merge-45-advanced-animator.md), baseline 2b55f41 and source-equivalence checks. Applied: [review46 LuaManager](reports/2026-10-28-merge-46-lua-manager.md), baseline aca4626, candidate equality and 33 assertions. Next: [review47 IngameState](reports/2026-10-28-merge-47-ingame-state.md), source-verified 19 telemetry scopes, unapplied.
+Applied: [review38 NPC combat and reserved IDs](reports/2026-10-28-merge-38-player-hit-player.md); all 16 files match the approved diff and 1,725 assertions passed after application. IDs 768..1023, 192 real connection slots, 64 active NPCs and 256 fresh IDs per process are approved. Applied: [review39 miss diagnostic](reports/2026-10-28-merge-39-player-hit-square.md), baseline ae6e61a and source-equivalence verified. Applied: [review40 trade handshake](reports/2026-10-28-merge-40-request-trading.md), all four files match and 131 assertions passed again. Applied: [review41 add-item](reports/2026-10-28-merge-41-trading-add-item.md), baseline 300b619, candidate equality and 105 assertions. Applied: [review42 remove-item](reports/2026-10-28-merge-42-trading-remove-item.md), baseline a78d82e, candidate equality and 120 assertions. Applied: [review43 state/finalization](reports/2026-10-28-merge-43-trading-update-state.md), baseline d26bfff, candidate equality and 195 assertions. Applied: [review44 ChatServer](reports/2026-10-28-merge-44-chat-server.md), baseline 196d5da, candidate equality and 43 assertions. Applied: [review45 AdvancedAnimator](reports/2026-10-28-merge-45-advanced-animator.md), baseline 2b55f41 and source-equivalence checks. Applied: [review46 LuaManager](reports/2026-10-28-merge-46-lua-manager.md), baseline aca4626, candidate equality and 33 assertions. Applied: [review47 IngameState](reports/2026-10-28-merge-47-ingame-state.md), baseline d95d7a9 and scope/source equivalence. Applied: [review48 GameServer and packer API](reports/2026-10-28-merge-48-game-server.md), 824 counted assertions plus continuation/source checks. Follow-ups49-55 are applied, including API/build repairs, namespace validation and version metadata. Actual303-source build passed after54; proposed56 square tracking also builds and passes33 focused cache/constructor assertions. Review56 remains unapplied.
 
 ## Issues
 
-Migration blockers are tracked in the report until implementation begins.
+Remaining limitations are tracked in the subsystem tracker and linked reports.

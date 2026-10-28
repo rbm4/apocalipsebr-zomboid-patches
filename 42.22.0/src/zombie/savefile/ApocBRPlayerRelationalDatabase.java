@@ -142,7 +142,7 @@ final class ApocBRPlayerRelationalDatabase {
                 }
                 if(!Objects.equals(currentCharacter,inspected.previousCharacter) || !Objects.equals(currentHead,inspected.head)) {connection.rollback();return false;}
                 Instant now=Instant.now();
-                insert(connection,"source_dataset",values("id",candidate.dataset,"label",candidate.label,"world",candidate.world,"dictionary_sha256",null,"game_build","42.21.0","mod_manifest_sha256",null,"created_at",now)," ON CONFLICT (id) DO NOTHING");
+                insert(connection,"source_dataset",values("id",candidate.dataset,"label",candidate.label,"world",candidate.world,"dictionary_sha256",null,"game_build","42.22.0","mod_manifest_sha256",null,"created_at",now)," ON CONFLICT (id) DO NOTHING");
                 insert(connection,"player_slot",values("id",candidate.playerId(),"legacy_networkplayer_id",candidate.nativeId>0?candidate.nativeId:null,"world",candidate.world,"identity_mode",candidate.coop?"steam_coop":"username","identity_key",candidate.identity,"player_index",candidate.slot,"username",candidate.coop?null:candidate.identity,"steamid",candidate.coop?candidate.identity:null,"split_username",null,"active_character_id",null,"created_at",now)," ON CONFLICT (world,identity_mode,identity_key,player_index) DO NOTHING");
                 UUID slotId;
                 try(PreparedStatement query=statement(connection,"SELECT id FROM player_rel.player_slot WHERE world=? AND identity_mode=? AND identity_key=? AND player_index=?")) {

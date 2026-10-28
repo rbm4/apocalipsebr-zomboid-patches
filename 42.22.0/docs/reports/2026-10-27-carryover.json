@@ -2,24 +2,26 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "Reviews 01-09, 12-19 and 21-46 merged; 10-11 and 20 retired to native vanilla. Review38 applied 16-file NPC combat port, fixed IDs 768..1023 and no recycling (256 incarnation IDs/process, 64 active, 192 real connection slots); GameServer has reservation only, broader integration remains review48. Removed WeaponHit and Trading intents resolved through native hit and per-packet trade adapters. Review39 miss diagnostic is applied; review40 four-file trading handshake is applied with 131 assertions; review41 add-item is applied with 105 assertions; review42 remove-item is applied with 120 assertions; review43 state/finalization is applied with 195 assertions; review44 ChatServer is applied with 43 assertions; review45 AdvancedAnimator optional-folder guard is applied/source-verified; review46 LuaManager is applied with 33 assertions; review47 IngameState instrumentation candidate is source-verified and awaits approval. 2 changed reviews, 1 removed target and remaining support/native integration remain. Vehicle PostgreSQL gaps remain user-deferred while disabled; square cache remains in scope.",
+  "workflow": "Reviews 01-09, 12-19 and 21-47 merged; 10-11 and 20 retired to native vanilla. Review38 applied 16-file NPC combat port, fixed IDs 768..1023 and no recycling (256 incarnation IDs/process, 64 active, 192 real connection slots); GameServer has reservation only, broader integration remains review48. Removed WeaponHit and Trading intents resolved through native hit and per-packet trade adapters. Review39 miss diagnostic is applied; review40 four-file trading handshake is applied with 131 assertions; review41 add-item is applied with 105 assertions; review42 remove-item is applied with 120 assertions; review43 state/finalization is applied with 195 assertions; review44 ChatServer is applied with 43 assertions; review45 AdvancedAnimator optional-folder guard is applied/source-verified; review46 LuaManager is applied with 33 assertions; review47 IngameState scopes are applied/source-verified; review48 GameServer plus packer API candidate has 824 counted assertions and awaits approval. 1 changed review, 1 removed target and remaining support/native integration remain. Vehicle PostgreSQL gaps remain user-deferred while disabled; square cache remains in scope.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 2,
+    "awaiting_merges": 0,
     "awaiting_removed_design": 1,
-    "copied_with_known_adaptations": 4,
-    "merged_replacements": 43,
-    "target_java_files": 302,
+    "copied_with_known_adaptations": 0,
+    "merged_replacements": 45,
+    "target_java_files": 303,
     "retired_replacements": 3,
-    "reviewed_replacements": 46,
+    "reviewed_replacements": 48,
     "resolved_removed_design": 2,
     "additional_native_replacements": 4,
     "new_support_helpers": 4,
-    "partial_prerequisite_replacements": 1,
-    "adapted_copied_support": 9
+    "partial_prerequisite_replacements": 0,
+    "adapted_copied_support": 15,
+    "adapted_identical_baseline": 1,
+    "remaining_initial_copied_adaptations": 0
   },
   "classes": [
     {
@@ -82,19 +84,48 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "9b5daef02167c7a9b315094c128d2d545a912e7aeac8d4163242520fb57e9996",
-      "copy_state": "copied-exact",
-      "target_sha256": "9b5daef02167c7a9b315094c128d2d545a912e7aeac8d4163242520fb57e9996",
-      "port_state": "copied-unverified",
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "c8bebe311efceb7b1119a9a45899099f4b50379eeb9ac6a6d43abafc06d247fe",
+      "port_state": "adapted-unverified",
       "known_required_change": null,
-      "merge_review": null,
+      "merge_review": 55,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_contracts": true,
+        "candidate_equivalence": true
       },
       "exposure_review_proposal": 46,
       "integration_pending": "Review46 server-only Lua registration is applied; no API implementation/JAR/Kahlua/backend/SQL/login validation is implied.",
-      "metadata_followup": "Review copied engine_version 42.21.0/event-control-v2 for target feature integration; not changed by exposure candidate.",
-      "exposure_review_applied": 46
+      "metadata_followup": "Resolved by applied review55: target42.22.0/event-control-v2; live registration remains unverified.",
+      "exposure_review_applied": 46,
+      "approval": {
+        "date": "2026-10-28",
+        "user_instruction": "yes",
+        "decision": "apply engine build-prefix correction"
+      },
+      "candidate_resolutions": {
+        "review": 55,
+        "state": "approved-applied-unverified",
+        "path": "zombie/apocalipse/events/ApocBREventControl.java",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "preimage_sha256": "9b5daef02167c7a9b315094c128d2d545a912e7aeac8d4163242520fb57e9996",
+        "candidate_diff_sha256": "ad6f93936c17dd48297a5dd1f98bfb3553cfd69f3e684cad3a1ae18746c3ab0f",
+        "change": "Report42.22.0/event-control-v2 in event-control heartbeat registration; protocol suffix unchanged.",
+        "verification": {
+          "source_contracts": true,
+          "target_runtime": false
+        },
+        "scope_limit": "One diagnostic version literal; no event behavior/schema/protocol change or live SQL.",
+        "applied_sha256": "c8bebe311efceb7b1119a9a45899099f4b50379eeb9ac6a6d43abafc06d247fe",
+        "applied_candidate_equivalence": true,
+        "approval": {
+          "date": "2026-10-28",
+          "user_instruction": "yes",
+          "decision": "apply engine build-prefix correction"
+        }
+      }
     },
     {
       "path": "zombie/apocalipse/humans/brain/EngageZombiesModule.java",
@@ -2439,14 +2470,71 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "f5cd1e3af6e6a38d3986cf201d9206ed19ab625e40cf0199ca00273e7696e999",
-      "copy_state": "copied-exact",
-      "target_sha256": "f5cd1e3af6e6a38d3986cf201d9206ed19ab625e40cf0199ca00273e7696e999",
-      "port_state": "copied-unverified",
-      "known_required_change": null,
-      "merge_review": null,
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "011878e857b7148877d21c5bf679595e3a3bc257f8898cb76db2975a21de56a3",
+      "port_state": "adapted-unverified",
+      "known_required_change": "Native transport field adapted in review53; full packet/client movement and runtime validation pending.",
+      "merge_review": 53,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_npc_transport_port.py",
+          "passed": true,
+          "checks": 773,
+          "scope": "Exact target Player/ConnectionPlayer classes with engine/network doubles; native two-byte field serialization/client lookup and server connection-scoped rejection. Not complete packet/live client."
+        },
+        "candidate_equivalence": true,
+        "post_application_fixture_passed": true
+      },
+      "candidate_resolutions": {
+        "review": 53,
+        "state": "approved-applied-unverified",
+        "path": "zombie/apocalipse/humans/ServerHumanTransport.java",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "preimage_sha256": "f5cd1e3af6e6a38d3986cf201d9206ed19ab625e40cf0199ca00273e7696e999",
+        "candidate_diff_sha256": "e238c3cdbf1a98657dc19092afba862a43fa3f8bc7de59cbeb2c19106c567be4",
+        "change": "Set target PlayerPacketReliable.player ConnectionPlayer; remove obsolete playerIndex override and update native packet version comment.",
+        "verification": {
+          "source_contracts": true,
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "target_fixture": {
+            "script": "tools/test_npc_transport_port.py",
+            "passed": true,
+            "checks": 773,
+            "scope": "Exact target Player/ConnectionPlayer classes with engine/network doubles; native two-byte field serialization/client lookup and server connection-scoped rejection. Not complete packet/live client."
+          },
+          "candidate_build": {
+            "source_count": 303,
+            "compiler_exit": 1,
+            "remaining_errors": 1,
+            "remaining_classes": [
+              "ServerZombiePath"
+            ],
+            "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_review53_compile_pzzqcuwz\\javac.log",
+            "scope": "All target sources plus only proposed53 transport overlay; build still fails on native path boolean API."
+          }
+        },
+        "scope_limits": [
+          "Server-only native field serializes NPC online ID in two bytes, not old PlayerID three-byte layout.",
+          "Keep reserved IDs768..1023 from review38. No global player-resolution or receiving security changes.",
+          "No prediction/movement field, scheduling, live-client or full transport/runtime claim."
+        ],
+        "applied_sha256": "011878e857b7148877d21c5bf679595e3a3bc257f8898cb76db2975a21de56a3",
+        "applied_candidate_equivalence": true,
+        "approval": {
+          "date": "2026-10-28",
+          "user_instruction": "yes",
+          "decision": "apply native NPC transport field adaptation"
+        },
+        "post_application_fixture_passed": true
+      },
+      "approval": {
+        "date": "2026-10-28",
+        "user_instruction": "yes",
+        "decision": "apply native NPC transport field adaptation"
       }
     },
     {
@@ -3410,14 +3498,78 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "11f16f48aefd6eba73771b84e37c590cb681f2e59afb16b93684388233415849",
-      "copy_state": "copied-exact",
-      "target_sha256": "11f16f48aefd6eba73771b84e37c590cb681f2e59afb16b93684388233415849",
-      "port_state": "copied-unverified",
-      "known_required_change": null,
-      "merge_review": null,
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "d41662353700eb7d4097408859d0cb45579e78e57095f31557517d99895a7cc2",
+      "port_state": "adapted-unverified",
+      "known_required_change": "Native path signature adapted54; full native path/runtime validation pending.",
+      "merge_review": 54,
       "verification": {
-        "target_compile": false,
-        "target_runtime": false
+        "target_compile": true,
+        "target_runtime": false,
+        "applied_build": {
+          "source_count": 303,
+          "compiler_exit": 0,
+          "remaining_errors": 0,
+          "compiled_class_files": 895,
+          "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_applied54_compile_g1482ajm\\javac.log",
+          "scope": "Actual approved source tree compiled against identified42.22/world251 JAR; no deployment/runtime."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "review": 54,
+        "state": "approved-applied-unverified",
+        "path": "zombie/apocalipse/zombies/ServerZombiePath.java",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "preimage_sha256": "11f16f48aefd6eba73771b84e37c590cb681f2e59afb16b93684388233415849",
+        "candidate_diff_sha256": "67a5f720e0b08b08754e37efbda4106af050441ebce819b064642fafae2d4709",
+        "change": "Pass false for native PathfindNative.addRequest avoidFarmingPlants, preserving old non-player custom-Mover default.",
+        "verification": {
+          "source_contracts": true,
+          "target_runtime": false,
+          "candidate_build": {
+            "source_count": 303,
+            "compiler_exit": 0,
+            "remaining_errors": 0,
+            "compiled_class_files": 895,
+            "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_review54_compile_mjemoi9c\\javac.log",
+            "scope": "Full target-source compile with proposed54 overlay against identified42.22/world251 JAR; no deployment or runtime."
+          },
+          "applied_build": {
+            "source_count": 303,
+            "compiler_exit": 0,
+            "remaining_errors": 0,
+            "compiled_class_files": 895,
+            "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_applied54_compile_g1482ajm\\javac.log",
+            "scope": "Actual approved source tree compiled against identified42.22/world251 JAR; no deployment/runtime."
+          },
+          "collision_threads": {
+            "script": "tools/test_pathfind_collision_threads.py --version 42.22.0",
+            "passed": true,
+            "threads": 4,
+            "pooled_queries": 80000,
+            "scope": "Actual target map/helper compiled against game JAR, helper/nested scratch identity, per-thread result isolation and pooled geometry; no live world collision or all-engine safety."
+          }
+        },
+        "scope_limits": [
+          "False matches old PathFindRequest init for this custom Mover; native42.22 PathFindBehavior2 also requests avoidance only for players initially.",
+          "Java backend, mover identity, cancellation, generation checks, callback copies and traversal policy unchanged.",
+          "No native DLL path execution, plant-route behavior or NPC movement runtime claim."
+        ],
+        "applied_sha256": "d41662353700eb7d4097408859d0cb45579e78e57095f31557517d99895a7cc2",
+        "applied_candidate_equivalence": true,
+        "equivalence_scope": "Exact candidate text modulo Git newline normalization to CRLF",
+        "approval": {
+          "date": "2026-10-28",
+          "user_instruction": "yes, and ensure thread-local pathfind vectors remain for the async bot engine",
+          "decision": "apply path argument; verify preserved async collision scratch isolation"
+        }
+      },
+      "approval": {
+        "date": "2026-10-28",
+        "user_instruction": "yes, and ensure thread-local pathfind vectors remain for the async bot engine",
+        "decision": "apply path argument; verify preserved async collision scratch isolation"
       }
     },
     {
@@ -4628,20 +4780,22 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "7515a0b5194d11c3e0be78bfbdcaea2fb99ce4fb130d74a412390d3ee1d83f62",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "06a891782c2656a16745b48c6da7667cb9f9f15284c24f872bed86f42bed97f1",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 47,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_check_passed": true,
+        "candidate_equivalence": true
       },
       "candidate_resolutions": {
         "review": 47,
-        "state": "candidate-awaiting-approval",
+        "state": "approved-applied",
         "path": "zombie/gameStates/IngameState.java",
         "recommendation": "Restore the same 19 telemetry scopes on exact target control flow; retain target tutorial/exit changes and all existing update calls, profilers, guards and catches.",
-        "source_applied": false,
+        "source_applied": true,
         "installed_files_modified": false,
         "target_vanilla_sha256": "4b0364db7e8b03a4d7f27b0c32496148521b9bbc631f168b1ec9b239de01fa76",
         "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-47-ingame-state.diff",
@@ -4675,7 +4829,8 @@
           "strip_added_scopes_restores_exact_target_text": true,
           "new_fixture_added": false,
           "full_game_jar_compile": false,
-          "target_runtime": false
+          "target_runtime": false,
+          "applied_candidate_equivalence": true
         },
         "native_retained": [
           "Core.isTutorial startup music selection",
@@ -4687,7 +4842,24 @@
           "Current helper phase() allocates/records whenever reached; no implicit client/output-disabled no-op guard.",
           "Nested phases may overlap; not additive exclusive timings.",
           "IngameState paths only; telemetry/server-loop bootstrap and independent GameServer integration remain review48."
-        ]
+        ],
+        "target_source_sha256": "06a891782c2656a16745b48c6da7667cb9f9f15284c24f872bed86f42bed97f1",
+        "approval": {
+          "decision": "approved",
+          "user_instruction": "yes",
+          "date": "2026-10-28",
+          "baseline_commit": "d95d7a9e08d1a7e9b9d68651c3878309a6013908",
+          "installed_files_modified": false
+        }
+      },
+      "approval": {
+        "review": 47,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "d95d7a9e08d1a7e9b9d68651c3878309a6013908",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-47-ingame-state.md"
       }
     },
     {
@@ -5541,7 +5713,7 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "ae2dde6d7021b90eee17a55e7a1790ca6e934dd5ff0964cb1a7b793a67105dcd",
       "copy_state": "not-copied",
-      "target_sha256": "d6b1c9f852ff69ba3aff395912f7662467b445063b9539fc9472c4737a1ab34c",
+      "target_sha256": "91f159f5747e5dfefb273e8f8b23abbf70e474c7628a383ea3cd9cbc1239932c",
       "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 21,
@@ -5552,7 +5724,8 @@
           "passed": true,
           "candidate_equivalence": true,
           "scope": "Complete applied source equals target vanilla plus exactly three nullable-player music guards; no new Java fixture."
-        }
+        },
+        "followup52_source_equivalence": true
       },
       "candidate_resolutions": {
         "state": "approved-applied",
@@ -5570,6 +5743,45 @@
         "date": "2026-10-28",
         "baseline_commit": "d334b7dc9107879015b68de2bcedc11609a01349",
         "review_document": "42.22.0/docs/reports/2026-10-28-merge-21-iso-door.md"
+      },
+      "followup52": {
+        "review": 52,
+        "state": "approved-applied-unverified",
+        "path": "zombie/iso/objects/IsoDoor.java",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "preimage_sha256": "d6b1c9f852ff69ba3aff395912f7662467b445063b9539fc9472c4737a1ab34c",
+        "candidate_diff_sha256": "42e9a5b9af7718ff6e1da3354a3fa46eb96321e81831f5a817ae60a9297c88b6",
+        "change": "Remove decompiler-generated default arm from getBaseForceOpenChance: unconditional GameEntityScript pattern plus explicit null already cover selector type.",
+        "existing_review": 21,
+        "verification": {
+          "source_contracts": true,
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "candidate_build": {
+            "source_count": 303,
+            "compiler_exit": 1,
+            "iso_door_compile_error_resolved": true,
+            "remaining_errors": 3,
+            "remaining_classes": [
+              "ServerHumanTransport",
+              "ServerZombiePath"
+            ],
+            "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_review52_compile_n0xlk68_\\javac.log",
+            "scope": "All target sources with only approved sources plus proposed52 overlay; build still fails on remaining copied APIs, no runtime."
+          }
+        },
+        "scope_limits": [
+          "Extends already merged review21 source; do not copy another baseline.",
+          "Keeps all chance/trait/property logic and null fall-through; no runtime lockpicking claim."
+        ],
+        "applied_sha256": "91f159f5747e5dfefb273e8f8b23abbf70e474c7628a383ea3cd9cbc1239932c",
+        "applied_candidate_equivalence": true,
+        "approval": {
+          "date": "2026-10-28",
+          "user_instruction": "yes",
+          "decision": "apply redundant decompiler default-arm removal"
+        }
       }
     },
     {
@@ -6628,40 +6840,122 @@
       ],
       "baseline_status": "manual_rebase",
       "source_sha256": "ad60663af690eeb635dbce39bb882881969b4d1ac4fd3091af08ae1dbf8e4110",
-      "copy_state": "not-copied",
-      "target_sha256": "66eb05d5b9e6c51d50ef3554080ad3af9f133d2007aecaa5f3315548fa80b653",
-      "port_state": "partial-prerequisite-unverified",
-      "known_required_change": "Native getFreeSlot reservation applied in review38; full custom GameServer merge remains review48. Extend this source, preserving reservation.",
+      "copy_state": "merged",
+      "target_sha256": "79b079b7f8abbfe07f01cc13c9d619da0e34d199abe853be359beb2f7323843d",
+      "port_state": "merged-unverified",
+      "known_required_change": "Reviewed source integration applied; exact target JAR/full runtime validation remains open.",
       "merge_review": 48,
       "verification": {
         "target_compile": false,
         "target_runtime": false,
         "target_fixture": {
-          "script": "tools/test_player_hit_player_port.py",
+          "script": "tools/test_game_server_port.py",
           "passed": true,
-          "assertions": 1725,
-          "includes_known_failure_regression": true,
-          "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
-          "applied_candidate_equivalence": true
+          "counted_assertions": 824,
+          "async_coordinator_checks": 38,
+          "login_dispatch_checks": 18,
+          "snapshot_writer_checks": 768,
+          "additional_checks": [
+            "Deferred ConnectPacket follow-up ordering",
+            "Native method/silent-player block retention",
+            "Startup ordering and existing NPC slot reservation source contracts"
+          ],
+          "scope": "Actual target async coordinator plus extracted candidate login dispatch and native writer/ZombiePacket write body with controlled/recording ports; source contracts. No full GameServer/Packer/JAR or real DB/native activation/network.",
+          "full_game_jar_compile": false,
+          "target_runtime": false
         },
-        "candidate_equivalence": true
+        "candidate_equivalence": true,
+        "post_application_fixture_passed": true
       },
       "review38_prerequisite_proposal": {
         "state": "approved-applied",
-        "change": "Only getFreeSlot reserves NPC slots 192..255; full old GameServer integration remains review48.",
+        "change": "getFreeSlot reserves NPC slots192..255; retained by the full review48 integration.",
         "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md",
         "baseline_commit": "a5e10000d67ce8674d477b9d6bf818c7f2540e2f"
       },
       "approval": {
-        "review": 38,
+        "review": 48,
         "decision": "approved",
-        "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+        "user_instruction": "yes",
         "applied": true,
         "date": "2026-10-28",
-        "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md",
-        "baseline_commit": "a5e10000d67ce8674d477b9d6bf818c7f2540e2f"
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-48-game-server.md",
+        "existing_baseline_commit": "a5e1000"
       },
-      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending."
+      "integration_pending": "Exact-game-JAR compilation, full native runtime/client gameplay and lifecycle/thread validation remain pending.",
+      "candidate_resolutions": {
+        "review": 48,
+        "state": "approved-applied-unverified",
+        "path": "zombie/network/GameServer.java",
+        "recommendation": "Integrate the old startup/login/NPC/backend/telemetry hooks onto target GameServer while preserving review38 reservation and every upstream change. Include the coupled existing packer writer API adaptation.",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "affected_sources": [
+          "zombie/network/GameServer.java",
+          "zombie/popman/NetworkZombiePacker.java"
+        ],
+        "existing_baseline_commit": "a5e1000",
+        "do_not_recopy_vanilla": true,
+        "preimage_sha256": {
+          "zombie/network/GameServer.java": "66eb05d5b9e6c51d50ef3554080ad3af9f133d2007aecaa5f3315548fa80b653",
+          "zombie/popman/NetworkZombiePacker.java": "655f310519a7fafecf0323fee287e567f9eb45b49a304a899355a4c17d49779d"
+        },
+        "target_vanilla_sha256": "7c7bd96fc775d48f78419403b8ebb0a527114ede66bb922395a4955be2222f0c",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-48-game-server.diff",
+        "candidate_diff_sha256": "3465b5fbddd80a71ccb7d57239e6cd5eebcf416dedb9c48f28cb60dd5fd522ea",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-48-game-server.md",
+        "conflict_resolution": "One RCON profiler conflict: keep native var118 and the old rcon.update telemetry resource. Existing reservation stays intact.",
+        "candidate_fixture": {
+          "script": "tools/test_game_server_port.py",
+          "passed": true,
+          "counted_assertions": 824,
+          "async_coordinator_checks": 38,
+          "login_dispatch_checks": 18,
+          "snapshot_writer_checks": 768,
+          "additional_checks": [
+            "Deferred ConnectPacket follow-up ordering",
+            "Native method/silent-player block retention",
+            "Startup ordering and existing NPC slot reservation source contracts"
+          ],
+          "scope": "Actual target async coordinator plus extracted candidate login dispatch and native writer/ZombiePacket write body with controlled/recording ports; source contracts. No full GameServer/Packer/JAR or real DB/native activation/network.",
+          "full_game_jar_compile": false,
+          "target_runtime": false
+        },
+        "packer_adaptation": "Reuse one final ByteBufferWriter wrapping the existing snapshotBuffer; write target ZombiePacket via that API and freeze actual written bytes. No per-zombie writer allocation or sender scheduling redesign.",
+        "native_retained": [
+          "LocaleManager initialisation and GameMode enum; removed UnitTests hook stays removed",
+          "Silent-player stop/resend and delayed-dead-player handling",
+          "MedicalRequests/TradingRequests disconnect cleanup",
+          "Native chat whisper ownership signature and local-player permission API",
+          "Inventory/save format251 and transaction cancellation by online ID",
+          "Removed legacy packet helpers stay removed",
+          "review38 fixed NPC connection-slot reservation"
+        ],
+        "remaining_after_queue": [
+          "Removed PZArrayList/List-cache design",
+          "Remaining relational database/reconstruction/dictionary support adaptations and event-control metadata audit",
+          "Exact target JAR identification/full build and runtime/DB/client validation",
+          "Vehicle PostgreSQL gap repair before enabling; user deferred while disabled",
+          "Stale class-family backup/prune/restore deployment cleanup remains unimplemented"
+        ],
+        "scope_limits": [
+          "Candidate is against existing GameServer source, not vanilla baseline. Do not run Copy-PZPatchBaseline on it again.",
+          "Native receivePlayerConnectReady activation body, full auth/bootstrap/roles, native world, actual JDBC/schema/credit durability and RakNet were not executed.",
+          "AwaitWorkers is a compatibility name for nonblocking completion polling, not a new wait.",
+          "Telemetry measures reached scopes; no zero-overhead or simulation speedup claim."
+        ],
+        "approval": {
+          "date": "2026-10-28",
+          "user_instruction": "yes",
+          "decision": "apply both reviewed files"
+        },
+        "applied_sha256": {
+          "zombie/network/GameServer.java": "79b079b7f8abbfe07f01cc13c9d619da0e34d199abe853be359beb2f7323843d",
+          "zombie/popman/NetworkZombiePacker.java": "194b0ecfcaba889abcd7db40e473133f17304ff99e9bb5fa835965e638419db2"
+        },
+        "applied_candidate_equivalence": true,
+        "post_application_fixture_passed": true
+      }
     },
     {
       "path": "zombie/network/NetworkPlayerManager.java",
@@ -8311,14 +8605,41 @@
       ],
       "baseline_status": "identical_baseline",
       "source_sha256": "655f310519a7fafecf0323fee287e567f9eb45b49a304a899355a4c17d49779d",
-      "copy_state": "copied-exact",
-      "target_sha256": "655f310519a7fafecf0323fee287e567f9eb45b49a304a899355a4c17d49779d",
-      "port_state": "adaptation-required",
-      "known_required_change": "Snapshot calls removed ZombiePacket.write(ByteBuffer).",
-      "merge_review": null,
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "194b0ecfcaba889abcd7db40e473133f17304ff99e9bb5fa835965e638419db2",
+      "port_state": "adapted-unverified",
+      "known_required_change": "Reviewed source integration applied; exact target JAR/full runtime validation remains open.",
+      "merge_review": 48,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_game_server_port.py",
+          "passed": true,
+          "counted_assertions": 824,
+          "async_coordinator_checks": 38,
+          "login_dispatch_checks": 18,
+          "snapshot_writer_checks": 768,
+          "additional_checks": [
+            "Deferred ConnectPacket follow-up ordering",
+            "Native method/silent-player block retention",
+            "Startup ordering and existing NPC slot reservation source contracts"
+          ],
+          "scope": "Actual target async coordinator plus extracted candidate login dispatch and native writer/ZombiePacket write body with controlled/recording ports; source contracts. No full GameServer/Packer/JAR or real DB/native activation/network.",
+          "full_game_jar_compile": false,
+          "target_runtime": false
+        },
+        "candidate_equivalence": true,
+        "post_application_fixture_passed": true
+      },
+      "approval": {
+        "review": 48,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-48-game-server.md",
+        "existing_baseline_commit": null
       }
     },
     {
@@ -9111,14 +9432,47 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "e4dee93ab53e2eabbce4f1ed432eb7374a02e4d7413c81aa39d3cb3ce15399ab",
-      "copy_state": "copied-exact",
-      "target_sha256": "e4dee93ab53e2eabbce4f1ed432eb7374a02e4d7413c81aa39d3cb3ce15399ab",
-      "port_state": "adaptation-required",
-      "known_required_change": "Old game_build literal for newly captured datasets.",
-      "merge_review": null,
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "d452acadf8891059296afd78a0c79df55f42a2b4a22ca594f1f7320a1d7e1a7e",
+      "port_state": "adapted-unverified",
+      "known_required_change": "New dataset build metadata adapted in review50; existing rows unchanged; full persistence validation pending.",
+      "merge_review": 50,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_contracts": true,
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "date": "2026-10-28",
+        "user_instruction": "yes",
+        "decision": "apply one-line new-dataset metadata correction"
+      },
+      "candidate_resolutions": {
+        "review": 50,
+        "state": "approved-applied-unverified",
+        "path": "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "preimage_sha256": "e4dee93ab53e2eabbce4f1ed432eb7374a02e4d7413c81aa39d3cb3ce15399ab",
+        "candidate_diff_sha256": "29c35f935c700ee2892f100010be4fdba2d27c992404de7e3b781a677ee0bae1",
+        "change": "Label newly inserted source_dataset rows with target game_build42.22.0 instead of42.21.0.",
+        "verification": {
+          "source_contracts": true,
+          "full_game_jar_compile": false,
+          "target_runtime": false
+        },
+        "scope_limits": [
+          "ON CONFLICT(id) DO NOTHING retains existing dataset metadata, including reused older datasets.",
+          "No historical backfill or schema migration, namespace change, SQL execution or full persistence validation."
+        ],
+        "applied_sha256": "d452acadf8891059296afd78a0c79df55f42a2b4a22ca594f1f7320a1d7e1a7e",
+        "applied_candidate_equivalence": true,
+        "approval": {
+          "date": "2026-10-28",
+          "user_instruction": "yes",
+          "decision": "apply one-line new-dataset metadata correction"
+        }
       }
     },
     {
@@ -9264,14 +9618,44 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "38b9c6e47da12673b4e9aeec13be8ae4e3d31916bfe1127db6aadd180f7f3f21",
-      "copy_state": "copied-exact",
-      "target_sha256": "38b9c6e47da12673b4e9aeec13be8ae4e3d31916bfe1127db6aadd180f7f3f21",
-      "port_state": "adaptation-required",
-      "known_required_change": "Reflective hand fields renamed in new IsoGameCharacter.",
-      "merge_review": null,
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "7f313061c18ca79c0ce073a68ea26e3e1cb8468f601bc2eff2ef3806cffdebda",
+      "port_state": "adapted-unverified",
+      "known_required_change": "Hand storage names adapted in review49; full reconstruction/build/runtime validation remains open.",
+      "merge_review": 49,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_contracts": true,
+        "candidate_equivalence": true
+      },
+      "approval": {
+        "date": "2026-10-28",
+        "user_instruction": "yes, this is necessary due to the 42.22.0 changes to the vanilla code right?",
+        "decision": "apply reviewed two-field adaptation"
+      },
+      "candidate_resolutions": {
+        "review": 49,
+        "state": "approved-applied-unverified",
+        "path": "zombie/savefile/ApocBRPlayerRelationalReconstruction.java",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "preimage_sha256": "38b9c6e47da12673b4e9aeec13be8ae4e3d31916bfe1127db6aadd180f7f3f21",
+        "candidate_diff_sha256": "b04abb5743d483c54abf25e21012317bc95540c1974f4b0a354bc128a9a77c29",
+        "change": "Use target primaryHandItem/secondaryHandItem storage names for hand-equipment reconstruction; retain direct field restore without equip callbacks.",
+        "verification": {
+          "source_contracts": true,
+          "full_game_jar_compile": false,
+          "target_runtime": false
+        },
+        "scope_limit": "No database/schema/load round-trip or complete reconstruction validation.",
+        "applied_sha256": "7f313061c18ca79c0ce073a68ea26e3e1cb8468f601bc2eff2ef3806cffdebda",
+        "applied_candidate_equivalence": true,
+        "approval": {
+          "date": "2026-10-28",
+          "user_instruction": "yes, this is necessary due to the 42.22.0 changes to the vanilla code right?",
+          "decision": "apply reviewed two-field adaptation"
+        }
       }
     },
     {
@@ -9492,14 +9876,63 @@
       ],
       "baseline_status": "support_no_baseline",
       "source_sha256": "f573063a572e524bd3c361fc2f300a6122abae13e5ba96d5c0a67278f1ab9165",
-      "copy_state": "copied-exact",
-      "target_sha256": "f573063a572e524bd3c361fc2f300a6122abae13e5ba96d5c0a67278f1ab9165",
-      "port_state": "adaptation-required",
-      "known_required_change": "Old 42.21.0/249 namespace SQL literals.",
-      "merge_review": null,
+      "copy_state": "copied-then-adapted",
+      "target_sha256": "ddf091c75005931acc47ce9f17ff4f9bfc5c342ab13859beedaf37641e88fbd0",
+      "port_state": "adapted-unverified",
+      "known_required_change": "Target metadata/namespace guard applied51; historical-data migration deferred; full dictionary validation pending.",
+      "merge_review": 51,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_contracts": true,
+        "full_game_jar_compile": false,
+        "target_fixture": {
+          "script": "tools/test_dictionary_version_port.py",
+          "passed": true,
+          "cases": 8,
+          "scope": "Extracted candidate namespace validation with JDBC ResultSet doubles, plus insert/reuse/load metadata source checks. No full repository, SQL or game runtime."
+        },
+        "candidate_equivalence": true,
+        "post_application_fixture_passed": true
+      },
+      "approval": {
+        "date": "2026-10-28",
+        "user_instruction": "apply, i want to make everything viable and running before moving into a plan for that",
+        "decision": "apply target metadata and namespace guard; defer historical-data migration planning"
+      },
+      "candidate_resolutions": {
+        "review": 51,
+        "state": "approved-applied-unverified",
+        "path": "zombie/savefile/ApocBRWorldDictionaryDatabase.java",
+        "source_applied": true,
+        "installed_files_modified": false,
+        "preimage_sha256": "f573063a572e524bd3c361fc2f300a6122abae13e5ba96d5c0a67278f1ab9165",
+        "candidate_diff_sha256": "0a7fe619c1728b73437c9cd99566146a4b8ed7249fd369f3e06511baeff9d0aa",
+        "change": "Use target42.22.0/world251 insertion and read filters; validate existing namespace build/world/format under its lock before publication.",
+        "verification": {
+          "source_contracts": true,
+          "full_game_jar_compile": false,
+          "target_runtime": false,
+          "target_fixture": {
+            "script": "tools/test_dictionary_version_port.py",
+            "passed": true,
+            "cases": 8,
+            "scope": "Extracted candidate namespace validation with JDBC ResultSet doubles, plus insert/reuse/load metadata source checks. No full repository, SQL or game runtime."
+          }
+        },
+        "scope_limits": [
+          "Existing incompatible namespace fails with SQLState22023; no relabel, automatic rollover or historical migration.",
+          "Default namespace UUID excludes build, so upgrading the same server/save can hit this rejection; a new configured namespace and a separate historical payload migration plan are needed.",
+          "No SQL execution, real dictionary load or mixed-build decode validation."
+        ],
+        "applied_sha256": "ddf091c75005931acc47ce9f17ff4f9bfc5c342ab13859beedaf37641e88fbd0",
+        "approval": {
+          "date": "2026-10-28",
+          "user_instruction": "apply, i want to make everything viable and running before moving into a plan for that",
+          "decision": "apply target metadata and namespace guard; defer historical-data migration planning"
+        },
+        "applied_candidate_equivalence": true,
+        "post_application_fixture_passed": true
       }
     },
     {
@@ -10537,7 +10970,7 @@
     }
   ],
   "retirement_manifest": "42.22.0/tools/retired-class-families.json",
-  "counts_semantics": "Copy counts record initial provenance. Nine copied support files were adapted in reviews38/40. Target source count also includes four additional native combat/handshake replacements, four new helpers and partial GameServer prerequisite; its full review48 merge is not counted as complete. Three changed replacements retired to vanilla are separate from two resolved removed targets (WeaponHit and Trading).",
+  "counts_semantics": "Copy counts record initial provenance. Fifteen copied support files were adapted in reviews38/40/49/50/51/53/54/55; one identical-baseline replacement (NetworkZombiePacker) was adapted in review48. All 48 changed replacement decisions are complete: 45 merged and three retired. Target source count303 includes 250 original carry-overs,45 reviewed merges,four additional native replacements and four new helpers; no partial prerequisites remain. Two removed targets (WeaponHit and Trading) are resolved; PZArrayList design remains open. The initial known copied adaptation list is resolved; full build discovered two further copied support files requiring API adaptation (transport adapted53; path adapted54), plus one IsoDoor decompiler compile defect (repaired52). copied_with_known_adaptations counts all currently known copied-source gaps, not just the initial list.",
   "additional_sources": [
     {
       "path": "zombie/network/packets/hit/PlayerHitPacket.java",

@@ -8,14 +8,14 @@ Every subsystem remains in scope, including smaller fixes and diagnostic feature
 ## Current checkpoint and workflow
 
 The authorized carry-over copies **50 old patched classes with byte-identical
-vanilla baselines and 200 ApocalipseBR-only support classes**. Each initial copy retained the old patched bytes. Reviews38/40 subsequently adapted
-nine support sources; remaining copied files may retain obsolete APIs/build
+vanilla baselines and 200 ApocalipseBR-only support classes**. Each initial copy retained the old patched bytes. Reviews38/40/49/50/51/53/54/55 subsequently adapted
+fifteen support sources; remaining copied files may retain obsolete APIs/build
 literals. Staging and partial integration do not establish a deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01-09, 12-19 and 21-46 merged; 10-11 and 20 retired to target vanilla; 47 IngameState candidate**.
-There are 302 Java files: 250 original carry-overs (nine support files adapted),
-43 reviewed merges and nine additional combat/trading helpers/replacements/prerequisites.
+Current review checkpoint: **01-09, 12-19 and 21-48 merged; 10-11 and 20 retired to target vanilla; numbered queue complete**.
+There are 303 Java files: 250 original carry-overs (fifteen support files and one identical-baseline replacement adapted),
+45 reviewed merges and eight additional combat/trading helpers/replacements.
 Three changed replacements retired to vanilla; removed WeaponHit and Trading
 intents are resolved by hit/trade adapters. Five stale class families await
 deployment cleanup.
@@ -125,7 +125,7 @@ rows. The per-class ledger also records referenced subsystems.
 | OPT-MOVE | `ServerMovingObjectSet`/`Index` track active type membership; scheduler and bucket use identity positions, lifetime validation and tombstones instead of repeated global membership searches. | Maintain dispatch order, callback mutation, remove/re-add, compaction and multiplier restoration. Preserve upstream chasing-zombie counters. |
 | OPT-PLAYER | Inventory update index narrows candidates; player/vehicle spatial queries and sound-stress index reduce discovery work; thermal scratch/clothing cache is per character. Lua callback mutation versions avoid repeated contains scans on stable lists. | Invalidations on public mutations, equipment/container changes and callbacks; retain vanilla client paths. Thermal switch repair was a verified old decompiler repair, not an intentional thermal rebalance. |
 | OPT-ANIMAL | Type/perception grid, `BaseAnimalBehavior` bookkeeping split, connected-zone topology cache and relevant-client update coverage replace broad candidate scans. Animal update batches split overflow iteratively. Feeding-trough changes are tracked separately. | New zone Set/snapshot API, perception cadence, live geometry, ownership/relevance and lossless batching. Do not alter upstream baby doMeta nesting without a separate decision. |
-| OPT-ZOMBIE | Ownership/authorization indexes and cadence coverage, enum-value caches, packet bookkeeping/preparation split, and bounded frozen-byte async sends. Culling skips zero/fulfilled quotas. | Main thread owns world selection; workers receive frozen bytes only. `ZombiePacket` changes writer and grapple identity; copied `NetworkZombiePacker` already needs adaptation. Retain retry/admission/disconnect/shutdown ordering. |
+| OPT-ZOMBIE | Ownership/authorization indexes and cadence coverage, enum-value caches, packet bookkeeping/preparation split, and bounded frozen-byte async sends. Culling skips zero/fulfilled quotas. | Main thread owns world selection; workers receive frozen bytes only. `ZombiePacket` changes writer and grapple identity; copied `NetworkZombiePacker` writer API was adapted in review48. Retain retry/admission/disconnect/shutdown ordering. |
 | OPT-LOS | `ServerLOS` has bounded parallel dispatch tied to the four explicit `LosUtil` slots, with task/lifetime bookkeeping. Player updates consume LOS results and authority queries. | Slot ownership/reuse, result generation, movement invalidation, connection retirement and native concurrency. |
 | OPT-PATH | Dirty vehicle graph batching, 0.01-tile position tolerance, early path-length threshold query and per-thread collision scratch/vector ownership. | New farming-avoidance request/fallback behavior; collision scratch isolation does not make world geometry or all native caches thread-safe. |
 | OPT-VEHICLE | Parts-only parked cars may use SIXTEENTH; idle device/light capability lists preserve numeric part order; VehiclePart hooks invalidate lists. Model-part indexing and same-call square reuse reduce bookkeeping. | This includes an intentional old cadence change. Preserve Lua minute arguments/deadlines, capability mutations, passengers/towing/crop checks and new vehicle fields. |
@@ -216,12 +216,14 @@ contract or authorization to run it.
 
 ## Known work retained in copied files
 
-The copy deliberately leaves `NetworkZombiePacker`'s obsolete raw-ByteBuffer
-serializer call, four WeaponHit-dependent NPC classes, the NPC miss setter,
-old trading accept/reject calls, reflected hand-field names and old dataset/
-dictionary build literals intact. They are marked `adaptation-required` in the
-ledger even though copy hashes match. Other copied files remain unverified;
-the known list is a minimum, not a complete target API audit.
+The original copies retained obsolete APIs and version metadata. Reviews38/40-43
+adapted the NPC combat/trade paths; review48 adapted NetworkZombiePacker's writer
+API. Review49 adapted reflected reconstruction hand-field names. Review50 adapted newly inserted dataset build metadata. Review51 adapted dictionary metadata and namespace validation. The initial
+known copied gaps are resolved, but full compilation discovered two further API
+gaps in ServerHumanTransport and ServerZombiePath, plus an IsoDoor decompiler defect.
+Reviews52/53 resolve IsoDoor and transport; review54 resolves the native path argument.
+Event-control build-prefix metadata was adapted in review55; live event behavior remains unverified. Other copied files remain
+unverified; this known list is a minimum, not a complete target API audit.
 
 The old fixture scripts at repository `tools/` generally pin 42.21.0. They remain
 reference coverage, not 42.22.0 validation. The engine-only removal fixture now accepts `--version 42.22.0 --engine-only`
@@ -328,7 +330,7 @@ Review 34 [PlayerDamagePacket](../reports/2026-10-28-merge-34-player-damage-pack
 Review 35 [PlayerEffectsPacket](../reports/2026-10-28-merge-35-player-effects-packet.md) is approved/applied; candidate equality and 62 fixture assertions passed, calendar gate retained.
 Review 36 [PlayerStatsPacket](../reports/2026-10-28-merge-36-player-stats-packet.md) is approved/applied; candidate equality and 42 complete-packet/field fixture assertions passed.
 Review 37 [SyncPlayerStatsPacket](../reports/2026-10-28-merge-37-sync-player-stats.md) is approved/applied with ownership guard; prior retirement recommendation withdrawn. Capability checks already existed and do not constrain global targets. Applied-candidate equality and 20 assertions passed; no retirement.
-Review 38 [PlayerHitPlayerPacket/NPC combat](../reports/2026-10-28-merge-38-player-hit-player.md) is approved/applied: all 16 files equal the reviewed diff and 1,725 assertions passed after application. Fixed NPC IDs 768..1023 reserve whole connection slots (192 real connections), retain 64 active NPCs, and allow 256 fresh IDs per process without reuse. The user approved the capacity tradeoff and 500ms exact-payload guard with rapid-attack limitation. Four native baseline commits: 22a379e, 4999063, 8a6561f and a5e1000. GameServer's broader custom integration remains review48; extend its reservation source. Removed WeaponHit intent is covered; stale loose-class cleanup remains pending.
+Review 38 [PlayerHitPlayerPacket/NPC combat](../reports/2026-10-28-merge-38-player-hit-player.md) is approved/applied: all 16 files equal the reviewed diff and 1,725 assertions passed after application. Fixed NPC IDs 768..1023 reserve whole connection slots (192 real connections), retain 64 active NPCs, and allow 256 fresh IDs per process without reuse. The user approved the capacity tradeoff and 500ms exact-payload guard with rapid-attack limitation. Four native baseline commits: 22a379e, 4999063, 8a6561f and a5e1000. GameServer's broader custom integration was applied in review48, preserving its reservation. Removed WeaponHit intent is covered; stale loose-class cleanup remains pending.
 Review 39 [PlayerHitSquarePacket](../reports/2026-10-28-merge-39-player-hit-square.md) is approved/applied after baseline ae6e61a. The only custom change is the existing server-throttled missed() call before native parsing; applied-candidate/source equality passed. No new fixture was added for the diagnostic-only hook.
 Review 40 [RequestTradingPacket/NPC handshake](../reports/2026-10-28-merge-40-request-trading.md) is approved/applied: all four files equal the reviewed diff and 131 assertions passed again. Native baselines 2e1008f, 960fd49 and 67deb11. Resolve only reserved trading destinations, use native Accept/Reject replies, keep real-player pending response checks and NPC offer guards. Item/remove/finalize ports remain separate.
 Review 41 [TradingUIAddItemPacket](../reports/2026-10-28-merge-41-trading-add-item.md) is approved/applied after native baseline 300b619; candidate equality and 105 assertions passed again. Retains native sender-inventory lookup, item reset/consistency, exact ordinary trade-pair checks and client item version251; connects recognized NPC destinations to the existing offer adapter.
@@ -337,8 +339,9 @@ Review 43 [TradingUIUpdateStatePacket](../reports/2026-10-28-merge-43-trading-up
 Review 44 [ChatServer](../reports/2026-10-28-merge-44-chat-server.md) is approved/applied after native baseline 196d5da; candidate equality and 43 extracted-method assertions passed again. Preserves new native message/whisper ownership and channel checks, with filtered-general backend capture and trusted explicit-recipient NPC say/shout helpers. Real backend delivery, client UI and full-JAR remain unverified.
 Review 45 [AdvancedAnimator](../reports/2026-10-28-merge-45-advanced-animator.md) is approved/applied after exact native baseline 2b55f41; candidate/source equality passed. Only the old missing-optional-folder guard is added; native Collections.emptyList and other class text stay unchanged. No new fixture for this small diagnostic guard.
 Review 46 [LuaManager](../reports/2026-10-28-merge-46-lua-manager.md) is approved/applied after exact native baseline aca4626; candidate equality and 33 assertions passed again. Requested-key cache/source repairs, typed modFiles/logging overloads and server-only event/radio/login exposure are applied. Real Kahlua/JAR/API implementations and event-control metadata remain unverified; the old-JAR bytecode test is not target evidence.
-Review 47 [IngameState](../reports/2026-10-28-merge-47-ingame-state.md) proposes the same 19 timing scopes on exact target flow, retaining tutorial/exit changes. Clean application, phase-key equality and reversible scope-only source delta verified; no new fixture or runtime timing capture. Current helper allocates/records whenever scopes are reached; no zero-cost/client no-op or speedup claim. Candidate remains unapplied; GameServer bootstrap/integration stays review48.
-The remaining 2 entries await individual discussion. Exact-JAR compilation/runtime remain pending.
+Review 47 [IngameState](../reports/2026-10-28-merge-47-ingame-state.md) is approved/applied after native baseline d95d7a9; candidate/source equality passed. Restores 19 old telemetry scopes while preserving target control flow, tutorial/exit changes. No new fixture or runtime overhead/capture validation.
+Review 48 [GameServer/packer](../reports/2026-10-28-merge-48-game-server.md) is approved/applied to the existing reserved-ID source. Both applied sources equal the reviewed diff. Retains target silent-player/disconnect/protocol/security changes and reservation; restores PostgreSQL/login continuations, NPC/event/backend/bootstrap and telemetry. Adapts the packer snapshot call to one reused ByteBufferWriter. After application, 38 actual async-coordinator,18 extracted login-dispatch and768 native writer/body assertions passed (824 counted), plus continuation/source contracts. No full server/JAR/live DB/native activation/network validation. All48 numbered decisions are complete; PZArrayList design, newly discovered copied API gaps, metadata audit, full build/native integration and cleanup remain. [Review49 reconstruction hand fields](../reports/2026-10-28-merge-49-reconstruction-hand-fields.md) is approved/applied; exact candidate and native storage/load source checks passed. [Review50 dataset metadata](../reports/2026-10-28-merge-50-relational-dataset-build.md) is approved/applied; exact one-line equality passed. [Review51 dictionary metadata/guard](../reports/2026-10-28-merge-51-dictionary-build-version.md) is approved/applied; candidate equivalence and8 extracted JDBC-double cases passed again. Historical-data migration planning is deferred until viability/running, as requested. The [full build checkpoint](../reports/2026-10-28-build-check.md) records four errors from303 sources against the identified42.22/world251 JAR. [Review52 IsoDoor compile repair](../reports/2026-10-28-merge-52-iso-door-compile.md) is approved/applied; exact two-line candidate equality passed, leaving three compiler errors in two copied NPC classes. [Review53 native NPC transport](../reports/2026-10-28-merge-53-npc-transport.md) is approved/applied; candidate equivalence and773 native-field checks with doubles passed again. Only the native path API error remains. [Review54 path argument](../reports/2026-10-28-merge-54-zombie-path.md) is approved/applied; actual303-source build passes with895 class files. All currently known copied API compile gaps are resolved. [Thread-local audit](../reports/2026-10-28-pathfinding-thread-local-audit.md) confirms the previous fix is intact and the four-thread/80000-query target regression passes. This does not isolate all native world state. [Review55 event metadata](../reports/2026-10-28-merge-55-event-control-metadata.md) is approved/applied; exact literal equality passed. Next: [review56 square mutation tracking](../reports/2026-10-28-merge-56-square-mutation-tracking.md), proposed only; full303-source candidate build and33 focused checks pass. Activates the existing entity-ID cache; identity-position index remains separate and PZArrayList removed design stays open. Runtime, List-cache, cleanup and deferred historical migration remain open.
+The remaining 1 entry awaits individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
@@ -388,8 +391,8 @@ The remaining 2 entries await individual discussion. Exact-JAR compilation/runti
 | 44 | [network/chat/ChatServer.java](../../decompiled/zombie/network/chat/ChatServer.java) | BOT-SPEECH | 1 conflict region(s) | Approved/applied; NPC speech/general bridge; 43 assertions |
 | 45 | [core/skinnedmodel/advancedanimation/AdvancedAnimator.java](../../decompiled/zombie/core/skinnedmodel/advancedanimation/AdvancedAnimator.java) | FIX-LOADING | clean | Approved/applied; optional-folder guard; source equivalence |
 | 46 | [Lua/LuaManager.java](../../decompiled/zombie/Lua/LuaManager.java) | INTEGRATION | clean | Approved/applied; cache/server API source repairs; 33 assertions |
-| 47 | [gameStates/IngameState.java](../../decompiled/zombie/gameStates/IngameState.java) | INTEGRATION | clean | Nineteen telemetry scopes; source verified; awaiting approval |
-| 48 | [network/GameServer.java](../../decompiled/zombie/network/GameServer.java) | INTEGRATION | 1 conflict region(s) | Review38 reservation prerequisite applied; full integration awaits discussion |
+| 47 | [gameStates/IngameState.java](../../decompiled/zombie/gameStates/IngameState.java) | INTEGRATION | clean | Approved/applied; 19 telemetry scopes; source equivalence |
+| 48 | [network/GameServer.java](../../decompiled/zombie/network/GameServer.java) | INTEGRATION | 1 conflict region(s) | Approved/applied; reservation retained; two-file integration; 824 counted checks |
 
 ### Removed replacement designs, after the merge queue
 
@@ -406,7 +409,7 @@ The remaining 2 entries await individual discussion. Exact-JAR compilation/runti
 - [lib/HikariCP-7.1.0.jar](../../lib/HikariCP-7.1.0.jar): already-present-exact; not executed.
 - [lib/postgresql-42.7.14.jar](../../lib/postgresql-42.7.14.jar): already-present-exact; not executed.
 
-### Initially identified copied-support adaptations (four remain)
+### Initially identified copied adaptations (resolved; native validation pending)
 
 | Copied source | Required later work |
 | --- | --- |
@@ -415,8 +418,8 @@ The remaining 2 entries await individual discussion. Exact-JAR compilation/runti
 | [zombie/apocalipse/humans/ServerHumanMissPacket.java](../../src/zombie/apocalipse/humans/ServerHumanMissPacket.java) | Adapted in applied review38; native/runtime validation remains pending. |
 | [zombie/apocalipse/humans/ServerHumanPlayerDamage.java](../../src/zombie/apocalipse/humans/ServerHumanPlayerDamage.java) | Adapted in applied review38; native/runtime validation remains pending. |
 | [zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java](../../src/zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java) | Adapted in applied review38; native/runtime validation remains pending. |
-| [zombie/apocalipse/humans/ServerHumanTrading.java](../../src/zombie/apocalipse/humans/ServerHumanTrading.java) | Adapted in applied review40; native replies and OnlinePlayer. Packet integrations remain reviews41-43. |
-| [zombie/popman/NetworkZombiePacker.java](../../src/zombie/popman/NetworkZombiePacker.java) | Snapshot calls removed ZombiePacket.write(ByteBuffer). |
-| [zombie/savefile/ApocBRPlayerRelationalDatabase.java](../../src/zombie/savefile/ApocBRPlayerRelationalDatabase.java) | Old game_build literal for newly captured datasets. |
-| [zombie/savefile/ApocBRPlayerRelationalReconstruction.java](../../src/zombie/savefile/ApocBRPlayerRelationalReconstruction.java) | Reflective hand fields renamed in new IsoGameCharacter. |
-| [zombie/savefile/ApocBRWorldDictionaryDatabase.java](../../src/zombie/savefile/ApocBRWorldDictionaryDatabase.java) | Old 42.21.0/249 namespace SQL literals. |
+| [zombie/apocalipse/humans/ServerHumanTrading.java](../../src/zombie/apocalipse/humans/ServerHumanTrading.java) | Adapted in applied review40; native replies and OnlinePlayer. Packet integrations applied in reviews41-43. |
+| [zombie/popman/NetworkZombiePacker.java](../../src/zombie/popman/NetworkZombiePacker.java) | Adapted in applied review48 to one reused ByteBufferWriter; full runtime remains pending. |
+| [zombie/savefile/ApocBRPlayerRelationalDatabase.java](../../src/zombie/savefile/ApocBRPlayerRelationalDatabase.java) | Adapted in review50 for newly inserted datasets; existing metadata unchanged. |
+| [zombie/savefile/ApocBRPlayerRelationalReconstruction.java](../../src/zombie/savefile/ApocBRPlayerRelationalReconstruction.java) | Adapted in review49 to primaryHandItem/secondaryHandItem; full reconstruction validation pending. |
+| [zombie/savefile/ApocBRWorldDictionaryDatabase.java](../../src/zombie/savefile/ApocBRWorldDictionaryDatabase.java) | Adapted in review51 to42.22.0/251 with namespace guard; historical migration deferred. |
