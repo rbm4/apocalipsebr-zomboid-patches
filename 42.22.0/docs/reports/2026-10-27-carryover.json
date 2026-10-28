@@ -2,15 +2,17 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "Carry-over only; discuss and approve each of 48 changed replacement merges individually; removed targets and support adaptations remain afterward.",
+  "workflow": "GameEntity review 01 approved/applied; review 02 EngineEntityManager awaits individual discussion; 47 changed merges, 3 removed targets and support adaptations remain.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 48,
+    "awaiting_merges": 47,
     "awaiting_removed_design": 3,
-    "copied_with_known_adaptations": 10
+    "copied_with_known_adaptations": 10,
+    "merged_replacements": 1,
+    "target_java_files": 251
   },
   "classes": [
     {
@@ -4007,13 +4009,27 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "e2809228cd1b9e95514aabc0a0a6cf6089728028e674bd66cee4208093b872fe",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "8a4de3efdf06acee62c11d84e443363971ec3083f03773faa8ec2a932d7cc7af",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 1,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_using_player_algorithms.py --version 42.22.0",
+          "passed": true,
+          "assertions": 190141,
+          "scope": "Production using-player classes and extracted GameEntity methods; engine stubs; not full-class or exact-JAR compilation."
+        }
+      },
+      "approval": {
+        "review": 1,
+        "decision": "approved",
+        "user_instruction": "yes apply and move to the next one",
+        "applied": true,
+        "baseline_commit": "5456a51d877f2241b36014c2c4146ad7cd5d0549",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-01-game-entity.md"
       }
     },
     {

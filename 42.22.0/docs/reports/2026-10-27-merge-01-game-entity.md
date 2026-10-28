@@ -1,6 +1,7 @@
 # Merge review 01/48: GameEntity
 
-Status: **awaiting user discussion; not applied**. The user requested individual
+Status: **approved by the user and applied; full-class compilation/runtime pending**.
+The user requested individual
 merge review after staging unchanged-baseline and custom classes. Review the
 [subsystem tracker and queue](../features/2026-10-27-subsystem-port-tracker.md)
 for the current checkpoint. Approval of this class does not approve later merges.
@@ -13,9 +14,12 @@ for the current checkpoint. Approval of this class does not approve later merges
 - [Proposed additions against target vanilla](2026-10-27-merge-01-game-entity.diff).
 
 The proposal was generated with old patched / old vanilla / new vanilla as a
-three-way merge. It has zero textual conflicts. The diff represents a candidate
-against the new vanilla baseline, not a change already made to `42.22.0/src`.
-No old vanilla file or copied support file is modified by this review.
+three-way merge. It has zero textual conflicts. The user approved this exact
+combination with "yes apply and move to the next one". The diff is now applied to
+[target GameEntity](../../src/zombie/entity/GameEntity.java). The repository's
+baseline tool first committed only the exact target vanilla file in `5456a51`;
+the behavioral patch remains a separate working-tree change. No push occurred.
+Old vanilla and copied support files remain unchanged.
 
 ## Vanilla and our existing behavior
 
@@ -67,24 +71,32 @@ new algorithm or gameplay policy is proposed.
 
 ## Validation and dependent work
 
-Before implementation: exact candidate diff and all three input files are
-available for discussion. Textual applicability is verified; compilation and
-runtime behavior are not.
+The installed source matches the approved candidate, preserving all upstream
+changes, seven index notifications and two component-load diagnostics.
 
-After the merge is accepted:
+`python -B tools/test_using_player_algorithms.py --version 42.22.0` passed
+190,141 assertions. The fixture reads target production index/bucket/system
+sources and extracts the target GameEntity setter, reset, receive method and
+new membership predicate. It compares traversal with target vanilla and tests
+callback mutations, shared memberships, reset and packet assignment. Five new
+assertions cover pending-add reset unregistering exactly once and clearing the
+pending/user state. Java assertions run enabled. Engine dependencies remain
+explicit stubs: this is not full GameEntity compilation or a native-runtime test.
 
-- Start from the exact 42.22.0 baseline, apply the reviewed diff, and compare
-  against both target vanilla and old patch intent.
-- Carry the review decision into the tracker and ledger; mark
-  `merged-unverified`, not complete.
+The same fixture with `--version 42.21.0` passed 190,136 assertions, preserving
+the old target's coverage. No exact-JAR compilation or runtime validation is
+claimed while other replacement classes remain unported.
+
+Remaining integration work:
+
 - In subsequent entity reviews, check pending-add cancellation, removal flags,
   bucket notifications and meta release with the index hooks present.
-- Adapt the production using-player/simulation fixtures to 42.22.0 before
-  claiming target coverage. Exercise callback activation/removal, reset,
-  delayed-add cancellation, accessor overrides and packet assignment paths.
+- Extend integration coverage to the actual pending-operation manager as the
+  next entity replacements are ported. Its cancellation behavior is not supplied
+  by the current GameEntity fixture's unregister stub.
 - Verify component load failures reach quality reporting without losing native
   exception behavior. Perform exact-target JAR compilation at the integration
   checkpoint when required replacement classes are present.
 
-The decision requested is whether to apply this candidate for GameEntity only,
-preserving the upstream lifecycle changes and both existing ApocalipseBR hooks.
+Review 01 is complete at the source/fixture checkpoint. The next individual
+decision is [review 02: EngineEntityManager](2026-10-27-merge-02-engine-entity-manager.md).

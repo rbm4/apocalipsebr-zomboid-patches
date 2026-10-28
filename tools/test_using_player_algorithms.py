@@ -3,6 +3,7 @@ Production EntityBucket/index/system are compiled; GameEntity mutation methods
 are extracted from production into a small fixture instead of stubbing their logic.
 """
 from pathlib import Path
+import argparse
 import subprocess
 import tempfile
 import sys
@@ -10,9 +11,9 @@ sys.dont_write_bytecode = True
 from test_simulation_algorithms import ROOT, STUBS, method
 
 
-def fixtures():
+def fixtures(version="42.21.0"):
     files = dict(STUBS)
-    production = (ROOT / "42.21.0/src/zombie/entity/GameEntity.java").read_text()
+    production = (ROOT / version / "src/zombie/entity/GameEntity.java").read_text()
     entity = files["zombie/entity/GameEntity.java"]
     entity = entity.replace("public void setUsingPlayer(zombie.characters.IsoPlayer p){usingPlayer=p;ServerUsingPlayerIndex.changed(this);}", "")
     entity = entity.replace("public void reset(){drying=false;}", "")
@@ -21,6 +22,9 @@ def fixtures():
     entity = entity.rsplit("}", 1)[0] + "\n" + "\n".join(method(production, signature) for signature in (
         "public void setUsingPlayer(IsoPlayer player)", "public void reset()",
         "protected final void receiveUpdateUsingPlayer(ByteBufferReader input, IConnection senderConnection)")) + "\n}"
+    scheduled_predicate = "public final boolean isAddedOrScheduledForEngine()"
+    if scheduled_predicate in production:
+        entity = entity.rsplit("}", 1)[0] + "\n" + method(production, scheduled_predicate) + "\n}"
     files["zombie/entity/GameEntity.java"] = entity
     files["zombie/entity/GameEntityType.java"] = files["zombie/entity/GameEntityType.java"].replace("MetaEntity;", "MetaEntity, IsoObject;", 1)
     files["zombie/entity/GameEntityManager.java"] = "package zombie.entity; public class GameEntityManager {public static boolean debugMode, processing; public static java.util.function.Consumer<GameEntity> unregister=e->{};public static boolean isEngineProcessing(){return processing;}public static void UnregisterEntity(GameEntity e){unregister.accept(e);}}"
@@ -31,9 +35,23 @@ def fixtures():
     files["zombie/network/IConnection.java"] = "package zombie.network; public interface IConnection {}"
     files["zombie/core/network/ByteBufferReader.java"] = "package zombie.core.network; public class ByteBufferReader {private final boolean assigned;public ByteBufferReader(boolean a){assigned=a;}public boolean getBoolean(){return assigned;}public String getUTF(){return \"user\";}public short getShort(){return 0;}}"
     files["zombie/characters/IsoPlayer.java"] = files["zombie/characters/IsoPlayer.java"].replace("public float x,y,dist;", "public float x,y,z,dist;public float getZ(){return z;}")
-    vanilla = (ROOT / "42.21.0/decompiled/zombie/entity/UsingPlayerUpdateSystem.java").read_text().replace("UsingPlayerUpdateSystem", "VanillaUsingPlayerUpdateSystem")
+    vanilla = (ROOT / version / "decompiled/zombie/entity/UsingPlayerUpdateSystem.java").read_text().replace("UsingPlayerUpdateSystem", "VanillaUsingPlayerUpdateSystem")
     files["zombie/entity/VanillaUsingPlayerUpdateSystem.java"] = vanilla
     files["zombie/entity/UsingPlayerIndexTest.java"] = HARNESS
+    if scheduled_predicate in production:
+        pending_reset = """public static void pendingAddReset(){
+          Entity e=new Entity(900);e.addedToEngine=false;e.scheduledDelayedAddToEngine=true;
+          e.setUsingPlayer(player(0,0,0,false));int[] calls={0};
+          GameEntityManager.unregister=value->{calls[0]++;value.scheduledDelayedAddToEngine=false;};
+          check(e.isAddedOrScheduledForEngine(),"pending add counts as engine membership");
+          e.reset();check(calls[0]==1,"reset unregisters pending add before clearing flags");
+          check(!e.isAddedOrScheduledForEngine(),"reset clears pending membership");
+          check(e.getUsingPlayer()==null,"pending-add reset clears user");
+          e.reset();check(calls[0]==1,"second detached reset does not unregister again");
+        }
+        """
+        files["zombie/entity/UsingPlayerIndexTest.java"] = HARNESS.replace(
+            "public static void main(String[] args){", pending_reset + "public static void main(String[] args){pendingAddReset();", 1)
     return files
 
 
@@ -146,18 +164,21 @@ public class UsingPlayerIndexTest {
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", choices=("42.21.0", "42.22.0"), default="42.21.0")
+    version = parser.parse_args().version
     with tempfile.TemporaryDirectory(prefix="apocbr-using-player-tests-") as directory:
         work=Path(directory);sources=[]
-        for relative,content in fixtures().items():
+        for relative,content in fixtures(version).items():
             path=work/relative;path.parent.mkdir(parents=True,exist_ok=True);path.write_text(content,encoding="utf-8");sources.append(path)
-        src=ROOT/"42.21.0/src/zombie"
+        src=ROOT/version/"src/zombie"
         sources.extend(src/name for name in ["entity/EntityBucket.java", "entity/ServerUsingPlayerIndex.java",
             "entity/UsingPlayerUpdateSystem.java", "entity/MetaEntity.java", "entity/EntitySimulation.java",
             "entity/MetaSimulationThrottle.java", "entity/ServerEntitySimulationIndex.java"])
         args=work/"javac.args";args.write_text("\n".join('"'+str(p).replace("\\","/")+'"' for p in sources),encoding="utf-8")
         output=work/"classes"
         subprocess.run([str(ROOT/"jdk/bin/javac.exe"),"--release","25","-d",str(output),"@"+str(args)],check=True)
-        subprocess.run([str(ROOT/"jdk/bin/java.exe"),"-cp",str(output),"zombie.entity.UsingPlayerIndexTest"],check=True)
+        subprocess.run([str(ROOT/"jdk/bin/java.exe"),"-ea","-cp",str(output),"zombie.entity.UsingPlayerIndexTest"],check=True)
 
 if __name__ == "__main__":
     main()

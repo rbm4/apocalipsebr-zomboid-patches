@@ -13,6 +13,12 @@ retains the exact old patched bytes, including known obsolete APIs and build
 literals. This is source staging, not a compatibility repair or deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
+Current review checkpoint: **01 GameEntity approved/applied; 02 EngineEntityManager awaiting discussion**.
+There are 251 Java files present (250 exact carry-overs plus one reviewed merge).
+The target using-player fixture passed 190,141 assertions, including pending-add
+reset; the old-target fixture passed 190,136. These execute production methods
+with engine stubs and do not establish full-class or runtime compatibility.
+
 The [copy receipt and per-class ownership/dependency ledger](../reports/2026-10-27-carryover.json)
 tracks all 301 Java source files, their original hashes, subsystem, baseline
 classification, copy state and references to other patched/support classes.
@@ -177,7 +183,9 @@ ledger even though copy hashes match. Other copied files remain unverified;
 the known list is a minimum, not a complete target API audit.
 
 The old fixture scripts at repository `tools/` generally pin 42.21.0. They remain
-reference coverage, not 42.22.0 validation. The copied version-local async sender
+reference coverage, not 42.22.0 validation. The using-player fixture now accepts
+`--version 42.22.0` and verifies target production classes/extracted GameEntity
+methods against explicit engine stubs; see review 01 for coverage and limits. The copied version-local async sender
 fixture resolves its own version directory; review its engine stubs and serializer
 assumptions before using it as target compatibility evidence.
 
@@ -198,55 +206,56 @@ copy provenance; record future merge decisions in both places.
 
 ### Ownership counts
 
-| Subsystem | All files | Copied | Awaiting merge | Removed target |
-| --- | ---: | ---: | ---: | ---: |
-| APP-BRIDGE | 5 | 5 | 0 | 0 |
-| APP-EVENT | 1 | 1 | 0 | 0 |
-| BOT-COMBAT | 23 | 20 | 2 | 1 |
-| BOT-CORE | 30 | 30 | 0 | 0 |
-| BOT-DEATH | 4 | 4 | 0 | 0 |
-| BOT-ENCOUNTER | 9 | 9 | 0 | 0 |
-| BOT-INTERACT | 21 | 16 | 4 | 1 |
-| BOT-MOVE | 22 | 22 | 0 | 0 |
-| BOT-SPEECH | 10 | 9 | 1 | 0 |
-| BOT-STATE | 14 | 14 | 0 | 0 |
-| BOT-ZOMBIE | 7 | 7 | 0 | 0 |
-| DB-ACCOUNT | 2 | 2 | 0 | 0 |
-| DB-CORE | 5 | 5 | 0 | 0 |
-| DB-DICT | 10 | 7 | 3 | 0 |
-| DB-LOGIN | 9 | 9 | 0 | 0 |
-| DB-MOD | 1 | 1 | 0 | 0 |
-| DB-NPC | 6 | 6 | 0 | 0 |
-| DB-PLAYER | 26 | 25 | 1 | 0 |
-| DB-VEHICLE | 2 | 1 | 1 | 0 |
-| FIX-LOADING | 2 | 1 | 1 | 0 |
-| FIX-SAFEHOUSE | 3 | 3 | 0 | 0 |
-| FIX-TROUGH | 1 | 1 | 0 | 0 |
-| INTEGRATION | 8 | 0 | 8 | 0 |
-| NETWORK-GUARDS | 5 | 1 | 4 | 0 |
-| OBS-CLIENT | 2 | 2 | 0 | 0 |
-| OBS-TELEMETRY | 3 | 3 | 0 | 0 |
-| OPT-ANIMAL | 7 | 5 | 2 | 0 |
-| OPT-ENTITY | 14 | 12 | 2 | 0 |
-| OPT-LOS | 2 | 2 | 0 | 0 |
-| OPT-MOVE | 4 | 3 | 1 | 0 |
-| OPT-PATH | 4 | 3 | 1 | 0 |
-| OPT-PLAYER | 8 | 7 | 1 | 0 |
-| OPT-REGISTRY | 6 | 0 | 5 | 1 |
-| OPT-STREAM | 2 | 0 | 2 | 0 |
-| OPT-USING | 3 | 2 | 1 | 0 |
-| OPT-VEHICLE | 3 | 1 | 2 | 0 |
-| OPT-WORLD | 5 | 2 | 3 | 0 |
-| OPT-ZOMBIE | 12 | 9 | 3 | 0 |
+| Subsystem | All files | Copied | Merged | Awaiting merge | Removed target |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| APP-BRIDGE | 5 | 5 | 0 | 0 | 0 |
+| APP-EVENT | 1 | 1 | 0 | 0 | 0 |
+| BOT-COMBAT | 23 | 20 | 0 | 2 | 1 |
+| BOT-CORE | 30 | 30 | 0 | 0 | 0 |
+| BOT-DEATH | 4 | 4 | 0 | 0 | 0 |
+| BOT-ENCOUNTER | 9 | 9 | 0 | 0 | 0 |
+| BOT-INTERACT | 21 | 16 | 0 | 4 | 1 |
+| BOT-MOVE | 22 | 22 | 0 | 0 | 0 |
+| BOT-SPEECH | 10 | 9 | 0 | 1 | 0 |
+| BOT-STATE | 14 | 14 | 0 | 0 | 0 |
+| BOT-ZOMBIE | 7 | 7 | 0 | 0 | 0 |
+| DB-ACCOUNT | 2 | 2 | 0 | 0 | 0 |
+| DB-CORE | 5 | 5 | 0 | 0 | 0 |
+| DB-DICT | 10 | 7 | 0 | 3 | 0 |
+| DB-LOGIN | 9 | 9 | 0 | 0 | 0 |
+| DB-MOD | 1 | 1 | 0 | 0 | 0 |
+| DB-NPC | 6 | 6 | 0 | 0 | 0 |
+| DB-PLAYER | 26 | 25 | 0 | 1 | 0 |
+| DB-VEHICLE | 2 | 1 | 0 | 1 | 0 |
+| FIX-LOADING | 2 | 1 | 0 | 1 | 0 |
+| FIX-SAFEHOUSE | 3 | 3 | 0 | 0 | 0 |
+| FIX-TROUGH | 1 | 1 | 0 | 0 | 0 |
+| INTEGRATION | 8 | 0 | 0 | 8 | 0 |
+| NETWORK-GUARDS | 5 | 1 | 0 | 4 | 0 |
+| OBS-CLIENT | 2 | 2 | 0 | 0 | 0 |
+| OBS-TELEMETRY | 3 | 3 | 0 | 0 | 0 |
+| OPT-ANIMAL | 7 | 5 | 0 | 2 | 0 |
+| OPT-ENTITY | 14 | 12 | 0 | 2 | 0 |
+| OPT-LOS | 2 | 2 | 0 | 0 | 0 |
+| OPT-MOVE | 4 | 3 | 0 | 1 | 0 |
+| OPT-PATH | 4 | 3 | 0 | 1 | 0 |
+| OPT-PLAYER | 8 | 7 | 0 | 1 | 0 |
+| OPT-REGISTRY | 6 | 0 | 0 | 5 | 1 |
+| OPT-STREAM | 2 | 0 | 0 | 2 | 0 |
+| OPT-USING | 3 | 2 | 1 | 0 | 0 |
+| OPT-VEHICLE | 3 | 1 | 0 | 2 | 0 |
+| OPT-WORLD | 5 | 2 | 0 | 3 | 0 |
+| OPT-ZOMBIE | 12 | 9 | 0 | 3 | 0 |
 
 ### Individual merge reviews
 
-All entries are awaiting discussion; no candidate has been applied. Review 01
-has a concrete proposal in the [GameEntity review](../reports/2026-10-27-merge-01-game-entity.md).
+Review 01 [GameEntity](../reports/2026-10-27-merge-01-game-entity.md) is approved/applied; its target using-player fixture passed.
+Review 02 [EngineEntityManager](../reports/2026-10-27-merge-02-engine-entity-manager.md) awaits discussion; its candidate is unapplied.
+The other 46 entries also await individual discussion. Full-class compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
-| 01 | [entity/GameEntity.java](../../decompiled/zombie/entity/GameEntity.java) | OPT-USING | clean | Awaiting individual discussion |
+| 01 | [entity/GameEntity.java](../../src/zombie/entity/GameEntity.java) | OPT-USING | clean | Approved/applied; target fixture passed; full-class/runtime pending |
 | 02 | [entity/EngineEntityManager.java](../../decompiled/zombie/entity/EngineEntityManager.java) | OPT-ENTITY | clean | Awaiting individual discussion |
 | 03 | [entity/GameEntityManager.java](../../decompiled/zombie/entity/GameEntityManager.java) | OPT-REGISTRY | clean | Awaiting individual discussion |
 | 04 | [entity/components/crafting/CraftLogicSystem.java](../../decompiled/zombie/entity/components/crafting/CraftLogicSystem.java) | OPT-ENTITY | clean | Awaiting individual discussion |

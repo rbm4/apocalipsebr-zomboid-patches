@@ -316,8 +316,10 @@ The numbered queue contains all 48 changed replacements, including clean text
 merges. Present old patch intent, upstream changes and a concrete candidate for
 one class; record the user's decision and apply only the accepted class before
 presenting the next. Removed-class designs and copied-support adaptations remain
-separate work afterward unless the user changes the order. Current review 01
-is GameEntity and is awaiting discussion; no changed replacement is applied.
+separate work afterward unless the user changes the order. Review 01 (GameEntity)
+is approved/applied, with the target using-player fixture passing; full-class
+compilation/runtime remain pending. Review 02 (EngineEntityManager) awaits
+individual discussion and has not been applied.
 Prioritize optimizations, NPCs and PostgreSQL, with telemetry verification
 secondary, while retaining all subsystems in scope. Update this checkpoint as
 decisions are implemented so it does not become a stale approval instruction.
@@ -373,7 +375,7 @@ There is no substitute for runtime testing of timing, threading, streaming, netw
 
 ### Python test architecture and prerequisites
 
-The current `tools/test_*.py` scripts target **42.21.0** explicitly. They are standalone Python entry points, not a pytest suite, and do not accept a version selector. Do not assume they validate another build when porting a patch.
+Most current `tools/test_*.py` scripts target **42.21.0** explicitly. They are standalone Python entry points, not a pytest suite. Exception: `test_using_player_algorithms.py` accepts `--version 42.21.0` (default) or `--version 42.22.0`, reads that version's production/vanilla files, and covers the newer pending-add reset predicate. Do not assume the other fixtures validate another build when porting a patch.
 
 Each script uses Python's standard library to create a temporary Java fixture, compile production Java sources or methods extracted from production sources, and execute Java assertions. Some fixtures also compile or extract the exact target-version vanilla implementation for differential comparison. Small engine stubs supply dependencies without initializing the game or loading native libraries. Temporary source and class files are cleaned up automatically.
 
