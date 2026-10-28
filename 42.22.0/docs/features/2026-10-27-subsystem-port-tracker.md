@@ -13,8 +13,8 @@ retains the exact old patched bytes, including known obsolete APIs and build
 literals. This is source staging, not a compatibility repair or deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01-07 approved/applied; 08 IsoGridSquare awaiting discussion**.
-There are 257 Java files present (250 exact carry-overs plus seven reviewed merges).
+Current review checkpoint: **01-08 approved/applied; 09 IsoObject awaiting discussion**.
+There are 258 Java files present (250 exact carry-overs plus eight reviewed merges).
 The target using-player fixture passed 190,141 assertions, including pending-add
 reset; the old-target fixture passed 190,136. These execute production methods
 with engine stubs and do not establish full-class or runtime compatibility.
@@ -38,8 +38,11 @@ individual review of subsequent classes. Review 07 is applied with 35 parser/
 provenance/fluid assertions passing, combining loadByteCount with quality diagnostics
 and new payload metadata 251. The user explicitly expects PostgreSQL reconstruction
 to consume these hooks later; full routing/reconstruction remains pending.
-Review 08 is an unapplied List/LOS candidate; its raw-array conflict resolutions
-do not retire the separate List-compatible identity/mutation cache work.
+Review 08 is applied with 357 room/lighting/scratch fixture assertions passing;
+full CalcVisibility/native LOS remain untested. The target List traversal does
+not retire the separate identity/mutation cache work. Review 09 proposes a
+List-compatible ID cache that uses native fallback on current plain lists and
+activates only on mutation-tracked lists; its candidate remains unapplied.
 
 The [copy receipt and per-class ownership/dependency ledger](../reports/2026-10-27-carryover.json)
 tracks all 301 Java source files, their original hashes, subsystem, baseline
@@ -263,7 +266,7 @@ copy provenance; record future merge decisions in both places.
 | OPT-MOVE | 4 | 3 | 0 | 1 | 0 |
 | OPT-PATH | 4 | 3 | 0 | 1 | 0 |
 | OPT-PLAYER | 8 | 7 | 1 | 0 | 0 |
-| OPT-REGISTRY | 5 | 0 | 0 | 4 | 1 |
+| OPT-REGISTRY | 5 | 0 | 1 | 3 | 1 |
 | OPT-STREAM | 2 | 0 | 0 | 2 | 0 |
 | OPT-USING | 3 | 2 | 1 | 0 | 0 |
 | OPT-VEHICLE | 3 | 1 | 0 | 2 | 0 |
@@ -279,8 +282,9 @@ Review 04 [CraftLogicSystem](../reports/2026-10-27-merge-04-craft-logic-system.m
 Review 05 [SpriteConfig](../reports/2026-10-27-merge-05-sprite-config.md) is approved/applied; source verification passed.
 Review 06 [ItemContainer](../reports/2026-10-27-merge-06-item-container.md) is approved/applied; its target fixture passed.
 Review 07 [InventoryItem](../reports/2026-10-27-merge-07-inventory-item.md) is approved/applied; its target parser fixture passed, with reconstruction integration pending.
-Review 08 [IsoGridSquare](../reports/2026-10-27-merge-08-iso-grid-square.md) awaits individual discussion; its resolved candidate is unapplied.
-The other 40 entries also await individual discussion. Exact-JAR compilation/runtime remain pending.
+Review 08 [IsoGridSquare](../reports/2026-10-27-merge-08-iso-grid-square.md) is approved/applied; its grid fixture passed.
+Review 09 [IsoObject](../reports/2026-10-27-merge-09-iso-object.md) awaits discussion of its List-compatible candidate; it is unapplied.
+The other 39 entries also await individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
@@ -291,7 +295,7 @@ The other 40 entries also await individual discussion. Exact-JAR compilation/run
 | 05 | [entity/components/spriteconfig/SpriteConfig.java](../../src/zombie/entity/components/spriteconfig/SpriteConfig.java) | INTEGRATION | clean | Approved/applied; source verified; target-JAR/runtime pending |
 | 06 | [inventory/ItemContainer.java](../../src/zombie/inventory/ItemContainer.java) | OPT-PLAYER | clean | Approved/applied; target fixture passed; target-JAR/runtime pending |
 | 07 | [inventory/InventoryItem.java](../../src/zombie/inventory/InventoryItem.java) | DB-PLAYER | 1 conflict region(s) | Approved/applied; parser fixture passed; reconstruction/target-JAR pending |
-| 08 | [iso/IsoGridSquare.java](../../decompiled/zombie/iso/IsoGridSquare.java) | OPT-REGISTRY | 9 conflict region(s) | Awaiting individual discussion |
+| 08 | [iso/IsoGridSquare.java](../../src/zombie/iso/IsoGridSquare.java) | OPT-REGISTRY | 9 conflict region(s) | Approved/applied; grid fixture passed; adapter/native integration pending |
 | 09 | [iso/IsoObject.java](../../decompiled/zombie/iso/IsoObject.java) | OPT-REGISTRY | clean | Awaiting individual discussion |
 | 10 | [LoadGridsquarePerformanceWorkaround.java](../../decompiled/zombie/LoadGridsquarePerformanceWorkaround.java) | OPT-REGISTRY | 1 conflict region(s) | Awaiting individual discussion |
 | 11 | [LootRespawn.java](../../decompiled/zombie/LootRespawn.java) | OPT-REGISTRY | 1 conflict region(s) | Awaiting individual discussion |

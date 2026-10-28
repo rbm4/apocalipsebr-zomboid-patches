@@ -2,17 +2,17 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "Reviews 01-07 approved/applied; review 08 IsoGridSquare awaits individual discussion of resolved List/LOS candidate; 41 changed merges, 3 removed targets and support adaptations remain. InventoryItem PostgreSQL reconstruction integration is explicitly deferred.",
+  "workflow": "Reviews 01-08 approved/applied; review 09 IsoObject awaits individual discussion of List-compatible cache/dictionary candidate; 40 changed merges, 3 removed targets and support adaptations remain. Collection adapter and PostgreSQL reconstruction remain explicit integration work.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 41,
+    "awaiting_merges": 40,
     "awaiting_removed_design": 3,
     "copied_with_known_adaptations": 10,
-    "merged_replacements": 7,
-    "target_java_files": 257
+    "merged_replacements": 8,
+    "target_java_files": 258
   },
   "classes": [
     {
@@ -4728,21 +4728,36 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "6321e425991ea9dee2291c08d17fb59e4ef5783f4326e8bfe63091a4c5514368",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "bb48570691bce5051f69613e9f26ed09e5fd580a1b90a3f8fbddc9dcdd1bd59d",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 8,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_iso_grid_square_port.py",
+          "passed": true,
+          "assertions": 357,
+          "scope": "Extracted room-seen methods, lighting initialization, scratch fields and slot constant with world/player/vector/lighting doubles. CalcVisibility server guard and List APIs source-checked; native LOS not executed."
+        }
       },
       "candidate_resolutions": {
-        "state": "proposed-unapplied",
+        "state": "approved-applied",
         "array_conflicts": "Keep target List traversal in all nine conflicts; old raw-array reader wrappers have no target API.",
         "retained_patch": "Parallel LOS slots, thread-local scratch vectors, server exploration guard and player-aware room-seen overload.",
         "pending_collection_cache": "List-compatible mutation/identity adapter remains in scope for later IsoObject/removed-PZArrayList work; vanilla ArrayList storage retained for now.",
         "review_document": "42.22.0/docs/reports/2026-10-27-merge-08-iso-grid-square.md"
-      }
+      },
+      "approval": {
+        "review": 8,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "baseline_commit": "0abd0ed70e4cdfc8d92ef594eb7324fc163d69a9",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-08-iso-grid-square.md"
+      },
+      "integration_pending": "List-compatible identity/mutation adapter plus actual LOS/visibility/streaming integration; vanilla ArrayList storage intentionally retained at this checkpoint."
     },
     {
       "path": "zombie/iso/IsoObject.java",
@@ -4802,6 +4817,14 @@
       "verification": {
         "target_compile": false,
         "target_runtime": false
+      },
+      "candidate_resolutions": {
+        "state": "proposed-unapplied",
+        "api_adaptation": "List<IsoObject> references; cache eligibility requires MutationTrackedArrayList contract and its mutationVersion; plain lists use native fallback.",
+        "retired_array_api": "Remove nonexistent PZArrayList exposure checks and raw-array fallback counter; retain cache/native-check counters.",
+        "retained_hooks": "Native target ID getter body, reset cleanup and source dictionary scope around virtual decode.",
+        "pending_adapter": "No square storage change/new adapter; identity-position lookup and actual tracked-list wiring remain explicit later work.",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-09-iso-object.md"
       }
     },
     {

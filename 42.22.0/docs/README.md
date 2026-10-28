@@ -2,11 +2,11 @@
 
 42.22.0 is the current server development target (pre-release). The vanilla
 baseline is `../decompiled/zombie/`; replacement sources belong in `../src/zombie/`.
-The source tree contains 257 Java files: 50 replacements whose vanilla
+The source tree contains 258 Java files: 50 replacements whose vanilla
 baselines are unchanged and 200 ApocalipseBR support classes, copied byte for byte
-from 42.21.0, plus seven individually approved merges through InventoryItem.
-Another 41 changed replacements and 3 removed targets await review. Reviews 01-04,
-06 and 07 passed target fixtures; SpriteConfig's diagnostic-only changes passed source
+from 42.21.0, plus eight individually approved merges through IsoGridSquare.
+Another 40 changed replacements and 3 removed targets await review. Reviews 01-04
+and 06-08 passed target fixtures; SpriteConfig's diagnostic-only changes passed source
 verification. Exact-target JAR compilation and runtime verification remain pending.
 This directory is under migration and is not a deployable or validated release.
 
@@ -28,7 +28,8 @@ No complete feature has been compiled and runtime-verified for this target yet.
 
 | Date | Document |
 | --- | --- |
-| 2026-10-27 | [Merge review 08/48: IsoGridSquare (resolved candidate awaiting discussion)](reports/2026-10-27-merge-08-iso-grid-square.md) |
+| 2026-10-27 | [Merge review 09/48: IsoObject (List-compatible candidate awaiting discussion)](reports/2026-10-27-merge-09-iso-object.md) |
+| 2026-10-27 | [Merge review 08/48: IsoGridSquare (applied; grid fixture passed)](reports/2026-10-27-merge-08-iso-grid-square.md) |
 | 2026-10-27 | [Merge review 07/48: InventoryItem (applied; parser fixture passed)](reports/2026-10-27-merge-07-inventory-item.md) |
 | 2026-10-27 | [Merge review 06/48: ItemContainer (applied; target fixture passed)](reports/2026-10-27-merge-06-item-container.md) |
 | 2026-10-27 | [Merge review 05/48: SpriteConfig (applied; source verification passed)](reports/2026-10-27-merge-05-sprite-config.md) |
@@ -49,7 +50,8 @@ Also: [applied CraftLogicSystem diff](reports/2026-10-27-merge-04-craft-logic-sy
 Also: [applied SpriteConfig diff](reports/2026-10-27-merge-05-sprite-config.diff).
 Also: [applied ItemContainer diff](reports/2026-10-27-merge-06-item-container.diff).
 Also: [applied InventoryItem resolution](reports/2026-10-27-merge-07-inventory-item.diff).
-Next: [unapplied IsoGridSquare candidate](reports/2026-10-27-merge-08-iso-grid-square.diff).
+Also: [applied IsoGridSquare resolution](reports/2026-10-27-merge-08-iso-grid-square.diff).
+Next: [unapplied IsoObject candidate](reports/2026-10-27-merge-09-iso-object.diff).
 
 ## Issues
 

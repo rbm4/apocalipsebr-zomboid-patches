@@ -1,6 +1,6 @@
 # Merge review 08/48: IsoGridSquare
 
-Status: **awaiting individual user discussion; not applied**. Reviews 01-07 are
+Status: **approved and applied; grid fixture passed; target-JAR/native LOS pending**. Reviews 01-07 are
 approved and applied. See the [tracker](../features/2026-10-27-subsystem-port-tracker.md).
 
 ## Inputs and resolved candidate
@@ -8,12 +8,15 @@ approved and applied. See the [tracker](../features/2026-10-27-subsystem-port-tr
 - [Old vanilla](../../../42.21.0/decompiled/zombie/iso/IsoGridSquare.java).
 - [Old patch](../../../42.21.0/src/zombie/iso/IsoGridSquare.java).
 - [Target vanilla](../../decompiled/zombie/iso/IsoGridSquare.java).
-- [Unapplied resolved candidate diff](2026-10-27-merge-08-iso-grid-square.diff).
+- [Applied resolved diff](2026-10-27-merge-08-iso-grid-square.diff).
 
 All **nine textual conflicts** are old array-exposure calls versus new vanilla
 List traversal. The proposed candidate selects the target code for those regions
 and reapplies the other existing visibility/LOS changes. It has no conflict
-markers; no target source or baseline commit has been created for this class.
+markers. The user approved it with "yes". The exact target vanilla baseline was
+committed separately as `0abd0ed`, then the reviewed resolution was applied to
+[target IsoGridSquare](../../src/zombie/iso/IsoGridSquare.java). The behavioral
+patch remains separate from the baseline commit; no push occurred.
 
 ## Upstream contract that must survive
 
@@ -56,18 +59,25 @@ unreviewed adapter or claim the old lazy ID cache already works on this storage.
 Any later change to this collection's storage/helper integration must be made
 explicit in that review. The subsystem remains incomplete until that work lands.
 
-## Proposed decision and verification after acceptance
+## Applied decision and verification
 
 Keep target List traversal at all nine conflicts and retain the existing LOS,
 thread-local and player-aware room-visibility changes shown in the diff. Do not
 restore PZArrayList return types, raw-array calls or old door/trap signatures.
 
-If approved, verify lighting slot initialization/reuse, thread-isolated vectors,
-server versus client room-exploration ownership and room-seen overload behavior.
-Compare the resolved List traversals/removals with target vanilla and test the
-eventual identity/mutation adapter with callbacks, duplicates, reorder, reset and
-pool reuse. Target-JAR compilation and native multiplayer/streaming/LOS validation
-remain integration requirements.
+The installed source matches the reviewed resolution. `python -B tools/test_iso_grid_square_port.py`
+passed **357 assertions**. It extracts the target room-seen overloads, lighting
+initialization loop, scratch fields and slot constant. Room behavior is compared
+with the exact target vanilla room-seen method over floor/distance/building/local
+player cases; null inputs and integer-overload delegation are checked. Lighting
+tests cover every server slot, reinitialization and client JNI/fallback paths.
+Four concurrent fixture threads verify separate scratch objects and per-thread
+reuse. World/player/vector/lighting services are explicit doubles.
 
-Decision requested: apply this IsoGridSquare candidate, leaving the collection
-cache adapter as explicit later work rather than restoring the removed array API.
+Source checks confirm the full CalcVisibility method consumes those thread-local
+values and retains the server exploration guard; full CalcVisibility/native LOS
+is not executed. The List declarations and absence of old array APIs are checked.
+Target-JAR compilation and native multiplayer/streaming/LOS validation remain
+integration requirements, along with the deferred collection/cache adapter tests.
+
+Next decision: [review 09, IsoObject](2026-10-27-merge-09-iso-object.md).
