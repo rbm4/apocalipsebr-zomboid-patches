@@ -23,7 +23,7 @@ You do **not** need to know Java or programming to use these. Just follow the st
 ## Patches Included
 
 - Build 42.22.0 pre-release: [current development target and migration status](42.22.0/docs/README.md).
-- Build 42.22.0: [subsystem tracker and individual merge queue](42.22.0/docs/features/2026-10-27-subsystem-port-tracker.md). 250 source files carried over; Reviews 01-09 and 12 merged; LoadGridsquarePerformanceWorkaround and LootRespawn retired to vanilla; IsoChunk unload fixture passed; ServerMap is next.
+- Build 42.22.0: [subsystem tracker and individual merge queue](42.22.0/docs/features/2026-10-27-subsystem-port-tracker.md). 250 exact carry-overs, 31 reviewed merges and 3 native retirements; review 35 PlayerEffectsPacket is next. Vehicle PostgreSQL gaps are user-deferred while disabled. Migration and runtime validation remain incomplete.
 - Build 42.22.0: [class-by-class compatibility audit from 42.21.0](42.22.0/docs/reports/2026-10-27-port-42-21-to-42-22.md). Patches are not ported or deployment-validated yet.
 - Build 42.21.0: [feature guides, reports and issue index](42.21.0/docs/README.md).
 - Build 42.21.0: [character login origin and native lobby teleport](42.21.0/docs/features/2026-10-21-player-login-origin.md).

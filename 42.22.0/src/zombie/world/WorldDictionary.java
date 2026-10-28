@@ -289,6 +289,8 @@ public class WorldDictionary {
             data.getDictionaryMods(modIDs);
             data.saveAsText("WorldDictionaryReadable.lua");
             data.save();
+            // Mirror only after native rebuilding and persistence succeeded; decoding remains vanilla.
+            ApocBRWorldDictionaryMirror.afterRebuild(data);
             data.deleteBackupCurrentDataSet();
         } catch (Exception var6) {
             proceedLoadingWorld = false;
@@ -323,7 +325,7 @@ public class WorldDictionary {
     }
 
     public static ItemInfo getItemInfoFromID(short registeryID) {
-        return data.getItemInfoFromID(registeryID);
+        return ApocBRWorldDictionaryDecode.current()==null?data.getItemInfoFromID(registeryID):ApocBRWorldDictionaryDecode.item(registeryID);
     }
 
     public static short getItemRegistryID(String fullType) {
@@ -331,11 +333,11 @@ public class WorldDictionary {
     }
 
     public static String getItemTypeFromID(short id) {
-        return data.getItemTypeFromID(id);
+        return ApocBRWorldDictionaryDecode.current()==null?data.getItemTypeFromID(id):ApocBRWorldDictionaryDecode.key("info","",id);
     }
 
     public static String getItemTypeDebugString(short id) {
-        return data.getItemTypeDebugString(id);
+        return ApocBRWorldDictionaryDecode.current()==null?data.getItemTypeDebugString(id):ApocBRWorldDictionaryDecode.key("info","",id);
     }
 
     public static EntityInfo getEntityInfoFromType(String fulltype) {
@@ -343,7 +345,7 @@ public class WorldDictionary {
     }
 
     public static EntityInfo getEntityInfoFromID(short registeryID) {
-        return data.getEntityInfoFromID(registeryID);
+        return ApocBRWorldDictionaryDecode.current()==null?data.getEntityInfoFromID(registeryID):ApocBRWorldDictionaryDecode.entity(registeryID);
     }
 
     public static short getEntityRegistryID(String fullType) {
@@ -351,15 +353,15 @@ public class WorldDictionary {
     }
 
     public static String getEntityTypeFromID(short id) {
-        return data.getEntityTypeFromID(id);
+        return ApocBRWorldDictionaryDecode.current()==null?data.getEntityTypeFromID(id):ApocBRWorldDictionaryDecode.key("info","",id);
     }
 
     public static String getEntityTypeDebugString(short id) {
-        return data.getEntityTypeDebugString(id);
+        return ApocBRWorldDictionaryDecode.current()==null?data.getEntityTypeDebugString(id):ApocBRWorldDictionaryDecode.key("info","",id);
     }
 
     public static String getSpriteNameFromID(int id) {
-        return data.getSpriteNameFromID(id);
+        return ApocBRWorldDictionaryDecode.current()==null?data.getSpriteNameFromID(id):ApocBRWorldDictionaryDecode.key("sprite","",id);
     }
 
     public static int getIdForSpriteName(String name) {
@@ -367,7 +369,7 @@ public class WorldDictionary {
     }
 
     public static String getObjectNameFromID(byte id) {
-        return data.getObjectNameFromID(id);
+        return ApocBRWorldDictionaryDecode.current()==null?data.getObjectNameFromID(id):ApocBRWorldDictionaryDecode.key("object","",id);
     }
 
     public static byte getIdForObjectName(String name) {

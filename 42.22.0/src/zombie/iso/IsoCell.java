@@ -36,6 +36,9 @@ import zombie.GameWindow;
 import zombie.IndieGL;
 import zombie.MainThread;
 import zombie.MovingObjectUpdateScheduler;
+import zombie.ServerMovingObjectIndex;
+import zombie.ServerMovingObjectSet;
+import zombie.ApocBRServerTelemetryLite;
 import zombie.ReanimatedPlayers;
 import zombie.SandboxOptions;
 import zombie.UsedFromLua;
@@ -92,6 +95,8 @@ import zombie.iso.fboRenderChunk.FBORenderChunkManager;
 import zombie.iso.fboRenderChunk.FBORenderCutaways;
 import zombie.iso.fboRenderChunk.FBORenderSnow;
 import zombie.iso.objects.IsoDeadBody;
+import zombie.iso.objects.IsoGenerator;
+import zombie.iso.objects.IsoTrap;
 import zombie.iso.objects.IsoTree;
 import zombie.iso.objects.IsoWindow;
 import zombie.iso.objects.IsoWorldInventoryObject;
@@ -131,13 +136,13 @@ public final class IsoCell {
     public final IsoChunkMap[] chunkMap = new IsoChunkMap[4];
     public final ArrayList<IsoBuilding> buildingList = new ArrayList<>();
     private final ArrayList<IsoWindow> windowList = new ArrayList<>();
-    private final Set<IsoMovingObject> objectList = new HashSet<>();
+    private final Set<IsoMovingObject> objectList = new ServerMovingObjectSet();
     private final ArrayList<IsoPushableObject> pushableObjectList = new ArrayList<>();
     private final HashMap<Integer, BuildingScore> buildingScores = new HashMap<>();
     private final ArrayList<IsoRoom> roomList = new ArrayList<>();
     private final ArrayList<IsoObject> staticUpdaterObjectList = new ArrayList<>();
     private final Set<IsoObject> staticUpdaterObjectSet = new HashSet<>();
-    private final ArrayList<IsoZombie> zombieList = new ArrayList<>();
+    private final ArrayList<IsoZombie> zombieList = new zombie.util.list.MutationTrackedArrayList<>();
     private final ArrayList<IsoGameCharacter> remoteSurvivorList = new ArrayList<>();
     private final Set<IsoMovingObject> removeList = new HashSet<>();
     private final Set<IsoMovingObject> addList = new HashSet<>();
@@ -160,7 +165,9 @@ public final class IsoCell {
     public final ArrayList<IsoRoomLight> roomLights = new ArrayList<>();
     private final ArrayList<IsoHeatSource> heatSources = new ArrayList<>();
     public final Set<BaseVehicle> addVehicles = new HashSet<>();
-    public final Set<BaseVehicle> vehicles = new HashSet<>();
+    public final Set<BaseVehicle> vehicles = new zombie.ServerPlayerSpatialQueries.Vehicles();
+    private final zombie.ServerPlayerSpatialQueries playerSpatialQueries = new zombie.ServerPlayerSpatialQueries();
+    public zombie.ServerPlayerSpatialQueries getPlayerSpatialQueries() { return this.playerSpatialQueries; }
     public static final int ISOANGLEFACTOR = 3;
     public static final int ZOMBIESCANBUDGET = 10;
     public static final float NEARESTZOMBIEDISTSQRMAX = 150.0F;
@@ -2205,6 +2212,22 @@ public final class IsoCell {
         }
     }
 
+    private static final int APOC_BR_PROCESS_ISO_OBJECT_FRAME_MOD = Math.max(1, Integer.getInteger("apocbr.isoObjectUpdateFrameMod", 10));
+
+    private static int getIsoObjectUpdatePhase(IsoObject object, int mod) {
+        long id = object.getEntityNetID();
+        if (id == -1L) {
+            return Math.floorMod(System.identityHashCode(object), mod);
+        }
+
+        id ^= id >>> 33;
+        id *= 0xff51afd7ed558ccdL;
+        id ^= id >>> 33;
+        id *= 0xc4ceb9fe1a85ec53L;
+        id ^= id >>> 33;
+        return Math.floorMod((int)id, mod);
+    }
+
     private void ProcessIsoObject() {
         if (!this.processIsoObjectRemove.isEmpty()) {
             this.processIsoObject.removeAll(this.processIsoObjectRemove);
@@ -2213,15 +2236,58 @@ public final class IsoCell {
         }
 
         int size = this.processIsoObject.size();
+        int mod = APOC_BR_PROCESS_ISO_OBJECT_FRAME_MOD;
+        int frame = IsoWorld.instance.getFrameNo() % mod;
+        float modMultiplier = (float)mod;
+        int checked = 0, updated = 0, alwaysUpdated = 0, skippedNoWork = 0;
+        long[] objectNanos = GameServer.server ? new long[ServerIsoObjectUpdateTelemetry.size()] : null;
+        long[] objectAttempts = GameServer.server ? new long[ServerIsoObjectUpdateTelemetry.size()] : null;
+        GameTime.getInstance().perObjectMultiplier = modMultiplier;
 
-        for (int n = 0; n < size; n++) {
-            IsoObject i = this.processIsoObject.get(n);
-            if (i != null) {
-                i.update();
-                if (size > this.processIsoObject.size()) {
-                    n--;
-                    size--;
+        try {
+            for (int n = 0; n < size; n++) {
+                IsoObject i = this.processIsoObject.get(n);
+                if (i != null) {
+                    checked++;
+                    boolean always = i instanceof IsoTrap || i instanceof IsoGenerator;
+                    if (always || getIsoObjectUpdatePhase(i, mod) == frame) {
+                        boolean needsUpdate = !GameServer.server || i.getClass() != zombie.iso.objects.IsoThumpable.class
+                            || ((zombie.iso.objects.IsoThumpable)i).apocbrNeedsServerUpdate();
+                        if (!needsUpdate) {
+                            skippedNoWork++;
+                        } else {
+                        updated++;
+                        if (always) alwaysUpdated++;
+                        if (always) {
+                            GameTime.getInstance().perObjectMultiplier = 1.0F;
+                        }
+
+                        int kind = objectNanos == null ? 0 : ServerIsoObjectUpdateTelemetry.kind(i);
+                        long updateStarted = objectNanos == null ? 0L : System.nanoTime();
+                        try { i.update(); }
+                        finally {
+                            if (objectNanos != null) { objectNanos[kind] += System.nanoTime() - updateStarted; objectAttempts[kind]++; }
+                        }
+                        if (always) {
+                            GameTime.getInstance().perObjectMultiplier = modMultiplier;
+                        }
+                        }
+                    }
+
+                    if (size > this.processIsoObject.size()) {
+                        n--;
+                        size--;
+                    }
                 }
+            }
+        } finally {
+            GameTime.getInstance().perObjectMultiplier = 1.0F;
+            if (GameServer.server) {
+                ApocBRServerTelemetryLite.count("isoObjects.checked", checked);
+                ApocBRServerTelemetryLite.count("isoObjects.updateAttempts", updated);
+                ApocBRServerTelemetryLite.count("isoObjects.alwaysUpdateAttempts", alwaysUpdated);
+                ApocBRServerTelemetryLite.count("isoObjects.skippedNoWork.IsoThumpable", skippedNoWork);
+                ServerIsoObjectUpdateTelemetry.flush(objectNanos, objectAttempts);
             }
         }
     }
@@ -2229,10 +2295,16 @@ public final class IsoCell {
     private void ProcessObjects(Iterator<IsoMovingObject> it) {
         MovingObjectUpdateScheduler.instance.update();
 
-        for (IsoMovingObject obj : this.objectList) {
-            if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
-                animal.updateVocalProperties();
-                animal.updateLoopingSounds();
+        if (GameServer.server) {
+            long soundStarted = System.nanoTime();
+            ServerMovingObjectIndex.updateAnimalSounds(this, MovingObjectUpdateScheduler.instance.getFrameCounter());
+            ApocBRServerTelemetryLite.recordPhase("simulation.animals.sounds", System.nanoTime() - soundStarted);
+        } else {
+            for (IsoMovingObject obj : this.objectList) {
+                if (obj instanceof IsoAnimal animal && !animal.isOnHook()) {
+                    animal.updateVocalProperties();
+                    animal.updateLoopingSounds();
+                }
             }
         }
 
@@ -2242,6 +2314,7 @@ public final class IsoCell {
     }
 
     private void updateZombieVocals() {
+        if (GameServer.server) return;
         for (int n = 0; n < this.zombieList.size(); n++) {
             IsoZombie zombie = this.zombieList.get(n);
             zombie.updateVocalProperties();
@@ -4149,7 +4222,7 @@ public final class IsoCell {
         IsoGridSquare.gridSquareCacheEmptyTimer++;
         GameProfiler profiler = GameProfiler.getInstance();
 
-        try (GameProfiler.ProfileArea itemsFuture = profiler.profile("SpottedRooms")) {
+        try (GameProfiler.ProfileArea itemsFuture = profiler.profile("SpottedRooms"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.spottedRooms")) {
             this.ProcessSpottedRooms();
         }
 
@@ -4168,14 +4241,14 @@ public final class IsoCell {
         if (!GameClient.client && !GameServer.server || GameServer.server && System.currentTimeMillis() - this.lastServerItemsUpdate > 5000L) {
             this.lastServerItemsUpdate = System.currentTimeMillis();
 
-            try (GameProfiler.ProfileArea var3 = profiler.profile("Items")) {
+            try (GameProfiler.ProfileArea var3 = profiler.profile("Items"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.items")) {
                 this.ProcessItems(null);
             }
         }
 
         this.ProcessRemoveItems(null);
 
-        try (GameProfiler.ProfileArea var26 = profiler.profile("IsoObject")) {
+        try (GameProfiler.ProfileArea var26 = profiler.profile("IsoObject"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.isoObjects")) {
             this.ProcessIsoObject();
         }
 
@@ -4196,24 +4269,24 @@ public final class IsoCell {
         }
 
         if (itemsFuture != null) {
-            try (GameProfiler.ProfileArea var28 = profiler.profile("Items")) {
+            try (GameProfiler.ProfileArea var28 = profiler.profile("Items"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.items")) {
                 itemsFuture.join();
             }
         }
 
         this.safeToAdd = true;
 
-        try (GameProfiler.ProfileArea var29 = profiler.profile("Static Updaters")) {
+        try (GameProfiler.ProfileArea var29 = profiler.profile("Static Updaters"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.staticUpdaters")) {
             this.ProcessStaticUpdaters();
         }
 
         this.ObjectDeletionAddition();
 
-        try (GameProfiler.ProfileArea var30 = profiler.profile("Update Dead Bodies")) {
+        try (GameProfiler.ProfileArea var30 = profiler.profile("Update Dead Bodies"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.corpses")) {
             IsoDeadBody.updateBodies();
         }
 
-        try (GameProfiler.ProfileArea var31 = profiler.profile("Update Fish")) {
+        try (GameProfiler.ProfileArea var31 = profiler.profile("Update Fish"); zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.fishing")) {
             FishSchoolManager.getInstance().update();
         }
 

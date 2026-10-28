@@ -343,7 +343,79 @@ cleanup manifest. The user explicitly retired the reader patch only; the broader
 cache remains in scope. Review 12 (IsoChunk) is approved/applied on 2026-10-28 after vanilla baseline
 commit 345374b. Its extracted unload fixture passed 437,322 assertions across
 6,000 differential scenarios; exact-JAR/native-runtime checks remain pending.
-Review 13 (ServerMap) is next and has not been approved.
+Review 13 (ServerMap) is approved/applied on 2026-10-28 after vanilla baseline
+commit 1340c3c; its
+extracted queue fixture passed 799,768 assertions across 3,000 differential
+scenarios. It preserves native void Load2, failed-cell cleanup, partial Unload
+and exact target QueuedSaveAll. Applied source equals the reviewed candidate.
+Full native/save/shutdown and exact-JAR/runtime checks remain pending.
+Review 14 (IsoWorld) is approved/applied on 2026-10-28 after vanilla baseline
+2264d72. Candidate equality and source assertions passed; no runtime fixture.
+Review 15 (IsoCell) is approved/applied on 2026-10-28 after vanilla baseline
+e150592. Candidate equality and 1,592 extracted cadence assertions passed.
+Its IsoThumpable predicate source dependency is supplied by applied review 19;
+other staged integrations remain pending. Review 16 scheduler is approved/applied on 2026-10-28
+after exact baseline af72c24; applied-candidate equality and 550 lifecycle/
+algorithm assertions passed with engine doubles. Review 17 IsoAnimal is approved/applied on
+2026-10-28 after baseline 25bf0ca; candidate equality and source checks passed,
+full animal updateLOS/behavior/native validation remains pending. Review 18
+DesignationZoneAnimal is approved/applied on 2026-10-28 after baseline fbf8f6f;
+candidate equality and 104,003 topology assertions passed. It preserves native
+doMeta, whose decompiled nested baby loop remains flagged for exact-JAR/runtime
+verification before any fix. Review 19 IsoThumpable is approved/applied on
+2026-10-28 after baseline 70adec5; candidate equality and 200,000 no-work
+assertions passed. It supplies the IsoCell predicate source dependency while
+preserving all target door/network changes. Review 20 IsoGenerator is approved/
+retired to native on 2026-10-28; its family is in the cleanup manifest, which
+remains unconsumed/unverified. No installed files were changed. Broader square
+caches remain in scope. Review 21 IsoDoor is approved/applied on 2026-10-28
+after baseline d334b7d; candidate equality/source checks passed, no Java fixture
+added. Review 22 IsoDeadBody is approved/applied on 2026-10-28 after baseline
+c64153c; candidate equality and 12,500 wakeup assertions passed with engine
+doubles, native bone validation retained. Full decoder/dictionary/native
+integration remains pending. Review 23 IsoMannequin is approved/applied on
+2026-10-28 after baseline 70a0b84; candidate equality and 16 encoder/provenance
+assertions passed, metadata251 matches new encoding. Historical249 stays historical.
+Review 24 IsoPlayer is approved/applied on 2026-10-28 after baseline 89ce60b;
+candidate equality and 5,008 extracted expiry/bookkeeping assertions passed.
+Native scheduler counts are preserved; full LOS/movement/network/backend
+validation remains pending. Review 25 IsoGameCharacter is approved/applied on
+2026-10-28 after baseline 75f3e3a; candidate equality and 25 inventory/spatial
+helper assertions passed, full character/backend/zombie authority/native tests
+pending. Review 26 PathFindBehavior2 is approved/applied on 2026-10-28 after
+baseline cca1b6d; candidate equality and 14,003 finite-path assertions passed.
+Native farming avoidance/retry remains unchanged; zombie-AI caller/full runtime
+pending. Review 27 ZombieCountOptimiser is approved/applied on 2026-10-28
+after baseline a1ce877; candidate equality/source checks passed, native
+all-multiplayer relevance retained. Review 28 NetworkZombieAI is approved/applied
+on 2026-10-28 after baseline e1fb420; candidate equality and 294 cache/resolver
+assertions passed. Native server-null fallback stays dynamic from path goals;
+full prediction/bookkeeping/packet/worker integration remains pending. Review 29
+ZombiePacket is approved/applied on 2026-10-28 after baseline 1df7643; candidate
+equality and 1,792 population assertions passed. Native 56-size/OnlinePlayer/
+ByteBufferWriter retained; old packer ByteBuffer snapshots need adaptation.
+Review 30 BaseVehicle is approved/applied on 2026-10-28 after baseline 65ac5ff;
+candidate equality passed. The temporary review31 VehicleParts candidate plus
+applied target vehicle sources passed 60,018 extracted-method assertions.
+Review31 is approved/applied on 2026-10-28 after baseline 0c6bcc0; candidate
+equality and 60,018 assertions passed again; idle-device helper source supplied.
+Full native vehicle/physics/Lua/runtime/JAR validation remains pending.
+Review32 VehiclesDB2 is approved/applied on 2026-10-28 after baseline d9e1c1a;
+candidate equality and 83 isolated JDBC-proxy helper assertions passed. The user
+explicitly defers vehicle PostgreSQL stored-coordinate repair/decode-binding gaps
+while that backend stays disabled in production (source property default false;
+production configuration not verified/changed). Resolve before enabling, not a
+reason to stop current source ports. Review33 WorldDictionary is approved/applied
+on 2026-10-28 after baseline eb232bd; candidate equality/source checks passed,
+native log251 retained. Its dictionary gate is separate from vehicle storage.
+Review34 PlayerDamagePacket is approved/applied on 2026-10-28 after baseline
+c0502d7; candidate equality and 26 packet/native-field assertions passed with
+engine doubles. Internal sentinel -1 adds no wire byte; full native validation
+remains pending. Review35 PlayerEffectsPacket has an unapplied ConnectionPlayer
+ownership candidate dated 2026-10-28; 62 packet/native-field assertions passed,
+calendar gate retained. No helper API or wire format changes proposed.
+After each approved patch, prepare the next individual review automatically,
+as the user requested; do not infer approval of that next merge.
 Upstream List traversal obsoletes these audited raw readers, not the separate
 identity/mutation cache adapter that remains in scope.
 Prioritize optimizations, NPCs and PostgreSQL, with telemetry verification

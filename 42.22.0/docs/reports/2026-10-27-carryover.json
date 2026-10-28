@@ -2,19 +2,19 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "Reviews 01-09 and 12 merged; reviews 10-11 retired to target vanilla with deployment cleanup tracked but unimplemented. Review 13 ServerMap is next; 36 changed reviews, 3 removed targets and support adaptations remain. Broader square-position/network-ID cache remains in scope.",
+  "workflow": "Reviews 01-09, 12-19 and 21-34 merged; reviews 10-11 and 20 retired to native vanilla with cleanup tracked but unimplemented. Review 35 PlayerEffectsPacket candidate awaits approval; 14 changed reviews, 3 removed targets and support adaptations remain. Vehicle PostgreSQL gaps user-deferred while disabled; broader square-position/network-ID cache remains in scope.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 36,
+    "awaiting_merges": 14,
     "awaiting_removed_design": 3,
     "copied_with_known_adaptations": 10,
-    "merged_replacements": 10,
-    "target_java_files": 260,
-    "retired_replacements": 2,
-    "reviewed_replacements": 12
+    "merged_replacements": 31,
+    "target_java_files": 281,
+    "retired_replacements": 3,
+    "reviewed_replacements": 34
   },
   "classes": [
     {
@@ -3384,13 +3384,35 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "d65e093b8ac22e3abe71e4b04fea14857822f8573de2620d606163db03f38a91",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "a7062d5aac0fdcd98da7355dba07eee88f16809411437a27d5ddcb9cdeee6c87",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 17,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_checks": {
+          "passed": true,
+          "candidate_equivalence": true,
+          "scope": "Exact old patched updateLOS retained; native mother-attachment/away-stat methods preserved, removed getZone stays absent. Full animal behavior fixture/runtime pending."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-17-iso-animal.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-17-iso-animal.diff",
+        "target_vanilla_sha256": "e2102334c178ec5f5193332b42e79b448e14ad4d6a36314d65b5194133226851",
+        "action": "Keep indexed server perception, callback bookkeeping and annotation repairs; preserve target Collection/getAnimalsInZone mother attachment, removed getZone and away-stat log.",
+        "verification": "Clean three-way merge; exact old patch added/removed lines and updateLOS preserved; upstream method/API checks passed. No full animal fixture."
+      },
+      "approval": {
+        "review": 17,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "25bf0ca20cef9a40201e0844152c716fdbaf9c63",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-17-iso-animal.md"
       }
     },
     {
@@ -3486,14 +3508,45 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "bf1e814043b52879ae4c8c781e6f9febe9ef488ded3dc0a6e7c57c955a9aafa6",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "4818b7d80b848579e9e03a8ec4b10f134eacd9e8c35b0585dd76e145f7b6c2b9",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 25,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_game_character_port.py",
+          "passed": true,
+          "assertions": 25,
+          "scope": "Actual target inventory/spatial-query/tracked-list helpers with engine doubles; not full candidate character methods, backend or zombie authority."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-25-iso-game-character.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-25-iso-game-character.diff",
+        "target_vanilla_sha256": "3321951975f54130f5945a575801e1c9a2cafda349f436c426163d2ff2ef7f09",
+        "action": "Keep indexed inventory and spatial vehicle queries, zombie hit release, backend progression and telemetry; preserve new native character APIs.",
+        "source_checks": "Clean merge; exact old patch added/removed lines preserved.",
+        "candidate_fixture": {
+          "script": "tools/test_game_character_port.py",
+          "passed": true,
+          "assertions": 25,
+          "scope": "Actual target inventory/spatial-query/tracked-list helpers with engine doubles; not full candidate character methods, backend or zombie authority."
+        }
+      },
+      "approval": {
+        "review": 25,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "75f3e3abf4ada732ec38facc6a3949c68aabd9f6",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-25-iso-game-character.md"
+      },
+      "integration_pending": "Full character/native inventory/vehicle, zombie-hit authority/backend, custom subclass and exact-JAR validation."
     },
     {
       "path": "zombie/characters/IsoPlayer.java",
@@ -3552,14 +3605,44 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "cced274c5a1bc54912939879be35527bbbc2b8bbecb3f7b8bdcc5626185f173d",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "1bb416a9918c03fc354aaa7ea8d160837bf472af5cc4fc187c7f5e9e12090835",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 24,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_iso_player_port.py",
+          "passed": true,
+          "assertions": 5008,
+          "scope": "Extracted mechanics expiry/server LOS bookkeeping with clock/state doubles; full spatial authority/movement/network/backend/native integration not executed."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-24-iso-player.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-24-iso-player.diff",
+        "target_vanilla_sha256": "1d6de2bc003c7fbec62f8da4c73c51c44963d0f52aeb8729fde79a4576af11b7",
+        "action": "Keep expiry gating/server spatial LOS/proximity/backend/telemetry hooks; remove obsolete server LOS chasing-stat reset to preserve native scheduler counts; retain all upstream climbing/network changes.",
+        "candidate_fixture": {
+          "script": "tools/test_iso_player_port.py",
+          "passed": true,
+          "assertions": 5008,
+          "scope": "Extracted mechanics expiry/server LOS bookkeeping with clock/state doubles; full spatial authority/movement/network/backend/native integration not executed."
+        }
+      },
+      "approval": {
+        "review": 24,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "89ce60b0e90c6389a1bd200c5796ebcaeacbd87f",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-24-iso-player.md"
+      },
+      "integration_pending": "Full spatial LOS/zombie authority/remote movement/climb/backend/JAR/native integration and relational mechanics-map invalidation."
     },
     {
       "path": "zombie/characters/NetworkZombieAI.java",
@@ -3583,14 +3666,45 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "dff35d8cf14f672f8839ad3d0ed4605a7d23aac95c99f48c00a854c9c9d89b5f",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "4e679e4ecc1ead72243f8d39413d9f351d88a3c9c4ca1eb62e4c7a32d5ac39d2",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 28,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_network_zombie_ai_port.py",
+          "passed": true,
+          "assertions": 294,
+          "scope": "Extracted caches/resolver and production enum conversions with locale/animator/path doubles; full packet/bookkeeping/prediction/worker integration not executed."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-28-network-zombie-ai.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-28-network-zombie-ai.diff",
+        "target_vanilla_sha256": "1dd8967bee0cbeff7923eec5c535d1d334c38a44ddd2d587b81d1d44e3ef600d",
+        "action": "Keep prediction allocation reduction, path threshold, enum caches and packet split; resolve native dynamic server-null animation fallback inside state resolver.",
+        "conflicts": 1,
+        "candidate_fixture": {
+          "script": "tools/test_network_zombie_ai_port.py",
+          "passed": true,
+          "assertions": 294,
+          "scope": "Extracted caches/resolver and production enum conversions with locale/animator/path doubles; full packet/bookkeeping/prediction/worker integration not executed."
+        }
+      },
+      "approval": {
+        "review": 28,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "e1fb4204445ae5500264cb3a07c7679f5c847c3d",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-28-network-zombie-ai.md"
+      },
+      "integration_pending": "ZombiePacket/packer/preparation and full prediction/bookkeeping/wire/worker/native validation."
     },
     {
       "path": "zombie/characters/NetworkZombieVariables.java",
@@ -4477,14 +4591,46 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "46a9c524c30e649e32c48f0a0718b1a3de7e2e72616e47fa9a8bdc2288dbe4de",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "6607ebb52704c59177650d726e8d03cde9e0feaf8965b5fcb48a2f482721c66d",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 18,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_animal_zone_port.py",
+          "passed": true,
+          "assertions": 104003,
+          "scope": "Extracted native/candidate connectivity and production topology helper with geometry doubles; source equality for native Set snapshot, reattachment and doMeta. Not full zone/native execution."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-18-designation-zone-animal.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-18-designation-zone-animal.diff",
+        "target_vanilla_sha256": "6d20764c8e4545bf64fc3874974b87174a5e9ee30d269cce8484ae841582dc92",
+        "action": "Keep cached topology, hash deduplication, spatial zone lookup and telemetry; retain native Set/snapshot API and metadata behavior.",
+        "conflicts": 2,
+        "candidate_fixture": {
+          "script": "tools/test_animal_zone_port.py",
+          "passed": true,
+          "assertions": 104003,
+          "scope": "Extracted native/candidate connectivity and production topology helper with geometry doubles; source equality for native Set snapshot, reattachment and doMeta. Not full zone/native execution."
+        },
+        "upstream_issue": "Decompiled native doMeta appears to update each baby N times for N snapshot animals; preserve target method pending exact-JAR bytecode/runtime verification."
+      },
+      "approval": {
+        "review": 18,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "fbf8f6f8a3e80c5b528112c3cac11ba27cae7c59",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-18-designation-zone-animal.md"
+      },
+      "integration_pending": "Full zone resource/split/reset/animal-stats/native checks and exact-JAR compilation; suspicious native baby-stat loop preserved pending bytecode/runtime verification."
     },
     {
       "path": "zombie/iso/areas/IsoBuilding.java",
@@ -4619,14 +4765,45 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "3d20767b4189c2ca3f3d1f99e50d58cfce09eba892c602f67a7d3096844b3c05",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "9462934d78c69923fcd3661714a3ea830213352bd94e87a667ca71ddb242302d",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 15,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "candidate_equivalence": true,
+        "target_fixture": {
+          "script": "tools/test_iso_cell_port.py",
+          "passed": true,
+          "assertions": 1592,
+          "cadence_mods": [
+            1,
+            10,
+            17
+          ],
+          "scope": "Extracted production ProcessIsoObject/phase helper with engine/update/gate/telemetry doubles; pending removals, cadence, client gate bypass, self-removal and exception multiplier restoration. Not full IsoCell or real IsoThumpable gate/native integration."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-15-iso-cell.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-15-iso-cell.diff",
+        "target_vanilla_sha256": "2a6beb263cdf04c160246f25f850a380c15844a2b30c60ba934bb811866a22b5",
+        "action": "Clean three-way port of object phasing/no-work gates, moving/zombie/vehicle tracking and spatial-query hooks, server sound work and telemetry. Preserve upstream renderer and spotted-room changes.",
+        "source_checks": "Exact old patch added/removed lines preserved; three object-processing methods equal old patch; no Java/runtime fixture.",
+        "dependencies": "IsoThumpable predicate review19; scheduler16, animal/player and support integration pending."
+      },
+      "approval": {
+        "review": 15,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "e150592a8ec0bf5386a93723a5c931118c625107",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-15-iso-cell.md"
+      },
+      "integration_pending": "IsoThumpable predicate source dependency supplied by review19; full native collection/scheduler/animal/player and target-JAR integration remains pending."
     },
     {
       "path": "zombie/iso/IsoChunk.java",
@@ -4915,13 +5092,36 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "092248df5655c21c5ce8ea5b3a1e1906dabe8c7d1fc729bc04853d4a884277bf",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "9263ad3a81ff787795a5775507c1607a00a0b1890b598dad4e9fadaf1bc9baf2",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 14,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_checks": {
+          "passed": true,
+          "candidate_equivalence": true,
+          "scope": "Five unchanged vanilla method bodies retain exact old telemetry; all remaining source equals target plus enumerated boolean/integer decompiler repairs. No Java/runtime fixture."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-14-iso-world.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-14-iso-world.diff",
+        "action": "Retain five telemetry-bearing methods whose old/new vanilla bodies are identical; apply known boolean/int decompiler repairs in target startup layout; preserve all other target changes.",
+        "conflicts": 2,
+        "target_vanilla_sha256": "2d71dbc4d1ff6579e016228cf6b786ca06e26fc88c6b8a7369e72a7ac0041d32",
+        "verification": "Source assertions passed: five unchanged vanilla method bodies, exact old telemetry phases/order, and all remaining source equals target plus enumerated decompiler repairs. No Java/runtime fixture."
+      },
+      "approval": {
+        "review": 14,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "2264d72ff302cbf8712e414d996e81198d63934f",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-14-iso-world.md"
       }
     },
     {
@@ -4987,14 +5187,46 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "8ae2564f56732c81903b8d26a961c3c037277cc7df400f1848393f1300497f89",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "f9f5155eeedca46da712223527345b4eeffba7dbbdce757bf91f9effa00c2586",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 22,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_dead_body_port.py",
+          "passed": true,
+          "assertions": 12500,
+          "differential_cases": 5000,
+          "scope": "Extracted wakeup traversal/final predicate with player/square/LOS doubles plus source guard/scope checks; full decoder/dictionary/ragdoll/native integration not executed."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-22-iso-dead-body.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-22-iso-dead-body.diff",
+        "target_vanilla_sha256": "78596cb4a98b636df263a470c3a484f08d130827c5f4b8fb9b58098a990cf356",
+        "action": "Retain full corpse dictionary load scope, telemetry, server wakeup LOS prefilter and switch default; preserve new bone-count validation/diagnostics/rendering changes.",
+        "candidate_fixture": {
+          "script": "tools/test_dead_body_port.py",
+          "passed": true,
+          "assertions": 12500,
+          "differential_cases": 5000,
+          "scope": "Extracted wakeup traversal/final predicate with player/square/LOS doubles plus source guard/scope checks; full decoder/dictionary/ragdoll/native integration not executed."
+        }
+      },
+      "approval": {
+        "review": 22,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "c64153c3fa73cb23976176e06536086d6f3f6d3c",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-22-iso-dead-body.md"
+      },
+      "integration_pending": "Full corpse decoder/dictionary/provenance/ragdoll/JAR/native reanimation integration remains pending."
     },
     {
       "path": "zombie/iso/objects/IsoDoor.java",
@@ -5033,13 +5265,35 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "ae2dde6d7021b90eee17a55e7a1790ca6e934dd5ff0964cb1a7b793a67105dcd",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "d6b1c9f852ff69ba3aff395912f7662467b445063b9539fc9472c4737a1ab34c",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 21,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_checks": {
+          "passed": true,
+          "candidate_equivalence": true,
+          "scope": "Complete applied source equals target vanilla plus exactly three nullable-player music guards; no new Java fixture."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-21-iso-door.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-21-iso-door.diff",
+        "target_vanilla_sha256": "6cb9e87b28848ed63d07bc0774e170b4a962dae67ddafa7c6d5b425348551b67",
+        "action": "Retain only three existing nullable-player music guards in target ToggleDoorActual; preserve all new native door behavior.",
+        "source_checks": "Clean merge; complete target plus exactly three guards; ToggleDoorActual identical to old patched method. No new Java fixture."
+      },
+      "approval": {
+        "review": 21,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "d334b7dc9107879015b68de2bcedc11609a01349",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-21-iso-door.md"
       }
     },
     {
@@ -5103,12 +5357,44 @@
       "source_sha256": "35a5927e5b7c58a765969ed041ec430e7771a35585528c0aa345bcbcb389aea6",
       "copy_state": "not-copied",
       "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "port_state": "retired-use-target-vanilla",
       "known_required_change": null,
       "merge_review": 20,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "native_source_equivalence": {
+          "passed": true,
+          "scope": "The only old patch changes one refrigerator/freezer square-object reader. Resolving the sole conflict to target List traversal yields the complete target vanilla file."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-source-retirement",
+        "action": "Retire obsolete audited raw-array reader; use target vanilla directly without source override.",
+        "evidence": "The only old patch changes one refrigerator/freezer square-object reader. Resolving the sole conflict to target List traversal yields the complete target vanilla file.",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-20-iso-generator.md",
+        "proposal_record": "42.22.0/docs/reports/2026-10-28-merge-20-iso-generator.json",
+        "target_vanilla_sha256": "37336c59c87eb0ab36e377b9b92cf40e0eaac2c9b88f6389082213b600a85927",
+        "deployment_dependency": "Family recorded in retirement manifest; implement and verify stale loose-class cleanup/restore before deployment. No installed files changed."
+      },
+      "target_source_should_exist": false,
+      "target_vanilla_sha256": "37336c59c87eb0ab36e377b9b92cf40e0eaac2c9b88f6389082213b600a85927",
+      "approval": {
+        "review": 20,
+        "decision": "approved-retirement",
+        "user_instruction": "yes retire and retain native",
+        "date": "2026-10-28",
+        "applied": true,
+        "source_override_created": false,
+        "installed_files_modified": false,
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-20-iso-generator.md"
+      },
+      "deployment_cleanup_pending": {
+        "manifest": "42.22.0/tools/retired-class-families.json",
+        "class_root": "zombie/iso/objects/IsoGenerator.class",
+        "include_nested_classes": true,
+        "implemented": false,
+        "verified": false
       }
     },
     {
@@ -5141,14 +5427,44 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "4a781af4ccfce88528fa1798c4391d391cd982eb9ff2a08a054d463202b33fb7",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "48c38e7da9a822417309a6c0a575d01a6f4f84a2184dc2ecd735de83b5a1a6f5",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 23,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_mannequin_port.py",
+          "passed": true,
+          "assertions": 16,
+          "scope": "Extracted candidate encoder with actual provenance class and item/container/save doubles; no real serializer/load/dictionary/native round-trip."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-23-iso-mannequin.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-23-iso-mannequin.diff",
+        "target_vanilla_sha256": "bbffd78e4c0edff14b85ceb9905874def6aaaca28d36820dcb7dd0906347a89c",
+        "action": "Retain dictionary load scope, provenance and syncModel local repair; metadata251 matches new native encoded header; preserve native List/render/loadState/inventory changes.",
+        "candidate_fixture": {
+          "script": "tools/test_mannequin_port.py",
+          "passed": true,
+          "assertions": 16,
+          "scope": "Extracted candidate encoder with actual provenance class and item/container/save doubles; no real serializer/load/dictionary/native round-trip."
+        }
+      },
+      "approval": {
+        "review": 23,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "70a0b841b9a39c48632a89d531187455cb681d49",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-23-iso-mannequin.md"
+      },
+      "integration_pending": "Native serializer/dictionary/historical249-new251 round-trips, outer provenance routing, render/equipment/JAR/runtime validation."
     },
     {
       "path": "zombie/iso/objects/IsoThumpable.java",
@@ -5186,14 +5502,46 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "c62c8510d5c79d7669c391c173fb2539839ae71da7d435da8ee508c55c7abe5b",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "a21e40f4d60fc74d4ed7fec586b3bffadf4b7de7d9c419cd491c568c806af229",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 19,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_thumpable_port.py",
+          "passed": true,
+          "assertions": 200000,
+          "generated_cases": 50000,
+          "scope": "Extracted native server update versus gated execution with clock/state doubles; exact native-plus-helper source equivalence. No client visual/native/door/network execution."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-19-iso-thumpable.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-19-iso-thumpable.diff",
+        "target_vanilla_sha256": "413074edb4b42f31f2e8e3f85b2bab4977b565d7ebc26acda328048c37542040",
+        "action": "Add only no-work/deadline predicate used by IsoCell; preserve entire target class including update/new door/network APIs.",
+        "candidate_fixture": {
+          "script": "tools/test_thumpable_port.py",
+          "passed": true,
+          "assertions": 200000,
+          "generated_cases": 50000,
+          "scope": "Extracted native server update versus gated execution with clock/state doubles; exact native-plus-helper source equivalence. No client visual/native/door/network execution."
+        }
+      },
+      "approval": {
+        "review": 19,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "70adec533c88445f471a412a06132d374050131c",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-19-iso-thumpable.md"
+      },
+      "integration_pending": "Full native/JAR, visual-light/client, network and door forcing validation; IsoCell predicate source dependency is supplied."
     },
     {
       "path": "zombie/iso/ServerIsoObjectUpdateTelemetry.java",
@@ -5487,14 +5835,45 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "f5fd5bb1a1d6d7ab5e03615d87a01fecc3ebbc506fbf237020a727b360751435",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "5473dffa1450a6e83011f24e670c9a798d6565ccff9d544bbf2b9804427fd77f",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 16,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_moving_object_scheduler_port.py",
+          "passed": true,
+          "assertions": 550,
+          "scope": "Complete candidate scheduler with production target bucket/index/perception support and engine doubles; shared lifecycle/algorithm tests and native chasing-count guards."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-16-moving-object-scheduler.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-16-moving-object-scheduler.diff",
+        "target_vanilla_sha256": "7ea1c8ab7aee43289414bc755ec1e91c2b531b7a5a314921059095610c3a3126",
+        "action": "Keep persistent indexed scheduler, thread/lifetime ordering and cadence; preserve upstream per-player chasing counts in indexed target traversal.",
+        "conflicts": 2,
+        "candidate_fixture": {
+          "script": "tools/test_moving_object_scheduler_port.py",
+          "passed": true,
+          "assertions": 550,
+          "scope": "Complete candidate scheduler with production target bucket/index/perception support and engine doubles; shared lifecycle/algorithm tests and native chasing-count guards."
+        }
+      },
+      "approval": {
+        "review": 16,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "af72c24518491b7ad73c9013528516c47825ec9e",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-16-moving-object-scheduler.md"
+      },
+      "integration_pending": "Zombie packer awaitWorkers and later animal/vehicle ports; native worker/animation/game-JAR/runtime checks."
     },
     {
       "path": "zombie/MovingObjectUpdateSchedulerUpdateBucket.java",
@@ -5918,14 +6297,45 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "d8a3cd112e86b421a988b727c90c71d68580e2436986f0a69cc4e48bf4edc834",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "64713c7d84c13ac0d58454e02c3748bc8a1f7475b8dd68c35c137d4f3f85f3b1",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 34,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_damage_port.py",
+          "passed": true,
+          "assertions": 26,
+          "scope": "Complete candidate packet + native ConnectionPlayer/Player + actual guard; engine/body/connection doubles. No full BodyDamage/native manager/runtime."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-34-player-damage-packet.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-34-player-damage-packet.diff",
+        "target_vanilla_sha256": "a65dbf5d95f43b9722b24222ea3b9cac9877aaf4793226064f6487962a78e3be",
+        "action": "Validate resolved native ConnectionPlayer ownership using existing guard sentinel -1 before damage payload; retain new field/wire/inheritance/consistency behavior.",
+        "conflicts": 1,
+        "candidate_fixture": {
+          "script": "tools/test_player_damage_port.py",
+          "passed": true,
+          "assertions": 26,
+          "scope": "Complete candidate packet + native ConnectionPlayer/Player + actual guard; engine/body/connection doubles. No full BodyDamage/native manager/runtime."
+        }
+      },
+      "approval": {
+        "review": 34,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "c0502d7f57e616b9a63d93ba020c66406a38f72d",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-34-player-damage-packet.md"
+      },
+      "integration_pending": "Actual BodyDamage/native packet manager/capability/split-screen/JAR/runtime validation."
     },
     {
       "path": "zombie/network/packets/character/PlayerDataRequestPacket.java",
@@ -5971,6 +6381,20 @@
       "verification": {
         "target_compile": false,
         "target_runtime": false
+      },
+      "candidate_resolutions": {
+        "state": "proposed-unapplied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-35-player-effects-packet.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-35-player-effects-packet.diff",
+        "target_vanilla_sha256": "0ae52049331851e78be02948d5924c29bcce5d2a15e44f707afda1f5e11188bc",
+        "action": "Adapt existing ownership check to native ConnectionPlayer; preserve new wire/field layout, consistency and calendar gate.",
+        "conflicts": 1,
+        "candidate_fixture": {
+          "script": "tools/test_player_effects_port.py",
+          "passed": true,
+          "assertions": 62,
+          "scope": "Complete packet + native field + actual guard with engine/clock/connection doubles; full game manager/player/native runtime not executed."
+        }
       }
     },
     {
@@ -6012,14 +6436,48 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "f982c03498af8347d371362dd0b8e27f6710e8bd599129baebcb9b0dd0309ee6",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "30ab1268454dd6ee8275d766ca3658e9885b42159e3b186c04da1b8e16d8a102",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 29,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_zombie_packet_port.py",
+          "passed": true,
+          "assertions": 1792,
+          "flag_combinations": 256,
+          "scope": "Extracted population/call ordering with AI/field doubles; source equality of native writer/parse/copy/size. Not actual wire/native AI."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-29-zombie-packet.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-29-zombie-packet.diff",
+        "target_vanilla_sha256": "7796d4a1bba822af0b4574a5d7e5626b096cee9a304e4cce172a0df45ad42552",
+        "action": "Keep preparation split; native OnlinePlayer.set(null) reset and unchanged 56-byte size/writer/parse/copy APIs; remove redundant walk conversion.",
+        "conflicts": 1,
+        "candidate_fixture": {
+          "script": "tools/test_zombie_packet_port.py",
+          "passed": true,
+          "assertions": 1792,
+          "flag_combinations": 256,
+          "scope": "Extracted population/call ordering with AI/field doubles; source equality of native writer/parse/copy/size. Not actual wire/native AI."
+        },
+        "dependency": "Old patched packer writes ByteBuffer snapshots; adapt later to native ByteBufferWriter/OnlinePlayer format."
+      },
+      "approval": {
+        "review": 29,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "1df7643026078bb59708855426b99343fecd2293",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-29-zombie-packet.md"
+      },
+      "integration_pending": "Old packer ByteBuffer snapshot adaptation, real wire serializers/round-trips, AI/preparation/worker lifetime and exact-JAR/native runtime."
     },
     {
       "path": "zombie/network/packets/connection/ConnectPacket.java",
@@ -6449,14 +6907,47 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "f06ca93e334efba5874969c3d115c05b9da94e126901eb028bfa67f5795f77cb",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "44417f213f55ca896c3250a71d9426acea76ec3d53b5df54223fe4c57d77a45a",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 13,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_server_map_port.py",
+          "passed": true,
+          "assertions": 799768,
+          "differential_scenarios": 3000,
+          "scope": "Extracted queue blocks and compaction with engine doubles; source checks for save equality, descriptor, partial unload and shutdown order; not full class/native/JDBC/shutdown execution."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-13-server-map.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-13-server-map.diff",
+        "action": "Keep relevance index, stable queue compaction, local border optimization, telemetry and shutdown hooks; retain native void Load2, failed-cell cleanup, partial Unload and exact target QueuedSaveAll.",
+        "conflicts": 4,
+        "target_vanilla_sha256": "96f48883a3489907c236881e111eeccfc88bcd5dab5f44dab07bde999e6e490a",
+        "candidate_fixture": {
+          "script": "tools/test_server_map_port.py",
+          "passed": true,
+          "assertions": 799768,
+          "differential_scenarios": 3000,
+          "scope": "Extracted queue blocks and compaction with engine doubles; source checks for save equality, descriptor, partial unload and shutdown order; not full class/native/JDBC/shutdown execution."
+        }
+      },
+      "approval": {
+        "review": 13,
+        "decision": "approved",
+        "user_instruction": "apply the candidate",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "1340c3c310659217ef78da76649e57106574da36",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-13-server-map.md"
+      },
+      "integration_pending": "Full native cell/border/save/shutdown execution, PostgreSQL/pathfinding/zombie integrations and exact-JAR compilation/runtime checks."
     },
     {
       "path": "zombie/network/ServerPlayersVehicles.java",
@@ -6575,14 +7066,44 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "5f0125b1985adb48ee4b843038a75806a2b032d0cd50a4cdf4d733e4779b1147",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "76517991a48f11e095f6ce78a2302653dc6785087ac6d2723ac6a18bc11ee96e",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 26,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_path_find_port.py",
+          "passed": true,
+          "assertions": 14003,
+          "scope": "Extracted threshold/native length with finite path doubles and threshold edge cases; source equality of native length/request/update. No JNI/request/zombie packet execution."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-26-path-find-behavior.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-26-path-find-behavior.diff",
+        "target_vanilla_sha256": "2b962d0a6b38f6efffec832e923d9f9636a9db3972a9f1b65bfd44a7ae1c1544",
+        "action": "Add existing early-exit threshold helper; preserve all native request/avoidance/retry and length behavior. NetworkZombieAI consumer later.",
+        "candidate_fixture": {
+          "script": "tools/test_path_find_port.py",
+          "passed": true,
+          "assertions": 14003,
+          "scope": "Extracted threshold/native length with finite path doubles and threshold edge cases; source equality of native length/request/update. No JNI/request/zombie packet execution."
+        }
+      },
+      "approval": {
+        "review": 26,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "cca1b6d68c536f96dfb87d2065d566e53d95cf63",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-26-path-find-behavior.md"
+      },
+      "integration_pending": "NetworkZombieAI adoption; native path requests/farming retry/packet/JAR/runtime checks."
     },
     {
       "path": "zombie/pathfind/PolygonalMap2.java",
@@ -6862,13 +7383,35 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "515db05c4665af2b7bf6226155fa40de60360934e498e114dea2778f44ba3bde",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "f42f16fc485262c77258870ee0661e5337b755cb616f5ca08620be9526b13ae5",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 27,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "source_checks": {
+          "passed": true,
+          "candidate_equivalence": true,
+          "scope": "Complete target plus exactly two budget early exits; native multiplayer relevance/delete behavior untouched. No Java fixture."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-27-zombie-count-optimiser.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-27-zombie-count-optimiser.diff",
+        "target_vanilla_sha256": "52fad7f7a53de26ea419a3bf4a580256b801265f8478435efe85d38416c5148d",
+        "action": "Keep two budget early exits; retain native all-multiplayer relevance predicates and delete lifecycle.",
+        "source_checks": "Clean merge; full candidate equals target plus two early exits; relevance/delete methods unchanged. No new Java fixture."
+      },
+      "approval": {
+        "review": 27,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "a1ce8774a26325db99882b331ad2f85f719fb1a3",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-27-zombie-count-optimiser.md"
       }
     },
     {
@@ -8228,14 +8771,40 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "244373eaad831db69a5ebd1b0e002eeb9edd48e8675453ade14b0292e89ba72d",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "a2d1f05e6f638810fc47eb966518328f69e3533e0a366abac6b9fcb8bbe30fa9",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 30,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "candidate_equivalence": true,
+        "target_fixture": {
+          "script": "tools/test_vehicle_parts_port.py",
+          "passed": true,
+          "assertions": 60018,
+          "scope": "Applied BaseVehicle plus pending review31 candidate in temporary source view; extracted vehicle/part methods with doubles, not complete/native classes."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-30-base-vehicle.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-30-base-vehicle.diff",
+        "target_vanilla_sha256": "6940b1521af7f0879e59f32ca444880cf358a05a997df7a0594e7ad0357d358a",
+        "action": "Clean port square reuse/model-part lookup/server no-emitter shortcut/idle-device routing/telemetry while preserving target towing/physics/API changes.",
+        "source_checks": "Clean merge; exact old added/removed patch lines preserved. No new target Java/runtime fixture.",
+        "dependency": "VehicleParts.updateIdleDeviceParts review31 not yet present; full native/JAR validation remains pending."
+      },
+      "approval": {
+        "review": 30,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "65ac5ff04e90ab288a841fe9dd1c314cce4d3a4f",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-30-base-vehicle.md"
+      },
+      "integration_pending": "Idle-device helper source supplied by applied review31; full native physics/Lua/towing/streaming/JAR/runtime validation pending."
     },
     {
       "path": "zombie/vehicles/ServerVehicleUpdateTelemetry.java",
@@ -8314,14 +8883,44 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "aec6a8280e48d5eca498e478833da52eb23a2f96a1063689fbe799e225c89e7f",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "1c0193f9aaa5fa47946427c8efa090cadda22301ddb1b8491e2ef34ba180733d",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 31,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_vehicle_parts_port.py",
+          "passed": true,
+          "assertions": 60018,
+          "scope": "Temporary target vehicle/part source view; extracted production algorithms with engine/callback doubles, not complete/native classes."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-31-vehicle-parts.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-31-vehicle-parts.diff",
+        "target_vanilla_sha256": "bd6b5487d7c475d0e09fab0511555b32a12ac17d5e465ad103e329e8c1b17ee3",
+        "action": "Keep sparse idle-device index/revision/callback traversal; retain native List container query descriptors and PZArrayUtil reference uniqueness.",
+        "candidate_fixture": {
+          "script": "tools/test_vehicle_parts_port.py",
+          "passed": true,
+          "assertions": 60018,
+          "scope": "Temporary target vehicle/part source view; extracted production algorithms with engine/callback doubles, not complete/native classes."
+        }
+      },
+      "approval": {
+        "review": 31,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "0c6bcc08ce1fadac9433980802a4d7fe955d7191",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-31-vehicle-parts.md"
+      },
+      "integration_pending": "Full native vehicle/parts/Lua/physics/streaming/JAR/runtime validation."
     },
     {
       "path": "zombie/vehicles/VehiclesDB2.java",
@@ -8349,14 +8948,62 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "2f4c2f7f53820058bf02d9c88fc1823448bb5319dffbf894de3d205d5e69ec2a",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "97465ff5cc18472cbcf36198714cb18c028a54e510cc35bbb940426aca0a4c17",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 32,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_vehicle_db_port.py",
+          "passed": true,
+          "assertions": 83,
+          "scope": "Actual SQL/provenance helpers with isolated JDBC proxies/connector stub; source native-method checks. Full VehiclesDB2/store/real pool/native/live SQL not executed."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-32-vehicles-db.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-32-vehicles-db.diff",
+        "target_vanilla_sha256": "a985b51273236be39473abe305524ce375ebd01241fca6e047026b0af88cec6b",
+        "action": "Keep PostgreSQL store/provenance and all native repair/coordinate/thread guards; add matching finite-coordinate rejection to custom PostgreSQL row adapter.",
+        "candidate_fixture": {
+          "script": "tools/test_vehicle_db_port.py",
+          "passed": true,
+          "assertions": 83,
+          "scope": "Actual SQL/provenance helpers with isolated JDBC proxies/connector stub; source native-method checks. Full VehiclesDB2/store/real pool/native/live SQL not executed."
+        },
+        "integration_gaps": [
+          "PostgreSQL stored-coordinate repair/import consistency; native repair is SQLite-only.",
+          "Source dictionary preparation/buffer binding at vehicle.load; retained origin alone is insufficient.",
+          "Full connector/shutdown/failure acknowledgment and native adapter/JAR/runtime validation."
+        ]
+      },
+      "approval": {
+        "review": 32,
+        "decision": "approved",
+        "user_instruction": "we'll port that part but vehiclesDB2 will be worked later to resolve the gaps, for now you may port what we already have, it'll be disabled in prod anyway",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "d9e1c1a09e8098f3120b73909692b1f0c4cbf997",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-32-vehicles-db.md"
+      },
+      "deferred_work": {
+        "user_authorized": true,
+        "production_intent": "Vehicle PostgreSQL storage stays disabled; revisit VehiclesDB2 repair/decode gaps later.",
+        "default_disabled_verified": true,
+        "property": "apocbr.postgres.vehicles.enabled",
+        "production_configuration_verified": false,
+        "configuration_modified": false,
+        "remaining": [
+          "PostgreSQL stored-coordinate repair/import consistency; native repair is SQLite-only.",
+          "Source dictionary preparation/buffer binding at vehicle.load; retained origin alone is insufficient.",
+          "Full connector/shutdown/failure acknowledgment and native adapter/JAR/runtime validation."
+        ]
+      },
+      "integration_pending": "User-deferred PostgreSQL coordinate repair/dictionary binding, full adapter/connector/acknowledgment/JAR/native validation before enabling vehicle PostgreSQL storage."
     },
     {
       "path": "zombie/world/ApocBRWorldDictionaryDecode.java",
@@ -8485,14 +9132,38 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "e5e62ada6fdce69b54b709bc00897a250254964ecd67dab90769d87636aa03b7",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "e3333a578742399d063ad5dbeadb0c522a06b2d6eb30f71a46f20a89c8d485d8",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 33,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "source_checks": {
+          "passed": true,
+          "candidate_equivalence": true,
+          "scope": "Exact old hooks plus native log251; mirror after native save/before backup deletion. No new Java fixture."
+        }
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-33-world-dictionary.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-33-world-dictionary.diff",
+        "target_vanilla_sha256": "423ac146bacdeb96253c444e2eba9b3ea475aef4460235fb4967f389198005b1",
+        "action": "Keep post-native-save mirror and scope-aware source dictionary lookups; preserve native ID ownership and log worldVersion251.",
+        "source_checks": "Clean merge, exact old patch additions/removals, native log251 and after-save/before-backup mirror ordering verified; no new Java fixture.",
+        "feature_gate": "Dictionary publication gate is separate from vehicle PostgreSQL gate; no flags/config changed."
+      },
+      "approval": {
+        "review": 33,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "eb232bdc08af18656245c8984c62f3256b44b51a",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-33-world-dictionary.md"
+      },
+      "integration_pending": "Startup publication/source-context/history/connector/routing/JAR/native round-trips; vehicle-specific gaps remain user-deferred while disabled."
     },
     {
       "path": "zombie/WorldSoundManager.java",

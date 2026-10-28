@@ -25,6 +25,65 @@ public final class VehicleParts {
     private final Map<String, VehiclePart> partsById = new HashMap<>();
     private VehiclePart battery;
     private VehiclePart engine;
+    private int[] idleDeviceParts = new int[0];
+    private int idleDevicePartCount;
+    private boolean idleDevicePartsDirty = true;
+    private long idleDevicePartsRevision;
+
+    // Capability changes invalidate the view; activation itself is always read live.
+    void invalidateIdleDeviceParts() {
+        this.idleDevicePartsDirty = true;
+        this.idleDevicePartsRevision++;
+    }
+
+    private void rebuildIdleDeviceParts() {
+        if (this.idleDeviceParts.length < this.parts.size()) {
+            this.idleDeviceParts = new int[this.parts.size()];
+        }
+        this.idleDevicePartCount = 0;
+        for (int i = 0; i < this.parts.size(); i++) {
+            VehiclePart part = this.parts.get(i);
+            if (part.getDeviceData() != null || part.getLight() != null) {
+                this.idleDeviceParts[this.idleDevicePartCount++] = i;
+            }
+        }
+        this.idleDevicePartsDirty = false;
+        ServerVehicleUpdateTelemetry.countWork(0, 1L);
+        ServerVehicleUpdateTelemetry.countWork(1, this.parts.size());
+    }
+
+    public void updateIdleDeviceParts() {
+        int nextPart = 0;
+        int candidate = 0;
+        long seenRevision = this.idleDevicePartsRevision;
+        long checked = 0;
+        long updated = 0;
+        try {
+            while (true) {
+                if (this.idleDevicePartsDirty || seenRevision != this.idleDevicePartsRevision) {
+                    if (this.idleDevicePartsDirty) this.rebuildIdleDeviceParts();
+                    seenRevision = this.idleDevicePartsRevision;
+                    // A callback can clear/rebuild/add parts or create a device on a later part.
+                    // Resume at the next vanilla list index, rather than retaining stale candidates.
+                    candidate = java.util.Arrays.binarySearch(this.idleDeviceParts, 0, this.idleDevicePartCount, nextPart);
+                    if (candidate < 0) candidate = -candidate - 1;
+                }
+                if (candidate >= this.idleDevicePartCount) break;
+                int index = this.idleDeviceParts[candidate++];
+                nextPart = index + 1;
+                VehiclePart part = this.parts.get(index);
+                checked++;
+                if (part.getDeviceData() != null && part.getDeviceData().getIsTurnedOn()
+                    || part.getLight() != null && part.getLight().getActive()) {
+                    updated++;
+                    this.updatePart(part);
+                }
+            }
+        } finally {
+            ServerVehicleUpdateTelemetry.countWork(2, checked);
+            ServerVehicleUpdateTelemetry.countWork(3, updated);
+        }
+    }
 
     public void setOwner(VehiclePartOwner owner) {
         VehiclePartOwner ownerOld = this.owner;
@@ -59,6 +118,7 @@ public final class VehicleParts {
 
     public void clear() {
         this.parts.clear();
+        this.invalidateIdleDeviceParts();
         this.partsById.clear();
         this.battery = null;
         this.engine = null;
@@ -82,6 +142,7 @@ public final class VehicleParts {
 
     public void add(VehiclePart part) {
         this.parts.add(part);
+        this.invalidateIdleDeviceParts();
         if (!StringUtils.isNullOrWhitespace(part.getId()) && !this.partsById.containsKey(part.getId())) {
             this.partsById.put(part.getId(), part);
         }

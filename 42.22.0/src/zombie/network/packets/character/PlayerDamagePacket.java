@@ -10,6 +10,7 @@ import zombie.debug.DebugType;
 import zombie.debug.LogSeverity;
 import zombie.iso.IsoWorld;
 import zombie.network.IConnection;
+import zombie.network.ApocBRPacketOwnershipGuard;
 import zombie.network.JSONField;
 import zombie.network.PacketSetting;
 import zombie.network.fields.character.ConnectionPlayer;
@@ -42,7 +43,10 @@ public class PlayerDamagePacket implements INetworkPacket {
     @Override
     public void parse(ByteBufferReader b, IConnection connection) {
         this.player.parse(b, connection);
-        if (this.isConsistent(connection)) {
+        if (ApocBRPacketOwnershipGuard.validate(
+                "PlayerDamage", connection, this.player.getId(), (byte)-1, this.player.getPlayer()
+            )
+            && this.isConsistent(connection)) {
             try {
                 IsoPlayer isoPlayer = this.player.getPlayer();
                 isoPlayer.setMaxWeight(b.getInt());

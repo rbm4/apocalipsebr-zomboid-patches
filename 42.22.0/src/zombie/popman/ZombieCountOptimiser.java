@@ -25,8 +25,10 @@ public class ZombieCountOptimiser {
                     List<Short> zombiesOnlineIdList = NetworkZombiePacker.getInstance().zombiesToSend.get(connection);
                     if (zombiesOnlineIdList != null && !zombiesOnlineIdList.isEmpty()) {
                         int zombiesCountForDelete = Math.max(0, zombiesOnlineIdList.size() - zombiesCountBeforeDeletion);
+                        if (zombiesCountForDelete == 0) continue;
 
                         for (Short zombieOnlineId : zombiesOnlineIdList) {
+                            if (zombiesCountForDelete == 0) break;
                             IsoZombie zombie = ServerMap.instance.zombieMap.get(zombieOnlineId);
                             if (zombie != null
                                 && zombiesCountForDelete > 0

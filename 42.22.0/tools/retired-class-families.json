@@ -21,6 +21,15 @@
       "source_retirement_approved": true,
       "installed_files_modified": false,
       "cleanup_verified": false
+    },
+    {
+      "class_root": "zombie/iso/objects/IsoGenerator.class",
+      "include_nested_classes": true,
+      "reason": "Old audited raw-array reader patch is obsolete under target List traversal.",
+      "review": 20,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
     }
   ]
 }

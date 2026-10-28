@@ -13,9 +13,9 @@ retains the exact old patched bytes, including known obsolete APIs and build
 literals. This is source staging, not a compatibility repair or deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01-09 and 12 merged; 10-11 retired to target vanilla; 13 ServerMap next**.
-There are 260 Java files present (250 exact carry-overs plus ten reviewed merges),
-and two approved retirements with no target source override.
+Current review checkpoint: **01-09, 12-19 and 21-34 merged; 10-11 and 20 retired to target vanilla; 35 PlayerEffectsPacket awaiting decision**.
+There are 281 Java files present (250 exact carry-overs plus thirty-one reviewed merges),
+and three approved retirements with no target source override.
 The target using-player fixture passed 190,141 assertions, including pending-add
 reset; the old-target fixture passed 190,136. These execute production methods
 with engine stubs and do not establish full-class or runtime compatibility.
@@ -300,7 +300,30 @@ Review 09 [IsoObject](../reports/2026-10-27-merge-09-iso-object.md) is approved/
 Review 10 [LoadGridsquarePerformanceWorkaround](../reports/2026-10-27-merge-10-load-gridsquare.md) is approved/retired to vanilla; stale-override cleanup remains tracked and unimplemented.
 Review 11 [LootRespawn](../reports/2026-10-27-merge-11-loot-respawn.md) is approved/retired to vanilla; cleanup remains pending.
 Review 12 [IsoChunk](../reports/2026-10-27-merge-12-iso-chunk.md) is approved/applied, preserving upstream and unload optimization/telemetry; its target fixture passed.
-The remaining 36 entries await individual discussion. Exact-JAR compilation/runtime remain pending.
+Review 13 [ServerMap](../reports/2026-10-28-merge-13-server-map.md) is approved/applied on 2026-10-28, adapting batching to native void Load2 and failure cleanup; its queue fixture passed 799,768 assertions across 3,000 differential scenarios.
+Review 14 [IsoWorld](../reports/2026-10-28-merge-14-iso-world.md) is approved/applied; candidate equality and source checks passed.
+Review 15 [IsoCell](../reports/2026-10-28-merge-15-iso-cell.md) is approved/applied; its cadence fixture passed 1,592 assertions. Native dependencies remain pending.
+Review 16 [MovingObjectUpdateScheduler](../reports/2026-10-28-merge-16-moving-object-scheduler.md) is approved/applied; candidate equality and 550 fixture assertions passed.
+Review 17 [IsoAnimal](../reports/2026-10-28-merge-17-iso-animal.md) is approved/applied; candidate equality and source checks passed.
+Review 18 [DesignationZoneAnimal](../reports/2026-10-28-merge-18-designation-zone-animal.md) is approved/applied; candidate equality and 104,003 topology assertions passed. Native repeated baby-stat loop is preserved and flagged for verification.
+Review 19 [IsoThumpable](../reports/2026-10-28-merge-19-iso-thumpable.md) is approved/applied; candidate equality and 200,000 server no-work assertions passed. IsoCell predicate source dependency is supplied.
+Review 20 [IsoGenerator](../reports/2026-10-28-merge-20-iso-generator.md) is approved/retired to native; its class family is tracked for unimplemented deployment cleanup.
+Review 21 [IsoDoor](../reports/2026-10-28-merge-21-iso-door.md) is approved/applied; candidate equality and source checks passed.
+Review 22 [IsoDeadBody](../reports/2026-10-28-merge-22-iso-dead-body.md) is approved/applied; candidate equality and 12,500 wakeup assertions passed, full decoder/native checks pending.
+Review 23 [IsoMannequin](../reports/2026-10-28-merge-23-iso-mannequin.md) is approved/applied with new metadata251; candidate equality and 16 encoder assertions passed.
+Review 24 [IsoPlayer](../reports/2026-10-28-merge-24-iso-player.md) is approved/applied, preserving native server chasing counts; candidate equality and 5,008 extracted fixture assertions passed.
+Review 25 [IsoGameCharacter](../reports/2026-10-28-merge-25-iso-game-character.md) is approved/applied; candidate equality and 25 helper assertions passed, full character/native checks pending.
+Review 26 [PathFindBehavior2](../reports/2026-10-28-merge-26-path-find-behavior.md) is approved/applied; candidate equality and 14,003 finite-path assertions passed, native requests remain unchanged.
+Review 27 [ZombieCountOptimiser](../reports/2026-10-28-merge-27-zombie-count-optimiser.md) is approved/applied, retaining native multiplayer relevance; candidate equality/source checks passed.
+Review 28 [NetworkZombieAI](../reports/2026-10-28-merge-28-network-zombie-ai.md) is approved/applied with dynamic native null fallback; candidate equality and 294 cache/resolver assertions passed.
+Review 29 [ZombiePacket](../reports/2026-10-28-merge-29-zombie-packet.md) is approved/applied; candidate equality and 1,792 population assertions passed. Packer ByteBuffer snapshot adaptation remains required.
+Review 30 [BaseVehicle](../reports/2026-10-28-merge-30-base-vehicle.md) is approved/applied; candidate equality and 60,018 extracted vehicle assertions passed with the pending review31 candidate; helper still awaits approval.
+Review 31 [VehicleParts](../reports/2026-10-28-merge-31-vehicle-parts.md) is approved/applied, retaining native List APIs; candidate equality and 60,018 extracted vehicle assertions passed. BaseVehicle helper source supplied.
+Review 32 [VehiclesDB2](../reports/2026-10-28-merge-32-vehicles-db.md) is approved/applied; candidate equality and 83 JDBC-proxy helper assertions passed. The user defers vehicle PostgreSQL coordinate-repair/decode-binding gaps while that backend stays disabled (source default false; production settings not verified/changed). Resolve before enabling.
+Review 33 [WorldDictionary](../reports/2026-10-28-merge-33-world-dictionary.md) is approved/applied, retaining native log251; candidate equality/source checks passed. Its dictionary flag is separate from the vehicle backend flag.
+Review 34 [PlayerDamagePacket](../reports/2026-10-28-merge-34-player-damage-packet.md) is approved/applied; candidate equality and 26 complete-packet/native-field fixture assertions passed.
+Review 35 [PlayerEffectsPacket](../reports/2026-10-28-merge-35-player-effects-packet.md) has an unapplied native-field ownership candidate; 62 fixture assertions passed, calendar gate retained.
+The remaining 14 entries await individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
@@ -316,28 +339,28 @@ The remaining 36 entries await individual discussion. Exact-JAR compilation/runt
 | 10 | [LoadGridsquarePerformanceWorkaround.java](../../decompiled/zombie/LoadGridsquarePerformanceWorkaround.java) | OPT-REGISTRY | 1 conflict region(s) | Retired to target vanilla; no source override; deployment cleanup pending |
 | 11 | [LootRespawn.java](../../decompiled/zombie/LootRespawn.java) | OPT-REGISTRY | 1 conflict region(s) | Approved: retired to target vanilla |
 | 12 | [iso/IsoChunk.java](../../decompiled/zombie/iso/IsoChunk.java) | OPT-STREAM | 1 conflict region(s) | Approved/applied; fixture passed |
-| 13 | [network/ServerMap.java](../../decompiled/zombie/network/ServerMap.java) | OPT-STREAM | 4 conflict region(s) | Awaiting individual discussion |
-| 14 | [iso/IsoWorld.java](../../decompiled/zombie/iso/IsoWorld.java) | OPT-WORLD | 2 conflict region(s) | Awaiting individual discussion |
-| 15 | [iso/IsoCell.java](../../decompiled/zombie/iso/IsoCell.java) | OPT-WORLD | clean | Awaiting individual discussion |
-| 16 | [MovingObjectUpdateScheduler.java](../../decompiled/zombie/MovingObjectUpdateScheduler.java) | OPT-MOVE | 2 conflict region(s) | Awaiting individual discussion |
-| 17 | [characters/animals/IsoAnimal.java](../../decompiled/zombie/characters/animals/IsoAnimal.java) | OPT-ANIMAL | clean | Awaiting individual discussion |
-| 18 | [iso/areas/DesignationZoneAnimal.java](../../decompiled/zombie/iso/areas/DesignationZoneAnimal.java) | OPT-ANIMAL | 2 conflict region(s) | Awaiting individual discussion |
-| 19 | [iso/objects/IsoThumpable.java](../../decompiled/zombie/iso/objects/IsoThumpable.java) | OPT-WORLD | clean | Awaiting individual discussion |
-| 20 | [iso/objects/IsoGenerator.java](../../decompiled/zombie/iso/objects/IsoGenerator.java) | INTEGRATION | 1 conflict region(s) | Awaiting individual discussion |
-| 21 | [iso/objects/IsoDoor.java](../../decompiled/zombie/iso/objects/IsoDoor.java) | INTEGRATION | clean | Awaiting individual discussion |
-| 22 | [iso/objects/IsoDeadBody.java](../../decompiled/zombie/iso/objects/IsoDeadBody.java) | DB-DICT | clean | Awaiting individual discussion |
-| 23 | [iso/objects/IsoMannequin.java](../../decompiled/zombie/iso/objects/IsoMannequin.java) | DB-DICT | clean | Awaiting individual discussion |
-| 24 | [characters/IsoPlayer.java](../../decompiled/zombie/characters/IsoPlayer.java) | INTEGRATION | clean | Awaiting individual discussion |
-| 25 | [characters/IsoGameCharacter.java](../../decompiled/zombie/characters/IsoGameCharacter.java) | INTEGRATION | clean | Awaiting individual discussion |
-| 26 | [pathfind/PathFindBehavior2.java](../../decompiled/zombie/pathfind/PathFindBehavior2.java) | OPT-PATH | clean | Awaiting individual discussion |
-| 27 | [popman/ZombieCountOptimiser.java](../../decompiled/zombie/popman/ZombieCountOptimiser.java) | OPT-ZOMBIE | clean | Awaiting individual discussion |
-| 28 | [characters/NetworkZombieAI.java](../../decompiled/zombie/characters/NetworkZombieAI.java) | OPT-ZOMBIE | 1 conflict region(s) | Awaiting individual discussion |
-| 29 | [network/packets/character/ZombiePacket.java](../../decompiled/zombie/network/packets/character/ZombiePacket.java) | OPT-ZOMBIE | 1 conflict region(s) | Awaiting individual discussion |
-| 30 | [vehicles/BaseVehicle.java](../../decompiled/zombie/vehicles/BaseVehicle.java) | OPT-VEHICLE | clean | Awaiting individual discussion |
-| 31 | [vehicles/VehicleParts.java](../../decompiled/zombie/vehicles/VehicleParts.java) | OPT-VEHICLE | clean | Awaiting individual discussion |
-| 32 | [vehicles/VehiclesDB2.java](../../decompiled/zombie/vehicles/VehiclesDB2.java) | DB-VEHICLE | clean | Awaiting individual discussion |
-| 33 | [world/WorldDictionary.java](../../decompiled/zombie/world/WorldDictionary.java) | DB-DICT | clean | Awaiting individual discussion |
-| 34 | [network/packets/character/PlayerDamagePacket.java](../../decompiled/zombie/network/packets/character/PlayerDamagePacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
+| 13 | [network/ServerMap.java](../../decompiled/zombie/network/ServerMap.java) | OPT-STREAM | 4 conflict region(s) | Approved/applied; queue fixture passed |
+| 14 | [iso/IsoWorld.java](../../decompiled/zombie/iso/IsoWorld.java) | OPT-WORLD | 2 conflict region(s) | Approved/applied; source checks passed |
+| 15 | [iso/IsoCell.java](../../decompiled/zombie/iso/IsoCell.java) | OPT-WORLD | clean | Approved/applied; cadence fixture passed |
+| 16 | [MovingObjectUpdateScheduler.java](../../decompiled/zombie/MovingObjectUpdateScheduler.java) | OPT-MOVE | 2 conflict region(s) | Approved/applied; lifecycle fixture passed |
+| 17 | [characters/animals/IsoAnimal.java](../../decompiled/zombie/characters/animals/IsoAnimal.java) | OPT-ANIMAL | clean | Approved/applied; source checks passed |
+| 18 | [iso/areas/DesignationZoneAnimal.java](../../decompiled/zombie/iso/areas/DesignationZoneAnimal.java) | OPT-ANIMAL | 2 conflict region(s) | Approved/applied; topology fixture passed |
+| 19 | [iso/objects/IsoThumpable.java](../../decompiled/zombie/iso/objects/IsoThumpable.java) | OPT-WORLD | clean | Approved/applied; no-work fixture passed |
+| 20 | [iso/objects/IsoGenerator.java](../../decompiled/zombie/iso/objects/IsoGenerator.java) | INTEGRATION | 1 conflict region(s) | Approved: retired to target vanilla |
+| 21 | [iso/objects/IsoDoor.java](../../decompiled/zombie/iso/objects/IsoDoor.java) | INTEGRATION | clean | Approved/applied; source checks passed |
+| 22 | [iso/objects/IsoDeadBody.java](../../decompiled/zombie/iso/objects/IsoDeadBody.java) | DB-DICT | clean | Approved/applied; wakeup fixture passed |
+| 23 | [iso/objects/IsoMannequin.java](../../decompiled/zombie/iso/objects/IsoMannequin.java) | DB-DICT | clean | Approved/applied; encoder fixture passed |
+| 24 | [characters/IsoPlayer.java](../../decompiled/zombie/characters/IsoPlayer.java) | INTEGRATION | clean | Approved/applied; expiry/bookkeeping fixture passed |
+| 25 | [characters/IsoGameCharacter.java](../../decompiled/zombie/characters/IsoGameCharacter.java) | INTEGRATION | clean | Approved/applied; helper fixture passed |
+| 26 | [pathfind/PathFindBehavior2.java](../../decompiled/zombie/pathfind/PathFindBehavior2.java) | OPT-PATH | clean | Approved/applied; threshold fixture passed |
+| 27 | [popman/ZombieCountOptimiser.java](../../decompiled/zombie/popman/ZombieCountOptimiser.java) | OPT-ZOMBIE | clean | Approved/applied; source checks passed |
+| 28 | [characters/NetworkZombieAI.java](../../decompiled/zombie/characters/NetworkZombieAI.java) | OPT-ZOMBIE | 1 conflict region(s) | Approved/applied; cache/resolver fixture passed |
+| 29 | [network/packets/character/ZombiePacket.java](../../decompiled/zombie/network/packets/character/ZombiePacket.java) | OPT-ZOMBIE | 1 conflict region(s) | Approved/applied; population fixture passed |
+| 30 | [vehicles/BaseVehicle.java](../../decompiled/zombie/vehicles/BaseVehicle.java) | OPT-VEHICLE | clean | Approved/applied; extracted vehicle checks passed |
+| 31 | [vehicles/VehicleParts.java](../../decompiled/zombie/vehicles/VehicleParts.java) | OPT-VEHICLE | clean | Approved/applied; extracted vehicle checks passed |
+| 32 | [vehicles/VehiclesDB2.java](../../decompiled/zombie/vehicles/VehiclesDB2.java) | DB-VEHICLE | clean | Approved/applied; PostgreSQL gaps user-deferred while disabled |
+| 33 | [world/WorldDictionary.java](../../decompiled/zombie/world/WorldDictionary.java) | DB-DICT | clean | Approved/applied; source checks passed |
+| 34 | [network/packets/character/PlayerDamagePacket.java](../../decompiled/zombie/network/packets/character/PlayerDamagePacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Approved/applied; ownership fixture passed |
 | 35 | [network/packets/character/PlayerEffectsPacket.java](../../decompiled/zombie/network/packets/character/PlayerEffectsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
 | 36 | [network/packets/character/PlayerStatsPacket.java](../../decompiled/zombie/network/packets/character/PlayerStatsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
 | 37 | [network/packets/SyncPlayerStatsPacket.java](../../decompiled/zombie/network/packets/SyncPlayerStatsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
