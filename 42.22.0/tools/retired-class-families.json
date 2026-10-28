@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "target": "42.22.0",
+  "automatic_cleanup_implemented": false,
+  "deployment_status": "Required cleanup is tracked only; implement and verify backup/removal or restore before deployment.",
+  "families": [
+    {
+      "class_root": "zombie/LoadGridsquarePerformanceWorkaround.class",
+      "include_nested_classes": true,
+      "reason": "Old audited raw-array reader patch is obsolete under target List traversal.",
+      "review": 10,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
+    }
+  ]
+}

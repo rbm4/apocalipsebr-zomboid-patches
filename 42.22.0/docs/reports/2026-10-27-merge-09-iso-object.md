@@ -1,6 +1,6 @@
 # Merge review 09/48: IsoObject
 
-Status: **awaiting individual user discussion; not applied**. Reviews 01-08 are
+Status: **approved and applied; object fixture passed; target-JAR/native integration pending**. Reviews 01-08 are
 approved and applied. See the [tracker](../features/2026-10-27-subsystem-port-tracker.md).
 
 ## Inputs and candidate
@@ -8,11 +8,14 @@ approved and applied. See the [tracker](../features/2026-10-27-subsystem-port-tr
 - [Old vanilla](../../../42.21.0/decompiled/zombie/iso/IsoObject.java).
 - [Old patch](../../../42.21.0/src/zombie/iso/IsoObject.java).
 - [Target vanilla](../../decompiled/zombie/iso/IsoObject.java).
-- [Unapplied List-compatible candidate](2026-10-27-merge-09-iso-object.diff).
+- [Applied List-compatible diff](2026-10-27-merge-09-iso-object.diff).
 
 The three-way merge is textually clean, but its raw result still refers to the
 removed PZArrayList type and APIs. The candidate includes the explicit API
-adaptation below; it has not been installed and no baseline commit exists yet.
+adaptation below. The user approved it with "proceed". The exact target vanilla
+baseline was committed separately as `5aca951`, then the approved diff was applied
+to [target IsoObject](../../src/zombie/iso/IsoObject.java). The behavioral patch
+remains separate from that baseline commit; no push occurred.
 
 ## Existing patch responsibilities
 
@@ -60,17 +63,25 @@ The separate identity-position lookup optimization formerly implemented by
 PZArrayList remains pending. This candidate does not claim it is present in the
 new List storage or retire it from the overall migration scope.
 
-## Verification after acceptance
+## Validation and remaining integration
 
-Compare the installed diff and native getter body with target vanilla. Exercise
-plain-list fallback, tracked-list stable hits and invalidation after insertion,
-removal/reorder/replacement, object detach/reset/reuse, subclass overrides and
-client behavior. Keep native registry callbacks and ID/index semantics unchanged;
-do not infer world thread safety from a local cache. Exercise source dictionary
-scope across virtual decode, failures and nested object/item data when the full
-reconstruction pipeline is ported. Exact-JAR/native save-load and streaming tests
-remain integration requirements.
+The installed diff matches the reviewed candidate; the split native getter body
+equals target vanilla. `python -B tools/test_iso_object_port.py` passed **31 assertions**.
+It extracts target cache fields/getters, setSquare and final decode wrapper, uses
+the production mutation-tracked list with counting subclasses, and compiles them
+against square/registry/dictionary/native-decoder doubles. Four source-extracted
+reset assignments are exercised rather than compiling the entire native reset.
 
-Decision requested: apply this IsoObject candidate with the dictionary hook and
-List-compatible, opt-in ID cache, while leaving the actual collection adapter
-as explicit later work.
+Coverage includes plain-list fallback, stable tracked hits avoiding index/registry
+calls, insertion/reorder/sublist invalidation, removal/re-add, reset, client/server
+transition, null square, index/equality overrides and mutation during calculation.
+The target floor object's actual-index ID behavior is retained. The final load
+wrapper is tested for scope entry before virtual dispatch, version preservation
+and scope closure on failure. Actual dictionary routing/nested reconstruction,
+full native class linkage and world concurrency are not tested here.
+
+Current plain square lists continue to use native fallback. The actual collection
+adapter/identity-position index, exact-JAR compilation, native reconstruction,
+streaming and registry integration remain explicit future work.
+
+Next decision: [review 10, LoadGridsquarePerformanceWorkaround](2026-10-27-merge-10-load-gridsquare.md).

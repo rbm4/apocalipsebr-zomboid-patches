@@ -13,8 +13,9 @@ retains the exact old patched bytes, including known obsolete APIs and build
 literals. This is source staging, not a compatibility repair or deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01-08 approved/applied; 09 IsoObject awaiting discussion**.
-There are 258 Java files present (250 exact carry-overs plus eight reviewed merges).
+Current review checkpoint: **01-09 merged; 10 retired to target vanilla; 11 LootRespawn awaiting decision**.
+There are 259 Java files present (250 exact carry-overs plus nine reviewed merges),
+and one approved retirement with no target source override.
 The target using-player fixture passed 190,141 assertions, including pending-add
 reset; the old-target fixture passed 190,136. These execute production methods
 with engine stubs and do not establish full-class or runtime compatibility.
@@ -42,7 +43,15 @@ Review 08 is applied with 357 room/lighting/scratch fixture assertions passing;
 full CalcVisibility/native LOS remain untested. The target List traversal does
 not retire the separate identity/mutation cache work. Review 09 proposes a
 List-compatible ID cache that uses native fallback on current plain lists and
-activates only on mutation-tracked lists; its candidate remains unapplied.
+activates only on mutation-tracked lists. Review 09 is now applied and its 31
+cache/decode-boundary assertions passed; native routing/registry/reconstruction
+and actual square-adapter integration remain pending. Review 10 proposes using
+target vanilla without an override because the old reader patch is obsolete;
+review 10 source retirement is now approved. Its family is recorded in the
+[retirement manifest](../../tools/retired-class-families.json), which deployment
+scripts do not yet consume. Cleanup/backup implementation and validation remain
+required before deployment; no installed files were changed. Review 11 has the
+same vanilla-only source outcome but still awaits its own retirement decision.
 
 The [copy receipt and per-class ownership/dependency ledger](../reports/2026-10-27-carryover.json)
 tracks all 301 Java source files, their original hashes, subsystem, baseline
@@ -66,7 +75,8 @@ ordering can change by agreement. Never mark a whole subsystem complete merely
 because its source files have been copied or one owning class has merged.
 
 States: `copied-unverified`, `awaiting-merge-discussion`, `awaiting-removed-class-design`,
-`adaptation-required`, `merged-unverified`, `compile-verified`, and `runtime-verified`.
+`adaptation-required`, `merged-unverified`, `retired-use-target-vanilla`,
+`compile-verified`, and `runtime-verified`.
 The ledger preserves copy provenance separately from known adaptation work.
 
 ## What was evaluated before copying
@@ -232,46 +242,46 @@ copy provenance; record future merge decisions in both places.
 
 ### Ownership counts
 
-| Subsystem | All files | Copied | Merged | Awaiting merge | Removed target |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| APP-BRIDGE | 5 | 5 | 0 | 0 | 0 |
-| APP-EVENT | 1 | 1 | 0 | 0 | 0 |
-| BOT-COMBAT | 23 | 20 | 0 | 2 | 1 |
-| BOT-CORE | 30 | 30 | 0 | 0 | 0 |
-| BOT-DEATH | 4 | 4 | 0 | 0 | 0 |
-| BOT-ENCOUNTER | 9 | 9 | 0 | 0 | 0 |
-| BOT-INTERACT | 21 | 16 | 0 | 4 | 1 |
-| BOT-MOVE | 22 | 22 | 0 | 0 | 0 |
-| BOT-SPEECH | 10 | 9 | 0 | 1 | 0 |
-| BOT-STATE | 14 | 14 | 0 | 0 | 0 |
-| BOT-ZOMBIE | 7 | 7 | 0 | 0 | 0 |
-| DB-ACCOUNT | 2 | 2 | 0 | 0 | 0 |
-| DB-CORE | 5 | 5 | 0 | 0 | 0 |
-| DB-DICT | 10 | 7 | 0 | 3 | 0 |
-| DB-LOGIN | 9 | 9 | 0 | 0 | 0 |
-| DB-MOD | 1 | 1 | 0 | 0 | 0 |
-| DB-NPC | 6 | 6 | 0 | 0 | 0 |
-| DB-PLAYER | 26 | 25 | 1 | 0 | 0 |
-| DB-VEHICLE | 2 | 1 | 0 | 1 | 0 |
-| FIX-LOADING | 2 | 1 | 0 | 1 | 0 |
-| FIX-SAFEHOUSE | 3 | 3 | 0 | 0 | 0 |
-| FIX-TROUGH | 1 | 1 | 0 | 0 | 0 |
-| INTEGRATION | 8 | 0 | 1 | 7 | 0 |
-| NETWORK-GUARDS | 5 | 1 | 0 | 4 | 0 |
-| OBS-CLIENT | 2 | 2 | 0 | 0 | 0 |
-| OBS-TELEMETRY | 3 | 3 | 0 | 0 | 0 |
-| OPT-ANIMAL | 7 | 5 | 0 | 2 | 0 |
-| OPT-ENTITY | 15 | 12 | 3 | 0 | 0 |
-| OPT-LOS | 2 | 2 | 0 | 0 | 0 |
-| OPT-MOVE | 4 | 3 | 0 | 1 | 0 |
-| OPT-PATH | 4 | 3 | 0 | 1 | 0 |
-| OPT-PLAYER | 8 | 7 | 1 | 0 | 0 |
-| OPT-REGISTRY | 5 | 0 | 1 | 3 | 1 |
-| OPT-STREAM | 2 | 0 | 0 | 2 | 0 |
-| OPT-USING | 3 | 2 | 1 | 0 | 0 |
-| OPT-VEHICLE | 3 | 1 | 0 | 2 | 0 |
-| OPT-WORLD | 5 | 2 | 0 | 3 | 0 |
-| OPT-ZOMBIE | 12 | 9 | 0 | 3 | 0 |
+| Subsystem | All files | Copied | Merged | Retired to vanilla | Awaiting review | Removed target |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| APP-BRIDGE | 5 | 5 | 0 | 0 | 0 | 0 |
+| APP-EVENT | 1 | 1 | 0 | 0 | 0 | 0 |
+| BOT-COMBAT | 23 | 20 | 0 | 0 | 2 | 1 |
+| BOT-CORE | 30 | 30 | 0 | 0 | 0 | 0 |
+| BOT-DEATH | 4 | 4 | 0 | 0 | 0 | 0 |
+| BOT-ENCOUNTER | 9 | 9 | 0 | 0 | 0 | 0 |
+| BOT-INTERACT | 21 | 16 | 0 | 0 | 4 | 1 |
+| BOT-MOVE | 22 | 22 | 0 | 0 | 0 | 0 |
+| BOT-SPEECH | 10 | 9 | 0 | 0 | 1 | 0 |
+| BOT-STATE | 14 | 14 | 0 | 0 | 0 | 0 |
+| BOT-ZOMBIE | 7 | 7 | 0 | 0 | 0 | 0 |
+| DB-ACCOUNT | 2 | 2 | 0 | 0 | 0 | 0 |
+| DB-CORE | 5 | 5 | 0 | 0 | 0 | 0 |
+| DB-DICT | 10 | 7 | 0 | 0 | 3 | 0 |
+| DB-LOGIN | 9 | 9 | 0 | 0 | 0 | 0 |
+| DB-MOD | 1 | 1 | 0 | 0 | 0 | 0 |
+| DB-NPC | 6 | 6 | 0 | 0 | 0 | 0 |
+| DB-PLAYER | 26 | 25 | 1 | 0 | 0 | 0 |
+| DB-VEHICLE | 2 | 1 | 0 | 0 | 1 | 0 |
+| FIX-LOADING | 2 | 1 | 0 | 0 | 1 | 0 |
+| FIX-SAFEHOUSE | 3 | 3 | 0 | 0 | 0 | 0 |
+| FIX-TROUGH | 1 | 1 | 0 | 0 | 0 | 0 |
+| INTEGRATION | 8 | 0 | 1 | 0 | 7 | 0 |
+| NETWORK-GUARDS | 5 | 1 | 0 | 0 | 4 | 0 |
+| OBS-CLIENT | 2 | 2 | 0 | 0 | 0 | 0 |
+| OBS-TELEMETRY | 3 | 3 | 0 | 0 | 0 | 0 |
+| OPT-ANIMAL | 7 | 5 | 0 | 0 | 2 | 0 |
+| OPT-ENTITY | 15 | 12 | 3 | 0 | 0 | 0 |
+| OPT-LOS | 2 | 2 | 0 | 0 | 0 | 0 |
+| OPT-MOVE | 4 | 3 | 0 | 0 | 1 | 0 |
+| OPT-PATH | 4 | 3 | 0 | 0 | 1 | 0 |
+| OPT-PLAYER | 8 | 7 | 1 | 0 | 0 | 0 |
+| OPT-REGISTRY | 5 | 0 | 2 | 1 | 1 | 1 |
+| OPT-STREAM | 2 | 0 | 0 | 0 | 2 | 0 |
+| OPT-USING | 3 | 2 | 1 | 0 | 0 | 0 |
+| OPT-VEHICLE | 3 | 1 | 0 | 0 | 2 | 0 |
+| OPT-WORLD | 5 | 2 | 0 | 0 | 3 | 0 |
+| OPT-ZOMBIE | 12 | 9 | 0 | 0 | 3 | 0 |
 
 ### Individual merge reviews
 
@@ -283,8 +293,10 @@ Review 05 [SpriteConfig](../reports/2026-10-27-merge-05-sprite-config.md) is app
 Review 06 [ItemContainer](../reports/2026-10-27-merge-06-item-container.md) is approved/applied; its target fixture passed.
 Review 07 [InventoryItem](../reports/2026-10-27-merge-07-inventory-item.md) is approved/applied; its target parser fixture passed, with reconstruction integration pending.
 Review 08 [IsoGridSquare](../reports/2026-10-27-merge-08-iso-grid-square.md) is approved/applied; its grid fixture passed.
-Review 09 [IsoObject](../reports/2026-10-27-merge-09-iso-object.md) awaits discussion of its List-compatible candidate; it is unapplied.
-The other 39 entries also await individual discussion. Exact-JAR compilation/runtime remain pending.
+Review 09 [IsoObject](../reports/2026-10-27-merge-09-iso-object.md) is approved/applied; its object fixture passed.
+Review 10 [LoadGridsquarePerformanceWorkaround](../reports/2026-10-27-merge-10-load-gridsquare.md) is approved/retired to vanilla; stale-override cleanup remains tracked and unimplemented.
+Review 11 [LootRespawn](../reports/2026-10-27-merge-11-loot-respawn.md) awaits its own no-override/retirement decision.
+The other 37 entries also await individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
@@ -296,8 +308,8 @@ The other 39 entries also await individual discussion. Exact-JAR compilation/run
 | 06 | [inventory/ItemContainer.java](../../src/zombie/inventory/ItemContainer.java) | OPT-PLAYER | clean | Approved/applied; target fixture passed; target-JAR/runtime pending |
 | 07 | [inventory/InventoryItem.java](../../src/zombie/inventory/InventoryItem.java) | DB-PLAYER | 1 conflict region(s) | Approved/applied; parser fixture passed; reconstruction/target-JAR pending |
 | 08 | [iso/IsoGridSquare.java](../../src/zombie/iso/IsoGridSquare.java) | OPT-REGISTRY | 9 conflict region(s) | Approved/applied; grid fixture passed; adapter/native integration pending |
-| 09 | [iso/IsoObject.java](../../decompiled/zombie/iso/IsoObject.java) | OPT-REGISTRY | clean | Awaiting individual discussion |
-| 10 | [LoadGridsquarePerformanceWorkaround.java](../../decompiled/zombie/LoadGridsquarePerformanceWorkaround.java) | OPT-REGISTRY | 1 conflict region(s) | Awaiting individual discussion |
+| 09 | [iso/IsoObject.java](../../src/zombie/iso/IsoObject.java) | OPT-REGISTRY | clean | Approved/applied with List adaptation; object fixture passed; adapter/native pending |
+| 10 | [LoadGridsquarePerformanceWorkaround.java](../../decompiled/zombie/LoadGridsquarePerformanceWorkaround.java) | OPT-REGISTRY | 1 conflict region(s) | Retired to target vanilla; no source override; deployment cleanup pending |
 | 11 | [LootRespawn.java](../../decompiled/zombie/LootRespawn.java) | OPT-REGISTRY | 1 conflict region(s) | Awaiting individual discussion |
 | 12 | [iso/IsoChunk.java](../../decompiled/zombie/iso/IsoChunk.java) | OPT-STREAM | 1 conflict region(s) | Awaiting individual discussion |
 | 13 | [network/ServerMap.java](../../decompiled/zombie/network/ServerMap.java) | OPT-STREAM | 4 conflict region(s) | Awaiting individual discussion |

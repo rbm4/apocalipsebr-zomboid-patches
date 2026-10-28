@@ -1,0 +1,12 @@
+{
+  "review": 11,
+  "state": "proposed-unapplied",
+  "path": "zombie/LootRespawn.java",
+  "proposal": "Use target vanilla directly; omit a redundant Java replacement.",
+  "source_evidence": "The only old patch is an audited raw-array reader; sole conflict resolved to upstream List traversal makes the entire class equal target vanilla.",
+  "target_vanilla_sha256": "a55e670efbec7f91d7a02f6deabd3fceb9646ea38dad264107d89da9fc807cff",
+  "target_source_should_exist": false,
+  "custom_behavior_remaining": false,
+  "deployment_dependency": "If accepted, add zombie/LootRespawn.class and nested family to the retirement manifest; cleanup must be implemented/verified before deployment. No installation changes proposed now.",
+  "review_document": "42.22.0/docs/reports/2026-10-27-merge-11-loot-respawn.md"
+}

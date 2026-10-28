@@ -330,10 +330,18 @@ requires individual review. Review 07 (InventoryItem) is approved/applied, with
 the resolved length check, new-encoding metadata 251 and parser fixture passing.
 Its PostgreSQL reconstruction integration remains later work, as the user stated.
 Review 08 (IsoGridSquare) is approved/applied with the grid fixture passing.
-Review 09 (IsoObject) awaits individual discussion: dictionary wrapper plus
-List-compatible ID cache, enabled only on mutation-tracked lists; current plain
-ArrayList storage uses native fallback. The identity/mutation adapter remains
-explicit later work; no storage change is included in the unapplied candidate.
+Review 09 (IsoObject) is approved/applied with the object fixture passing; its
+cache is enabled only on mutation-tracked lists, so current plain square lists
+use native fallback. The collection adapter remains explicit later work.
+Review 10 (LoadGridsquarePerformanceWorkaround) is approved/retired to target
+vanilla; no target override exists. Its class family is recorded in
+`42.22.0/tools/retired-class-families.json`. The manifest is not yet consumed by
+deployment scripts; stale loose-class backup/cleanup must be implemented and
+verified before deployment. No installed files were changed.
+Review 11 (LootRespawn) awaits individual discussion of the same no-override
+outcome; it is not retired and has not been added to the cleanup manifest yet.
+Upstream List traversal obsoletes these audited raw readers, not the separate
+identity/mutation cache adapter that remains in scope.
 Prioritize optimizations, NPCs and PostgreSQL, with telemetry verification
 secondary, while retaining all subsystems in scope. Update this checkpoint as
 decisions are implemented so it does not become a stale approval instruction.
@@ -391,7 +399,7 @@ There is no substitute for runtime testing of timing, threading, streaming, netw
 
 Most current `tools/test_*.py` scripts target **42.21.0** explicitly. They are standalone Python entry points, not a pytest suite. Exceptions: `test_using_player_algorithms.py` accepts `--version 42.21.0` (default) or `--version 42.22.0`, reads that version's production/vanilla files, and covers the newer pending-add reset predicate. `test_unload_simulation_algorithms.py --version 42.22.0 --engine-only` compiles both target manager classes with engine doubles and exercises removal/cancellation; its default full suite remains 42.21.0. `test_entity_manager_lifecycle.py` targets 42.22.0 explicitly, extracting manager methods and using actual EngineEntityManager/clock/throttle with engine doubles. Do not assume the other fixtures validate another build when porting a patch.
 
-`test_craft_logic_system.py` also targets 42.22.0 explicitly; its bucket, recipe, resource and world collaborators are doubles. `test_item_container_port.py` also targets 42.22.0, using extracted container methods and actual index/list helpers with item/service doubles. `test_inventory_item_port.py` targets 42.22.0 parser/encoder/fluid methods with actual provenance/load-quality helpers and explicit routing/engine doubles. `test_iso_grid_square_port.py` targets 42.22.0 room/lighting/scratch methods and fields with engine doubles; native visibility remains outside its coverage.
+`test_craft_logic_system.py` also targets 42.22.0 explicitly; its bucket, recipe, resource and world collaborators are doubles. `test_item_container_port.py` also targets 42.22.0, using extracted container methods and actual index/list helpers with item/service doubles. `test_inventory_item_port.py` targets 42.22.0 parser/encoder/fluid methods with actual provenance/load-quality helpers and explicit routing/engine doubles. `test_iso_grid_square_port.py` targets 42.22.0 room/lighting/scratch methods and fields with engine doubles; native visibility remains outside its coverage. `test_iso_object_port.py` targets 42.22.0 object cache/getter and decode-wrapper methods with production tracked list and registry/world/routing doubles.
 
 Each script uses Python's standard library to create a temporary Java fixture, compile production Java sources or methods extracted from production sources, and execute Java assertions. Some fixtures also compile or extract the exact target-version vanilla implementation for differential comparison. Small engine stubs supply dependencies without initializing the game or loading native libraries. Temporary source and class files are cleaned up automatically.
 
@@ -429,6 +437,7 @@ Use this map as a starting point, then inspect the script's production source li
 | `test_item_container_port.py` | 42.22.0 extracted container reset/weight/parent/recursive methods plus actual sparse-update/list helpers; callback/list mutation, cycle/depth boundaries and nested query/removal. Native items/services are doubles; fluid/insertion integration remains pending. |
 | `test_inventory_item_port.py` | 42.22.0 extracted native item parser/encoder/fluid predicate with actual provenance/load-quality helpers; consumed lengths, failure recovery, metadata and scope contract. Dictionary routing/virtual decode/world are doubles; reconstruction integration remains pending. |
 | `test_iso_grid_square_port.py` | 42.22.0 extracted room-seen methods, lighting initialization, slot constant and scratch fields; differential room behavior, slot reuse and thread-local isolation with explicit engine doubles. Full CalcVisibility/native LOS are source-checked only. |
+| `test_iso_object_port.py` | 42.22.0 extracted native ID getter/cache and decode wrapper with production mutation-tracked list; stable hits, mutation invalidation, plain/client fallback and scope boundary. Registry/world/routing/decoder are doubles; adapter/native reconstruction remains pending. |
 | `test_vehicle_idle_algorithms.py` | Idle vehicle part selection versus vanilla under live activation, callback mutations and nested updates; capability hooks, elapsed-minute cooling, same-call square reuse, first-model indexing and work-counter batching. Imports the method extractor from `test_unload_simulation_algorithms.py`. |
 | `test_iso_entity_registry.py` | Production registry/lifecycle methods, square mutation hooks and server ID getter: shifted lookups before getters, raw arrays, cyclic reorder, re-add, detachment, coordinate changes, collision ownership, exceptions/retry, reset and client behavior. |
 
