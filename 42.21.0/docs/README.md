@@ -1,5 +1,9 @@
 # Build 42.21.0 documentation
 
+Current server development has moved to the [42.22.0 pre-release target](../../42.22.0/docs/README.md).
+See the [class-by-class migration audit](../../42.22.0/docs/reports/2026-10-27-port-42-21-to-42-22.md)
+before carrying over patches. This index and its guides retain their 42.21.0 scope.
+
 This is the documentation index for the 42.21.0 patch target. Server work is the
 default; diagnostic client features are identified in their titles and guides.
 

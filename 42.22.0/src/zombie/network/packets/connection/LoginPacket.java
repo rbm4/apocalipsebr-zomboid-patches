@@ -1,0 +1,322 @@
+// Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
+package zombie.network.packets.connection;
+
+import zombie.characters.Capability;
+import zombie.characters.Role;
+import zombie.core.Core;
+import zombie.core.logger.LoggerManager;
+import zombie.core.network.ByteBufferReader;
+import zombie.core.network.ByteBufferWriter;
+import zombie.core.raknet.UdpConnection;
+import zombie.core.znet.SteamUtils;
+import zombie.debug.DebugLog;
+import zombie.debug.DebugType;
+import zombie.debug.LogSeverity;
+import zombie.network.ConnectionManager;
+import zombie.network.CoopSlave;
+import zombie.network.GameClient;
+import zombie.network.GameServer;
+import zombie.network.IConnection;
+import zombie.network.JSONField;
+import zombie.network.PacketSetting;
+import zombie.network.PacketTypes;
+import zombie.network.ServerOptions;
+import zombie.network.ServerWorldDatabase;
+import zombie.network.anticheats.AntiCheat;
+import zombie.network.packets.INetworkPacket;
+import zombie.network.statistics.PingManager;
+
+@PacketSetting(ordering = 0, priority = 1, reliability = 3, requiredCapability = Capability.None, handlingType = 1)
+public class LoginPacket implements INetworkPacket {
+    @JSONField
+    String username;
+    @JSONField
+    String password;
+    @JSONField
+    String clientVersion;
+    @JSONField
+    int authType;
+
+    private record DatabaseLogin(ServerWorldDatabase.LogonResult auth,Role coopRole,boolean exists,boolean caseExists,boolean steamAllowed) {}
+    private DatabaseLogin databaseLogin;
+
+    @Override
+    public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        if(!zombie.savefile.ApocBRPlayerMigration.admitLogin(connection,this.username))return;
+        if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        if(zombie.savefile.ApocBRAsyncLogin.enabled()) {
+            LoginPacket request=new LoginPacket();request.username=this.username;request.password=this.password;
+            request.clientVersion=this.clientVersion;request.authType=this.authType;
+            request.processServerDatabase(packetType,connection);return;
+        }
+        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
+            processServerDatabase(packetType,connection);
+        }catch(RuntimeException failure) {
+            if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
+            zombie.savefile.ApocBRLoginGuard.deny(connection);
+        }
+    }
+
+    private void processServerDatabase(PacketTypes.PacketType packetType, UdpConnection connection) {
+        ConnectionManager.log("receive-packet", "login", connection);
+        String serverVersion = Core.getInstance().getGameAndBuildVersion();
+        if (!this.clientVersion.equals(serverVersion)) {
+            LoggerManager.getLogger("user")
+                .write(
+                    "access denied: user \""
+                        + this.username
+                        + "\" client version ("
+                        + this.clientVersion
+                        + ") does not match server version ("
+                        + serverVersion
+                        + ")"
+                );
+            INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "ClientVersionMismatch##" + this.clientVersion + "##" + serverVersion);
+            connection.forceDisconnect("access-denied-client-version");
+        } else {
+            connection.setWasInLoadingQueue(false);
+            connection.setIP(connection.getInetSocketAddress().getHostString());
+            connection.getValidator().playerUpdateTimeoutReset();
+            connection.setIDStr(connection.getIP());
+            if (SteamUtils.isSteamModeEnabled()) {
+                connection.setSteamId(GameServer.udpEngine.getClientSteamID(connection.getConnectedGUID()));
+                connection.setOwnerId(GameServer.udpEngine.getClientOwnerSteamID(connection.getConnectedGUID()));
+                connection.setIDStr(SteamUtils.convertSteamIDToString(connection.getSteamId()));
+                if (connection.getSteamId() != connection.getOwnerId()) {
+                    connection.setIDStr(connection.getIDStr() + "(owner=" + SteamUtils.convertSteamIDToString(connection.getOwnerId()) + ")");
+                }
+            }
+
+            if(zombie.savefile.ApocBRServerDatabase.enabled()) {
+                final String ip=connection.getIP();final long steam=connection.getSteamId(),owner=connection.getOwnerId();
+                final boolean steamMode=SteamUtils.isSteamModeEnabled(),steamCoop=CoopSlave.instance!=null&&steamMode;
+                zombie.savefile.ApocBRAsyncLogin.submit(connection,"login-auth",()->{
+                    ServerWorldDatabase db=ServerWorldDatabase.instance;
+                    ServerWorldDatabase.LogonResult auth=null;
+                    if(!steamCoop) {
+                        if(steamMode) {
+                            if(steam<=0){auth=db.new LogonResult();auth.authorized=false;auth.dcReason="AccessDenied";}
+                            else {auth=db.authSteamClient(steam);if(auth.authorized)auth=db.authSteamOwner(steam,owner);}
+                        }
+                        if(auth==null||auth.authorized)auth=db.authClient(this.username,this.password,ip,steam,this.authType);
+                    }
+                    return new DatabaseLogin(auth,steamCoop?db.getUserRoleNameByUsername(this.username):null,
+                        db.containsUser(this.username),db.containsCaseinsensitiveUser(this.username),
+                        steamCoop&&db.isSteamIDAllowed(SteamUtils.convertSteamIDToString(steam)));
+                },result->{
+                    if(result.auth()!=null) {
+                        Role current=result.auth().role==null?null:zombie.characters.Roles.getRoleById(result.auth().role.getId());
+                        if(current==null||result.auth().authorized&&!current.hasCapability(Capability.LoginOnServer)){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+                        result.auth().role=current;
+                    }
+                    Role coopRole=result.coopRole()==null?null:zombie.characters.Roles.getRoleById(result.coopRole().getId());
+                    if(steamCoop&&coopRole==null){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+                    this.databaseLogin=new DatabaseLogin(result.auth(),coopRole,result.exists(),result.caseExists(),result.steamAllowed());
+                    this.finishLogin(connection);
+                });
+            } else this.finishLogin(connection);
+        }
+    }
+
+    private void finishLogin(UdpConnection connection) {
+            connection.password = this.password;
+            LoggerManager.getLogger("user").write(connection.getIDStr() + " \"" + this.username + "\" attempting to join");
+            if (CoopSlave.instance != null && SteamUtils.isSteamModeEnabled()) {
+                for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
+                    UdpConnection c = GameServer.udpEngine.connections.get(n);
+                    if (c != connection && c.getSteamId() == connection.getSteamId()) {
+                        LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" already connected");
+                        INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "AlreadyConnected");
+                        connection.forceDisconnect("access-denied-already-connected-cs");
+                        return;
+                    }
+                }
+
+                connection.setUserName(this.username);
+                connection.usernames[0] = this.username;
+                connection.isCoopHost = GameServer.udpEngine.connections.size() == 1;
+                DebugLog.log(connection.getIDStr() + " isCoopHost=" + connection.isCoopHost);
+                Role role = databaseLogin!=null?databaseLogin.coopRole():ServerWorldDatabase.instance.getUserRoleNameByUsername(this.username);
+                connection.setRole(role);
+                if (!ServerOptions.instance.doLuaChecksum.getValue()) {
+                    connection.checksumState = UdpConnection.ChecksumState.Done;
+                }
+
+                if (!connection.getRole().hasCapability(Capability.CanAlwaysJoinServer)
+                    && GameServer.getPlayerCount() >= ServerOptions.getInstance().getMaxPlayers()) {
+                    INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "ServerFull");
+                    connection.forceDisconnect("access-denied-server-full-cs");
+                } else {
+                    if (GameServer.isServerDropPackets() && ServerOptions.instance.denyLoginOnOverloadedServer.getValue()) {
+                        LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" Server is too busy");
+                        INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "Server is too busy.");
+                        connection.forceDisconnect("access-denied-server-busy-cs");
+                        GameServer.countOfDroppedConnections++;
+                    }
+
+                    LoggerManager.getLogger("user").write(connection.getIDStr() + " \"" + this.username + "\" allowed to join");
+                    ServerWorldDatabase.LogonResult r = ServerWorldDatabase.instance.new LogonResult();
+                    r.role = connection.getRole();
+                    connection.setLastConnection(UdpConnection.lastConnections.getOrDefault(this.username, 0L));
+                    UdpConnection.lastConnections.put(this.username, System.currentTimeMillis() / 1000L);
+
+                    if(databaseLogin!=null) {
+                        zombie.savefile.ApocBRAsyncLogin.submit(connection,"login-account",()->{
+                            if(!databaseLogin.exists()&&databaseLogin.steamAllowed())ServerWorldDatabase.instance.addUser(this.username,this.password,this.authType);
+                            return true;
+                        },ok->GameServer.receiveClientConnect(connection,r));return;
+                    }
+
+                    try {
+                        if (!ServerWorldDatabase.instance.containsUser(this.username)
+                            && ServerWorldDatabase.instance.isSteamIDAllowed(SteamUtils.convertSteamIDToString(connection.getSteamId()))) {
+                            ServerWorldDatabase.instance.addUser(this.username, this.password, this.authType);
+                        }
+                    } catch (Exception var8) {
+                        DebugType.General.printException(var8, LogSeverity.Error);
+                    }
+
+                    GameServer.receiveClientConnect(connection, r);
+                }
+            } else if (SteamUtils.isSteamModeEnabled() && connection.getSteamId() <= 0L) {
+                LoggerManager.getLogger("user")
+                    .write("access denied: user \"" + this.username + "\" has no validated Steam session (steam-id=" + connection.getSteamId() + ")");
+                INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "AccessDenied");
+                connection.forceDisconnect("access-denied-no-steam-session");
+            } else {
+                ServerWorldDatabase.LogonResult r = databaseLogin!=null?databaseLogin.auth():ServerWorldDatabase.instance
+                    .authClient(this.username, this.password, connection.getIP(), connection.getSteamId(), this.authType);
+                connection.setRole(r.role);
+                connection.setLastConnection(UdpConnection.lastConnections.getOrDefault(this.username, 0L));
+                UdpConnection.lastConnections.put(this.username, System.currentTimeMillis() / 1000L);
+                if (r.authorized) {
+                    for (int nx = 0; nx < GameServer.udpEngine.connections.size(); nx++) {
+                        UdpConnection c = GameServer.udpEngine.connections.get(nx);
+
+                        for (int playerIndex = 0; playerIndex < 4; playerIndex++) {
+                            if (this.username.equals(c.usernames[playerIndex])) {
+                                LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" already connected");
+                                INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "AlreadyConnected");
+                                connection.forceDisconnect("access-denied-already-connected-username");
+                                return;
+                            }
+                        }
+                    }
+
+                    if (!r.needSecondFactor) {
+                        connection.googleAuth = false;
+                        connection.setUserName(this.username);
+                        connection.usernames[0] = this.username;
+                    } else {
+                        connection.googleAuth = true;
+                    }
+
+                    if (CoopSlave.instance != null) {
+                        connection.isCoopHost = GameServer.udpEngine.connections.size() == 1;
+                        DebugLog.log(connection.getIDStr() + " isCoopHost=" + connection.isCoopHost);
+                    }
+
+                    if (!ServerOptions.instance.doLuaChecksum.getValue() || connection.getRole().hasCapability(Capability.BypassLuaChecksum)) {
+                        connection.checksumState = UdpConnection.ChecksumState.Done;
+                    }
+
+                    if (!connection.getRole().hasCapability(Capability.CanAlwaysJoinServer)
+                        && GameServer.getPlayerCount() >= ServerOptions.getInstance().getMaxPlayers()) {
+                        INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "ServerFull");
+                        connection.forceDisconnect("access-denied-server-full");
+                        return;
+                    }
+
+                    if (databaseLogin!=null?!databaseLogin.exists()&&databaseLogin.caseExists():
+                        !ServerWorldDatabase.instance.containsUser(this.username)&&ServerWorldDatabase.instance.containsCaseinsensitiveUser(this.username)) {
+                        INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "InvalidUsername");
+                        connection.forceDisconnect("access-denied-invalid-username");
+                        return;
+                    }
+
+                    connection.updatePing();
+                    int ping = connection.getAveragePing();
+                    DebugType.DetailedInfo.println("User %s ip=%s ping %d ms", connection.getUserName(), connection.getIP(), ping);
+                    if (PingManager.doKickWhileLoading(connection, ping)) {
+                        LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" ping is too high");
+                        AntiCheat.log(connection, "ping: user \"" + this.username + "\" is not connected because ping is too high");
+                        INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "Ping");
+                        connection.forceDisconnect("access-denied-ping-limit");
+                        return;
+                    }
+
+                    LoggerManager.getLogger("user").write(connection.getIDStr() + " \"" + this.username + "\" allowed to join");
+
+                    if(databaseLogin!=null) {
+                        final long steam=connection.getSteamId();final boolean steamMode=SteamUtils.isSteamModeEnabled();
+                        zombie.savefile.ApocBRAsyncLogin.submit(connection,"login-account",()->{
+                            ServerWorldDatabase db=ServerWorldDatabase.instance;
+                            if(!databaseLogin.exists())db.addUser(this.username,this.password,this.authType);
+                            else db.setPassword(this.username,this.password);
+                            db.updateLastConnectionDate(this.username,this.password);
+                            if(steamMode)db.setUserSteamID(this.username,SteamUtils.convertSteamIDToString(steam));
+                            return true;
+                        },ok->{
+                            if(r.needSecondFactor){
+                                zombie.savefile.ApocBRAsyncLogin.expectSecondFactor(connection,this.username);
+                                INetworkPacket.send(connection,PacketTypes.PacketType.GoogleAuthRequest);
+                            }
+                            else GameServer.receiveClientConnect(connection,r);
+                        });return;
+                    }
+
+                    try {
+                        if (!ServerWorldDatabase.instance.containsUser(this.username)) {
+                            ServerWorldDatabase.instance.addUser(this.username, this.password, this.authType);
+                        } else {
+                            ServerWorldDatabase.instance.setPassword(this.username, this.password);
+                        }
+                    } catch (Exception var9) {
+                        DebugType.General.printException(var9, LogSeverity.Error);
+                    }
+
+                    ServerWorldDatabase.instance.updateLastConnectionDate(this.username, this.password);
+                    if (SteamUtils.isSteamModeEnabled()) {
+                        String steamID = SteamUtils.convertSteamIDToString(connection.getSteamId());
+                        ServerWorldDatabase.instance.setUserSteamID(this.username, steamID);
+                    }
+
+                    if (r.needSecondFactor) {
+                        INetworkPacket.send(connection, PacketTypes.PacketType.GoogleAuthRequest);
+                    } else {
+                        GameServer.receiveClientConnect(connection, r);
+                    }
+                } else {
+                    if (!r.role.hasCapability(Capability.LoginOnServer)) {
+                        LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" is banned");
+                        if (r.bannedReason != null && !r.bannedReason.isEmpty()) {
+                            INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "BannedReason##" + r.bannedReason);
+                        } else {
+                            INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "Banned");
+                        }
+                    } else if (!r.authorized) {
+                        LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" reason \"" + r.dcReason + "\"");
+                        INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, r.dcReason != null ? r.dcReason : "AccessDenied");
+                    }
+
+                    connection.forceDisconnect("access-denied-unauthorized");
+                }
+            }
+    }
+
+    @Override
+    public void parse(ByteBufferReader b, IConnection connection) {
+        this.username = b.getUTF().trim();
+        this.password = b.getUTF().trim();
+        this.clientVersion = b.getUTF().trim();
+        this.authType = b.getInt();
+    }
+
+    @Override
+    public void write(ByteBufferWriter b) {
+        b.putUTF(GameClient.username);
+        b.putUTF(GameClient.password);
+        b.putUTF(Core.getInstance().getGameAndBuildVersion());
+        b.putInt(GameClient.authType);
+    }
+}

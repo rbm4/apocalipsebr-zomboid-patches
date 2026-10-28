@@ -19,6 +19,7 @@ Each game build has its own top-level version directory, such as:
 42.20.1/
 42.20.3/
 42.21.0/
+42.22.0/
 ```
 
 Some directories have a suffix such as `-client`. These are separate patch targets and must not be assumed to match the unsuffixed server directory.
@@ -53,7 +54,8 @@ Use the version explicitly requested by the user or implicitly identified by the
 task's paths, active files, logs or existing patch context. If no version is
 identified, select the latest available **server** version automatically: compare
 unsuffixed numeric version directories numerically, excluding `-client` and other
-suffixes. At this update that default is **42.21.0**; discover directories again
+suffixes. At this update that default is **42.22.0** (pre-release migration target;
+patches are not yet ported or deployment-validated); discover directories again
 instead of treating this number as permanent. Do not ask the user to select a
 version merely because they omitted it. Explicit client work still targets its
 separate client directory and exact baseline.
@@ -62,7 +64,10 @@ separate client directory and exact baseline.
 
 All new version-specific documentation belongs under `<version>/docs/`, including
 feature architecture, configuration, investigations, telemetry explanations and
-issue resolutions. For 42.21.0 start with [the documentation index](42.21.0/docs/README.md).
+issue resolutions. For current work start with the [42.22.0 documentation index](42.22.0/docs/README.md)
+and [42.21.0 to 42.22.0 compatibility audit](42.22.0/docs/reports/2026-10-27-port-42-21-to-42-22.md).
+The [42.21.0 index](42.21.0/docs/README.md) remains the previous build's feature reference;
+do not treat its implementations or measurements as verified on 42.22.0.
 Do not create new guide copies in the version root or a nested `docs/docs/`.
 
 - `features/`: maintained behavior, ownership contracts, configuration, schema
@@ -297,6 +302,25 @@ Do not deploy rendering or UI classes as server patches unless the same class is
 ## Version porting
 
 A patch is not automatically valid for a newer build even if the class name is unchanged.
+
+### Current 42.22.0 migration checkpoint
+
+The user explicitly authorized exact carry-over of the 50 replacements with
+byte-identical vanilla baselines and 200 ApocalipseBR-only support files after
+the source audit. These 250 files are staged without compatibility adaptations.
+Follow the [subsystem tracker](42.22.0/docs/features/2026-10-27-subsystem-port-tracker.md)
+and its per-class copy receipt. Copied does not mean compiled or ported.
+
+The user requested discussion of **each merge individually before applying it**.
+The numbered queue contains all 48 changed replacements, including clean text
+merges. Present old patch intent, upstream changes and a concrete candidate for
+one class; record the user's decision and apply only the accepted class before
+presenting the next. Removed-class designs and copied-support adaptations remain
+separate work afterward unless the user changes the order. Current review 01
+is GameEntity and is awaiting discussion; no changed replacement is applied.
+Prioritize optimizations, NPCs and PostgreSQL, with telemetry verification
+secondary, while retaining all subsystems in scope. Update this checkpoint as
+decisions are implemented so it does not become a stale approval instruction.
 
 When porting a patch:
 
