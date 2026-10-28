@@ -95,11 +95,13 @@ public class GameEntityManager {
             debugger.beginUpdate();
         }
 
-        engine.update();
+        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.frame")) {
+            engine.update();
+        }
         EntitySimulation.update();
         int simulationTicks = GameClient.client ? 0 : EntitySimulation.getSimulationTicksThisFrame();
         if (simulationTicks > 0) {
-            for (int i = 0; i < simulationTicks; i++) {
+            try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.simulation")) {
                 engine.updateSimulation();
             }
         }
@@ -148,6 +150,9 @@ public class GameEntityManager {
             return stored;
         }
     }
+
+
+
 
     static void RegisterEntity(GameEntity gameEntity) {
         if (gameEntity != null && gameEntity.hasComponents()) {

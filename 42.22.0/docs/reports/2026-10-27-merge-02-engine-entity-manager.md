@@ -1,6 +1,6 @@
 # Merge review 02/48: EngineEntityManager
 
-Status: **awaiting individual user discussion; not applied**. Review 01
+Status: **approved and applied; target removal fixture passed; target-JAR/runtime pending**. Review 01
 (`GameEntity`) is approved and applied. See the
 [subsystem tracker](../features/2026-10-27-subsystem-port-tracker.md).
 
@@ -9,11 +9,13 @@ Status: **awaiting individual user discussion; not applied**. Review 01
 - [Old vanilla](../../../42.21.0/decompiled/zombie/entity/EngineEntityManager.java).
 - [Old patch](../../../42.21.0/src/zombie/entity/EngineEntityManager.java).
 - [Target vanilla](../../decompiled/zombie/entity/EngineEntityManager.java).
-- [Unapplied candidate diff against target vanilla](2026-10-27-merge-02-engine-entity-manager.diff).
+- [Applied diff against target vanilla](2026-10-27-merge-02-engine-entity-manager.diff).
 
-The three-way merge is textually clean. No target replacement or baseline commit
-has been created for this class. The candidate preserves all upstream pending-add
-changes and adds back the old indexed-removal optimization and its measurements.
+The user approved this combination with "yes, proceed". The exact target vanilla
+baseline was committed separately as `9d69620`; the approved diff is now applied
+to [target EngineEntityManager](../../src/zombie/entity/EngineEntityManager.java).
+The behavioral patch remains separate from that baseline commit; no push occurred.
+All upstream pending-add changes and the indexed-removal optimization remain.
 
 ## Our optimization versus vanilla
 
@@ -58,20 +60,30 @@ The candidate does exactly this; it does not restore the old premature
 `addedToEngine` flag. Keeping the original `GameEntity` predicate alias is not
 necessary for this target implementation.
 
-## Verification and next checks
+## Verification and remaining checks
 
 Verified for review: all upstream edits remain in the candidate, including the
 unconditional removal-flag clear; the new predicate exists in applied GameEntity;
 the target Array's identity-removal and unordered tail-swap semantics were read.
-No candidate code has been installed or executed.
+The installed source matches the reviewed candidate exactly.
 
-If accepted, adapt the engine-removal fixture to the new target and compare
-against the exact new vanilla manager. Include immediate/delayed add/remove,
-pending-add cancellation, duplicate/absent removal, RemoveAll, pool/queue reuse,
-callback tail removal/reinsertion and flag/listener order. The old harness in
-`tools/test_unload_simulation_algorithms.py` is reference coverage only until
-adapted; it still targets 42.21.0. Exact-JAR compilation and runtime unload
-validation remain integration requirements.
+`python -B tools/test_unload_simulation_algorithms.py --version 42.22.0 --engine-only`
+passed **1,032,972 assertions**. The fixture compiles the complete target patched
+and target vanilla manager classes against engine doubles. It exercises seeded
+random immediate/delayed removals, callback tail removal/reinsertion, pending-add
+cancellation (including while buckets update), duplicate/absent removal,
+immediate/queued RemoveAll, reused/reset operation objects, bucket notification
+traces, native add/remove callbacks and membership/removal flags. The new
+GameEntity predicate is extracted from target production; Java assertions run
+enabled. Array, operation pool and other engine collaborators remain explicit
+test doubles, so native integration and real pool behavior still need validation.
 
-Decision requested: apply this candidate to EngineEntityManager only, preserving
-the upstream lifecycle fixes alongside the indexed-removal optimization.
+The existing full 42.21.0 unload suite also passed **1,495,716 assertions**. Its
+default target and coverage are unchanged. The 42.22.0 selector intentionally
+requires `--engine-only` until the other world replacements have been ported.
+
+Exact-JAR compilation and runtime unload validation remain integration requirements.
+The actual GameEntityManager registration/meta-release path is the next review;
+it is not supplied by this fixture's engine doubles.
+
+Next decision: [review 03, GameEntityManager](2026-10-27-merge-03-game-entity-manager.md).

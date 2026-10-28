@@ -13,11 +13,20 @@ retains the exact old patched bytes, including known obsolete APIs and build
 literals. This is source staging, not a compatibility repair or deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01 GameEntity approved/applied; 02 EngineEntityManager awaiting discussion**.
-There are 251 Java files present (250 exact carry-overs plus one reviewed merge).
+Current review checkpoint: **01-03 approved/applied; 04 CraftLogicSystem awaiting discussion**.
+There are 253 Java files present (250 exact carry-overs plus three reviewed merges).
 The target using-player fixture passed 190,141 assertions, including pending-add
 reset; the old-target fixture passed 190,136. These execute production methods
 with engine stubs and do not establish full-class or runtime compatibility.
+The target engine-removal fixture passed 1,032,972 assertions; the existing full
+42.21.0 unload suite passed 1,495,716. No exact-JAR or native-runtime verification
+is claimed. Review 03 also corrects a historical registry attribution: the
+audited GameEntityManager patch batches simulation passes and adds timing scopes;
+it does not contain the registry-reconciliation implementation previously described.
+The target manager lifecycle fixture passed 31 assertions using extracted manager
+methods and the actual EngineEntityManager/clock/throttle with engine doubles.
+It covers batching, client suppression, refreshed lookups, pending cancellation,
+meta loading and immediate/deferred release; exact-JAR/runtime checks remain open.
 
 The [copy receipt and per-class ownership/dependency ledger](../reports/2026-10-27-carryover.json)
 tracks all 301 Java source files, their original hashes, subsystem, baseline
@@ -78,9 +87,9 @@ rows. The per-class ledger also records referenced subsystems.
 
 | ID | Current 42.21.0 implementation and vanilla comparison | Port boundary / required checks |
 | --- | --- | --- |
-| OPT-ENTITY | `EntitySimulation` aggregates elapsed 100 ms ticks; `MetaSimulationThrottle` phases meta work with aggregate owed ticks. `EntityBucket`/`ServerEntitySimulationIndex` select due members rather than visiting every meta entity. Craft/furnace/mashing/fluid/resource systems consume effective deltas; drying retains cleanup semantics. `LogisticsSystem` disables its simulation updater. | Pending adds, cancellation, flags, ID changes, unload-to-meta and effective elapsed time. New upstream lifecycle behavior must survive. |
+| OPT-ENTITY | `EntitySimulation` aggregates elapsed 100 ms ticks; `MetaSimulationThrottle` phases meta work with aggregate owed ticks. `EntityBucket`/`ServerEntitySimulationIndex` select due members rather than visiting every meta entity. `GameEntityManager` runs one simulation-system pass for the elapsed tick batch. Craft/furnace/mashing/fluid/resource systems consume effective deltas; drying retains cleanup semantics. `LogisticsSystem` disables its simulation updater. | Pending adds, cancellation, flags, ID changes, unload-to-meta and effective elapsed time. New upstream lifecycle behavior must survive. |
 | OPT-USING | Vanilla `UsingPlayerUpdateSystem` scans its whole bucket. `ServerUsingPlayerIndex` tracks active users in live bucket-position order; `GameEntity` assignment/reset/receive hooks maintain membership. Unknown accessor overrides remain conservative candidates. | Preserve callback activation/removal/swap ordering, ten-tile/floor/death rules and new entity lifecycle. First review starts here. |
-| OPT-REGISTRY | `PZArrayList` adds identity positions, mutation versions and conservative raw-array fallback. `IsoObject` caches the vanilla ID inputs; `GameEntityManager` reconciles square-scoped registry keys before lookup/registration and retires departing objects without sweeping all survivors. | Upstream removes PZArrayList and changes List descriptors. Rebuild mutation/identity contracts; never drop shifted-ID lookup guarantees or silently overwrite a collision. |
+| OPT-REGISTRY | `PZArrayList` adds identity positions, mutation versions and conservative raw-array fallback. `IsoObject` caches the vanilla ID inputs. The current GameEntityManager patch has no custom registry-reconciliation/retirement implementation; the historical report must not be treated as proof of current code. | Upstream removes PZArrayList and changes List descriptors. Rebuild mutation/identity contracts against the actual source and new upstream lookup checks. Assess shifted-ID consistency during the port without assuming the historical implementation is present. |
 | OPT-MOVE | `ServerMovingObjectSet`/`Index` track active type membership; scheduler and bucket use identity positions, lifetime validation and tombstones instead of repeated global membership searches. | Maintain dispatch order, callback mutation, remove/re-add, compaction and multiplier restoration. Preserve upstream chasing-zombie counters. |
 | OPT-PLAYER | Inventory update index narrows candidates; player/vehicle spatial queries and sound-stress index reduce discovery work; thermal scratch/clothing cache is per character. Lua callback mutation versions avoid repeated contains scans on stable lists. | Invalidations on public mutations, equipment/container changes and callbacks; retain vanilla client paths. Thermal switch repair was a verified old decompiler repair, not an intentional thermal rebalance. |
 | OPT-ANIMAL | Type/perception grid, `BaseAnimalBehavior` bookkeeping split, connected-zone topology cache and relevant-client update coverage replace broad candidate scans. Animal update batches split overflow iteratively. Feeding-trough changes are tracked separately. | New zone Set/snapshot API, perception cadence, live geometry, ownership/relevance and lossless batching. Do not alter upstream baby doMeta nesting without a separate decision. |
@@ -183,7 +192,8 @@ ledger even though copy hashes match. Other copied files remain unverified;
 the known list is a minimum, not a complete target API audit.
 
 The old fixture scripts at repository `tools/` generally pin 42.21.0. They remain
-reference coverage, not 42.22.0 validation. The using-player fixture now accepts
+reference coverage, not 42.22.0 validation. The engine-only removal fixture now accepts `--version 42.22.0 --engine-only`
+without selecting the remaining old-version world tests. The using-player fixture now accepts
 `--version 42.22.0` and verifies target production classes/extracted GameEntity
 methods against explicit engine stubs; see review 01 for coverage and limits. The copied version-local async sender
 fixture resolves its own version directory; review its engine stubs and serializer
@@ -235,12 +245,12 @@ copy provenance; record future merge decisions in both places.
 | OBS-CLIENT | 2 | 2 | 0 | 0 | 0 |
 | OBS-TELEMETRY | 3 | 3 | 0 | 0 | 0 |
 | OPT-ANIMAL | 7 | 5 | 0 | 2 | 0 |
-| OPT-ENTITY | 14 | 12 | 0 | 2 | 0 |
+| OPT-ENTITY | 15 | 12 | 2 | 1 | 0 |
 | OPT-LOS | 2 | 2 | 0 | 0 | 0 |
 | OPT-MOVE | 4 | 3 | 0 | 1 | 0 |
 | OPT-PATH | 4 | 3 | 0 | 1 | 0 |
 | OPT-PLAYER | 8 | 7 | 0 | 1 | 0 |
-| OPT-REGISTRY | 6 | 0 | 0 | 5 | 1 |
+| OPT-REGISTRY | 5 | 0 | 0 | 4 | 1 |
 | OPT-STREAM | 2 | 0 | 0 | 2 | 0 |
 | OPT-USING | 3 | 2 | 1 | 0 | 0 |
 | OPT-VEHICLE | 3 | 1 | 0 | 2 | 0 |
@@ -250,14 +260,16 @@ copy provenance; record future merge decisions in both places.
 ### Individual merge reviews
 
 Review 01 [GameEntity](../reports/2026-10-27-merge-01-game-entity.md) is approved/applied; its target using-player fixture passed.
-Review 02 [EngineEntityManager](../reports/2026-10-27-merge-02-engine-entity-manager.md) awaits discussion; its candidate is unapplied.
-The other 46 entries also await individual discussion. Full-class compilation/runtime remain pending.
+Review 02 [EngineEntityManager](../reports/2026-10-27-merge-02-engine-entity-manager.md) is approved/applied; its target removal fixture passed.
+Review 03 [GameEntityManager](../reports/2026-10-27-merge-03-game-entity-manager.md) is approved/applied; its target lifecycle fixture passed.
+Review 04 [CraftLogicSystem](../reports/2026-10-27-merge-04-craft-logic-system.md) awaits individual discussion; its candidate is unapplied.
+The other 44 entries also await individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
 | 01 | [entity/GameEntity.java](../../src/zombie/entity/GameEntity.java) | OPT-USING | clean | Approved/applied; target fixture passed; full-class/runtime pending |
-| 02 | [entity/EngineEntityManager.java](../../decompiled/zombie/entity/EngineEntityManager.java) | OPT-ENTITY | clean | Awaiting individual discussion |
-| 03 | [entity/GameEntityManager.java](../../decompiled/zombie/entity/GameEntityManager.java) | OPT-REGISTRY | clean | Awaiting individual discussion |
+| 02 | [entity/EngineEntityManager.java](../../src/zombie/entity/EngineEntityManager.java) | OPT-ENTITY | clean | Approved/applied; target fixture passed; target-JAR/runtime pending |
+| 03 | [entity/GameEntityManager.java](../../src/zombie/entity/GameEntityManager.java) | OPT-ENTITY | clean | Approved/applied; target fixture passed; target-JAR/runtime pending |
 | 04 | [entity/components/crafting/CraftLogicSystem.java](../../decompiled/zombie/entity/components/crafting/CraftLogicSystem.java) | OPT-ENTITY | clean | Awaiting individual discussion |
 | 05 | [entity/components/spriteconfig/SpriteConfig.java](../../decompiled/zombie/entity/components/spriteconfig/SpriteConfig.java) | INTEGRATION | clean | Awaiting individual discussion |
 | 06 | [inventory/ItemContainer.java](../../decompiled/zombie/inventory/ItemContainer.java) | OPT-PLAYER | clean | Awaiting individual discussion |

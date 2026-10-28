@@ -2,17 +2,17 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "GameEntity review 01 approved/applied; review 02 EngineEntityManager awaits individual discussion; 47 changed merges, 3 removed targets and support adaptations remain.",
+  "workflow": "Reviews 01-03 approved/applied; review 04 CraftLogicSystem awaits individual discussion; 45 changed merges, 3 removed targets and support adaptations remain.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 47,
+    "awaiting_merges": 45,
     "awaiting_removed_design": 3,
     "copied_with_known_adaptations": 10,
-    "merged_replacements": 1,
-    "target_java_files": 251
+    "merged_replacements": 3,
+    "target_java_files": 253
   },
   "classes": [
     {
@@ -3921,13 +3921,27 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "172f83fc1e5843a65893847214eb22fb2ffe85c060ebcb702f2854dd8d8c7d87",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "915799a5baf1824f4006ab6158bd7b485aef9fd4837a63b28e1bc51f0039e547",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 2,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_unload_simulation_algorithms.py --version 42.22.0 --engine-only",
+          "passed": true,
+          "assertions": 1032972,
+          "scope": "Complete production and vanilla managers compiled with engine doubles; target predicate extracted; not exact-JAR/native integration."
+        }
+      },
+      "approval": {
+        "review": 2,
+        "decision": "approved",
+        "user_instruction": "yes, proceed",
+        "applied": true,
+        "baseline_commit": "9d6962046e94433d510a3ce17ad4235c96654a84",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-02-engine-entity-manager.md"
       }
     },
     {
@@ -4034,10 +4048,10 @@
     },
     {
       "path": "zombie/entity/GameEntityManager.java",
-      "subsystem": "OPT-REGISTRY",
+      "subsystem": "OPT-ENTITY",
       "referenced_subsystems": [
         "OBS-TELEMETRY",
-        "OPT-ENTITY",
+        "OPT-REGISTRY",
         "OPT-USING"
       ],
       "source_reference_candidates": [
@@ -4058,13 +4072,28 @@
       "baseline_status": "clean_text_merge",
       "source_sha256": "6c3cad5f3380f509a89af482077bbdbbea229ac910c0e9fff8f3020276325213",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "9bdd479c721a5129d29a092fc19a2fa4bffaa2339dbc3d2b616615f187ea34b5",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 3,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_entity_manager_lifecycle.py",
+          "passed": true,
+          "assertions": 31,
+          "scope": "Extracted production manager methods plus actual EngineEntityManager/clock/throttle and engine doubles; not exact-JAR/native-runtime verification."
+        }
+      },
+      "ownership_note": "Corrected from historical registry attribution: audited old patch batches simulation updates and adds timing scopes; no custom registry reconciliation implementation is present.",
+      "approval": {
+        "review": 3,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "baseline_commit": "02dec09d16af6f841ac3aeef04b30bc1f00046c9",
+        "review_document": "42.22.0/docs/reports/2026-10-27-merge-03-game-entity-manager.md"
       }
     },
     {
@@ -4205,6 +4234,7 @@
         "FIX-LOADING",
         "OBS-TELEMETRY",
         "OPT-ANIMAL",
+        "OPT-ENTITY",
         "OPT-PATH",
         "OPT-PLAYER",
         "OPT-REGISTRY",
@@ -4598,6 +4628,7 @@
         "FIX-SAFEHOUSE",
         "INTEGRATION",
         "OPT-ANIMAL",
+        "OPT-ENTITY",
         "OPT-LOS",
         "OPT-PATH",
         "OPT-PLAYER",
@@ -4656,6 +4687,7 @@
         "INTEGRATION",
         "OBS-TELEMETRY",
         "OPT-ANIMAL",
+        "OPT-ENTITY",
         "OPT-PLAYER",
         "OPT-STREAM",
         "OPT-USING",
@@ -4715,6 +4747,7 @@
         "INTEGRATION",
         "OBS-TELEMETRY",
         "OPT-ANIMAL",
+        "OPT-ENTITY",
         "OPT-MOVE",
         "OPT-PATH",
         "OPT-PLAYER",
@@ -6192,6 +6225,7 @@
         "DB-VEHICLE",
         "INTEGRATION",
         "OBS-TELEMETRY",
+        "OPT-ENTITY",
         "OPT-LOS",
         "OPT-PATH",
         "OPT-REGISTRY",

@@ -2,11 +2,12 @@
 
 42.22.0 is the current server development target (pre-release). The vanilla
 baseline is `../decompiled/zombie/`; replacement sources belong in `../src/zombie/`.
-The source tree contains 251 Java files: 50 replacements whose vanilla
+The source tree contains 253 Java files: 50 replacements whose vanilla
 baselines are unchanged and 200 ApocalipseBR support classes, copied byte for byte
-from 42.21.0, plus the approved GameEntity merge. Another 47 changed replacements
-and 3 removed targets await review. GameEntity passed the target using-player
-fixture; full-class compilation and runtime verification remain pending.
+from 42.21.0, plus approved GameEntity, EngineEntityManager and GameEntityManager
+merges. Another 45 changed replacements and 3 removed targets await review. All three approved merges
+passed their target fixtures; exact-target JAR compilation and runtime verification
+remain pending.
 This directory is under migration and is not a deployable or validated release.
 
 Start with the class-by-class migration report before carrying over any source.
@@ -27,7 +28,9 @@ No complete feature has been compiled and runtime-verified for this target yet.
 
 | Date | Document |
 | --- | --- |
-| 2026-10-27 | [Merge review 02/48: EngineEntityManager (awaiting discussion)](reports/2026-10-27-merge-02-engine-entity-manager.md) |
+| 2026-10-27 | [Merge review 04/48: CraftLogicSystem (awaiting discussion)](reports/2026-10-27-merge-04-craft-logic-system.md) |
+| 2026-10-27 | [Merge review 03/48: GameEntityManager (applied; target fixture passed)](reports/2026-10-27-merge-03-game-entity-manager.md) |
+| 2026-10-27 | [Merge review 02/48: EngineEntityManager (applied; target fixture passed)](reports/2026-10-27-merge-02-engine-entity-manager.md) |
 | 2026-10-27 | [Merge review 01/48: GameEntity (applied; target fixture passed)](reports/2026-10-27-merge-01-game-entity.md) |
 | 2026-10-27 | [42.21.0 to 42.22.0: every replacement and support class](reports/2026-10-27-port-42-21-to-42-22.md) |
 
@@ -36,7 +39,9 @@ patch-intent diffs used as evidence.
 
 Current artifacts: [copy receipt and 301-class subsystem ledger](reports/2026-10-27-carryover.json)
 and [applied GameEntity diff](reports/2026-10-27-merge-01-game-entity.diff).
-Next: [unapplied EngineEntityManager candidate](reports/2026-10-27-merge-02-engine-entity-manager.diff).
+Also: [applied EngineEntityManager diff](reports/2026-10-27-merge-02-engine-entity-manager.diff)
+and [applied GameEntityManager diff](reports/2026-10-27-merge-03-game-entity-manager.diff).
+Next: [unapplied CraftLogicSystem candidate](reports/2026-10-27-merge-04-craft-logic-system.diff).
 
 ## Issues
 
