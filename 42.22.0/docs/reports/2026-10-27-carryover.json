@@ -2,19 +2,19 @@
   "date": "2026-10-27",
   "old": "42.21.0",
   "target": "42.22.0",
-  "workflow": "Reviews 01-09, 12-19 and 21-34 merged; reviews 10-11 and 20 retired to native vanilla with cleanup tracked but unimplemented. Review 35 PlayerEffectsPacket candidate awaits approval; 14 changed reviews, 3 removed targets and support adaptations remain. Vehicle PostgreSQL gaps user-deferred while disabled; broader square-position/network-ID cache remains in scope.",
+  "workflow": "Reviews 01-09, 12-19 and 21-36 merged; reviews 10-11 and 20 retired to native vanilla with cleanup tracked but unimplemented. Review37 SyncPlayerStatsPacket adapted ownership guard awaits approval; native-retirement recommendation withdrawn; 12 changed reviews, 3 removed targets and support adaptations remain. Vehicle PostgreSQL gaps user-deferred while disabled; broader square-position/network-ID cache remains in scope.",
   "reference_method": "Lexical class-name candidates from complete source text, including comments/strings; navigation evidence only, not a resolved Java dependency graph.",
   "counts": {
     "java_total": 301,
     "copied_identical_baseline": 50,
     "copied_support": 200,
-    "awaiting_merges": 14,
+    "awaiting_merges": 12,
     "awaiting_removed_design": 3,
     "copied_with_known_adaptations": 10,
-    "merged_replacements": 31,
-    "target_java_files": 281,
+    "merged_replacements": 33,
+    "target_java_files": 283,
     "retired_replacements": 3,
-    "reviewed_replacements": 34
+    "reviewed_replacements": 36
   },
   "classes": [
     {
@@ -6374,16 +6374,23 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "e55002a5da1ed7f3156c85f7faba3d613843ddc5dea4e0d74da3bdb37f39486e",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "dee83fb71508ba373282e909dfda53fd3140bb0ffbc448f9d481cfa1a1fd452e",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 35,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_effects_port.py",
+          "passed": true,
+          "assertions": 62,
+          "scope": "Complete packet + native field + actual guard with engine/clock/connection doubles; full game manager/player/native runtime not executed."
+        },
+        "candidate_equivalence": true
       },
       "candidate_resolutions": {
-        "state": "proposed-unapplied",
+        "state": "approved-applied",
         "review_document": "42.22.0/docs/reports/2026-10-28-merge-35-player-effects-packet.md",
         "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-35-player-effects-packet.diff",
         "target_vanilla_sha256": "0ae52049331851e78be02948d5924c29bcce5d2a15e44f707afda1f5e11188bc",
@@ -6395,7 +6402,17 @@
           "assertions": 62,
           "scope": "Complete packet + native field + actual guard with engine/clock/connection doubles; full game manager/player/native runtime not executed."
         }
-      }
+      },
+      "approval": {
+        "review": 35,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "2c2180d713c6c31305cbd0f6017aa8182ac37516",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-35-player-effects-packet.md"
+      },
+      "integration_pending": "Actual player/clock lifecycle/packet manager/split-screen/JAR/native runtime validation."
     },
     {
       "path": "zombie/network/packets/character/PlayerStatsPacket.java",
@@ -6413,14 +6430,45 @@
       "baseline_status": "manual_rebase",
       "source_sha256": "7fde2978e226650ff2d3e7ac0925b5ea18d0aa3b4f683543ba03514c30ee5866",
       "copy_state": "not-copied",
-      "target_sha256": null,
-      "port_state": "awaiting-merge-discussion",
+      "target_sha256": "1f8ee513d75a0e9d866c4636de13f6d1dd90efdc9616a92f3da31c5e4df486e2",
+      "port_state": "merged-unverified",
       "known_required_change": null,
       "merge_review": 36,
       "verification": {
         "target_compile": false,
-        "target_runtime": false
-      }
+        "target_runtime": false,
+        "target_fixture": {
+          "script": "tools/test_player_stats_port.py",
+          "passed": true,
+          "assertions": 42,
+          "scope": "Complete candidate + native field + production guard with stats/body/engine/connection doubles. Actual serializers/manager/native runtime not executed."
+        },
+        "candidate_equivalence": true
+      },
+      "candidate_resolutions": {
+        "state": "approved-applied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-36-player-stats-packet.md",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-36-player-stats-packet.diff",
+        "target_vanilla_sha256": "0d89922ad60febf86af2616bf45839315f25de2d0a728bc43b0fdbf39f07e681",
+        "action": "Adapt existing ownership check to native ConnectionPlayer; preserve stat/nutrition/body serialization and corrected native diagnostic labels.",
+        "conflicts": 1,
+        "candidate_fixture": {
+          "script": "tools/test_player_stats_port.py",
+          "passed": true,
+          "assertions": 42,
+          "scope": "Complete candidate + native field + production guard with stats/body/engine/connection doubles. Actual serializers/manager/native runtime not executed."
+        }
+      },
+      "approval": {
+        "review": 36,
+        "decision": "approved",
+        "user_instruction": "yes",
+        "applied": true,
+        "date": "2026-10-28",
+        "baseline_commit": "006e586c1cfaa473477fd55da4411aff58f354f4",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-36-player-stats-packet.md"
+      },
+      "integration_pending": "Actual stat/nutrition/body serializers, native manager/capability/split-screen/JAR/runtime validation."
     },
     {
       "path": "zombie/network/packets/character/ZombiePacket.java",
@@ -6734,6 +6782,21 @@
       "verification": {
         "target_compile": false,
         "target_runtime": false
+      },
+      "candidate_resolutions": {
+        "state": "proposed-unapplied",
+        "review_document": "42.22.0/docs/reports/2026-10-28-merge-37-sync-player-stats.md",
+        "proposal_record": "42.22.0/docs/reports/2026-10-28-merge-37-sync-player-stats.json",
+        "recommendation": "Retain adapted connection-ownership guard on native OnlinePlayer protocol; capability authorization is not target ownership.",
+        "target_vanilla_sha256": "a411ac35e298cfa5703fd8293378709bd6c2e430962e6c11bd2dc24ec0abe8b5",
+        "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-37-sync-player-stats.diff",
+        "candidate_fixture": {
+          "script": "tools/test_sync_player_stats_port.py",
+          "passed": true,
+          "assertions": 20,
+          "scope": "Complete owner-only alternative + native OnlinePlayer/Player + actual guard with stat/connection doubles. Capability manager/native runtime not executed."
+        },
+        "policy_issue": "Retirement recommendation withdrawn: capability checks existed in old vanilla and do not enforce target ownership. Native OnlinePlayer still resolves globally; preserve sender-owned target restriction. No source or retirement applied."
       }
     },
     {

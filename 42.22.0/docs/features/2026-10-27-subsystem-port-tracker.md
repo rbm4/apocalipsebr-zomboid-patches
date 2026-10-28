@@ -13,8 +13,8 @@ retains the exact old patched bytes, including known obsolete APIs and build
 literals. This is source staging, not a compatibility repair or deployable build.
 The new source tree is intentionally incomplete until the reviewed merges land.
 
-Current review checkpoint: **01-09, 12-19 and 21-34 merged; 10-11 and 20 retired to target vanilla; 35 PlayerEffectsPacket awaiting decision**.
-There are 281 Java files present (250 exact carry-overs plus thirty-one reviewed merges),
+Current review checkpoint: **01-09, 12-19 and 21-36 merged; 10-11 and 20 retired to target vanilla; 37 SyncPlayerStats ownership guard awaiting approval**.
+There are 283 Java files present (250 exact carry-overs plus thirty-three reviewed merges),
 and three approved retirements with no target source override.
 The target using-player fixture passed 190,141 assertions, including pending-add
 reset; the old-target fixture passed 190,136. These execute production methods
@@ -322,8 +322,10 @@ Review 31 [VehicleParts](../reports/2026-10-28-merge-31-vehicle-parts.md) is app
 Review 32 [VehiclesDB2](../reports/2026-10-28-merge-32-vehicles-db.md) is approved/applied; candidate equality and 83 JDBC-proxy helper assertions passed. The user defers vehicle PostgreSQL coordinate-repair/decode-binding gaps while that backend stays disabled (source default false; production settings not verified/changed). Resolve before enabling.
 Review 33 [WorldDictionary](../reports/2026-10-28-merge-33-world-dictionary.md) is approved/applied, retaining native log251; candidate equality/source checks passed. Its dictionary flag is separate from the vehicle backend flag.
 Review 34 [PlayerDamagePacket](../reports/2026-10-28-merge-34-player-damage-packet.md) is approved/applied; candidate equality and 26 complete-packet/native-field fixture assertions passed.
-Review 35 [PlayerEffectsPacket](../reports/2026-10-28-merge-35-player-effects-packet.md) has an unapplied native-field ownership candidate; 62 fixture assertions passed, calendar gate retained.
-The remaining 14 entries await individual discussion. Exact-JAR compilation/runtime remain pending.
+Review 35 [PlayerEffectsPacket](../reports/2026-10-28-merge-35-player-effects-packet.md) is approved/applied; candidate equality and 62 fixture assertions passed, calendar gate retained.
+Review 36 [PlayerStatsPacket](../reports/2026-10-28-merge-36-player-stats-packet.md) is approved/applied; candidate equality and 42 complete-packet/field fixture assertions passed.
+Review 37 [SyncPlayerStatsPacket](../reports/2026-10-28-merge-37-sync-player-stats.md) retains an unapplied ownership guard; prior retirement recommendation withdrawn. Capability checks already existed and do not constrain globally resolved OnlinePlayer targets. Candidate passed 20 assertions; no source/retirement applied.
+The remaining 12 entries await individual discussion. Exact-JAR compilation/runtime remain pending.
 
 | Review | Replacement relative to zombie/ | Primary owner | Text merge | Decision / state |
 | --- | --- | --- | --- | --- |
@@ -361,7 +363,7 @@ The remaining 14 entries await individual discussion. Exact-JAR compilation/runt
 | 32 | [vehicles/VehiclesDB2.java](../../decompiled/zombie/vehicles/VehiclesDB2.java) | DB-VEHICLE | clean | Approved/applied; PostgreSQL gaps user-deferred while disabled |
 | 33 | [world/WorldDictionary.java](../../decompiled/zombie/world/WorldDictionary.java) | DB-DICT | clean | Approved/applied; source checks passed |
 | 34 | [network/packets/character/PlayerDamagePacket.java](../../decompiled/zombie/network/packets/character/PlayerDamagePacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Approved/applied; ownership fixture passed |
-| 35 | [network/packets/character/PlayerEffectsPacket.java](../../decompiled/zombie/network/packets/character/PlayerEffectsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
+| 35 | [network/packets/character/PlayerEffectsPacket.java](../../decompiled/zombie/network/packets/character/PlayerEffectsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Approved/applied; ownership fixture passed |
 | 36 | [network/packets/character/PlayerStatsPacket.java](../../decompiled/zombie/network/packets/character/PlayerStatsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
 | 37 | [network/packets/SyncPlayerStatsPacket.java](../../decompiled/zombie/network/packets/SyncPlayerStatsPacket.java) | NETWORK-GUARDS | 1 conflict region(s) | Awaiting individual discussion |
 | 38 | [network/packets/hit/PlayerHitPlayerPacket.java](../../decompiled/zombie/network/packets/hit/PlayerHitPlayerPacket.java) | BOT-COMBAT | 1 conflict region(s) | Awaiting individual discussion |

@@ -2,12 +2,12 @@
 
 42.22.0 is the current server development target (pre-release). The vanilla
 baseline is `../decompiled/zombie/`; replacement sources belong in `../src/zombie/`.
-The source tree contains 281 Java files: 50 replacements whose vanilla
+The source tree contains 283 Java files: 50 replacements whose vanilla
 baselines are unchanged and 200 ApocalipseBR support classes, copied byte for byte
-from 42.21.0, plus thirty-one individually approved merges, including PlayerDamagePacket.
+from 42.21.0, plus thirty-three individually approved merges, including PlayerStatsPacket.
 Reviews 10-11 and 20 retired LoadGridsquarePerformanceWorkaround, LootRespawn and IsoGenerator to vanilla
-with no source overrides. Another 14 changed reviews and 3 removed targets await decisions. Reviews 01-04
-and 06-09, 12-13, 15-16, 18-19, 22-26, 28-32 and 34 passed target fixtures; SpriteConfig's diagnostic-only changes passed source
+with no source overrides. Another 12 changed reviews and 3 removed targets await decisions. Reviews 01-04
+and 06-09, 12-13, 15-16, 18-19, 22-26, 28-32 and 34-36 passed target fixtures; SpriteConfig's diagnostic-only changes passed source
 verification; IsoWorld, IsoAnimal, IsoDoor, ZombieCountOptimiser and WorldDictionary also passed source checks. Exact-target JAR compilation and runtime verification remain pending.
 This directory is under migration and is not a deployable or validated release.
 
@@ -29,7 +29,9 @@ No complete feature has been compiled and runtime-verified for this target yet.
 
 | Date | Document |
 | --- | --- |
-| 2026-10-28 | [Review 35/48: PlayerEffectsPacket (proposed native-field ownership guard)](reports/2026-10-28-merge-35-player-effects-packet.md) |
+| 2026-10-28 | [Review 37/48: SyncPlayerStatsPacket (ownership guard; retirement recommendation withdrawn)](reports/2026-10-28-merge-37-sync-player-stats.md) |
+| 2026-10-28 | [Review 36/48: PlayerStatsPacket (applied; ownership fixture passed)](reports/2026-10-28-merge-36-player-stats-packet.md) |
+| 2026-10-28 | [Review 35/48: PlayerEffectsPacket (applied; ownership fixture passed)](reports/2026-10-28-merge-35-player-effects-packet.md) |
 | 2026-10-28 | [Review 34/48: PlayerDamagePacket (applied; ownership fixture passed)](reports/2026-10-28-merge-34-player-damage-packet.md) |
 | 2026-10-28 | [Review 33/48: WorldDictionary (applied; source checks passed)](reports/2026-10-28-merge-33-world-dictionary.md) |
 | 2026-10-28 | [Review 32/48: VehiclesDB2 (applied; PostgreSQL gaps deferred/disabled)](reports/2026-10-28-merge-32-vehicles-db.md) |
@@ -87,7 +89,7 @@ Applied: [ServerMap review](reports/2026-10-28-merge-13-server-map.md) and [diff
 Applied: [IsoWorld review](reports/2026-10-28-merge-14-iso-world.md).
 IsoGenerator: [approved retirement](reports/2026-10-28-merge-20-iso-generator.json).
 VehiclesDB2 gap repairs are user-deferred while the vehicle PostgreSQL backend remains disabled by default; production settings were not changed.
-Next: [PlayerEffectsPacket review](reports/2026-10-28-merge-35-player-effects-packet.md) and [candidate diff](reports/2026-10-28-merge-35-player-effects-packet.diff).
+Next: [SyncPlayerStats ownership review](reports/2026-10-28-merge-37-sync-player-stats.md), [corrected guard proposal](reports/2026-10-28-merge-37-sync-player-stats.json) and [candidate diff](reports/2026-10-28-merge-37-sync-player-stats.diff).
 
 ## Issues
 

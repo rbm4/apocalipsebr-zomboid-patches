@@ -411,9 +411,17 @@ native log251 retained. Its dictionary gate is separate from vehicle storage.
 Review34 PlayerDamagePacket is approved/applied on 2026-10-28 after baseline
 c0502d7; candidate equality and 26 packet/native-field assertions passed with
 engine doubles. Internal sentinel -1 adds no wire byte; full native validation
-remains pending. Review35 PlayerEffectsPacket has an unapplied ConnectionPlayer
-ownership candidate dated 2026-10-28; 62 packet/native-field assertions passed,
-calendar gate retained. No helper API or wire format changes proposed.
+remains pending. Review35 PlayerEffectsPacket is approved/applied on 2026-10-28
+after baseline 2c2180d; candidate equality and 62 ownership assertions passed.
+Calendar gate retained. Review36 PlayerStatsPacket is approved/applied on
+2026-10-28 after baseline 006e586; candidate equality and 42 ownership assertions
+passed. Review37 SyncPlayerStatsPacket guard candidate remains unapplied.
+The prior retirement recommendation is WITHDRAWN: CanModifyBodyStats and
+pre-parse authorization already existed in 42.21.0 and do not enforce target
+ownership; native OnlinePlayer still resolves global IDs. User requires guarding
+against cross-connection target manipulation. Recommend keeping the adapted
+owner guard (20 assertions passed); no admin exception or retirement authorized.
+Do not apply the candidate until individual approval.
 After each approved patch, prepare the next individual review automatically,
 as the user requested; do not infer approval of that next merge.
 Upstream List traversal obsoletes these audited raw readers, not the separate

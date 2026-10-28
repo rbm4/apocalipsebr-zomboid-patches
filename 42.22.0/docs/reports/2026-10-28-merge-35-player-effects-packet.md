@@ -1,6 +1,6 @@
 # Review 35/48: PlayerEffectsPacket
 
-Created 2026-10-28. Status: **proposed; not applied**. Review 34 is applied.
+Created 2026-10-28. Status: **approved/applied on 2026-10-28**. Review 34 is applied.
 See the [tracker](../features/2026-10-27-subsystem-port-tracker.md).
 
 ## Inputs and proposal
@@ -14,7 +14,7 @@ Keep ownership validation before effect payload processing, adapted to native
 ConnectionPlayer composition as in review34. Do not restore PlayerID inheritance,
 old extra index byte or removed accessors. The audit reports one conflict around
 the rewritten parser; this candidate starts from target vanilla and adds only
-the adapted guard/import. No target replacement exists. Owner: NETWORK-GUARDS.
+the adapted guard/import. Applied source equals the reviewed candidate after exact vanilla baseline `2c2180d`. Owner: NETWORK-GUARDS.
 
 ## Native protocol and retained guard
 
@@ -52,5 +52,6 @@ malformed bodies, real split-screen/multiplayer connections and exact-JAR/runtim
 checks remain pending. No ownership-helper API, installation, configuration or
 external service was changed.
 
-Decision requested: apply this adapted ownership guard while preserving native
-ConnectionPlayer protocol, calendar gate and effect serialization.
+User approved: "yes". Applied-candidate equality and 62 ownership assertions
+passed again. Native multiplayer validation remains pending. No installed
+files were changed.
