@@ -26,7 +26,7 @@ item after components and before equipment/final player callbacks. Native code
 can now update icon/model selection, clothing/bag color and clothing blood/dirt
 aggregates from the restored state. Native synchronization may normalize `col`;
 the objective is native derived-state behavior, not retaining inconsistent caches.
-It does not change clothing's saved wetness timestamp, which remains priority 6.
+The later [subtype/health implementation](2026-10-29-player-reconstruction-subtypes-and-health.md) resets clothing's wetness timestamp to the load-time baseline (priority 6).
 
 For old SQL/journal data without RGB, custom-color items use the known `col` RGB
 as a best-effort fallback; non-custom items start with white raw channels and

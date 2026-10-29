@@ -11,6 +11,9 @@ import zombie.inventory.ItemContainer;
 import zombie.inventory.types.InventoryContainer;
 import zombie.inventory.types.Moveable;
 import zombie.inventory.types.HandWeapon;
+import zombie.inventory.types.Food;
+import zombie.inventory.types.Clothing;
+import zombie.inventory.types.Radio;
 import zombie.iso.IsoWorld;
 import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
@@ -52,7 +55,7 @@ final class ApocBRPlayerRelationalReconstruction {
         player.setX(player.setLastX(player.setNextX(((Number)state.get("x")).floatValue())));player.setY(player.setLastY(player.setNextY(((Number)state.get("y")).floatValue())));player.setZ(player.setLastZ(((Number)state.get("z")).floatValue()));
         player.setForwardIsoDirection(zombie.iso.IsoDirections.valueOf((String)state.get("direction")));
         apply("character_effects",player,"character_id");apply("character_presentation",player,"character_id");
-        apply("character_nutrition",get(player,"nutrition"),"character_id");
+        for(var r:rows("character_nutrition"))restoreNutrition(player.getNutrition(),r);
         for(var r:rows("descriptor_extra"))add(get(descriptor,"extra"),r.get("value"));
         for(var r:rows("character_stat"))call(get(player,"stats"),"set",staticCall("zombie.characters.CharacterStat","getById",r.get("stat_key")),((Number)r.get("value")).floatValue());
         traits(player);
@@ -140,6 +143,7 @@ final class ApocBRPlayerRelationalReconstruction {
             Object part=list(get(body,"bodyParts")).stream().filter(p->key(get(p,"type")).equals(r.get("body_part_key"))).findFirst().orElseThrow();
             project("body_part",part,r,"character_id body_part_key");
         }
+        player.getBodyDamage().setBodyPartsLastState();
         if(!source.rows("thermoregulator").isEmpty()) {
             Object thermo=get(body,"thermoregulator");if(thermo==null){thermo=create("zombie.characters.BodyDamage.Thermoregulator",body);set(body,"thermoregulator",thermo);}
             apply("thermoregulator",thermo,"character_id");
@@ -189,6 +193,7 @@ final class ApocBRPlayerRelationalReconstruction {
             // One line only when the saved definition cannot be resolved locally.
             if(item==null||!item.getClass().getName().equals(r.get("runtime_class")))trace.event("ITEM_TYPE_MISMATCH","; fullType="+ApocBRPlayerReconstructionLog.token(r.get("full_type"))+"; expectedClass="+ApocBRPlayerReconstructionLog.token(r.get("runtime_class"))+"; actualClass="+(item==null?"MISSING":item.getClass().getName()));
             validateItemType(item,r);
+            if(item instanceof HandWeapon weapon)weapon.clearAllWeaponParts();
             if(!nativeIds.add(id(r.get("native_id"))))throw new IllegalStateException("Invalid saved item type or identity");
             register(r.get("id"),item);
             project("item",item,r,"id full_type runtime_class save_type source_registry_id texture_name recorded_media_id source_recorded_media_index");
@@ -237,15 +242,16 @@ final class ApocBRPlayerRelationalReconstruction {
         boolean dynamic=Moveable.class.getName().equals(row.get("runtime_class"))
             &&sprite!=null&&!sprite.isBlank()&&("Base."+sprite).equals(fullType);
         InventoryItem item=factory.apply(dynamic?"Base.Moveable":fullType);
-        if(dynamic&&item!=null&&item.getClass()==Moveable.class) {
-            Moveable furniture=(Moveable)item;
-            if(!furniture.ReadFromWorldSprite(sprite)) {
+        if(item instanceof Moveable furniture&&sprite!=null&&!sprite.isBlank()) {
+            if(!furniture.ReadFromWorldSprite(sprite)&&dynamic) {
                 ApocBRPlayerReconstructionLog.moveableFailure(fullType,sprite);
                 throw new IllegalStateException("Invalid saved Moveable sprite");
             }
             // Initialize sprite/grid/name properties before projecting saved scalar, light,
             // visual and component state, so sprite defaults cannot overwrite saved values.
-            set(furniture,"type",sprite);set(furniture,"fullType",fullType);
+            if(get(furniture,"customItem")==null&&!sprite.equalsIgnoreCase((String)get(furniture,"type"))) {
+                set(furniture,"type",sprite);set(furniture,"fullType",get(furniture,"module")+"."+sprite);
+            }
         }
         return item;
     }
@@ -330,11 +336,12 @@ final class ApocBRPlayerRelationalReconstruction {
             else if("texture".equals(r.get("kind")))symbol=call(symbols,"addTexture",r.get("symbol_id"),x,y,red,green,blue,alpha);
             else throw new IllegalStateException("Unknown map symbol");
             project("map_symbol",symbol,r,"item_id position kind color_r color_g color_b color_a text translated layer_id symbol_id");
+            restoreMapSymbolBaseline(symbol);
         }
     }
     private void radios() {
         for(var r:rows("radio_state")) {
-            Object device=get(ref(r.get("item_id")),"deviceData");
+            Object device=restoreRadioDevice((Radio)ref(r.get("item_id")));
             project("radio_state",device,r,"item_id max_presets recorded_media_id source_media_index");set(device,"mediaIndex",mediaIndex(r.get("recorded_media_id")));
             if(r.get("max_presets")!=null){Object presets=get(device,"presets");call(presets,"clearPresets");set(presets,"maxPresets",r.get("max_presets"));}
         }
@@ -415,7 +422,43 @@ final class ApocBRPlayerRelationalReconstruction {
         item.setColorRed(channels[0]);item.setColorGreen(channels[1]);item.setColorBlue(channels[2]);
     }
     private void finalizeItemVisuals() {
-        for(var row:source.rows("item"))((InventoryItem)ref(row.get("id"))).synchWithVisual();
+        float now=(float)zombie.GameTime.getInstance().getWorldAgeHours();
+        for(var row:source.rows("item")) {
+            InventoryItem item=(InventoryItem)ref(row.get("id"));
+            restoreSubtypeBaseline(item,now,zombie.network.GameServer.server);
+            item.synchWithVisual();
+        }
+    }
+    static Object restoreRadioDevice(Radio item) {
+        Object device=get(item,"deviceData");
+        if(device==null){device=create("zombie.radio.devices.DeviceData",item);set(item,"deviceData",device);}
+        call(device,"setParent",item);return device;
+    }
+    static void restoreSubtypeBaseline(InventoryItem item,float now,boolean server) {
+        if(item instanceof HandWeapon weapon) {
+            if(get(weapon,"magazineType")==null||get(weapon,"magazineType").toString().isBlank())weapon.setContainsClip(false);
+            set(weapon,"isMelee",!list(get(weapon,"weaponCategories")).isEmpty());
+            set(weapon,"isExplosive","Explosives".equals(get(weapon,"scriptItem.displayCategory")));
+        }
+        if(item instanceof Clothing)set(item,"lastWetnessUpdate",now);
+        if(item instanceof Food food) {
+            if(server&&((Number)get(food,"lastAged")).floatValue()==-1)set(food,"lastAged",now);
+            if(food.is(zombie.scripting.objects.ItemKey.Food.CORPSE_ANIMAL))invokeDeclared(food,"initAnimalIcons");
+        }
+        if(item instanceof Radio radio)restoreRadioDevice(radio);
+    }
+    static void restoreMapSymbolBaseline(Object symbol) {
+        call(symbol,"setRotation",((Number)get(symbol,"rotation")).floatValue());
+        for(String field:List.of("minZoom","maxZoom"))set(symbol,field,zombie.core.math.PZMath.clamp(((Number)get(symbol,field)).floatValue(),0,24));
+    }
+    static void restoreNutrition(zombie.characters.BodyDamage.Nutrition nutrition,Map<String,Object> row) {
+        nutrition.setCalories(((Number)row.get("calories")).floatValue());
+        nutrition.setProteins(((Number)row.get("proteins")).floatValue());
+        nutrition.setLipids(((Number)row.get("lipids")).floatValue());
+        nutrition.setCarbohydrates(((Number)row.get("carbohydrates")).floatValue());
+        // Normalize the native lower bound before invoking the setter. Health is
+        // restored separately; loading temporary copies must not replay LOWWEIGHT damage.
+        nutrition.setWeight(Math.max(35,((Number)row.get("weight")).doubleValue()));
     }
     static void restoreProgressionBaseline(IsoPlayer player) {
         var xp=player.getXp();
@@ -515,6 +558,17 @@ final class ApocBRPlayerRelationalReconstruction {
             if(name.equals("CraftBench")&&e.getValue() instanceof Map<?,?> channel){Object target=get(component,e.getKey());set(target,"bits",channel.get("nativeBits"));}
             else set(component,e.getKey(),e.getValue());
         }
+        if(name.equals("UiConfig"))invokeDeclared(component,"setSkin",fields.get("xuiSkinName"));
+        if(name.equals("EntityScriptInfo"))restoreEntityScriptReference(component);
+    }
+    static void restoreEntityScriptReference(Object component) {
+        String name=(String)get(component,"originalScript");Object script=null;
+        if(name!=null) {
+            script=Boolean.TRUE.equals(get(component,"originalIsItem"))?
+                zombie.scripting.ScriptManager.instance.getItem(name):zombie.scripting.ScriptManager.instance.getGameEntityScript(name);
+            if(script==null)throw new IllegalStateException("Missing saved entity script: "+name);
+        }
+        set(component,"script",script);
     }
     private static void restoreSpriteConfig(Object component,Map<String,Object> state) {
         if(!(state.get("hasScript") instanceof Boolean present))throw new IllegalStateException("Missing SpriteConfig script presence");
@@ -586,7 +640,11 @@ final class ApocBRPlayerRelationalReconstruction {
         Map<String,Object> saved=(Map<String,Object>)state;
         Object animal=create("zombie.characters.animals.IsoAnimal",IsoWorld.instance.currentCell,
                 ((Number)saved.get("x")).intValue(),((Number)saved.get("y")).intValue(),((Number)saved.get("z")).intValue(),saved.get("type"),saved.get("breed"));
-        for(var e:saved.entrySet())if(!Set.of("breed","female","stats","modData","genome","data","zoneId","direction","savedAtGameTimeMillis","motherAnimalId","attachedTree","hook","playerAcceptance","onlineID").contains(e.getKey()))set(animal,e.getKey(),e.getValue());
+        for(var e:saved.entrySet())if(!Set.of("x","y","z","wild","breed","female","stats","modData","genome","data","zoneId","direction","savedAtGameTimeMillis","motherAnimalId","attachedTree","hook","playerAcceptance","onlineID").contains(e.getKey()))set(animal,e.getKey(),e.getValue());
+        var actor=(zombie.characters.animals.IsoAnimal)animal;
+        actor.setX(actor.setLastX(actor.setNextX(((Number)saved.get("x")).floatValue())));
+        actor.setY(actor.setLastY(actor.setNextY(((Number)saved.get("y")).floatValue())));
+        actor.setZ(actor.setLastZ(((Number)saved.get("z")).floatValue()));
         call(get(animal,"descriptor"),"setFemale",saved.get("female"));set(animal,"table",saved.get("modData"));
         call(animal,"setForwardIsoDirection",convert(type("zombie.iso.IsoDirections"),saved.get("direction")));
         Object zone=saved.get("zoneId");set(animal,"animalZone",zone==null?null:call(IsoWorld.instance.metaGrid.animalZoneHandler,"getZone",UUID.fromString((String)zone)));
@@ -598,8 +656,7 @@ final class ApocBRPlayerRelationalReconstruction {
         }
         staticCall("zombie.characters.animals.AnimalGene","checkGeneticDisorder",animal);
         Map<String,Object> data=(Map<String,Object>)saved.get("data");Object target=get(animal,"data");
-        call(target,"setAge",((Number)data.get("age")).intValue());call(target,"setSize",((Number)data.get("size")).floatValue());
-        for(var e:data.entrySet())if(!e.getKey().equals("age")&&!e.getKey().equals("size"))set(target,e.getKey(),e.getValue());
+        restoreAnimalData(target,data);
         set(animal,"timeSinceLastUpdate",saved.get("savedAtGameTimeMillis"));
         if(saved.get("motherAnimalId")!=null)set(animal,"attachBackToMother",saved.get("motherAnimalId"));
         var tree=(Map<String,Object>)saved.get("attachedTree");set(animal,"attachBackToTreeX",tree==null?Integer.MAX_VALUE:tree.get("x"));set(animal,"attachBackToTreeY",tree==null?Integer.MAX_VALUE:tree.get("y"));
@@ -607,7 +664,27 @@ final class ApocBRPlayerRelationalReconstruction {
         if(hook!=null)for(var e:hook.entrySet())set(animal,"attachBackToHook"+e.getKey().toUpperCase(Locale.ROOT),e.getValue());
         Object acceptance=get(animal,"playerAcceptanceList");call(acceptance,"clear");
         for(var e:((Map<?,?>)saved.get("playerAcceptance")).entrySet())put(acceptance,((Number)e.getKey()).shortValue(),((Number)e.getValue()).floatValue());
+        restoreAnimalWildState(animal,(Boolean)saved.get("wild"));
         set(owner,"animal",animal);invokeDeclared(owner,"initAnimalData");
+    }
+    static void restoreAnimalData(Object target,Map<String,Object> data) {
+        call(target,"setAge",((Number)data.get("age")).intValue());call(target,"setSize",((Number)data.get("size")).floatValue());
+        for(var e:data.entrySet())if(!Set.of("age","size","milkQuantity","preferredHutchPosition").contains(e.getKey()))set(target,e.getKey(),e.getValue());
+        float maximum=((Number)get(target,"maxMilkActual")).floatValue();
+        float quantity=((Number)data.get("milkQuantity")).floatValue();
+        if(!Float.isFinite(maximum)||maximum<0||!Float.isFinite(quantity))throw new IllegalStateException("Invalid saved animal milk state");
+        // A decrease relative to a constructor's milkQty would replay milking
+        // timers/random capacity growth. Start at zero; retain saved timers/capacity.
+        set(target,"milkQty",0f);call(target,"setMilkQuantity",Math.max(0,quantity));
+        call(target,"setPreferredHutchPosition",((Number)data.get("preferredHutchPosition")).intValue());
+    }
+    static void restoreAnimalWildState(Object animal,boolean wild) {
+        // Native setWild(true) randomizes stress. Preserve saved stress while
+        // applying the native domestication/migration consistency rules.
+        if(wild||Boolean.TRUE.equals(get(animal,"adef.canBeDomesticated"))) {
+            set(animal,"wild",wild);
+            if(!wild){set(animal,"migrationGroup",null);set(animal,"virtualId",0d);}
+        }
     }
     private void apply(String table,Object target,String skip){for(var row:rows(table))project(table,target,row,skip);}
     static void project(String table,Object target,Map<String,Object> row,String skip) {

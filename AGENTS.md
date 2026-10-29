@@ -590,6 +590,22 @@ Never copy an old patched class wholesale into a new version directory.
 
 ## Build and verification
 
+2026-10-29 priorities5/6: user authorized subtype initialization and health/time
+baselines for42.22. General Moveable/Radio sprite setup precedes saved projection;
+weapon parts clear before attachments, current categories/magazine consistency
+finalize afterward. Radio device parent/allocation, map rotation/zoom caches,
+EntityScriptInfo script and UiConfig skin now resolve explicitly. Body-part last
+state, nutrient clamps, clothing clock and food server sentinel match load
+baselines. Low weight clamps without replaying damage; embedded animal milk
+normalizes without milking effects, wild restoration preserves stress while
+applying tame migration rules, fractional position baselines agree. Native corpse
+icon hook runs after components. No schema/capture change or deployment. See
+42.22.0/docs/features/2026-10-29-player-reconstruction-subtypes-and-health.md and
+updated matrix TRACK-06/07/08/09/11. Subtype/health156 (includes lifecycle56),
+visual/progression143, weight1763, SpriteConfig17 and resilience691 plus auxiliary
+cases pass. Target DryRun303 sources/895 classes passes. Priority7 absent/empty
+semantics and actual world/corpse/animal/first-tick validation remain open.
+
 2026-10-29 priorities3/4: user authorized RGB/visual finalization and descriptor/XP
 baselines for42.22. Snapshot optional itemRgb/Capture item.rgb preserve separate
 native channels; historical missing RGB falls back to known col for custom items.
@@ -599,7 +615,8 @@ Authoritative descriptor publication occurs after tracking and before equipment;
 temporary copies do not publish. Next ID is savedID+1 because constructors use
 postincrement. LogLevelPerk replay intentionally suppressed during synthetic load.
 See target features/2026-10-29-player-reconstruction-visuals-and-progression.md;
-matrix TRACK-02/05 updated, priorities5-7 still open. Visual/progression143 (includes
+matrix TRACK-02/05 updated; priorities5/6 were subsequently implemented above,
+priority7 remains open. Visual/progression143 (includes
 lifecycle56), mutation1763, SpriteConfig17 and resilience691 plus auxiliary cases
 pass. Full303-source/895-class target DryRun passes. No deployment.
 
