@@ -10,6 +10,7 @@ import zombie.inventory.InventoryItemFactory;
 import zombie.inventory.ItemContainer;
 import zombie.inventory.types.InventoryContainer;
 import zombie.inventory.types.Moveable;
+import zombie.inventory.types.HandWeapon;
 import zombie.iso.IsoWorld;
 import static zombie.savefile.ApocBRPlayerRelationalAccess.*;
 
@@ -60,13 +61,25 @@ final class ApocBRPlayerRelationalReconstruction {
         trace.stage("RESTORE_HEALTH");health(player);
         trace.stage("RESTORE_VISUALS");visuals(player);
         trace.stage("RESTORE_INVENTORY");inventory(player);
-        trace.stage("RESTORE_EQUIPMENT");equipment(player);
         trace.stage("RESTORE_COMPONENTS");components();
+        trace.stage("FINALIZE_ITEM_VISUALS");finalizeItemVisuals();
+        trace.stage("RESTORE_EQUIPMENT");equipment(player);
         trace.stage("FINALIZE_PLAYER");
         for(var r:rows("character_vehicle_return")) {
             for(String name:List.of("x","y","seat","running"))set(player,"savedVehicle"+Character.toUpperCase(name.charAt(0))+name.substring(1),r.get(name));
             player.setZ(0);
         }
+        handled.addAll(List.of("snapshot","object"));
+        trace.stage("VERIFY_TABLE_COVERAGE");
+        for(String table:source.tables().keySet())if(!handled.contains(table)&&!source.rows(table).isEmpty()){
+            ApocBRPlayerReconstructionLog.table(table,source.rows(table).size());throw new IllegalStateException("Unrestored relational table: "+table);
+        }
+        // Establish native owner references before finalization callbacks, without
+        // letting temporary client-profile/migration players join simulation.
+        restoreEquipmentState(player,false);
+        validateDescriptorIdentity(player.getDescriptor());
+        restoreProgressionBaseline(player);
+        trace.stage("FINALIZE_PLAYER");
         player.setFemale(descriptor.isFemale());player.InitSpriteParts(descriptor);player.initSpritePartsEmpty();
         player.onWornItemsChanged();
         call(player,"setVariable","Weapon",call(staticCall("zombie.inventory.types.WeaponType","getWeaponType",player),"getType"));
@@ -75,11 +88,6 @@ final class ApocBRPlayerRelationalReconstruction {
         if(Boolean.TRUE.equals(state.get("is_dead"))){player.getBodyDamage().setOverallBodyHealth(0);player.setHealth(0);}
         if(Boolean.TRUE.equals(state.get("on_fire")))player.SetOnFire();
         player.remote=true;
-        handled.addAll(List.of("snapshot","object"));
-        trace.stage("VERIFY_TABLE_COVERAGE");
-        for(String table:source.tables().keySet())if(!handled.contains(table)&&!source.rows(table).isEmpty()){
-            ApocBRPlayerReconstructionLog.table(table,source.rows(table).size());throw new IllegalStateException("Unrestored relational table: "+table);
-        }
         return player;
     }
     private void traits(IsoPlayer player) {
@@ -184,6 +192,9 @@ final class ApocBRPlayerRelationalReconstruction {
             if(!nativeIds.add(id(r.get("native_id"))))throw new IllegalStateException("Invalid saved item type or identity");
             register(r.get("id"),item);
             project("item",item,r,"id full_type runtime_class save_type source_registry_id texture_name recorded_media_id source_recorded_media_index");
+            // Old SQL/journal rows cannot recover independent RGB. Preserve their
+            // known custom col color instead of whitening it during final sync.
+            restoreItemRgb(item,null);
             if(r.get("texture_name")!=null)set(item,"texture",staticCall("zombie.core.textures.Texture","getSharedTexture",r.get("texture_name")));
             set(item,"recordedMediaIndex",mediaIndex(r.get("recorded_media_id")));
         }
@@ -349,25 +360,106 @@ final class ApocBRPlayerRelationalReconstruction {
     private void components() {
         Map<Integer,List<Map<String,Object>>> children=new HashMap<>();Map<Integer,Map<String,Object>> roots=new HashMap<>();
         Map<InventoryItem,Object> weights=new IdentityHashMap<>();
+        Map<InventoryItem,Object> rgbs=new IdentityHashMap<>();
+        Map<Object,Map<String,Object>> entities=new IdentityHashMap<>();
+        Map<Object,Set<String>> kinds=new IdentityHashMap<>();
         for(var r:rows("value_node")){if(r.get("parent_id")==null){if(roots.put(id(r.get("component_id")),r)!=null)throw new IllegalStateException("Duplicate component root");}else children.computeIfAbsent(id(r.get("parent_id")),k->new ArrayList<>()).add(r);}
         for(var r:rows("component")) {
             ApocBRPlayerReconstructionLog.subject("component",r.get("id"),r.get("kind"));
             if(!"complete".equals(r.get("coverage"))||id(r.get("codec_version"))!=ApocBRPlayerRelationalCapture.CODEC_VERSION)throw new IllegalStateException("Incomplete component");
             Object owner=ref(r.get("owner_object_id")),value=value(Objects.requireNonNull(roots.get(id(r.get("id")))),children,new HashSet<>(),0,objects);
             String kind=(String)r.get("kind");
+            if(!kinds.computeIfAbsent(owner,k->new HashSet<>()).add(kind))throw new IllegalStateException("Duplicate saved component kind");
             if(kind.equals("lua.modData"))set(owner,"table",value);
             else if(kind.equals("item.weight"))weights.put((InventoryItem)owner,value);
+            else if(kind.equals("item.rgb"))rgbs.put((InventoryItem)owner,value);
+            else if(kind.equals("item.entityComponents")) {
+                if(!(owner instanceof InventoryItem)||!Boolean.TRUE.equals(value))throw new IllegalStateException("Invalid saved component membership");
+                entities.computeIfAbsent(owner,k->new LinkedHashMap<>());
+            }
             else if(kind.equals("item.byteData")) {
                 ByteBuffer buffer=ByteBuffer.wrap((byte[])value);
                 ApocBRPayloadProvenance.copy(value,buffer);set(owner,"byteData",buffer);
             }
-            else if(kind.startsWith("entity."))restoreComponent(owner,kind.substring(7),value);
+            else if(kind.startsWith("entity.")) {
+                if(!(owner instanceof InventoryItem))throw new IllegalStateException("Invalid saved component owner");
+                entities.computeIfAbsent(owner,k->new LinkedHashMap<>()).put(kind.substring(7),value);
+            }
             else if(kind.equals("item.embeddedAnimal"))restoreAnimal(owner,value);
             else throw new IllegalStateException("Unsupported saved component");
         }
+        // Decode every payload before membership changes; connect only after all
+        // saved fields and final membership are available on the owner.
+        entities.forEach(ApocBRPlayerRelationalReconstruction::restoreEntityComponents);
+        rgbs.forEach(ApocBRPlayerRelationalReconstruction::restoreItemRgb);
         // Embedded animals and other components may initialize derived item state.
         // The explicit live weight override is applied after all of them, once.
         weights.forEach(ApocBRPlayerRelationalReconstruction::restoreItemWeight);
+    }
+    static void restoreItemRgb(InventoryItem item,Object value) {
+        if(value==null) {
+            var color=item.getColor();
+            item.setColorRed(item.isCustomColor()?color.r:1);
+            item.setColorGreen(item.isCustomColor()?color.g:1);
+            item.setColorBlue(item.isCustomColor()?color.b:1);
+            return;
+        }
+        if(!(value instanceof Map<?,?> rgb)||rgb.size()!=3)throw new IllegalStateException("Invalid saved item RGB");
+        float[] channels=new float[3];int index=0;
+        for(String name:List.of("r","g","b")) {
+            Object channel=rgb.get(name);
+            if(!(channel instanceof Number number)||!Float.isFinite(number.floatValue())||number.floatValue()<0||number.floatValue()>1)
+                throw new IllegalStateException("Invalid saved item RGB");
+            channels[index++]=number.floatValue();
+        }
+        item.setColorRed(channels[0]);item.setColorGreen(channels[1]);item.setColorBlue(channels[2]);
+    }
+    private void finalizeItemVisuals() {
+        for(var row:source.rows("item"))((InventoryItem)ref(row.get("id"))).synchWithVisual();
+    }
+    static void restoreProgressionBaseline(IsoPlayer player) {
+        var xp=player.getXp();
+        if(xp.getTotalXp()>player.getXpForLevel(xp.getLevel()+1))xp.setTotalXP(player.getXpForLevel(xp.getLevel()));
+        var ai=Objects.requireNonNull(player.getNetworkCharacterAI(),"Missing reconstructed XP checker");
+        // Fresh native load normally starts with empty checker maps. Explicitly
+        // replace constructor entries so removed perks cannot survive putAll.
+        for(String field:List.of("xpMap","xpBoostMap","xpMapMultiplier"))call(get(ai,"xpChecker."+field),"clear");
+        ai.updateXpChecker();
+        // No LogLevelPerk replay: restoration is not a new gameplay level gain,
+        // and temporary profile/migration reconstruction must not fire hooks.
+    }
+    private static void validateDescriptorIdentity(SurvivorDesc descriptor) {
+        if(descriptor.getID()<0||descriptor.getID()==Integer.MAX_VALUE)throw new IllegalStateException("Invalid saved descriptor identity");
+    }
+    static void publishDescriptorIdentity(IsoPlayer player) {
+        SurvivorDesc descriptor=player.getDescriptor();validateDescriptorIdentity(descriptor);
+        IsoWorld.instance.survivorDescriptors.put(descriptor.getID(),descriptor);
+        // Constructors allocate idCount++, so the watermark must be the next ID.
+        if(SurvivorDesc.getIDCount()<=descriptor.getID())SurvivorDesc.setIDCount(descriptor.getID()+1);
+    }
+    static void restoreEquipmentState(IsoPlayer player,boolean register) {
+        InventoryItem primary=player.getPrimaryHandItem(),secondary=player.getSecondaryHandItem();
+        // These native load helpers establish item owners without OnEquip* Lua
+        // callbacks. A shared two-hand item registers exactly once.
+        invokeDeclared(player,"setEquipParent",null,primary,register);
+        invokeDeclared(player,"setEquipParent",null,secondary,register&&secondary!=primary);
+        player.setUseHandWeapon(primary instanceof HandWeapon weapon?weapon:null);
+    }
+    static void restoreEntityComponents(Object owner,Map<String,Object> states) {
+        // Resolve every saved kind before removing any factory component.
+        for(String name:states.keySet()) {
+            boolean known=false;
+            for(var kind:zombie.entity.ComponentType.values())if(kind.GetComponentClass()!=null&&kind.GetComponentClass().getSimpleName().equals(name)){known=true;break;}
+            if(!known)throw new IllegalStateException("Unknown saved component: "+name);
+        }
+        for(int i=number(get(owner,"componentSize"))-1;i>=0;i--) {
+            Object component=call(owner,"getComponentForIndex",i);
+            if(!states.containsKey(component.getClass().getSimpleName())
+                    &&!Boolean.TRUE.equals(invokeDeclared(owner,"releaseComponent",component)))
+                throw new IllegalStateException("Could not release factory component");
+        }
+        for(var entry:states.entrySet())restoreComponent(owner,entry.getKey(),entry.getValue());
+        invokeDeclared(owner,"connectComponents");
     }
     static void restoreItemWeight(InventoryItem item,Object value) {
         if(!(value instanceof Number number)||!Float.isFinite(number.floatValue())||number.floatValue()<0||!item.isCustomWeight())
@@ -407,12 +499,11 @@ final class ApocBRPlayerRelationalReconstruction {
     private static void restoreComponent(Object owner,String name,Object state) {
         Object component=null;
         for(int i=0;i<number(get(owner,"componentSize"));i++){Object c=call(owner,"getComponentForIndex",i);if(c.getClass().getSimpleName().equals(name)){component=c;break;}}
-        if(component==null) {
-            for(var kind:zombie.entity.ComponentType.values())if(kind.GetComponentClass()!=null&&kind.GetComponentClass().getSimpleName().equals(name)){component=kind.CreateComponent();invokeDeclared(owner,"addComponent",component);break;}
-        }
+        boolean added=component==null;
+        if(added)for(var kind:zombie.entity.ComponentType.values())if(kind.GetComponentClass()!=null&&kind.GetComponentClass().getSimpleName().equals(name)){component=kind.CreateComponent();break;}
         if(component==null)throw new IllegalStateException("Unknown saved component: "+name);
         restoreComponentState(component,name,state);
-        invokeDeclared(owner,"connectComponents");
+        if(added&&!Boolean.TRUE.equals(invokeDeclared(owner,"addComponent",component)))throw new IllegalStateException("Could not attach saved component: "+name);
     }
     @SuppressWarnings("unchecked")
     private static void restoreComponentState(Object component,String name,Object state) {

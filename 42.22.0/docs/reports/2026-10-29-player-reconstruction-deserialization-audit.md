@@ -1,5 +1,8 @@
 # Player reconstruction versus native deserialization: 42.22.0
 
+For current step-by-step tracking after the weight repair, use the
+[native-load comparison matrix](2026-10-29-native-player-load-reconstruction-matrix.md).
+
 Created 2026-10-29. Scope: the current **42.22.0 server working tree**, including
 the pending SpriteConfig/quarantine changes already present when this review
 started. Source audit with focused executable reproductions; no live player,

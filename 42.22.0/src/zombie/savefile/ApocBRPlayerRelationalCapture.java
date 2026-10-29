@@ -268,6 +268,8 @@ final class ApocBRPlayerRelationalCapture {
         project("item",item,"id",id,"runtime_class",item instanceof ApocBRPlayerRelationalSnapshot.Node n?n.runtimeClass:item.getClass().getName(),"recorded_media_id",media,"save_type",-1);
         Float weight=savedItemWeight(item);
         if(weight!=null)componentValue(id,"item.weight",weight,"complete");
+        Map<String,Object> rgb=savedItemRgb(item);
+        if(rgb!=null)componentValue(id,"item.rgb",rgb,"complete");
         visual(get(item,"visual"),null,id,0); lua(id,get(item,"table"));
         int extra=0; for(Object fullType:list(get(item,"extraItems"))) row("item_extra","item_id",id,"position",extra++,"full_type",fullType);
         Object byteData=get(item,"byteData");
@@ -314,6 +316,9 @@ final class ApocBRPlayerRelationalCapture {
             default -> { }
         }
         int count=number(get(item,"componentSize"));
+        // An explicit marker distinguishes a completely saved empty membership
+        // from historical SQL heads that did not record this fact.
+        componentValue(id,"item.entityComponents",true,"complete");
         for(int index=0;index<count;index++) {
             Object c=call(item,"getComponentForIndex",index); String kind=typeName(c);
             if(kind.equals("FluidContainer")) fluid(c,id);
@@ -329,6 +334,15 @@ final class ApocBRPlayerRelationalCapture {
             else if(ApocBRPlayerRelationalCodecs.supports(c))componentValue(id,"entity."+kind,c instanceof ApocBRPlayerRelationalSnapshot.Node node?node.get("state"):ApocBRPlayerRelationalCodecs.component(c),"complete");
             else { componentValue(id,"entity."+kind,null,"unsupported"); issue("UNSUPPORTED_COMPONENT_"+kind); }
         }
+    }
+    static Map<String,Object> savedItemRgb(Object item) {
+        float[] rgb=item instanceof ApocBRPlayerRelationalSnapshot.Node node?node.itemRgb:
+            new float[]{((Number)get(item,"colorRed")).floatValue(),((Number)get(item,"colorGreen")).floatValue(),((Number)get(item,"colorBlue")).floatValue()};
+        if(rgb==null)return null; // Historical journal did not capture these channels.
+        if(rgb.length!=3)throw new IllegalStateException("Invalid saved item RGB");
+        for(float channel:rgb)if(!Float.isFinite(channel)||channel<0||channel>1)throw new IllegalStateException("Invalid saved item RGB");
+        if(rgb[0]==1&&rgb[1]==1&&rgb[2]==1&&!Boolean.TRUE.equals(get(item,"customColor")))return null;
+        return Map.of("r",rgb[0],"g",rgb[1],"b",rgb[2]);
     }
     static Float savedItemWeight(Object item) {
         if(!Boolean.TRUE.equals(get(item,"customWeight")))return null;

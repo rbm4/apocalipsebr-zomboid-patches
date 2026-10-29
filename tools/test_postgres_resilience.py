@@ -549,7 +549,7 @@ _fixture_harness = next(ast.literal_eval(node.value) for node in _fixture_tree.b
                         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'HARNESS' for t in node.targets))
 _models = _fixture_harness[_fixture_harness.index(' static class Color'):_fixture_harness.index(' static void captures()')]
 if VERSION == '42.22.0':
-    _models = _models.replace('public float actualWeight=0f;', 'public float actualWeight=0f,weight=0f;')
+    _models = _models.replace('public float actualWeight=0f;', 'public float actualWeight=0f,weight=0f,colorRed=1,colorGreen=1,colorBlue=1;')
 HARNESS = HARNESS.replace(' static int checks;', _models + '\n static int checks;', 1)
 
 with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:

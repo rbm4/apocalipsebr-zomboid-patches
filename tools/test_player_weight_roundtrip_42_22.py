@@ -25,9 +25,9 @@ def main():
     contract = next(n.value for n in ast.walk(tree) if isinstance(n, ast.Constant)
                     and isinstance(n.value, str) and "public class RelationalTest {" in n.value)
     models = contract[contract.index(" static class Color"):contract.index(" static void captures()")]
-    models = models.replace("static class Item {", "public static class Item {")
+    models = models.replace("static class Item {", "public static class Item {").replace("static class Color {", "public static class Color {")
     models = models.replace("public int currentUses=0;", "public int uses=10; public int getCurrentUses(){return uses;}")
-    models = models.replace("public float actualWeight=0f;", "public float actualWeight=2f,weight=2f; public boolean broken;")
+    models = models.replace("public float actualWeight=0f;", "public float actualWeight=2f,weight=2f,colorRed=1,colorGreen=1,colorBlue=1; public boolean broken;")
     models = models.replace("Item(int id)", "public Item(int id)")
     native = (VERSION / "decompiled/zombie/inventory/InventoryItem.java").read_text()
     food = (VERSION / "decompiled/zombie/inventory/types/Food.java").read_text()
@@ -40,6 +40,8 @@ public class InventoryItem extends zombie.savefile.WeightRoundTripTest.Item {
  public InventoryItem(){super(1);}public String getDisplayName(){return "Fixture";}
  public int getConditionMax(){return 10;}public int getID(){return id;}
  public void save(ByteBuffer b,boolean net){} public float getExtraItemsWeight(){return extraItems.size()*0.6f;}
+ public zombie.savefile.WeightRoundTripTest.Color getColor(){return col;}public boolean isCustomColor(){return customColor;}
+ public void setColorRed(float v){colorRed=v;}public void setColorGreen(float v){colorGreen=v;}public void setColorBlue(float v){colorBlue=v;}
  public String getReplaceOnUse(){return null;}public String getReplaceOnUseFullType(){return getReplaceOnUse();}
 ''' + "\n".join(extract_method(native, s) for s in (
         "public float getWeight()", "public void setWeight(float weight)",
@@ -58,12 +60,14 @@ final class ApocBRPlayerRelationalReconstruction {
  static int id(Object value){return ((Number)value).intValue();}Object ref(Object key){return Objects.requireNonNull(objects.get(id(key)));}
  static Object registry(String name,Object key){throw new AssertionError("registry outside fixture");}
  static void restoreComponent(Object o,String n,Object v){throw new AssertionError("entity outside fixture");}
+ static void restoreEntityComponents(Object o,Map<String,Object> states){if(!states.isEmpty())throw new AssertionError("entity outside weight fixture");}
  static void restoreAnimal(Object o,Object v){throw new AssertionError("animal outside fixture");}
  static void add(Object o,Object v){call(o,"add",v);}static void put(Object o,Object k,Object v){call(o,"put",k,v);}
 ''' + "\n".join(extract_method(reconstruction, s) for s in (
         "static void project(String table,Object target,Map<String,Object> row,String skip)",
         "static void restoreItemScalars(InventoryItem item,Map<String,Object> row)",
         "static void restoreItemWeight(InventoryItem item,Object value)", "private void components()",
+        "static void restoreItemRgb(InventoryItem item,Object value)",
         "private void restoreItemSequence(String[] mapping,Map<String,Object> row,boolean first)",
         "private static Object value(Map<String,Object> row,Map<Integer,List<Map<String,Object>>> children,Set<Integer> visited,int depth,Map<Integer,Object> references)",
         "static void set(Object object,String path,Object value)", "static Object convert(Class<?> type,Object value)")) + "}"
@@ -198,7 +202,9 @@ HARNESS = r'''
   var profile=store.profile();var reconstruction=new ApocBRPlayerRelationalReconstruction(profile);
   var row=profile.rows("item").stream().filter(r->((Number)r.get("native_id")).intValue()==target.id).findFirst().orElseThrow();var keys=new ArrayList<>(row.keySet());Collections.shuffle(keys,new Random(seed));var shuffled=new LinkedHashMap<String,Object>();keys.forEach(k->shuffled.put(k,row.get(k)));
   ApocBRPlayerRelationalReconstruction.project("item",target,shuffled,"id full_type runtime_class save_type source_registry_id texture_name recorded_media_id source_recorded_media_index");
+  ApocBRPlayerRelationalReconstruction.restoreItemRgb(target,null);
   reconstruction.objects.put(((Number)row.get("id")).intValue(),target);
+  for(var other:profile.rows("item"))reconstruction.objects.putIfAbsent(((Number)other.get("id")).intValue(),new InventoryItem());
   for(var f:profile.rows("food_state"))ApocBRPlayerRelationalReconstruction.project("food_state",target,f,"item_id");
   target.extraItems.clear();var sequence=ApocBRPlayerRelationalReconstruction.class.getDeclaredMethod("restoreItemSequence",String[].class,Map.class,boolean.class);sequence.setAccessible(true);boolean first=true;
   for(var r:profile.rows("item_extra")){sequence.invoke(reconstruction,new String[]{"item_extra","extraItems","full_type"},r,first);first=false;}
@@ -244,6 +250,12 @@ HARNESS = r'''
   var bag=new InventoryContainer(99);var nested=food(true,false,false);bag.container.items.add(nested);p.inventory.items.add(bag);store=new Store();store.save(graph(p));eat(nested,0.25f);store.save(graph(p));
   check(store.profile().rows("bag_state").size()==1&&store.profile().rows("item_location").size()==2,"nested bag ownership survives food mutation");
   near(restore(store,food(true,false,false),0).getWeight(),nested.getWeight(),"food eaten inside bag round trip");
+  p=new P();var colored=new InventoryItem();colored.customColor=true;colored.col.r=0.2f;colored.col.g=0.3f;colored.col.b=0.4f;
+  colored.colorRed=0.7f;colored.colorGreen=0.8f;colored.colorBlue=0.9f;p.inventory.items.add(colored);store=new Store();store.save(graph(p));
+  restored=restore(store,new InventoryItem(),0);near(restored.colorRed,0.7f,"independent RGB full mutation capture");near(restored.col.r,0.2f,"independent RGBA preserved");
+  colored.colorRed=0.6f;store.save(graph(p));near(restore(store,new InventoryItem(),1).colorRed,0.6f,"RGB-only mutation through full snapshot/queue/SQL");
+  colored.customColor=false;colored.colorRed=colored.colorGreen=colored.colorBlue=1;store.save(graph(p));restored=restore(store,new InventoryItem(),2);
+  near(restored.colorRed,1,"default RGB resets after extension deletion");check(store.profile().rows("component").stream().noneMatch(r->"item.rgb".equals(r.get("kind"))),"ordinary white RGB extension removed by delta");
  }
  public static void main(String[] args)throws Exception{foods();cases();System.out.println("42.22.0 weight mutation/reconstruction checks="+checks);}
 '''

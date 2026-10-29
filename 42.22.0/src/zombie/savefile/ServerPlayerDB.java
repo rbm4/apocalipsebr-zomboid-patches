@@ -480,6 +480,8 @@ public final class ServerPlayerDB {
         if(profile==null)return null;
         IsoPlayer player=ApocBRPlayerRelationalReconstruction.reconstruct(profile,slot);
         ApocBRPlayerRelationalSync.registerPostgresPlayer(player,Core.gameSaveWorld,identity,slot,coop,profile);
+        ApocBRPlayerRelationalReconstruction.publishDescriptorIdentity(player);
+        ApocBRPlayerRelationalReconstruction.restoreEquipmentState(player,true);
         return player;
     }
 

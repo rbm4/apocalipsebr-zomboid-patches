@@ -44,6 +44,8 @@ final class ApocBRPlayerRelationalSnapshot {
         // Optional for pre-weight journal records. Food consumption can change this
         // independently of actualWeight; never sample a computed subtype getter.
         Float itemWeight;
+        // Optional for older journal records; these differ from col RGBA/tint.
+        float[] itemRgb;
         private Map<String,Object> fields=new LinkedHashMap<>();
         Node(Object source) {
             runtimeClass=source.getClass().getName();
@@ -202,6 +204,7 @@ final class ApocBRPlayerRelationalSnapshot {
         if(copies.containsKey(source))return copies.get(source);
         Node node=projected(source,"item","runtime_class","save_type","recorded_media_id");
         charge(16);node.itemWeight=((Number)get(source,"weight")).floatValue();
+        charge(32);node.itemRgb=new float[]{((Number)get(source,"colorRed")).floatValue(),((Number)get(source,"colorGreen")).floatValue(),((Number)get(source,"colorBlue")).floatValue()};
         fields(node,source,"id","recordedMediaIndex","componentSize");
         put(node,"resolvedMedia",ApocBRPlayerRelationalCapture.media(get(source,"recordedMediaIndex")));
         put(node,"visual",visual(get(source,"visual"),false));put(node,"table",structured(get(source,"table"),0));

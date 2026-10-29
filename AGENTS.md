@@ -590,6 +590,30 @@ Never copy an old patched class wholesale into a new version directory.
 
 ## Build and verification
 
+2026-10-29 priorities3/4: user authorized RGB/visual finalization and descriptor/XP
+baselines for42.22. Snapshot optional itemRgb/Capture item.rgb preserve separate
+native channels; historical missing RGB falls back to known col for custom items.
+Per-item synchWithVisual runs after component restoration. Local XP baseline uses
+native total-XP correction and replaces checker maps before native refresh.
+Authoritative descriptor publication occurs after tracking and before equipment;
+temporary copies do not publish. Next ID is savedID+1 because constructors use
+postincrement. LogLevelPerk replay intentionally suppressed during synthetic load.
+See target features/2026-10-29-player-reconstruction-visuals-and-progression.md;
+matrix TRACK-02/05 updated, priorities5-7 still open. Visual/progression143 (includes
+lifecycle56), mutation1763, SpriteConfig17 and resilience691 plus auxiliary cases
+pass. Full303-source/895-class target DryRun passes. No deployment.
+
+2026-10-29 follow-up: the user authorized starting the reconstruction reliability
+work. Component membership/equipment lifecycle tranche is implemented for42.22:
+item.entityComponents records explicit empty membership, grouped restoration uses
+native release and final connect, hand owners/useHandWeapon use native load helpers.
+Temporary reconstruction uses register=false; ServerPlayerDB promotes equipment
+after tracking attaches. No deployment. Target lifecycle56, updated weight1672,
+SpriteConfig17 and resilience691 plus auxiliary cases pass. The installed JAR now
+exposes world251 and the303-source/895-class DryRun passes; prior world249 failures
+below are historical. See target features/2026-10-29-player-reconstruction-lifecycle.md
+and matrix TRACK-03/04. Remaining report tracks still require separate work.
+
 On 2026-10-29 the user authorized 42.22.0 item weight mutation/reconstruction
 repairs and round-trip tests. Target Snapshot now detaches optional raw itemWeight;
 Capture stores custom raw weight as item.weight structured state (schema1/codec4,

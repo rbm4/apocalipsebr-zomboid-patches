@@ -1,7 +1,15 @@
 # Player item weight mutation round trips (42.22.0 server)
 
+Follow-up: [component membership and equipment lifecycle](2026-10-29-player-reconstruction-lifecycle.md)
+adds explicit membership markers, retains the weight override ordering and passes
+the updated 1,672-check weight regression. The installed JAR now exposes world251
+and the 303-source target dry build passes; the older build limitation below is
+preserved as historical verification evidence.
+
 Implemented 2026-10-29 following the
 [reconstruction audit](../reports/2026-10-29-player-reconstruction-deserialization-audit.md).
+The [native-load step matrix](../reports/2026-10-29-native-player-load-reconstruction-matrix.md)
+tracks current coverage and remaining differences across the full player load path.
 This addresses weight capture and reconstruction, plus the condition/broken
 invariant encountered in the same scalar restoration path. Other audit findings
 remain open. No deployment or live database changes were performed.

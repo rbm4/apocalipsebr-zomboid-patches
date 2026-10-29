@@ -33,7 +33,7 @@ def method(source, signature):
 relational = harness('test_postgres_player_relational.py', 'RelationalTest')
 reconstruction = harness('test_postgres_player_reconstruction.py', 'ReconstructionTest')
 models = relational[relational.index(' static class Color'):relational.index(' static void captures()')]
-models = models.replace('public float actualWeight=0f;', 'public float actualWeight=0f,weight=0f;')
+models = models.replace('public float actualWeight=0f;', 'public float actualWeight=0f,weight=0f,colorRed=1,colorGreen=1,colorBlue=1;')
 java = '''package zombie.savefile;
 import java.util.*;
 import java.lang.reflect.*;
