@@ -6,12 +6,16 @@ import os
 import ast
 import subprocess
 import tempfile
+import argparse
 
 ROOT = Path(__file__).resolve().parents[1]
-SRC = ROOT / '42.21.0/src/zombie'
+parser = argparse.ArgumentParser()
+parser.add_argument('--version', choices=('42.21.0', '42.22.0'), default='42.21.0')
+VERSION = parser.parse_args().version
+SRC = ROOT / VERSION / 'src/zombie'
 GAME = Path(os.environ.get('APOCBR_TEST_GAME_JAR', r'Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar'))
 JDK = ROOT / 'jdk/bin'
-LIB = ROOT / '42.21.0/lib'
+LIB = ROOT / VERSION / 'lib'
 
 HARNESS = r'''
 package zombie.savefile;
@@ -544,6 +548,8 @@ _fixture_tree = ast.parse((ROOT / 'tools/test_postgres_player_relational.py').re
 _fixture_harness = next(ast.literal_eval(node.value) for node in _fixture_tree.body
                         if isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'HARNESS' for t in node.targets))
 _models = _fixture_harness[_fixture_harness.index(' static class Color'):_fixture_harness.index(' static void captures()')]
+if VERSION == '42.22.0':
+    _models = _models.replace('public float actualWeight=0f;', 'public float actualWeight=0f,weight=0f;')
 HARNESS = HARNESS.replace(' static int checks;', _models + '\n static int checks;', 1)
 
 with tempfile.TemporaryDirectory(prefix='apocbr_resilience_') as folder:

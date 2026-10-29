@@ -41,6 +41,9 @@ final class ApocBRPlayerRelationalSnapshot {
         final List<String> types;
         // Optional for old journal compatibility; contains no live engine reference.
         UUID persistentItemId;
+        // Optional for pre-weight journal records. Food consumption can change this
+        // independently of actualWeight; never sample a computed subtype getter.
+        Float itemWeight;
         private Map<String,Object> fields=new LinkedHashMap<>();
         Node(Object source) {
             runtimeClass=source.getClass().getName();
@@ -198,6 +201,7 @@ final class ApocBRPlayerRelationalSnapshot {
         if(depth>64)throw new IllegalStateException("SNAPSHOT_DEPTH_BUDGET");
         if(copies.containsKey(source))return copies.get(source);
         Node node=projected(source,"item","runtime_class","save_type","recorded_media_id");
+        charge(16);node.itemWeight=((Number)get(source,"weight")).floatValue();
         fields(node,source,"id","recordedMediaIndex","componentSize");
         put(node,"resolvedMedia",ApocBRPlayerRelationalCapture.media(get(source,"recordedMediaIndex")));
         put(node,"visual",visual(get(source,"visual"),false));put(node,"table",structured(get(source,"table"),0));

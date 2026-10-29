@@ -348,6 +348,7 @@ final class ApocBRPlayerRelationalReconstruction {
     }
     private void components() {
         Map<Integer,List<Map<String,Object>>> children=new HashMap<>();Map<Integer,Map<String,Object>> roots=new HashMap<>();
+        Map<InventoryItem,Object> weights=new IdentityHashMap<>();
         for(var r:rows("value_node")){if(r.get("parent_id")==null){if(roots.put(id(r.get("component_id")),r)!=null)throw new IllegalStateException("Duplicate component root");}else children.computeIfAbsent(id(r.get("parent_id")),k->new ArrayList<>()).add(r);}
         for(var r:rows("component")) {
             ApocBRPlayerReconstructionLog.subject("component",r.get("id"),r.get("kind"));
@@ -355,6 +356,7 @@ final class ApocBRPlayerRelationalReconstruction {
             Object owner=ref(r.get("owner_object_id")),value=value(Objects.requireNonNull(roots.get(id(r.get("id")))),children,new HashSet<>(),0,objects);
             String kind=(String)r.get("kind");
             if(kind.equals("lua.modData"))set(owner,"table",value);
+            else if(kind.equals("item.weight"))weights.put((InventoryItem)owner,value);
             else if(kind.equals("item.byteData")) {
                 ByteBuffer buffer=ByteBuffer.wrap((byte[])value);
                 ApocBRPayloadProvenance.copy(value,buffer);set(owner,"byteData",buffer);
@@ -363,6 +365,14 @@ final class ApocBRPlayerRelationalReconstruction {
             else if(kind.equals("item.embeddedAnimal"))restoreAnimal(owner,value);
             else throw new IllegalStateException("Unsupported saved component");
         }
+        // Embedded animals and other components may initialize derived item state.
+        // The explicit live weight override is applied after all of them, once.
+        weights.forEach(ApocBRPlayerRelationalReconstruction::restoreItemWeight);
+    }
+    static void restoreItemWeight(InventoryItem item,Object value) {
+        if(!(value instanceof Number number)||!Float.isFinite(number.floatValue())||number.floatValue()<0||!item.isCustomWeight())
+            throw new IllegalStateException("Invalid saved item weight");
+        item.setWeight(number.floatValue());
     }
     private static Object value(Map<String,Object> row,Map<Integer,List<Map<String,Object>>> children,Set<Integer> visited,int depth) {
         return value(row,children,visited,depth,Map.of());
@@ -407,12 +417,34 @@ final class ApocBRPlayerRelationalReconstruction {
     @SuppressWarnings("unchecked")
     private static void restoreComponentState(Object component,String name,Object state) {
         Map<String,Object> fields=(Map<String,Object>)state;
+        if(name.equals("SpriteConfig")){restoreSpriteConfig(component,fields);return;}
         if(name.equals("AttributeContainer")){restoreAttributes(component,(List<Object>)fields.get("attributes"));return;}
         if(name.equals("FluidContainer")){restoreFluid(component,fields);return;}
         for(var e:fields.entrySet()) {
             if(name.equals("CraftBench")&&e.getValue() instanceof Map<?,?> channel){Object target=get(component,e.getKey());set(target,"bits",channel.get("nativeBits"));}
             else set(component,e.getKey(),e.getValue());
         }
+    }
+    private static void restoreSpriteConfig(Object component,Map<String,Object> state) {
+        if(!(state.get("hasScript") instanceof Boolean present))throw new IllegalStateException("Missing SpriteConfig script presence");
+        Object script=null;
+        boolean master=false;
+        if(present) {
+            if(!(state.get("scriptFullType") instanceof String fullType)||fullType.isBlank()
+                    ||!(state.get("scriptVersion") instanceof Long)||!(state.get("wasLoadedAsMaster") instanceof Boolean))
+                throw new IllegalStateException("Invalid saved SpriteConfig state");
+            script=zombie.world.ScriptsDictionary.spriteConfigs.get(fullType);
+            if(script==null)throw new IllegalStateException("Missing SpriteConfig script: "+fullType);
+            master=(Boolean)state.get("wasLoadedAsMaster");
+        }
+        // Match native load: resolve the current script and retain the saved master flag.
+        // Native 42.22.0 reads scriptVersion but does not reject a version mismatch.
+        if(script!=null)invokeDeclared(component,"readFromScript",script);
+        else set(component,"configScript",null);
+        set(component,"wasLoadedAsMaster",master);
+        // Restore into an existing component as well as a newly allocated one. These
+        // caches belong to the current owner/sprite and must never come from SQL.
+        invokeDeclared(component,"initObjectInfo");
     }
     @SuppressWarnings("unchecked")
     private static void restoreAttributes(Object component,List<Object> attributes) {
@@ -493,7 +525,25 @@ final class ApocBRPlayerRelationalReconstruction {
         // Reader supplies this server-only identity seed for Sync.registerPostgresPlayer.
         // Keep it in the profile; InventoryItem has no corresponding native field.
         if(table.equals("item"))ignored.add("persisted_item_id");
+        if(table.equals("item"))ignored.addAll(List.of("current_uses","actual_weight","custom_weight","condition"));
         for(var entry:row.entrySet())if(!ignored.contains(entry.getKey()))set(target,ApocBRPlayerRelationalCapture.path(table,entry.getKey()),entry.getValue());
+        if(table.equals("item"))restoreItemScalars((InventoryItem)target,row);
+    }
+    static void restoreItemScalars(InventoryItem item,Map<String,Object> row) {
+        // Follow native InventoryItem.load ordering. Drainable setters derive mass
+        // from uses; a saved custom override must win regardless of JSON key order.
+        item.setCurrentUses(1);
+        item.setCustomWeight(false);
+        int uses=((Number)Objects.requireNonNull(row.get("current_uses"))).intValue();
+        if(uses!=1)item.setCurrentUses(uses);
+        item.setConditionWhileLoading(((Number)Objects.requireNonNull(row.get("condition"))).intValue());
+        if(Boolean.TRUE.equals(row.get("custom_weight"))) {
+            float weight=((Number)Objects.requireNonNull(row.get("actual_weight"))).floatValue();
+            if(!Float.isFinite(weight)||weight<0)throw new IllegalStateException("Invalid saved custom item weight");
+            item.setActualWeight(weight);item.setWeight(weight);item.setCustomWeight(true);
+        }
+        // Non-custom mass follows current factory/script defaults, as native load
+        // does. Food's remaining hunger/thirst and subtype getters stay authoritative.
     }
     static void set(Object object,String path,Object value) {
         ApocBRPlayerReconstructionLog.field(path);

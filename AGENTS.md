@@ -590,6 +590,34 @@ Never copy an old patched class wholesale into a new version directory.
 
 ## Build and verification
 
+On 2026-10-29 the user authorized 42.22.0 item weight mutation/reconstruction
+repairs and round-trip tests. Target Snapshot now detaches optional raw itemWeight;
+Capture stores custom raw weight as item.weight structured state (schema1/codec4,
+no DDL). Reconstruction orders uses/condition/custom mass explicitly and applies
+raw weight after components. Older rows/journal nodes use the native mass fallback;
+historical missing raw weight cannot be recovered. See target features/2026-10-29-
+player-item-weight-roundtrip.md. test_player_weight_roundtrip_42_22.py passes 1630
+checks through production capture/queue/Delta SQL and extracted restore/native
+food methods with engine/JDBC transport doubles. SpriteConfig17 and resilience691
+plus auxiliary scenarios pass. Full DryRun against the default world249 JAR still
+fails on missing target APIs. No deployment. Native client profile normalization
+is unchanged and must be verified separately; this is server relational fidelity.
+
+On 2026-10-29, the user authorized the 42.22.0 port of SpriteConfig relational
+capture/reconstruction and the policy that abandons rejected saves without a
+persistent player block. The implementation also retires old `.pending` markers
+at startup, preserving archives. See
+`42.22.0/docs/features/2026-10-29-player-sprite-config-and-quarantine-recovery.md`.
+This is separate from the still-open cross-build character recovery design.
+`tools/test_postgres_resilience.py --version 42.22.0` selects target production
+sources (default remains 42.21.0); `tools/test_sprite_config_42_22.py` is the focused
+target capture/restore regression, not a full login fixture.
+At that verification the default installed JAR exposed world249, not251. Target
+persistence fixtures pass with explicit boundaries (the SpriteConfig test compiles
+the exact target native class), but the full 42.22 dry build against this older JAR
+fails. Supply a matching target installation for whole-build verification; do not
+rewrite target engine code to satisfy the old installed JAR.
+
 Follow the script that belongs to the target directory. For modern Windows version directories, a typical direct verification command is:
 
 ```powershell

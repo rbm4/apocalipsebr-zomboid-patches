@@ -266,6 +266,8 @@ final class ApocBRPlayerRelationalCapture {
         row("item_location","item_id",id,"container_id",container,"parent_item_id",parent,"relation",parent==null?"container":"weapon_attachment","position",position,"attachment_slot",parent==null?null:key(get(item,"partType"))); edges++;
         String media=resolvedMedia(item,"recordedMediaIndex");
         project("item",item,"id",id,"runtime_class",item instanceof ApocBRPlayerRelationalSnapshot.Node n?n.runtimeClass:item.getClass().getName(),"recorded_media_id",media,"save_type",-1);
+        Float weight=savedItemWeight(item);
+        if(weight!=null)componentValue(id,"item.weight",weight,"complete");
         visual(get(item,"visual"),null,id,0); lua(id,get(item,"table"));
         int extra=0; for(Object fullType:list(get(item,"extraItems"))) row("item_extra","item_id",id,"position",extra++,"full_type",fullType);
         Object byteData=get(item,"byteData");
@@ -327,6 +329,14 @@ final class ApocBRPlayerRelationalCapture {
             else if(ApocBRPlayerRelationalCodecs.supports(c))componentValue(id,"entity."+kind,c instanceof ApocBRPlayerRelationalSnapshot.Node node?node.get("state"):ApocBRPlayerRelationalCodecs.component(c),"complete");
             else { componentValue(id,"entity."+kind,null,"unsupported"); issue("UNSUPPORTED_COMPONENT_"+kind); }
         }
+    }
+    static Float savedItemWeight(Object item) {
+        if(!Boolean.TRUE.equals(get(item,"customWeight")))return null;
+        // Old detached journal captures lack this field. Keep their legacy restore
+        // behavior rather than inventing the consumed food's missing weight.
+        Float weight=item instanceof ApocBRPlayerRelationalSnapshot.Node node?node.itemWeight:((Number)get(item,"weight")).floatValue();
+        if(weight!=null&&(!Float.isFinite(weight)||weight<0))throw new IllegalStateException("Invalid saved item weight");
+        return weight;
     }
     private void food(Object food,UUID id) {
         project("food_state",food,"item_id",id); int position=0;

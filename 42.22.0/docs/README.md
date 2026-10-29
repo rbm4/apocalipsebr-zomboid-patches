@@ -28,14 +28,23 @@ this index when the target implementation has been verified.
 
 | Date | Document |
 | --- | --- |
+| 2026-10-29 | [Player item weight mutation persistence and reconstruction round trips](features/2026-10-29-player-item-weight-roundtrip.md) |
+| 2026-10-29 | [SpriteConfig persistence and rejected-player quarantine recovery](features/2026-10-29-player-sprite-config-and-quarantine-recovery.md) |
 | 2026-10-27 | [Subsystem ownership, staged sources and individual merge queue](features/2026-10-27-subsystem-port-tracker.md) |
 
 No complete feature has been compiled and runtime-verified for this target yet.
+
+2026-10-29: SpriteConfig capture/restore and discard/reload quarantine policy are
+implemented with focused tests. The current default installed JAR exposes world
+format249; a fresh full build against it fails. Exact42.22/world251 compilation
+and deployment validation require the matching target installation. See the
+[persistence adaptation guide](features/2026-10-29-player-sprite-config-and-quarantine-recovery.md).
 
 ## Reports
 
 | Date | Document |
 | --- | --- |
+| 2026-10-29 | [Player reconstruction versus native deserialization: weight and state coverage audit](reports/2026-10-29-player-reconstruction-deserialization-audit.md) |
 | 2026-10-28 | [Cross-build character reconstruction: failure paths and recovery design](reports/2026-10-28-cross-build-character-reconstruction.md) |
 | 2026-10-28 | [Follow-up review56: square mutation tracking/entity-ID cache (unapplied; review queue stopped)](reports/2026-10-28-merge-56-square-mutation-tracking.md) |
 | 2026-10-28 | [Follow-up review55: event-control engine metadata (applied)](reports/2026-10-28-merge-55-event-control-metadata.md) |

@@ -7,6 +7,12 @@ Every subsystem remains in scope, including smaller fixes and diagnostic feature
 
 ## Current checkpoint and workflow
 
+On 2026-10-29 the user authorized porting the 42.21.0 SpriteConfig codec and
+discard/reload policy. Four additional support sources were adapted while
+preserving target-specific behavior; see
+[persistence coverage and quarantine recovery](2026-10-29-player-sprite-config-and-quarantine-recovery.md).
+This does not implement historical dictionary or cross-build character recovery.
+
 Runtime startup found a backend schema mismatch: V6 rejects42.22 dictionary
 namespace metadata. The [V34 startup fix](../issues/2026-10-28-dictionary-build-constraint-startup.md)
 is prepared in the manager backend; no live migration was executed.

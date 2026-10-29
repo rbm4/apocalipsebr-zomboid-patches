@@ -16,12 +16,24 @@ final class ApocBRPlayerRelationalCodecs {
         "WallCoveringConfig","zombie.entity.components.crafting.WallCoveringConfig");
     static boolean supports(Object component) {
         String name=component instanceof ApocBRPlayerRelationalSnapshot.Node node?node.runtimeClass:component.getClass().getName();
-        return EMPTY.containsValue(name)||name.equals("zombie.entity.components.ui.UiConfig")||name.equals("zombie.entity.components.crafting.CraftBench");
+        return EMPTY.containsValue(name)||name.equals("zombie.entity.components.ui.UiConfig")||name.equals("zombie.entity.components.crafting.CraftBench")
+            ||name.equals("zombie.entity.components.spriteconfig.SpriteConfig");
     }
     static Map<String,Object> component(Object component) {
         if(!supports(component))throw new IllegalArgumentException("UNSUPPORTED_COMPONENT_STATE");
         Map<String,Object> state=new LinkedHashMap<>();
         switch(typeName(component)) {
+            case "SpriteConfig" -> {
+                // Native save writes a script reference/version and the current master flag.
+                // Persist a stable name, never a process-local dictionary short or live script.
+                Object script=get(component,"configScript");
+                state.put("hasScript",script!=null);
+                if(script!=null) {
+                    state.put("scriptFullType",call(script,"getScriptObjectFullType"));
+                    state.put("scriptVersion",call(script,"getScriptVersion"));
+                    state.put("wasLoadedAsMaster",call(component,"isMultiSquareMaster"));
+                }
+            }
             case "UiConfig" -> fields(state,component,"xuiSkinName","entityStyleName","uiEnabled");
             case "CraftBench" -> {
                 fields(state,component,"recipeTagQuery");

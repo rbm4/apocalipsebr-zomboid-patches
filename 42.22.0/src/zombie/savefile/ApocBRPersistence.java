@@ -199,7 +199,8 @@ final class ApocBRPersistence {
                 if(rejectedData(error)||runtimeFailures>=REPLAY_MAX_ATTEMPTS) {
                     journal.quarantine(entry.id());
                     log("REPLAY_QUARANTINED; operation="+entry.id()+"; kind="+entry.operation().kind()+"; attempts="+runtimeFailures
-                        +"; reloadBlocked="+(entry.operation().playerKey()!=null)+"; "+ApocBRPlayerRelationalMutations.writeFailure(error));
+                        +"; reloadBlocked=false; discarded=true; recovery="+(entry.operation().playerKey()!=null?"last_committed":"NONE")
+                        +"; "+ApocBRPlayerRelationalMutations.writeFailure(error));
                 } else {
                     report("REPLAY_OPERATION_RETRY",error instanceof SQLException sql?sql.getSQLState():null);pauseReplay(250);
                 }
