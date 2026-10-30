@@ -19,7 +19,13 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
     private int numElements;
     private final boolean isoObjectList;
     private static final boolean lookupTelemetry = Boolean.getBoolean("apocbr.telemetry.squareLookups.enabled");
+    private static final boolean exposureTelemetry = Boolean.parseBoolean(System.getProperty("apocbr.telemetry.arrayExposure.enabled", "true"));
+    private static final int exposureSampleLimit = Math.min(4096, Math.max(0, Integer.getInteger("apocbr.telemetry.arrayExposure.maxSamples", 128)));
+    private static final java.util.concurrent.atomic.AtomicInteger exposureSamples = new java.util.concurrent.atomic.AtomicInteger();
+    private static final StackWalker exposureWalker = StackWalker.getInstance();
+    private String apocbrExposureCaller;
     private boolean elementsExposed;
+    private long apocbrMutationVersion;
     private boolean identityIndexDirty = true;
     private IdentityHashMap<Object, Integer> identityPositions;
     private static final ClassValue<Boolean> identityEquals = new ClassValue<>() {
@@ -74,12 +80,14 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
     }
 
     private void objectIndexChanged() {
+        this.apocbrMutationVersion++;
         this.identityIndexDirty = true;
         // Release removed lifetimes immediately, even if no subsequent lookup occurs.
         if (this.identityPositions != null) this.identityPositions.clear();
-        if (this.isoObjectList && zombie.network.GameServer.server) {
-            zombie.entity.ServerIsoEntityRegistry.listChanged(this);
-        }
+    }
+
+    public long apocbrMutationVersion() {
+        return this.apocbrMutationVersion;
     }
 
     public boolean apocbrElementsExposed() {
@@ -153,6 +161,7 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
 
             this.elements = Arrays.copyOf(this.elements, capacity);
             this.elementsExposed = false;
+            this.apocbrExposureCaller = null;
         }
 
         this.elements[this.numElements] = e;
@@ -172,6 +181,7 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
 
                 this.elements = Arrays.copyOf(this.elements, capacity);
                 this.elementsExposed = false;
+            this.apocbrExposureCaller = null;
             }
 
             System.arraycopy(this.elements, index, this.elements, index + 1, this.numElements - index);
@@ -280,13 +290,42 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
         }
     }
 
+    /** Engine-only array traversal: do not retain or modify array slots through this view.
+     * Membership edits must use list methods, or notify apocbrElementsChanged after
+     * an explicitly managed raw edit before any ID/index consumer can run. */
+    public E[] apocbrReadOnlyElements() {
+        if (exposureTelemetry && this.isoObjectList && zombie.network.GameServer.server) {
+            zombie.ApocBRServerTelemetryLite.count("isoObjects.arrayExposure.auditedReads", 1L);
+        }
+        return this.elements;
+    }
+
+    public void apocbrElementsChanged() {
+        this.objectIndexChanged();
+    }
+
+    public void apocbrRecordExposureFallback() {
+        if (exposureTelemetry) zombie.ApocBRServerTelemetryLite.count(
+            "isoObjects.arrayExposure.fallbackCaller." + (this.apocbrExposureCaller == null ? "unsampled" : this.apocbrExposureCaller), 1L);
+    }
+
     public E[] getElements() {
+        if (!this.elementsExposed && exposureTelemetry && this.isoObjectList && zombie.network.GameServer.server) {
+            zombie.ApocBRServerTelemetryLite.count("isoObjects.arrayExposure.firstExposures", 1L);
+            int sample = exposureSamples.getAndUpdate(value -> value < exposureSampleLimit ? value + 1 : value);
+            if (sample < exposureSampleLimit) {
+                this.apocbrExposureCaller = exposureWalker.walk(frames -> frames
+                    .filter(frame -> !frame.getClassName().equals(PZArrayList.class.getName()))
+                    .findFirst().map(frame -> frame.getClassName() + "." + frame.getMethodName()).orElse("unknown"));
+                zombie.ApocBRServerTelemetryLite.count("isoObjects.arrayExposure.sampledLists", 1L);
+                zombie.ApocBRServerTelemetryLite.count("isoObjects.arrayExposure.firstCaller." + this.apocbrExposureCaller, 1L);
+            } else {
+                zombie.ApocBRServerTelemetryLite.count("isoObjects.arrayExposure.unsampledLists", 1L);
+            }
+        }
         // A retained raw array can be modified without any List method. Never cache it.
         this.elementsExposed = true;
         this.identityPositions = null;
-        if (this.isoObjectList && zombie.network.GameServer.server) {
-            zombie.entity.ServerIsoEntityRegistry.listExposed(this);
-        }
         return this.elements;
     }
 
@@ -302,6 +341,7 @@ public final class PZArrayList<E> extends AbstractList<E> implements List<E>, Ra
             int prefLength = oldLength + Math.max(minGrowth, prefGrowth);
             this.elements = Arrays.copyOf(this.elements, prefLength);
             this.elementsExposed = false;
+            this.apocbrExposureCaller = null;
             this.objectIndexChanged();
         }
     }

@@ -561,8 +561,11 @@ public abstract class GameEntity {
                         }
                     } else if (Core.debug) {
                         throw new IOException("Component with id '" + componentID + "' not found.");
+                    } else {
+                        zombie.savefile.ApocBRPlayerLoadQuality.issue("COMPONENT_SKIPPED");
                     }
                 } catch (Exception var11) {
+                    zombie.savefile.ApocBRPlayerLoadQuality.issue("COMPONENT_LOAD_FAILED");
                     ExceptionLogger.logException(var11);
                 }
 

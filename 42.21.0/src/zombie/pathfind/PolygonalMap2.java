@@ -144,7 +144,9 @@ public final class PolygonalMap2 {
     private final Path shortestPath = new Path();
     private final ConcurrentLinkedQueue<PathFindRequest> requestToMain = new ConcurrentLinkedQueue<>();
     private final HashMap<Mover, PathFindRequest> requestMap = new HashMap<>();
-    private final LineClearCollideMain lccMain = new LineClearCollideMain();
+    // Collision queries run on both the world thread and the NPC worker. Each caller
+    // thread reuses its own scratch geometry; live world data is still shared.
+    private final ThreadLocal<LineClearCollideMain> lccMain = ThreadLocal.withInitial(LineClearCollideMain::new);
     private final float[] tempFloats = new float[8];
     private final CollideWithObstacles collideWithObstacles = new CollideWithObstacles();
     public Clipper clipperThread;
@@ -1488,7 +1490,7 @@ public final class PolygonalMap2 {
                 LineDrawer.addLine(IsoPlayer.getInstance().getX(), IsoPlayer.getInstance().getY(), z, gridX, gridY, z, 1, 1, 1, null);
                 int flags = 9;
                 flags |= 2;
-                if (this.lccMain.isNotClear(this, IsoPlayer.getInstance().getX(), IsoPlayer.getInstance().getY(), gridX, gridY, z, null, flags)) {
+                if (this.lccMain.get().isNotClear(this, IsoPlayer.getInstance().getX(), IsoPlayer.getInstance().getY(), gridX, gridY, z, null, flags)) {
                     Vector2f v = this.resolveCollision(IsoPlayer.getInstance(), gridX, gridY, L_render.vector2f);
                     LineDrawer.addLine(v.x - 0.05F, v.y - 0.05F, z, v.x + 0.05F, v.y + 0.05F, z, 1.0F, 1.0F, 0.0F, null, false);
                 }
@@ -2180,7 +2182,7 @@ public final class PolygonalMap2 {
             vehicle = baseVehicle;
         }
 
-        return this.lccMain.isNotClear(this, fromX, fromY, toX, toY, z, vehicle, flags);
+        return this.lccMain.get().isNotClear(this, fromX, fromY, toX, toY, z, vehicle, flags);
     }
 
     public Vector2 getCollidepoint(float fromX, float fromY, float toX, float toY, int z, IsoMovingObject ignoreVehicle, int flags) {
@@ -2191,7 +2193,7 @@ public final class PolygonalMap2 {
             vehicle = baseVehicle;
         }
 
-        return this.lccMain.getCollidepoint(this, fromX, fromY, toX, toY, z, vehicle, flags);
+        return this.lccMain.get().getCollidepoint(this, fromX, fromY, toX, toY, z, vehicle, flags);
     }
 
     public boolean canStandAt(float x, float y, int z, IsoMovingObject ignoreVehicle, boolean ignoreDoors, boolean closeToWalls) {
@@ -2219,7 +2221,7 @@ public final class PolygonalMap2 {
     }
 
     public boolean canStandAt(float x, float y, int z, BaseVehicle ignoreVehicle, int flags) {
-        return this.lccMain.canStandAtOld(this, x, y, z, ignoreVehicle, flags);
+        return this.lccMain.get().canStandAtOld(this, x, y, z, ignoreVehicle, flags);
     }
 
     public boolean intersectLineWithVehicle(float x1, float y1, float x2, float y2, BaseVehicle vehicle, Vector2 out) {

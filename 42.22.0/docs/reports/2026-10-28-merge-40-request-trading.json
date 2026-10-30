@@ -1,0 +1,65 @@
+{
+  "review": 40,
+  "state": "approved-applied",
+  "path": "zombie/network/packets/RequestTradingPacket.java",
+  "recommendation": "Port the native request/accept/reject handshake together with the NPC adapter. Preserve native ConnectionPlayer sender ownership, pending-response checks for ordinary trades, and keep detached NPCs out of TradingManager.",
+  "affected_sources": [
+    "zombie/network/packets/RequestTradingPacket.java",
+    "zombie/network/packets/AcceptTradingPacket.java",
+    "zombie/network/packets/RejectTradingPacket.java",
+    "zombie/apocalipse/humans/ServerHumanTrading.java"
+  ],
+  "baseline_replacements": [
+    "zombie/network/packets/RequestTradingPacket.java",
+    "zombie/network/packets/AcceptTradingPacket.java",
+    "zombie/network/packets/RejectTradingPacket.java"
+  ],
+  "target_vanilla_sha256": "84358cead537eec52cd9b657d9b9aafc945458f7a9ee8bf01d2ef2610f8f7991",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-40-request-trading.diff",
+  "candidate_diff_sha256": "27cab2cebd5ee87779e85e64095b87085bee2fcba30f8b8afdade2045bcc3574",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-40-request-trading.md",
+  "native_changes": [
+    "Old RequestType enum replaced by three packet types.",
+    "PlayerRequestPacket uses sender ConnectionPlayer and destination OnlinePlayer, two shorts, no legacy index or request enum bytes.",
+    "Native ordinary-player Accept/Reject uses TradingRequests.response; preserve unsolicited/duplicate-response rejection."
+  ],
+  "candidate_fixture": {
+    "script": "tools/test_request_trading_port.py",
+    "passed": true,
+    "assertions": 131,
+    "scope": "Complete candidate handshake packets and actual NPC trading adapter/HumanTradeOffer, native PlayerRequestPacket/ConnectionPlayer/OnlinePlayer/Player/Requests/TradingRequests/TradingState; inventory/actor/Lua/transport/journal/DB doubles.",
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "applied_candidate_equivalence": true
+  },
+  "pending_integrations": [
+    "Reviews41-43: TradingUI add/remove/finalize target resolution and adapter interception.",
+    "Removed Trading field design remains open until all its old target-resolution uses are migrated.",
+    "Live client UI/network, actual durability/persistence/receipt and complete NPC lifecycle/thread validation remain pending."
+  ],
+  "scope_limits": [
+    "NPC lookup restricted to recognized reserved destination IDs in these trading packet parse overrides; global OnlinePlayer and shared PlayerRequestPacket stay vanilla.",
+    "No sales policy, quantities, item ownership, consent, receipt format or persistence ordering changes.",
+    "No review41-43 sources are part of this candidate."
+  ],
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "these changes support our bot engine, you may apply them to the new version",
+    "date": "2026-10-28",
+    "baseline_commits": {
+      "zombie/network/packets/RequestTradingPacket.java": "2e1008f551769a1681e5c7585aba470e96be61db",
+      "zombie/network/packets/AcceptTradingPacket.java": "960fd499c17e9c1720a76498f2d30267ade90d74",
+      "zombie/network/packets/RejectTradingPacket.java": "67deb11dfab0c5979d6293131bd29fcbf4a4d1dc"
+    },
+    "installed_files_modified": false,
+    "candidate_equivalence_files": 4
+  },
+  "target_source_hashes": {
+    "zombie/network/packets/RequestTradingPacket.java": "caa44163d001735f15a7a753565843e9bd3f5ea76915b1ef0d5bf122f48a24d2",
+    "zombie/network/packets/AcceptTradingPacket.java": "29137ecab23cb8d35c25433a883c780a8faae6b56791ca46b6bd85c04720550e",
+    "zombie/network/packets/RejectTradingPacket.java": "9809e079d64fd729d8c68757a50b193c46cf89f99674d455a49b8aa8bb403ba3",
+    "zombie/apocalipse/humans/ServerHumanTrading.java": "8ef4f28b766b8f05cb585288045155e52f26c7483c681b009112cb210cbef332"
+  }
+}

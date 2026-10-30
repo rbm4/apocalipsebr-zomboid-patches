@@ -1,0 +1,105 @@
+--- a/42.22.0/src/zombie/iso/IsoChunk.java
++++ b/42.22.0/src/zombie/iso/IsoChunk.java
+@@ -23,6 +23,7 @@
+ import java.util.Stack;
+ import java.util.concurrent.locks.ReentrantReadWriteLock;
+ import java.util.zip.CRC32;
++import zombie.ApocBRServerTelemetryLite;
+ import zombie.ChunkMapFilenames;
+ import zombie.FliesSound;
+ import zombie.GameProfiler;
+@@ -991,7 +992,9 @@
+                     chance = switch (SandboxOptions.instance.carSpawnRate.getValue()) {
+                         case 2 -> (int)Math.ceil(chance / 10.0F);
+                         case 3 -> (int)Math.ceil(chance / 1.5F);
++			case 4 -> 2;
+                         case 5 -> 2;
++			default -> 2;
+                     };
+                     if (SystemDisabler.doVehiclesEverywhere || DebugOptions.instance.vehicleSpawnEverywhere.getValue() || type.forceSpawn) {
+                         chance = 100;
+@@ -3208,11 +3211,17 @@
+         }
+ 
+         int to = 64;
++        long unloadSquaresStart = GameServer.server ? System.nanoTime() : 0L;
++        long unloadedMovingObjects = 0L;
++        long unloadedSquares = 0L, unloadedIsoObjects = 0L, unloadedStaticObjects = 0L;
++        long cleanupNanos = 0L, movingNanos = 0L, isoNanos = 0L, staticNanos = 0L, detachNanos = 0L;
++        long stageStarted = 0L;
+ 
+         for (int n = this.minLevel; n <= this.maxLevel; n++) {
+             for (int m = 0; m < 64; m++) {
+                 IsoGridSquare sq = this.squares[this.squaresIndexOfLevel(n)][m];
+                 if (sq != null) {
++                    if (GameServer.server) { unloadedSquares++; stageStarted = System.nanoTime(); }
+                     RainManager.RemoveAllOn(sq);
+                     sq.clearWater();
+                     sq.clearPuddles();
+@@ -3224,10 +3233,15 @@
+                         sq.zone.removeSquare(sq);
+                     }
+ 
++                    if (GameServer.server) { cleanupNanos += System.nanoTime() - stageStarted; stageStarted = System.nanoTime(); }
+                     ArrayList<IsoMovingObject> mov = sq.getMovingObjects();
++                    if (GameServer.server) {
++                        unloadedMovingObjects += mov.size();
++                    }
+ 
+                     for (int a = 0; a < mov.size(); a++) {
+                         IsoMovingObject obj = mov.get(a);
++                        boolean wasInSquareMovingList = obj.current == sq || obj.last == sq;
+                         if (obj instanceof IsoSurvivor) {
+                             IsoWorld.instance.currentCell.getSurvivorList().remove(obj);
+                             obj.Despawn();
+@@ -3246,28 +3260,47 @@
+                             VirtualVehicleManager.getInstance().addToMeta(vehicle);
+                         }
+ 
+-                        if (!mov.contains(obj)) {
++                        if (wasInSquareMovingList) {
+                             a--;
+                         }
+                     }
+ 
+                     mov.clear();
+ 
++                    if (GameServer.server) { movingNanos += System.nanoTime() - stageStarted; stageStarted = System.nanoTime(); }
+                     for (int i = 0; i < sq.getObjects().size(); i++) {
++                        if (GameServer.server) unloadedIsoObjects++;
+                         IsoObject objx = sq.getObjects().get(i);
+                         objx.removeFromWorldToMeta();
+                     }
+ 
++                    if (GameServer.server) { isoNanos += System.nanoTime() - stageStarted; stageStarted = System.nanoTime(); }
+                     for (int i = 0; i < sq.getStaticMovingObjects().size(); i++) {
++                        if (GameServer.server) unloadedStaticObjects++;
+                         IsoMovingObject objx = sq.getStaticMovingObjects().get(i);
+                         objx.removeFromWorld();
+                     }
+ 
++                    if (GameServer.server) { staticNanos += System.nanoTime() - stageStarted; stageStarted = System.nanoTime(); }
+                     this.disconnectFromAdjacentChunks(sq);
+                     sq.softClear();
+                     sq.chunk = null;
+-                }
+-            }
++                    if (GameServer.server) detachNanos += System.nanoTime() - stageStarted;
++                }
++            }
++        }
++
++        if (GameServer.server) {
++            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares", System.nanoTime() - unloadSquaresStart);
++            ApocBRServerTelemetryLite.count("chunks.unloadedMovingObjects", unloadedMovingObjects);
++            ApocBRServerTelemetryLite.count("chunks.unloadedSquares", unloadedSquares);
++            ApocBRServerTelemetryLite.count("chunks.unloadedIsoObjectAttempts", unloadedIsoObjects);
++            ApocBRServerTelemetryLite.count("chunks.unloadedStaticObjectAttempts", unloadedStaticObjects);
++            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.cleanup", cleanupNanos);
++            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.moving", movingNanos);
++            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.isoObjects", isoNanos);
++            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.staticObjects", staticNanos);
++            ApocBRServerTelemetryLite.recordPhase("map.chunk.unloadSquares.detach", detachNanos);
+         }
+ 
+         for (int i = 0; i < this.vehicles.size(); i++) {

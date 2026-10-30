@@ -1,0 +1,83 @@
+// Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
+package zombie.network.fields.hit;
+
+import zombie.characters.IsoZombie;
+import zombie.core.network.ByteBufferReader;
+import zombie.core.network.ByteBufferWriter;
+import zombie.network.IConnection;
+import zombie.network.JSONField;
+import zombie.network.fields.INetworkPacketField;
+import zombie.util.Type;
+
+public class Zombie extends Character implements INetworkPacketField {
+    @JSONField
+    protected short zombieFlags;
+    @JSONField
+    protected String attackOutcome;
+    @JSONField
+    protected String attackPosition;
+
+    public void set(short zombieFlags, String attackOutcome, String attackPosition) {
+        this.zombieFlags = zombieFlags;
+        this.attackOutcome = attackOutcome;
+        this.attackPosition = attackPosition;
+    }
+
+    public void set(IsoZombie zombie) {
+        super.set(zombie);
+        this.zombieFlags = 0;
+        this.zombieFlags = (short)(this.zombieFlags | (zombie.isStaggerBack() ? 1 : 0));
+        this.zombieFlags = (short)(this.zombieFlags | (zombie.isFakeDead() ? 2 : 0));
+        this.zombieFlags = (short)(this.zombieFlags | (zombie.isBecomeCrawler() ? 4 : 0));
+        this.zombieFlags = (short)(this.zombieFlags | (zombie.isCrawling() ? 8 : 0));
+        this.zombieFlags = (short)(this.zombieFlags | (zombie.isKnifeDeath() ? 16 : 0));
+        this.zombieFlags = (short)(this.zombieFlags | (zombie.isJawStabAttach() ? 32 : 0));
+        this.zombieFlags = (short)(this.zombieFlags | (zombie.getAttackDidDamage() ? 64 : 0));
+        this.attackOutcome = zombie.getAttackOutcome();
+        this.attackPosition = zombie.getPlayerAttackPosition();
+    }
+
+    @Override
+    public void parse(ByteBufferReader b, IConnection connection) {
+        super.parse(b, connection);
+        this.zombieFlags = b.getShort();
+        this.attackOutcome = b.getUTF();
+        this.attackPosition = b.getUTF();
+    }
+
+    @Override
+    public void write(ByteBufferWriter b) {
+        super.write(b);
+        b.putShort(this.zombieFlags);
+        b.putUTF(this.attackOutcome);
+        b.putUTF(this.attackPosition);
+    }
+
+    @Override
+    public void process() {
+        super.process();
+        this.getZombie().setAttackOutcome(this.attackOutcome);
+        this.getZombie().setPlayerAttackPosition(this.attackPosition);
+        this.getZombie().setStaggerBack((this.zombieFlags & 1) != 0);
+        this.getZombie().setFakeDead((this.zombieFlags & 2) != 0);
+        this.getZombie().setBecomeCrawler((this.zombieFlags & 4) != 0);
+        this.getZombie().setCrawler((this.zombieFlags & 8) != 0);
+        this.getZombie().setKnifeDeath((this.zombieFlags & 16) != 0);
+        this.getZombie().setJawStabAttach((this.zombieFlags & 32) != 0);
+        this.getZombie().setAttackDidDamage((this.zombieFlags & 64) != 0);
+    }
+
+    public IsoZombie getZombie() {
+        return Type.tryCastTo(this.getCharacter(), IsoZombie.class);
+    }
+
+    public static class Flags {
+        public static final short isStaggerBack = 1;
+        public static final short isFakeDead = 2;
+        public static final short isBecomeCrawler = 4;
+        public static final short isCrawling = 8;
+        public static final short isKnifeDeath = 16;
+        public static final short isJawStabAttach = 32;
+        public static final short AttackDidDamage = 64;
+    }
+}

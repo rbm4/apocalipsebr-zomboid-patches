@@ -42,6 +42,8 @@ if (-not (Test-Path -LiteralPath $GameJar)) { $GameJar = Join-Path $PZDir "java\
 
 $DeployRoot = if (Test-Path -LiteralPath (Join-Path $PZDir "java")) { Join-Path $PZDir "java" } else { $PZDir }
 $SrcRoot = Join-Path $ToolsDir "src"
+$PostgresDriver = Join-Path $ToolsDir "lib\postgresql-42.7.14.jar"
+$HikariPool = Join-Path $ToolsDir "lib\HikariCP-7.1.0.jar"
 $BackupDir = Join-Path $ToolsDir "backups\ApocalipseBrServer"
 # Keep the downloaded JDK beside the version directories so every current and
 # future patch version can reuse the same installation.
@@ -221,6 +223,8 @@ if ($Sources.Count -eq 0) {
 $ClassRoots = @($Sources | ForEach-Object { Get-RelativeClassPathForSource $_ })
 
 if ($Revert) {
+    & (Join-Path $ToolsDir 'tools\Set-PostgresRuntime.ps1') -PZDir $PZDir -Revert -DryRun:$DryRun
+    if ($DryRun) { Write-Host 'DRY RUN: Would remove patch classes.'; exit 0 }
     Write-Host "[*] Reverting server patch class overrides from $DeployRoot..." -ForegroundColor Yellow
     $totalRemoved = 0
     foreach ($rel in $ClassRoots) {
@@ -234,11 +238,21 @@ if ($Revert) {
     exit 0
 }
 
+if (-not (Test-Path -LiteralPath $PostgresDriver -PathType Leaf)) {
+    throw "PostgreSQL JDBC driver not found: $PostgresDriver. Restore the version's bundled lib directory."
+}
+if (-not (Test-Path -LiteralPath $HikariPool -PathType Leaf)) { throw "HikariCP JAR not found: $HikariPool" }
+$CompileClasspath = @($GameJar, $PostgresDriver, $HikariPool) -join [System.IO.Path]::PathSeparator
+
+# Validate launcher support before compilation or modifying the installation.
+& (Join-Path $ToolsDir 'tools\Set-PostgresRuntime.ps1') -PZDir $PZDir -DryRun
+
 $javac = Find-Javac
 if (-not $javac) { $javac = Install-Jdk }
 
 Write-Host "[*] PZ dir:  $PZDir" -ForegroundColor Cyan
 Write-Host "[*] JAR:     $GameJar" -ForegroundColor Cyan
+Write-Host "[*] JDBC:    $PostgresDriver" -ForegroundColor Cyan
 Write-Host "[*] Deploy:  $DeployRoot" -ForegroundColor Cyan
 Write-Host "[*] Sources: $($Sources.Count) server Java files" -ForegroundColor Cyan
 Write-Host "[*] javac:   $javac ($(& $javac -version 2>&1))" -ForegroundColor Cyan
@@ -254,7 +268,7 @@ $JavacArgs = @(
     "--release", "25",
     "-Xlint:none",
     "-implicit:none",
-    "-cp", $GameJar,
+    "-cp", $CompileClasspath,
     "-sourcepath", $SrcRoot,
     "-d", $OutputDir,
     "-encoding", "UTF-8"
@@ -297,6 +311,7 @@ if ($DryRun) {
     Write-Host ""
     Write-Host "=== Dry run complete. No files changed. ===" -ForegroundColor Green
 } else {
+    & (Join-Path $ToolsDir 'tools\Set-PostgresRuntime.ps1') -PZDir $PZDir
     Write-Host "[*] Deploying server class overrides..." -ForegroundColor Cyan
     New-Item -Path $BackupDir -ItemType Directory -Force | Out-Null
     $ts = Get-Date -Format "yyyyMMdd_HHmmss"

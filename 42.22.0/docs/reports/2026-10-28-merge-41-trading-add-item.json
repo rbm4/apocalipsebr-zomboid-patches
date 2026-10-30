@@ -1,0 +1,47 @@
+{
+  "review": 41,
+  "state": "approved-applied",
+  "path": "zombie/network/packets/TradingUIAddItemPacket.java",
+  "recommendation": "Retain the target sender-inventory lookup, item reset/consistency, version251 loading and exact native trade-pair validation; add only NPC destination fallback and existing offer-adapter interception.",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "target_vanilla_sha256": "a2a96789b126c79ee9ca540450b2fdd4e8f2f524a6c8ca5805bc50918b5165e6",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-41-trading-add-item.diff",
+  "candidate_diff_sha256": "d4b277303ae7855fcc03622a5730791329b6bb76cd6285019fdf630eda5828a7",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-41-trading-add-item.md",
+  "dependencies": [
+    "Review40 applied NPC OnlinePlayer resolver and trading adapter; reviews42-43 remain separate."
+  ],
+  "candidate_fixture": {
+    "script": "tools/test_trading_add_item_port.py",
+    "passed": true,
+    "assertions": 105,
+    "scope": "Complete candidate packet and applied handshake/adapter/offer; native player fields and exact extracted TradingManager pair/item methods with actor/inventory/transport/Lua/persistence doubles.",
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "applied_candidate_equivalence": true
+  },
+  "native_retained": [
+    "ConnectionPlayer sender, OnlinePlayer destination",
+    "Server resolves item ID only from sender inventory",
+    "item=null before each parse and native item consistency",
+    "TradingManager.isInvalid exact participant pair check",
+    "Client writes item ID; server writes item data; native client load version251",
+    "Native writer/client event/capability/reliability unchanged"
+  ],
+  "behavioral_difference_from_old": "Unknown/missing item IDs fail target-native isConsistent before processServer, so they do not reach the NPC adapter to cancel an existing session. Existing offer remains unchanged until valid edit/cancel/timeout.",
+  "scope_limits": [
+    "No global OnlinePlayer/PlayerRequestPacket patch or item ownership bypass.",
+    "No inventory consumption from add-item packet; only actual existing sale-finalization adapter can consume items.",
+    "Missing native item/actor/pair checks are not bypassed for NPCs.",
+    "Fixture inventory serialization and persistence are doubles; real engine item encoding/durability/UI remain unverified."
+  ],
+  "target_source_sha256": "0b57139a517b86b72eb97f6de962cec3913aeee0db86d8e996a188914c4da530",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "yes",
+    "date": "2026-10-28",
+    "baseline_commit": "300b6192bace4548c6e2673bcc845e63e981927f",
+    "installed_files_modified": false
+  }
+}

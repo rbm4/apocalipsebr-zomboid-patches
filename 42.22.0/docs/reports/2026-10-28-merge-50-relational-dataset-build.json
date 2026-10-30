@@ -1,0 +1,26 @@
+{
+  "review": 50,
+  "state": "approved-applied-unverified",
+  "path": "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "preimage_sha256": "e4dee93ab53e2eabbce4f1ed432eb7374a02e4d7413c81aa39d3cb3ce15399ab",
+  "candidate_diff_sha256": "29c35f935c700ee2892f100010be4fdba2d27c992404de7e3b781a677ee0bae1",
+  "change": "Label newly inserted source_dataset rows with target game_build42.22.0 instead of42.21.0.",
+  "verification": {
+    "source_contracts": true,
+    "full_game_jar_compile": false,
+    "target_runtime": false
+  },
+  "scope_limits": [
+    "ON CONFLICT(id) DO NOTHING retains existing dataset metadata, including reused older datasets.",
+    "No historical backfill or schema migration, namespace change, SQL execution or full persistence validation."
+  ],
+  "applied_sha256": "d452acadf8891059296afd78a0c79df55f42a2b4a22ca594f1f7320a1d7e1a7e",
+  "applied_candidate_equivalence": true,
+  "approval": {
+    "date": "2026-10-28",
+    "user_instruction": "yes",
+    "decision": "apply one-line new-dataset metadata correction"
+  }
+}
