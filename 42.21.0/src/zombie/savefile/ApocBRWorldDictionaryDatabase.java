@@ -276,10 +276,10 @@ public final class ApocBRWorldDictionaryDatabase {
                 throw new SQLException("Source dictionary read failed",failure instanceof SQLException sql?sql.getSQLState():"22000");}
         }
     }
-    /** Bounded foreign head discovery; the listener prepares each exact view before publishing metadata. */
+    /** Bounded compatible foreign head discovery; keep build support aligned with load(origin). */
     public List<Published> foreignHeads(int server)throws SQLException {
         try(Connection connection=connections.open()) {
-            try(PreparedStatement query=prepare(connection,"SELECT DISTINCT ON(namespace_id,server_id,save_key) namespace_id,id,identity_revision,server_id,save_key FROM player_rel.world_dictionary_runtime_view WHERE status='ready' AND server_id<>? ORDER BY namespace_id,server_id,save_key,identity_revision DESC,published_at DESC,id DESC LIMIT 257")) {
+            try(PreparedStatement query=prepare(connection,"SELECT DISTINCT ON(v.namespace_id,v.server_id,v.save_key) v.namespace_id,v.id,v.identity_revision,v.server_id,v.save_key FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.status='ready' AND v.server_id<>? AND n.game_build='42.21.0' AND n.world_version=249 AND n.dictionary_format_version=1 ORDER BY v.namespace_id,v.server_id,v.save_key,v.identity_revision DESC,v.published_at DESC,v.id DESC LIMIT 257")) {
                 bind(query,server);List<Published> result=new ArrayList<>();
                 try(ResultSet rows=query.executeQuery()){while(rows.next()){if(result.size()==256)throw new SQLException("Foreign dictionary discovery budget","54000");result.add(new Published(rows.getObject(1,UUID.class),rows.getObject(2,UUID.class),rows.getLong(3),rows.getInt(4),rows.getString(5)));}}
                 connection.commit();return List.copyOf(result);

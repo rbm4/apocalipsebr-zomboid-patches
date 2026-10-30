@@ -44,6 +44,14 @@ Pool configuration and credentials are the existing connector settings. Table na
 
 ## Listener and recovery
 
+Updated 2026-10-29: foreign discovery joins namespace metadata and accepts only
+42.21.0/world249/format1, matching the exact-view loader. A shared database may
+retain development's 42.22.0 dictionaries without sending the 42.21 listener
+into preparation failures and one-second reconnect retries. Unsupported views
+are filtered before the discovery budget is applied. Explicit payload references
+to unsupported dictionaries still fail preparation; this does not enable
+42.22-to-42.21 character or binary-payload compatibility.
+
 After successful publication, `ApocBR-dictionary-listener` starts as a daemon. It owns one extra physical PostgreSQL connection built from the same configured datasource, outside Hikari's query-pool limit, and uses auto-commit for LISTEN. Query operations borrow separate short-lived transactional pool leases, so even poolSize=1 does not deadlock behind a permanently leased listener connection. Include this additional connection per engine when sizing PostgreSQL connection limits.
 
 The listener commits its subscription first, then discovers current foreign ready heads. It repeats discovery after notifications, after every reconnect, and once per 60 seconds as a missed-notification/external-writer recovery check. Notification waiting uses pgJDBC `getNotifications(1000)`; it does not query dictionary tables each second. Event payloads are wake-up hints; canonical metadata is read from the V6/V7 tables. Multiple pending notifications returned together cause one reconciliation.
