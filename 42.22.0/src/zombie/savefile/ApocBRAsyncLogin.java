@@ -79,6 +79,7 @@ public final class ApocBRAsyncLogin {
     /** Called every server tick. No waiting, and at most two continuations / 2ms per tick. */
     public static void update() {
         simulationStarted=true;
+        ApocBRAsyncServerDatabase.update();
         secondFactors.entrySet().removeIf(e->e.getValue().expires()<System.nanoTime()
             ||GameServer.udpEngine.getActiveConnection(e.getKey().getConnectedGUID())!=e.getKey());
         long started=System.nanoTime();int completed=0;
@@ -94,6 +95,7 @@ public final class ApocBRAsyncLogin {
         }
     }
     public static void shutdown(){
+        ApocBRAsyncServerDatabase.shutdown();
         closed=true;simulationStarted=false;
         for(var p:pending.values()){p.result.cancel(false);p.consumed.countDown();}
         pending.clear();secondFactors.clear();io.shutdownNow();

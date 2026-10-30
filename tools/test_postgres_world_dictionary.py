@@ -2,13 +2,17 @@
 from postgres_test_support import inactive_persistence_stubs
 
 from pathlib import Path
-import os, re, subprocess, tempfile
+import argparse, os, re, subprocess, tempfile
+
+parser=argparse.ArgumentParser()
+parser.add_argument('--version', choices=['42.21.0','42.22.0'], default='42.21.0')
+VERSION=parser.parse_args().version
 
 ROOT=Path(__file__).resolve().parents[1]
-SRC=ROOT/'42.21.0/src/zombie'
+SRC=ROOT/VERSION/'src/zombie'
 GAME=Path(os.environ.get('APOCBR_TEST_GAME_JAR',r'Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar'))
 JDK=ROOT/'jdk/bin'
-LIB=ROOT/'42.21.0/lib'
+LIB=ROOT/VERSION/'lib'
 MIGRATION=ROOT.parent/'apocalipsebr-manager/manager/src/main/resources/db/game-runtime-migration/V6__Create_World_Dictionary.sql'
 if MIGRATION.exists():
     ddl=MIGRATION.read_text(encoding='utf-8')
@@ -71,19 +75,19 @@ public class DictionaryDatabaseTest {
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static Object proxy(Class<?> type,InvocationHandler handler){return Proxy.newProxyInstance(type.getClassLoader(),new Class[]{type},handler);}
  static class Fake {
-  int opened,closed,commits,rollbacks,notifications;boolean failNotify,failBatch;long revision;String name;
+  int opened,closed,commits,rollbacks,notifications;boolean failNotify,failBatch;long revision;String name;String build="TARGET_BUILD";int world=TARGET_WORLD,format=1;boolean wrongOwner;
   List<String> order=new ArrayList<>();Map<String,List<Object>> registries=new LinkedHashMap<>(),entries=new LinkedHashMap<>();
   List<Object[]> foreign=List.of();List<Object> viewValues;String event;String failPrefix;SQLException injected;
   List<List<Object>> states=new ArrayList<>(),overrides=new ArrayList<>(),registryStates=new ArrayList<>();
   ResultSet rows(List<Object[]> values){int[] index={-1};return (ResultSet)proxy(ResultSet.class,(p,m,a)->switch(m.getName()){
    case "next"->++index[0]<values.size();case "getString","getObject"->values.get(index[0])[(int)a[0]-1];case "getInt"->((Number)values.get(index[0])[(int)a[0]-1]).intValue();case "getLong"->((Number)values.get(index[0])[(int)a[0]-1]).longValue();default->zero(m.getReturnType());});}
   List<Object[]> select(String sql,Map<Integer,Object> a)throws Exception {
-   if(sql.startsWith("SELECT current_revision"))return List.<Object[]>of(new Object[]{revision,name});
+   if(sql.startsWith("SELECT current_revision"))return List.<Object[]>of(new Object[]{revision,name,build,world,format});
    if(sql.startsWith("SELECT v.id"))return viewValues!=null&&viewValues.get(0).equals(a.get(1))&&viewValues.get(3).equals(a.get(2))&&viewValues.get(4).equals(a.get(3))&&viewValues.get(2).equals(a.get(4))?List.<Object[]>of(new Object[]{viewValues.get(1)}):List.of();
    if(sql.contains("FROM player_rel.world_dictionary_registry_state WHERE"))return registryStates.stream().map(v->v.subList(2,5).toArray()).toList();
    if(sql.contains("FROM player_rel.world_dictionary_entry_state WHERE"))return states.stream().map(v->v.subList(2,14).toArray()).toList();
    if(sql.contains("FROM player_rel.world_dictionary_mod_override WHERE"))return overrides.stream().sorted(Comparator.comparing((List<Object> v)->v.get(2)+":"+v.get(3)+":"+v.get(4)).thenComparingInt(v->(Integer)v.get(6))).map(v->new Object[]{v.get(2),v.get(3),v.get(4),v.get(7)}).toList();
-   if(sql.startsWith("SELECT 1 FROM"))return List.of();
+   if(sql.startsWith("SELECT 1 FROM"))return wrongOwner?List.<Object[]>of(new Object[]{1}):List.of();
    if(sql.startsWith("SELECT family"))return registries.values().stream().map(v->new Object[]{v.get(1),v.get(2),v.get(3),v.get(4)}).toList();
    if(sql.startsWith("SELECT family,register_name,native_id"))throw new AssertionError("unreachable");
    if(sql.startsWith("SELECT DISTINCT"))return foreign;
@@ -228,7 +232,7 @@ public class DictionaryRolloverTest {
   @Override int write(String sql,List<Object> a)throws Exception {
    if(sql.startsWith("INSERT INTO player_rel.world_dictionary_namespace")) {
     active=(UUID)a.getFirst();var state=histories.computeIfAbsent(active,k->new DictionaryDatabaseTest.Fake());
-    registries=state.registries;entries=state.entries;revision=state.revision;viewValues=state.viewValues;states=state.states;overrides=state.overrides;registryStates=state.registryStates;
+    build=state.build;world=state.world;format=state.format;wrongOwner=state.wrongOwner;registries=state.registries;entries=state.entries;revision=state.revision;viewValues=state.viewValues;states=state.states;overrides=state.overrides;registryStates=state.registryStates;
    }
    int result=super.write(sql,a);
    if(sql.startsWith("UPDATE player_rel.world_dictionary_namespace"))histories.get(active).revision=revision;
@@ -331,6 +335,33 @@ public class DictionaryListenerTest {
 
 with tempfile.TemporaryDirectory(prefix='apocbr_dictionary_') as folder:
     target=Path(folder)
+    DATABASE=DATABASE.replace('TARGET_BUILD',VERSION).replace('TARGET_WORLD','251' if VERSION=='42.22.0' else '249')
+    if VERSION=='42.22.0':
+        ROLLOVER=ROLLOVER.replace('  check(fake.opened==fake.closed,"all leases returned");', r'''  // A build upgrade preserves IDs/history even when the local allocation did not change.
+  UUID legacy=UUID.randomUUID();var old=new DictionaryDatabaseTest.Fake();
+  old.build="42.21.0";old.world=249;old.revision=12;
+  old.entries.put("info::0",Arrays.asList(legacy,"info","",0,"item","Base.Old","Base","Old",1L));
+  fake.histories.put(legacy,old);
+  var upgrading=new ApocBRWorldDictionaryDatabase.Origin(legacy,"vanilla:"+legacy,3,"same-save");
+  Path buildMarker=marker.resolveSibling("build-namespace.txt");
+  var upgraded=publish(db,upgrading,snapshot,buildMarker);
+  check(!upgraded.namespace().equals(legacy)&&upgraded.revision()==1,"legacy namespace rotates on upgrade");
+  check(old.build.equals("42.21.0")&&old.world==249&&old.revision==12&&old.entries.get("info::0").get(5).equals("Base.Old"),"old build and dictionary history untouched");
+  check(publish(db,upgrading,snapshot,buildMarker).equals(upgraded),"build upgrade restart reuses exact replacement");
+  // Wrong owner, unknown build, mismatched version and unknown format must never rotate.
+  for(int failure=0;failure<4;failure++) {
+   UUID badId=UUID.randomUUID();var bad=new DictionaryDatabaseTest.Fake();bad.build="42.21.0";bad.world=249;
+   if(failure==0)bad.wrongOwner=true;
+   if(failure==1)bad.build="42.99.0";
+   if(failure==2)bad.world=251;
+   if(failure==3)bad.format=2;
+   fake.histories.put(badId,bad);Path badMarker=marker.resolveSibling("bad-"+failure+".txt");
+   int count=fake.histories.size();
+   try{publish(db,new ApocBRWorldDictionaryDatabase.Origin(badId,"vanilla:"+badId,3,"same-save"),snapshot,badMarker);throw new AssertionError("invalid namespace accepted");}
+   catch(SQLException expected){check(!(expected instanceof ApocBRWorldDictionaryDatabase.BuildChangedException),"configuration/ownership failure cannot rotate");}
+   check(!Files.exists(badMarker)&&count==fake.histories.size(),"invalid configuration leaves marker/history alone");
+  }
+  check(fake.opened==fake.closed,"all leases returned");''')
     fixtures=[]
     for name,body in [('DictionarySnapshotFixture.java',SNAPSHOT),('DictionaryDatabaseTest.java',DATABASE),('DictionaryRolloverTest.java',ROLLOVER)]:
         path=target/name;path.write_text(body,encoding='utf-8');fixtures.append(path)

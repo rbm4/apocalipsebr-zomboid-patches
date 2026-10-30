@@ -21,13 +21,13 @@ def main():
         if not record["source_applied"]:
             subprocess.run(["git", "apply", str(REPORT.with_suffix(".diff"))], cwd=tmp, check=True)
         source = target.read_text()
-        assert "'42.21.0'" not in source
-        assert source.count("n.game_build='42.22.0' AND n.world_version=251 AND n.dictionary_format_version=1") == 2
+        assert "OR (n.game_build='42.21.0' AND n.world_version=249)" in source
+        assert source.count("n.game_build='42.22.0' AND n.world_version=251 AND n.dictionary_format_version=1") == 1
         assert "VALUES(?,?,'42.22.0',251,1) ON CONFLICT(id) DO NOTHING" in source
         assert "SELECT current_revision,name,game_build,world_version,dictionary_format_version" in source
         start = source.index('                        if(!rows.next()')
         end = source.index('revision=Math.addExact(rows.getLong(1),1);', start)
-        guard = source[start:end] + 'return Math.addExact(rows.getLong(1),1);'
+        guard = 'boolean previousBuild;' + source[start:end] + 'return Math.addExact(rows.getLong(1),1);'
         # Execute the actual candidate namespace validation, with ResultSet data
         # supplied by a JDBC proxy. The complete repository is not compiled here.
         program = '''import java.sql.*; import java.lang.reflect.*;
@@ -55,6 +55,7 @@ public class DictionaryVersionGuard {
   run(true,"expected","42.22.0",251,1,100,true);
   run(false,"expected","42.22.0",251,1,0,false);
   run(true,"other","42.22.0",251,1,0,false);
+  run(true,"expected","42.21.0",249,1,0,true); // owner/build rollover is checked later
   run(true,"expected","42.21.0",251,1,0,false);
   run(true,"expected",null,251,1,0,false);
   run(true,"expected","42.22.0",249,1,0,false);

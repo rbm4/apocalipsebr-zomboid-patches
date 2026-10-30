@@ -28,6 +28,8 @@ this index when the target implementation has been verified.
 
 | Date | Document |
 | --- | --- |
+| 2026-10-29 | [BeyondTen character-scoped Lua entity persistence](features/2026-10-29-beyondten-character-entities.md) |
+| 2026-10-29 | [Historical dictionary reads and automatic namespace rollover on build upgrade](features/2026-10-29-historical-dictionary-compatibility.md) |
 | 2026-10-29 | [Player reconstruction subtype initialization and health/time baselines](features/2026-10-29-player-reconstruction-subtypes-and-health.md) |
 | 2026-10-29 | [Player reconstruction RGB, visual finalization and identity/XP baselines](features/2026-10-29-player-reconstruction-visuals-and-progression.md) |
 | 2026-10-29 | [Player reconstruction component membership and equipment lifecycle](features/2026-10-29-player-reconstruction-lifecycle.md) |
@@ -138,6 +140,7 @@ Applied: [review38 NPC combat and reserved IDs](reports/2026-10-28-merge-38-play
 
 | Date | Issue |
 | --- | --- |
+| 2026-10-29 | [RequestUserLog simulation-thread SQL rejection: asynchronous read/reply](issues/2026-10-29-userlog-simulation-thread-sql.md) |
 | 2026-10-28 | [Dictionary startup build constraint: backend V34 correction](issues/2026-10-28-dictionary-build-constraint-startup.md) |
 
 Remaining limitations are tracked in the subsystem tracker and linked reports.

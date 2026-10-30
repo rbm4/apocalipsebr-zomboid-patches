@@ -48,7 +48,7 @@ public final class ApocBRWorldDictionaryMirror {
         }
         var origin=new ApocBRWorldDictionaryDatabase.Origin(namespace,"vanilla:"+namespace,configured.serverId(),configured.save());
         try{return database.publish(origin,snapshot);}
-        catch(ApocBRWorldDictionaryDatabase.HistoryChangedException changed) {
+        catch(ApocBRWorldDictionaryDatabase.HistoryChangedException|ApocBRWorldDictionaryDatabase.BuildChangedException changed) {
             UUID replacement=UUID.randomUUID();
             // Persist before publication so a failed DB attempt/restart reuses this incarnation.
             Path temporary=Files.createTempFile(marker.toAbsolutePath().getParent(),"dictionary-namespace-",".tmp");
@@ -57,7 +57,8 @@ public final class ApocBRWorldDictionaryMirror {
                 try{Files.move(temporary,marker,StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);}
                 catch(AtomicMoveNotSupportedException unsupported){Files.move(temporary,marker,StandardCopyOption.REPLACE_EXISTING);}
             }finally{Files.deleteIfExists(temporary);}
-            log("HISTORY_REPLACED; serverId="+configured.serverId()+"; previousNamespace="+namespace+"; namespace="+replacement);
+            log((changed instanceof ApocBRWorldDictionaryDatabase.BuildChangedException?"BUILD_REPLACED":"HISTORY_REPLACED")
+                +"; serverId="+configured.serverId()+"; previousNamespace="+namespace+"; namespace="+replacement);
             return database.publish(new ApocBRWorldDictionaryDatabase.Origin(replacement,"vanilla:"+replacement,configured.serverId(),configured.save()),snapshot);
         }
     }

@@ -1,9 +1,13 @@
 """Actual dictionary getters, decode scopes and exact-view JDBC reads; no live database."""
 from pathlib import Path
-import os, subprocess, tempfile
+import argparse, os, subprocess, tempfile
+
+parser=argparse.ArgumentParser()
+parser.add_argument('--version', choices=['42.21.0','42.22.0'], default='42.21.0')
+VERSION=parser.parse_args().version
 
 ROOT=Path(__file__).resolve().parents[1]
-SRC=ROOT/'42.21.0/src/zombie'
+SRC=ROOT/VERSION/'src/zombie'
 JDK=ROOT/'jdk/bin'
 GAME=Path(os.environ.get('APOCBR_TEST_GAME_JAR',r'Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar'))
 HARNESS=r'''
@@ -62,7 +66,7 @@ public class DictionaryDecodeTest {
  static Object zero(Class<?> type){if(type==boolean.class)return false;if(type==int.class)return 0;if(type==long.class)return 0L;return null;}
  static Object proxy(Class<?> type,InvocationHandler handler){return Proxy.newProxyInstance(type.getClassLoader(),new Class[]{type},handler);}
  static class Database {
-  ApocBRPayloadProvenance origin;ApocBRWorldDictionarySnapshot snapshot;int opened,closed,commits,rollbacks,queries;boolean fail;
+  ApocBRPayloadProvenance origin;ApocBRWorldDictionarySnapshot snapshot;int opened,closed,commits,rollbacks,queries;boolean fail;String build="42.21.0";int world=249,format=1;
   CountDownLatch started,release;
   Database(ApocBRPayloadProvenance origin){this.origin=origin;snapshot=snapshot("Base.Axe");}
   ResultSet rows(List<Object[]> values){int[] index={-1};return (ResultSet)proxy(ResultSet.class,(p,m,a)->switch(m.getName()){
@@ -75,7 +79,8 @@ public class DictionaryDecodeTest {
      if(n.getName().equals("setQueryTimeout")){check(b[0].equals(5),"bounded dictionary query");return null;}
      if(n.getName().equals("executeQuery")) {
       queries++;if(fail)throw new SQLException("private JDBC detail","08006");
-      if(sql.startsWith("SELECT v.identity_revision")){check(sql.contains("v.status='ready'")&&sql.contains("n.world_version=249"),"exact ready compatible source view required");return rows(args.get(1).equals(origin.namespaceId())&&args.get(2).equals(origin.viewId())&&args.get(3).equals(origin.serverId())?List.<Object[]>of(new Object[]{1L}):List.of());}
+      if(sql.startsWith("SELECT v.identity_revision")){check(sql.contains("v.status='ready'")&&sql.contains("n.world_version=249"),"exact ready compatible source view required");boolean compatible=(build.equals("42.21.0")&&world==249&&(sql.contains("n.game_build='42.21.0'")||!sql.contains("42.22.0")))||(build.equals("42.22.0")&&world==251&&sql.contains("n.game_build='42.22.0'"));
+       return rows(compatible&&format==1&&args.get(1).equals(origin.namespaceId())&&args.get(2).equals(origin.viewId())&&args.get(3).equals(origin.serverId())?List.<Object[]>of(new Object[]{1L}):List.of());}
       if(sql.startsWith("SELECT s.family"))return rows(snapshot.registries().stream().map(r->new Object[]{r.family(),r.name(),r.nextId(),r.maxLength()}).toList());
       if(sql.contains("mod_override"))return rows(List.of());
       if(sql.startsWith("SELECT e.family")){check(args.get(1).equals(origin.viewId())&&args.get(2).equals(origin.namespaceId())&&args.get(3).equals(1L)&&sql.contains("e.created_revision<=?"),"historical identity catalog filtered by view revision");return rows(snapshot.entries().stream().map(e->new Object[]{e.family(),e.register(),e.id(),e.kind(),e.key(),e.module(),e.name(),e.loaded(),e.mod(),e.vanilla(),e.modded(),e.obsolete(),e.removed(),e.overridesPresent(),e.version()}).toList());}
@@ -115,6 +120,18 @@ public class DictionaryDecodeTest {
  public static void main(String[] args)throws Exception{routing();database();System.out.println("Dictionary decode checks="+checks);}
 }
 '''
+if VERSION=='42.22.0':
+    HARNESS=HARNESS.replace('  db.fail=true;try{repository.load(origin);', r'''  db.build="42.22.0";db.world=251;
+  check(repository.load(origin).equals(db.snapshot),"current target dictionary remains readable");
+  for(int scenario=0;scenario<4;scenario++) {
+   db.build=scenario==0?"42.21.0":scenario==1?"42.22.0":scenario==2?"42.99.0":"42.21.0";
+   db.world=scenario==0?251:249;db.format=scenario==3?2:1;
+   try{repository.load(origin);throw new AssertionError("unsupported build/world/format accepted");}catch(SQLException expected){checks++;}
+  }
+  db.build="42.21.0";db.world=249;db.format=1;
+  db.fail=true;try{repository.load(origin);''')
+    assert "OR (n.game_build='42.21.0' AND n.world_version=249)" in (SRC/'savefile/ApocBRWorldDictionaryDatabase.java').read_text()
+
 with tempfile.TemporaryDirectory(prefix='apocbr_decode_') as folder:
     target=Path(folder)
     harness=target/'DictionaryDecodeTest.java';harness.write_text(HARNESS,encoding='utf-8')

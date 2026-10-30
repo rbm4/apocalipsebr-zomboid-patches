@@ -5,9 +5,13 @@ from pathlib import Path
 import os
 import subprocess
 import tempfile
+import argparse
 from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
+parser = argparse.ArgumentParser()
+parser.add_argument('--version', default='42.21.0', choices=['42.21.0', '42.22.0'])
+VERSION = parser.parse_args().version
 GAME = Path(os.environ.get('APOCBR_TEST_GAME_JAR', r'Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar'))
 MOD = Path(os.environ.get('APOCBR_TEST_BEYONDTEN', r'C:\Users\ricar\Zomboid\Workshop\apocbr\Contents\mods\BeyondTen\42'))
 
@@ -112,6 +116,14 @@ with tempfile.TemporaryDirectory(prefix='apocbr_mod_entities_') as folder:
           public static class Platform {public se.krka.kahlua.vm.KahluaTable newTable(){return new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());}}
           public static Platform platform=new Platform();public static se.krka.kahlua.vm.KahluaTable env=platform.newTable();}''',
         'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static boolean server=true;}',
+        'zombie/characters/IsoPlayer.java': 'package zombie.characters; public class IsoPlayer {}',
+        'zombie/savefile/ApocBRPlayerRelationalMutations.java': '''package zombie.savefile;
+          public class ApocBRPlayerRelationalMutations {
+            record Candidate(String world,String identity,int slot,boolean coop) {}
+            record EntityContext(Candidate candidate,java.util.UUID session,java.util.UUID character) {}
+            static EntityContext entityContext(zombie.characters.IsoPlayer player){return null;}
+            static boolean entityContextCurrent(EntityContext context){return true;}
+          }''',
         'zombie/savefile/ApocBRPersistence.java': '''package zombie.savefile; public class ApocBRPersistence {
           static boolean accept=true;static java.util.List<Runnable> tasks=new java.util.ArrayList<>();
           static boolean request(Runnable task){if(!accept)return false;tasks.add(task);return true;}
@@ -125,7 +137,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_mod_entities_') as folder:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(contents, encoding='utf-8')
         sources.append(path)
-    sources.append(ROOT / '42.21.0/src/zombie/savefile/ApocBRModEntities.java')
+    sources.append(ROOT / VERSION / 'src/zombie/savefile/ApocBRModEntities.java')
     subprocess.run([str(ROOT/'jdk/bin/javac.exe'), '--release', '25', '-cp', str(GAME), '-d', folder, *map(str, sources)], check=True)
     subprocess.run([str(ROOT/'jdk/bin/java.exe'), '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.ModEntitiesTest'], check=True, timeout=30)
 
@@ -133,8 +145,9 @@ lua = LuaRuntime()
 lua.execute('''
 function isServer() return true end
 function require(name) return ApocBREntities end
-Events = {OnTick = {Add = function(fn) tick = fn end}}
-local nextId = 0
+Events = {OnTickEvenPaused = {Add = function(fn) tick = fn end},
+          OnServerStarted = {Add = function(fn) startup = fn end}}
+nextId = 0
 requests = {}; responses = {}; reject = false
 ApocBRModEntities = {
  define = function(name, definition) return true end,
@@ -151,6 +164,9 @@ lua.execute((MOD / 'media/lua/server/ApocBR/Entities.lua').read_text(encoding='u
 lua.execute((MOD / 'media/lua/server/BeyondTen/Persistence/MasteryEntity.lua').read_text(encoding='utf-8'))
 lua.execute('''
 assert(next(requests) == nil) -- Scaffold causes no automatic DB operations.
+startup()
+responses = {{id='1', status='OK'}}; tick()
+requests = {}; nextId = 0
 local repo = BeyondTenPersistence.Mastery
 local entity = repo:new({character_id='trusted', perk_id='Aiming', xp=10})
 assert(entity:isDirty() and entity:getRevision() == '0')

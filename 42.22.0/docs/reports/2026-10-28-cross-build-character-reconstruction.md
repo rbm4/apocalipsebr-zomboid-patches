@@ -6,6 +6,13 @@ Review56 remains unapplied. See the
 [subsystem tracker](../features/2026-10-27-subsystem-port-tracker.md) and
 [build checkpoint](2026-10-28-build-check.md).
 
+2026-10-29 update: the dictionary publication/read portion below is now
+implemented and fixture-validated in the [historical dictionary compatibility guide](../features/2026-10-29-historical-dictionary-compatibility.md).
+Supported42.21 namespaces roll over on target publication; exact historical
+source views are readable. The broader recovery design and real character
+login/save validation remain pending. The failure table below records the
+original investigation state, prior to that dictionary fix.
+
 ## What already permits the upgrade
 
 [RelationalReader](../../src/zombie/savefile/ApocBRPlayerRelationalReader.java)

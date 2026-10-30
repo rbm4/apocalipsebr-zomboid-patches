@@ -8,6 +8,7 @@ import se.krka.kahlua.vm.JavaFunction;
 import se.krka.kahlua.vm.KahluaTable;
 import zombie.Lua.LuaManager;
 import zombie.network.GameServer;
+import zombie.characters.IsoPlayer;
 
 /** Server Lua entity boundary. Only detached scalar requests reach the existing replay worker. */
 public final class ApocBRModEntities {
@@ -34,6 +35,8 @@ public final class ApocBRModEntities {
         bind(api,"define",2,(f)->define(text(f.get(0)),table(f.get(1))));
         bind(api,"submit",5,(f)->submit(text(f.get(0)),text(f.get(1)),table(f.get(2)),table(f.get(3)),text(f.get(4))));
         bind(api,"poll",0,(f)->poll());
+        bind(api,"character",1,(f)->character(player(f.get(0))));
+        bind(api,"submitCharacter",5,(f)->submitCharacter(text(f.get(0)),text(f.get(1)),player(f.get(2)),text(f.get(3)),table(f.get(4))));
         LuaManager.env.rawset("ApocBRModEntities",api);
     }
     private interface Call {Object run(se.krka.kahlua.vm.LuaCallFrame frame);}
@@ -48,6 +51,116 @@ public final class ApocBRModEntities {
     private static KahluaTable table(Object value){if(!(value instanceof KahluaTable t))throw new IllegalArgumentException("Table required");return t;}
     private static String identifier(String value){if(!value.matches("[a-z][a-z0-9_]{0,47}")||value.equals("revision"))throw new IllegalArgumentException("Invalid mapping identifier");return value;}
     private static String quote(String value){return "\""+value+"\"";}
+    private static IsoPlayer player(Object value){if(!(value instanceof IsoPlayer p))throw new IllegalArgumentException("Server player required");return p;}
+    private static KahluaTable character(IsoPlayer player) {
+        var context=ApocBRPlayerRelationalMutations.entityContext(player);
+        Map<String,Object> result=new LinkedHashMap<>();
+        result.put("status",context==null?"IDENTITY_PENDING":"OK");
+        if(context!=null){result.put("characterId",context.character().toString());result.put("session",context.session().toString());}
+        return (KahluaTable)lua(result);
+    }
+    private record Row(Map<String,Object> values,long revision) {}
+    private static Object submitCharacter(String name,String action,IsoPlayer player,String session,KahluaTable input) {
+        Model model=models.get(name);if(model==null)throw new IllegalArgumentException("Unknown entity");
+        if(!Set.of("loadOrCreate","saveAll","patch").contains(action))throw new IllegalArgumentException("Unknown character operation");
+        if(model.fields().stream().noneMatch(f->f.name().equals("character_id")&&f.type().equals("uuid")&&f.key()))throw new IllegalArgumentException("Character UUID ID required");
+        var context=ApocBRPlayerRelationalMutations.entityContext(player);
+        if(context==null)return admission(false,"IDENTITY_PENDING");
+        if(!context.session().toString().equals(session))return admission(false,"STALE_SESSION");
+        List<Row> rows=new ArrayList<>();Set<Map<String,Object>> seen=new HashSet<>();
+        var iterator=input.iterator();
+        while(iterator.advance()) {
+            if(rows.size()>=256)throw new IllegalArgumentException("Too many character rows");
+            KahluaTable row=table(iterator.getValue()),values=table(row.rawget("values"));
+            // The character key comes exclusively from the authoritative binding.
+            if(values.rawget("character_id")!=null)throw new IllegalArgumentException("Character ID is server managed");
+            KahluaTable detached=LuaManager.platform.newTable();var fields=values.iterator();
+            while(fields.advance())detached.rawset(fields.getKey(),fields.getValue());
+            detached.rawset("character_id",context.character().toString());
+            long revision=Long.parseLong(text(row.rawget("revision")));
+            if(revision<0||revision==Long.MAX_VALUE)throw new IllegalArgumentException("Invalid revision");
+            if(action.equals("loadOrCreate")&&revision!=0)throw new IllegalArgumentException("Seeds require revision zero");
+            Map<String,Object> copied=copy(model,detached,false,action.equals("patch")&&revision>0),keys=copy(model,keysTable(model,copied),true);
+            if(!seen.add(keys))throw new IllegalArgumentException("Duplicate character row");
+            if(action.equals("patch")&&revision>0&&copied.size()==keys.size())throw new IllegalArgumentException("Patch fields required");
+            rows.add(new Row(copied,revision));
+        }
+        if(rows.isEmpty())throw new IllegalArgumentException("Character rows required");
+        if(outstanding.get()>=LIMIT)return admission(false,"BUSY");
+        String id=Long.toString(++sequence);outstanding.incrementAndGet();
+        List<Row> snapshot=List.copyOf(rows);
+        if(!ApocBRPersistence.request(()->executeCharacter(id,model,action,context,snapshot))) {
+            outstanding.decrementAndGet();return admission(false,"UNAVAILABLE");
+        }
+        return admission(true,id);
+    }
+    private static KahluaTable keysTable(Model model,Map<String,Object> values) {
+        KahluaTable keys=LuaManager.platform.newTable();
+        for(Field field:model.keys())keys.rawset(field.name(),values.get(field.name()) instanceof UUID id?id.toString():values.get(field.name()));
+        return keys;
+    }
+    private static List<Object> characterRows(Connection connection,Model model,UUID character)throws SQLException {
+        List<Object> result=new ArrayList<>();
+        try(PreparedStatement statement=prepare(connection,"SELECT "+model.columns()+",revision FROM "+model.target()+" WHERE character_id=? ORDER BY "+String.join(",",model.keys().stream().map(f->quote(f.name())).toList())+" LIMIT 257")) {
+            statement.setObject(1,character);
+            try(ResultSet rows=statement.executeQuery()) {
+                while(rows.next()) {
+                    if(result.size()>=256)throw new SQLException("Character row limit","22003");
+                    long revision=rows.getLong("revision");if(revision<=0||revision==Long.MAX_VALUE)throw new SQLException("Invalid revision","22003");
+                    result.add(Map.of("values",read(rows,model),"revision",Long.toString(revision)));
+                }
+            }
+        }
+        return result;
+    }
+    private static boolean activeCharacter(Connection connection,ApocBRPlayerRelationalMutations.EntityContext context)throws SQLException {
+        var c=context.candidate();
+        // Hold the slot lock through commit, serializing initialization and character replacement.
+        try(PreparedStatement statement=prepare(connection,"SELECT p.active_character_id FROM player_rel.player_slot p JOIN player_rel.character c ON c.id=p.active_character_id WHERE p.world=? AND p.identity_mode=? AND p.identity_key=? AND p.player_index=? FOR UPDATE OF p")) {
+            statement.setObject(1,c.world());statement.setObject(2,c.coop()?"steam_coop":"username");
+            statement.setObject(3,c.identity());statement.setObject(4,c.slot());
+            try(ResultSet rows=statement.executeQuery()){return rows.next()&&context.character().equals(rows.getObject(1,UUID.class));}
+        }
+    }
+    private static void writeCharacterRow(Connection connection,Model model,Row row)throws SQLException {
+        long expected=row.revision();String sql;
+        List<Field> changed=model.fields().stream().filter(f->!f.key()&&row.values().containsKey(f.name())).toList();
+        if(expected==0)sql="INSERT INTO "+model.target()+" ("+model.columns()+",revision) VALUES ("+String.join(",",Collections.nCopies(model.fields().size(),"?"))+",1) ON CONFLICT DO NOTHING";
+        else sql="UPDATE "+model.target()+" SET "+String.join(",",changed.stream().map(f->quote(f.name())+"=?").toList())+(changed.isEmpty()?"":",")+"revision=revision+1 WHERE "+model.where()+" AND revision=?";
+        try(PreparedStatement statement=prepare(connection,sql)) {
+            int index=1;
+            for(Field field:expected==0?model.fields():changed)statement.setObject(index++,row.values().get(field.name()));
+            if(expected!=0){index=bindKeys(statement,index,model,row.values());statement.setLong(index,expected);}
+            if(statement.executeUpdate()!=1)throw new SQLException("Entity revision conflict","40001");
+        }
+    }
+    private static void executeCharacter(String id,Model model,String action,ApocBRPlayerRelationalMutations.EntityContext context,List<Row> input) {
+        Map<String,Object> result=new LinkedHashMap<>();result.put("id",id);boolean committing=false;
+        try(Connection connection=ApocBRPostgresConnector.borrowPlayerConnection()) {
+            try {
+                if(!ApocBRPlayerRelationalMutations.entityContextCurrent(context)) {
+                    result.put("status","STALE_SESSION");connection.rollback();
+                } else if(!activeCharacter(connection,context)) {
+                    result.put("status","IDENTITY_PENDING");connection.rollback();
+                } else {
+                    validate(connection,model);
+                    boolean patch=action.equals("patch");
+                    List<Object> existing=patch?List.of():characterRows(connection,model,context.character());
+                    boolean imported=action.equals("loadOrCreate")&&existing.isEmpty();
+                    if(patch||action.equals("saveAll")||imported)for(Row row:input)writeCharacterRow(connection,model,row);
+                    // Patch acknowledgements cover only submitted rows; no full collection reread.
+                    result.put("rows",patch?input.stream().map(row->Map.of("values",row.values(),"revision",Long.toString(row.revision()+1))).toList():action.equals("saveAll")||imported?characterRows(connection,model,context.character()):existing);
+                    result.put("status","OK");result.put("imported",imported);
+                    committing=true;connection.commit();
+                }
+            }catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException ignored){}throw failure;}
+        }catch(SQLException failure) {
+            ApocBRPersistence.failed(failure);result.clear();result.put("id",id);
+            String state=failure.getSQLState();
+            result.put("status",committing?"OUTCOME_UNKNOWN":"40001".equals(state)?"CONFLICT":state!=null&&state.startsWith("42")?"SCHEMA_ERROR":"DATABASE_ERROR");
+        }catch(RuntimeException failure){result.clear();result.put("id",id);result.put("status","INVALID_DATA");}
+        completed.add(Collections.unmodifiableMap(result));
+    }
     private static Object define(String name,KahluaTable declaration) {
         if(name.length()>128||name.isBlank())throw new IllegalArgumentException("Invalid entity name");
         String physical=identifier(text(declaration.rawget("table")));
@@ -84,21 +197,25 @@ public final class ApocBRModEntities {
         };
     }
     private static Map<String,Object> copy(Model model,KahluaTable input,boolean keysOnly) {
+        return copy(model,input,keysOnly,false);
+    }
+    private static Map<String,Object> copy(Model model,KahluaTable input,boolean keysOnly,boolean partial) {
         Map<String,Object> result=new LinkedHashMap<>();var iterator=input.iterator();
         while(iterator.advance()) {
             String name=text(iterator.getKey());
             Field field=model.fields().stream().filter(f->f.name().equals(name)&&(!keysOnly||f.key())).findFirst().orElseThrow(()->new IllegalArgumentException("Unknown field"));
             result.put(name,scalar(field,iterator.getValue()));
         }
-        for(Field f:keysOnly?model.keys():model.fields())if(!result.containsKey(f.name()))throw new IllegalArgumentException("Missing field: "+f.name());
+        if(!partial)for(Field f:keysOnly?model.keys():model.fields())if(!result.containsKey(f.name()))throw new IllegalArgumentException("Missing field: "+f.name());
         return Collections.unmodifiableMap(result);
     }
     private static Object submit(String name,String action,KahluaTable keyTable,KahluaTable valuesTable,String revision) {
         Model model=models.get(name);if(model==null)throw new IllegalArgumentException("Unknown entity");
-        if(!Set.of("validate","find","save","delete").contains(action))throw new IllegalArgumentException("Unknown operation");
+        if(!Set.of("validate","find","save","patch","delete").contains(action))throw new IllegalArgumentException("Unknown operation");
         long expected=Long.parseLong(revision);if(expected<0||expected==Long.MAX_VALUE)throw new IllegalArgumentException("Invalid revision");
         Map<String,Object> keys=action.equals("validate")?Map.of():copy(model,keyTable,true);
-        Map<String,Object> values=action.equals("save")?copy(model,valuesTable,false):Map.of();
+        Map<String,Object> values=action.equals("save")?copy(model,valuesTable,false):action.equals("patch")?copy(model,valuesTable,false,true):Map.of();
+        if(action.equals("patch")&&(expected==0||values.isEmpty()||model.keys().stream().anyMatch(f->values.containsKey(f.name()))))throw new IllegalArgumentException("Existing revision and non-ID patch fields required");
         if(action.equals("save"))for(Field key:model.keys())if(!keys.get(key.name()).equals(values.get(key.name())))throw new IllegalArgumentException("Entity ID changed");
         if(outstanding.get()>=LIMIT)return admission(false,"BUSY");
         String id=Long.toString(++sequence);outstanding.incrementAndGet();
@@ -133,10 +250,10 @@ public final class ApocBRModEntities {
                     String sql;
                     if(action.equals("delete"))sql="DELETE FROM "+model.target()+" WHERE "+model.where()+" AND revision=?";
                     else if(expected==0)sql="INSERT INTO "+model.target()+" ("+model.columns()+",revision) VALUES ("+String.join(",",Collections.nCopies(model.fields().size(),"?"))+",1) ON CONFLICT DO NOTHING";
-                    else sql="UPDATE "+model.target()+" SET "+String.join(",",model.fields().stream().filter(f->!f.key()).map(f->quote(f.name())+"=?").toList())+(model.fields().size()==model.keys().size()?"":",")+"revision=revision+1 WHERE "+model.where()+" AND revision=?";
+                    else sql="UPDATE "+model.target()+" SET "+String.join(",",model.fields().stream().filter(f->!f.key()&&(!action.equals("patch")||values.containsKey(f.name()))).map(f->quote(f.name())+"=?").toList())+(model.fields().size()==model.keys().size()?"":",")+"revision=revision+1 WHERE "+model.where()+" AND revision=?";
                     try(PreparedStatement statement=prepare(connection,sql)) {
                         int index=1;
-                        if(action.equals("save"))for(Field field:model.fields())if(expected==0||!field.key())statement.setObject(index++,values.get(field.name()));
+                        if(action.equals("save")||action.equals("patch"))for(Field field:model.fields())if((expected==0||!field.key())&&values.containsKey(field.name()))statement.setObject(index++,values.get(field.name()));
                         if(action.equals("delete")||expected!=0){index=bindKeys(statement,index,model,keys);statement.setLong(index,expected);}
                         int changed=statement.executeUpdate();result.put("status",changed==1?"OK":"CONFLICT");
                         if(changed==1&&!action.equals("delete"))result.put("revision",Long.toString(expected+1));
@@ -197,6 +314,8 @@ public final class ApocBRModEntities {
         return batch;
     }
     private static Object lua(Object value) {
+        if(value instanceof UUID id)return id.toString();
+        if(value instanceof List<?> list){KahluaTable table=LuaManager.platform.newTable();for(int i=0;i<list.size();i++)table.rawset((double)(i+1),lua(list.get(i)));return table;}
         if(value instanceof Map<?,?> map){KahluaTable table=LuaManager.platform.newTable();map.forEach((k,v)->table.rawset(k,lua(v)));return table;}
         return value instanceof Number n?n.doubleValue():value;
     }

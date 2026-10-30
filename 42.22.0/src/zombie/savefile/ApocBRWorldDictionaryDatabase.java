@@ -10,9 +10,13 @@ public final class ApocBRWorldDictionaryDatabase {
     @FunctionalInterface public interface Connections {Connection open()throws SQLException;}
     public record Origin(UUID namespace,String name,int serverId,String save) {}
     public record Published(UUID namespace,UUID view,long revision,int serverId,String save) {}
-    /** Only local allocation-history conflicts permit automatic namespace rollover. */
+    /** Local allocation-history conflicts permit automatic namespace rollover. */
     public static final class HistoryChangedException extends SQLException {
         private HistoryChangedException(String message){super(message,"22023");}
+    }
+    /** A supported older build keeps its immutable history in the previous namespace. */
+    public static final class BuildChangedException extends SQLException {
+        private BuildChangedException(String message){super(message,"22023");}
     }
     public static final String CHANNEL="apocbr_dictionary_changed";
     private final Connections connections;
@@ -40,11 +44,12 @@ public final class ApocBRWorldDictionaryDatabase {
                 stage="PROVISION_NAMESPACE";stageStarted=System.nanoTime();
                 update(connection,"INSERT INTO player_rel.world_dictionary_namespace(id,name,game_build,world_version,dictionary_format_version) VALUES(?,?,'42.22.0',251,1) ON CONFLICT(id) DO NOTHING",origin.namespace(),origin.name());
                 stage="LOCK_NAMESPACE";stageStarted=System.nanoTime();
-                long revision;
+                long revision;boolean previousBuild;
                 try(PreparedStatement lock=preparePublication(connection,"SELECT current_revision,name,game_build,world_version,dictionary_format_version FROM player_rel.world_dictionary_namespace WHERE id=? FOR UPDATE")) {
                     bind(lock,origin.namespace());try(ResultSet rows=lock.executeQuery()) {
                         if(!rows.next()||!origin.name().equals(rows.getString(2)))throw new SQLException("Dictionary namespace configuration mismatch","22023");
-                        if(!"42.22.0".equals(rows.getString(3))||rows.getInt(4)!=251||rows.getInt(5)!=1)
+                        previousBuild="42.21.0".equals(rows.getString(3))&&rows.getInt(4)==249&&rows.getInt(5)==1;
+                        if(!previousBuild&&(!"42.22.0".equals(rows.getString(3))||rows.getInt(4)!=251||rows.getInt(5)!=1))
                             throw new SQLException("Dictionary namespace build/version mismatch; configure a new namespace","22023");
                         revision=Math.addExact(rows.getLong(1),1);
                     }
@@ -54,6 +59,8 @@ public final class ApocBRWorldDictionaryDatabase {
                 try(PreparedStatement owner=preparePublication(connection,"SELECT 1 FROM player_rel.world_dictionary_runtime_view WHERE namespace_id=? AND (server_id IS DISTINCT FROM ? OR save_key<>?) LIMIT 1")) {
                     bind(owner,origin.namespace(),origin.serverId(),origin.save());try(ResultSet rows=owner.executeQuery()){if(rows.next())throw new SQLException("Mirror namespace belongs to another server/save","22023");}
                 }
+                stage="VERIFY_NAMESPACE_BUILD";stageStarted=System.nanoTime();
+                if(previousBuild)throw new BuildChangedException("Dictionary namespace belongs to supported previous build; preserve history and publish a new namespace");
                 stage="READ_HISTORY";stageStarted=System.nanoTime();
                 var registries=registries(connection,origin.namespace());var entries=entries(connection,origin.namespace());
                 stage="VALIDATE_HISTORY";stageStarted=System.nanoTime();
@@ -113,12 +120,15 @@ public final class ApocBRWorldDictionaryDatabase {
         }catch(SQLException|RuntimeException failure) {
             SQLException diagnostic=publicationFailure(stage,origin,view,snapshot,failure,started,stageStarted);
             if(failure instanceof HistoryChangedException)throw new HistoryChangedException(diagnostic.getMessage());
+            if(failure instanceof BuildChangedException)throw new BuildChangedException(diagnostic.getMessage());
             throw diagnostic;
         }
     }
     // Only these application-owned messages may be copied verbatim. Driver messages can contain
     // bound rows (especially BatchUpdateException), so they go through the structured PG diagnostic.
     private static final Set<String> VALIDATION_MESSAGES=Set.of(
+        "Dictionary namespace build/version mismatch; configure a new namespace",
+        "Dictionary namespace belongs to supported previous build; preserve history and publish a new namespace",
         "Dictionary namespace configuration mismatch","Mirror namespace belongs to another server/save",
         "Vanilla dictionary history changed; use a new namespace for a new save","Vanilla dictionary lost a register",
         "Vanilla dictionary ID remapped; use a new namespace","Vanilla dictionary lost historical identities",
@@ -241,7 +251,7 @@ public final class ApocBRWorldDictionaryDatabase {
             try {
                 stage="FIND_READY_SOURCE_VIEW";
                 long revision;
-                try(var query=prepare(connection,"SELECT v.identity_revision FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.id=? AND v.server_id=? AND v.status='ready' AND n.game_build='42.22.0' AND n.world_version=251 AND n.dictionary_format_version=1")) {
+                try(var query=prepare(connection,"SELECT v.identity_revision FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.id=? AND v.server_id=? AND v.status='ready' AND ((n.game_build='42.22.0' AND n.world_version=251) OR (n.game_build='42.21.0' AND n.world_version=249)) AND n.dictionary_format_version=1")) {
                     bind(query,origin.namespaceId(),origin.viewId(),origin.serverId());
                     try(var rows=query.executeQuery()){if(!rows.next())throw new SQLException("Source dictionary view unavailable","55000");revision=rows.getLong(1);}
                 }

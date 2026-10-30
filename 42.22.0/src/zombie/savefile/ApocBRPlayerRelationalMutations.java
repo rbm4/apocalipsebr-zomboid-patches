@@ -183,6 +183,18 @@ public final class ApocBRPlayerRelationalMutations {
         var binding=DIRTY.binding(cursor.candidate.key(),cursor.session);
         return binding==null?null:binding.character();
     }
+    /** Detached identity for server Lua requests; UUIDs are never inferred from client fields. */
+    record EntityContext(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character) {}
+    static EntityContext entityContext(IsoPlayer player) {
+        Cursor cursor=TRACKED.get(player);
+        if(cursor==null||player.isDead())return null;
+        var binding=DIRTY.binding(cursor.candidate.key(),cursor.session);
+        return binding==null||binding.character()==null?null:new EntityContext(cursor.candidate,cursor.session,binding.character());
+    }
+    static boolean entityContextCurrent(EntityContext context) {
+        var binding=DIRTY.binding(context.candidate().key(),context.session());
+        return binding!=null&&context.character().equals(binding.character());
+    }
     private static void capacityLog(){long now=System.nanoTime();if(now-lastCapacityLog>=30_000_000_000L){lastCapacityLog=now;log("LIVE_TRACK_LIMIT; retryOnNextLoad=true");}}
     static void bind(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character){DIRTY.bind(candidate.key(),session,character);}
     static void bind(ApocBRPlayerRelationalDatabase.Candidate candidate,UUID session,UUID character,Map<Integer,UUID> aliases){DIRTY.bind(candidate.key(),session,character,aliases);}
