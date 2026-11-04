@@ -23,6 +23,7 @@ public final class ServerHumanDialogue {
     private static KahluaTable environment;
     private static int sequence;
     private static long contentGeneration;
+    private static final Map<ServerHuman,zombie.apocalipse.humans.dialogue.HumanDialogueResponses> responseMemory=new java.util.WeakHashMap<>();
     private static final java.util.concurrent.atomic.AtomicLong rosterGeneration = new java.util.concurrent.atomic.AtomicLong();
     static long rosterRevision(){return rosterGeneration.get();}
     private static final class Session {
@@ -34,8 +35,11 @@ public final class ServerHumanDialogue {
         boolean arrived;
         HumanDialogueSession graph;
         long nextChoice;
+        HumanDialogueSession.Choice pendingAction;
+        final zombie.apocalipse.humans.dialogue.HumanDialogueResponses responses;
         Session(ServerHuman human, IsoPlayer visitor, int token, long now) {
             this.human = human; this.visitor = visitor; this.token = token;
+            responses=responseMemory.computeIfAbsent(human,h->new zombie.apocalipse.humans.dialogue.HumanDialogueResponses());
             connection = GameServer.getConnectionFromPlayer(visitor);
             deadline = now + APPROACH_NANOS;
         }
@@ -65,6 +69,9 @@ public final class ServerHumanDialogue {
         bind(api, "dialogueBegin", 5, f -> graphBegin(player(f),id(f),integer(f.get(2)),f.get(3),f.get(4),System.nanoTime()));
         bind(api, "dialogueView", 3, f -> graphView(player(f),id(f),token(f),System.nanoTime()));
         bind(api, "dialogueSelect", 7, f -> graphSelect(player(f),id(f),token(f),f.get(3),integer(f.get(4)),f.get(5),integer(f.get(6)),System.nanoTime()));
+        bind(api, "dialogueComplete", 4, f -> graphComplete(player(f),id(f),token(f),f.get(3),System.nanoTime()));
+        bind(api, "teleport", 4, f -> teleport(player(f),f.get(1),f.get(2),f.get(3)));
+        bind(api, "accountIdentity", 1, f -> owned(player(f))?(player(f).getSteamID()==0?"username:"+player(f).getUsername():"steam:"+Long.toUnsignedString(player(f).getSteamID())):null);
         bind(api, "dialogueFlags", 3, f -> dialogueFlags(player(f),id(f),f.get(2)));
         bind(api, "remember", 5, f -> remember(player(f),id(f),token(f),f.get(3),f.get(4)));
         bind(api, "begin", 2, f -> begin(player(f), id(f), System.nanoTime()));
@@ -73,7 +80,7 @@ public final class ServerHumanDialogue {
         bind(api, "react", 5, f -> react(player(f), id(f), token(f),
             f.get(3) instanceof String text ? text : null,
             f.get(4) instanceof String emote ? emote : null, System.nanoTime()));
-        api.rawset("version", 4.0);
+        api.rawset("version", 5.0);
         zombie.debug.DebugLog.log("[ApocBR][NPC] language="+HumanLanguage.locale()+"; source=apocbr.npc.language; default=PTBR");
         environment.rawset("ApocBRHumanAPI", api);
     }
@@ -146,10 +153,16 @@ public final class ServerHumanDialogue {
     }
     static KahluaTable graphSelect(IsoPlayer p,int id,int token,Object node,int revision,Object option,int sequence,long now) {
         var s=session(p,id,token,now);
-        if(s==null||!s.arrived||s.graph==null||now<s.nextChoice||!near(s.human,p,2.5)
+        if(s==null||!s.arrived||s.graph==null||s.pendingAction!=null||now<s.nextChoice||!near(s.human,p,2.5)
             ||!(node instanceof String current)||!(option instanceof String selected))return rejected("unavailable");
         var choice=s.graph.choose(current,revision,selected,sequence,flags(p,s.human,s.graph));
         if(choice==null)return rejected("unavailable");
+        if(choice.option().get("action") instanceof Map<?,?> action) {
+            s.pendingAction=choice;s.nextChoice=now+500_000_000L;
+            var result=LuaManager.platform.newTable();result.rawset("action",luaValue(action));
+            result.rawset("option",selected);result.rawset("sequence",(double)sequence);
+            return result;
+        }
         String speech=(String)choice.text().get("speech"),emote=(String)choice.option().get("emote");
         if(speech==null||speech.length()>256||emote!=null&&!emote.matches("[A-Za-z0-9_]{1,40}"))return rejected("unavailable");
         var task=choice.option().get("task") instanceof zombie.apocalipse.humans.tasks.HumanTaskCommand command?command:null;
@@ -162,6 +175,42 @@ public final class ServerHumanDialogue {
         var result=LuaManager.platform.newTable();result.rawset("dialogue",luaValue(s.graph.view(flags(p,s.human,s.graph))));
         result.rawset("sequence",(double)sequence);result.rawset("option",selected);
         result.rawset("response",choice.text().get("response"));result.rawset("close",s.graph.completed());return result;
+    }
+    @SuppressWarnings("unchecked")
+    static KahluaTable graphComplete(IsoPlayer p,int id,int token,Object outcome,long now) {
+        var s=session(p,id,token,now);
+        if(s==null||s.pendingAction==null||!near(s.human,p,2.5)||!(outcome instanceof KahluaTable data))return rejected("unavailable");
+        var choice=s.pendingAction;
+        if(integer(data.rawget("sequence"))!=choice.sequence())return rejected("unavailable");
+        var action=(Map<String,Object>)choice.option().get("action");
+        var values=new HashMap<String,String>();
+        if(data.rawget("values") instanceof KahluaTable input) {
+            var iterator=input.iterator();
+            while(iterator.advance()) {
+                if(values.size()>=16||!(iterator.getKey() instanceof String key)||!(iterator.getValue() instanceof String value))return rejected("unavailable");
+                values.put(key,value);
+            }
+        }
+        String text;
+        try{text=s.responses.resolve((String)action.get("responsePrefix"),(String)data.rawget("responsePool"),values);}
+        catch(IllegalArgumentException|ClassCastException failure){return rejected("unavailable");}
+        boolean success=Boolean.TRUE.equals(data.rawget("success"));
+        if(success&&choice.option().containsKey("setFlag")&&!remember(p,id,token,s.graph.id(),choice.option().get("setFlag")))return rejected("unavailable");
+        // Selection is consumed before any native response; reentrant/replayed completion cannot repeat effects.
+        s.pendingAction=null;s.graph.advance(choice,success);s.nextChoice=now+500_000_000L;
+        if(!react(p,id,token,text,null,now))return rejected("unavailable");
+        var result=LuaManager.platform.newTable();result.rawset("dialogue",luaValue(s.graph.view(flags(p,s.human,s.graph))));
+        result.rawset("sequence",(double)choice.sequence());result.rawset("option",choice.option().get("id"));
+        result.rawset("response",text);result.rawset("close",success&&(Boolean.TRUE.equals(data.rawget("close"))||s.graph.completed()));
+        return result;
+    }
+    /** Trusted server Lua capability. Native request, not confirmation of arrival. */
+    private static boolean teleport(IsoPlayer p,Object x,Object y,Object z) {
+        if(!GameServer.server||Thread.currentThread()!=GameServer.mainThread||!owned(p)||p.getNetworkCharacterAI()==null
+            ||!(x instanceof Number nx)||!(y instanceof Number ny)||!(z instanceof Number nz))return false;
+        double a=nx.doubleValue(),b=ny.doubleValue(),c=nz.doubleValue();
+        if(!Double.isFinite(a)||!Double.isFinite(b)||!Double.isFinite(c)||a<0||b<0||a>1_000_000||b>1_000_000||c< -32||c>31||c!=Math.floor(c))return false;
+        GameServer.sendTeleport(p,(float)a,(float)b,(float)c);return true;
     }
     private static Object luaValue(Object value) {
         if(value instanceof Map<?,?> map) {
@@ -176,7 +225,10 @@ public final class ServerHumanDialogue {
     }
     private static void bind(KahluaTable api, String name, int arguments, Call call) {
         api.rawset(name, (JavaFunction)(frame, count) -> {
-            Object result = count == arguments ? call.run(frame) : null;
+            Object result;
+            // The NPC worker updates/closes these sessions under the same factory monitor.
+            // Lua handlers themselves run between API calls, outside this monitor.
+            synchronized(ServerHumanFactory.getInstance()) { result = count == arguments ? call.run(frame) : null; }
             frame.push(result);
             return 1;
         });

@@ -4,7 +4,8 @@ Set APOCBR_TEST_POSTGRES_BIN to a directory containing initdb, pg_ctl and postgr
 from pathlib import Path
 import os, socket, subprocess, tempfile, sys
 ROOT=Path(__file__).resolve().parents[1]
-SRC=ROOT/'42.21.0/src/zombie'
+VERSION=sys.argv[sys.argv.index('--version')+1] if '--version' in sys.argv else '42.21.0'
+SRC=ROOT/VERSION/'src/zombie'
 SQL=ROOT.parent/'apocalipsebr-manager/manager/src/main/resources/db/game-runtime-migration/V15__Create_Npc_Engine.sql'
 BIN=Path(os.environ['APOCBR_TEST_POSTGRES_BIN'])
 JDK=ROOT/'jdk/bin'
@@ -63,6 +64,7 @@ public class NpcStoreTest {
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V29__Npc_Retaliation_And_Longer_Warnings.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V30__Npc_Death_Respawn_And_Loot.sql")));
    s.execute(Files.readString(Path.of(args[1]).resolveSibling("V31__Npc_Speech_Engine.sql")));
+   if(args.length>2)s.execute(Files.readString(Path.of(args[1]).resolveSibling("V40__Npc_Server_Lua_Dialogue_Actions.sql")));
   }
   try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
    c.setAutoCommit(false);
@@ -305,7 +307,84 @@ public class NpcStoreTest {
   // Default grants belong to the actual migration owner, including future sequences.
   try(var c=DriverManager.getConnection(url,"apocalipsebr","");var s=c.createStatement()){s.execute("CREATE TABLE npc_engine.future_probe(id bigserial PRIMARY KEY)");}
   try(var c=DriverManager.getConnection(url,"pz_server_01","");var s=c.createStatement()){s.execute("INSERT INTO npc_engine.future_probe DEFAULT VALUES");check(number(c,"SELECT count(*) FROM npc_engine.future_probe")==1,"creator default table and sequence grants");}
-  System.out.println("Passed "+checks+" NPC migration, JDBC, permissions, replay fencing and worker assertions.");
+  if(args.length>2) testAgenteV(url,Path.of(args[1]));
+  System.out.println("Passed "+checks+" NPC migration, JDBC, permissions, replay fencing and worker assertions ("+args[args.length-1]+").");
+ }
+ static void testAgenteV(String url,Path migration)throws Exception {
+  try(var c=DriverManager.getConnection(url,"apocalipsebr","");var s=c.createStatement()) {
+   s.execute(Files.readString(migration.resolveSibling("V39__Seed_Agente_V_Dev_Lobby.sql")));
+  }
+  try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
+   c.setAutoCommit(false);
+   var profile=ApocBRNpcStore.readProfiles(c).stream().filter(p->p.id().equals("agente-v-lobby")).findFirst().orElseThrow();
+   check(profile.cheats().godMode()&&profile.cheats().ghostMode()&&!profile.cheats().invisible(),"V protected from damage and zombies, visible to players");
+   check(profile.dialogue()&&!profile.trading()&&!profile.encounter().enabled(),"V offers conversation without trade or player aggression");
+   check(profile.modules().stream().map(m->m.moduleId()).toList().equals(List.of("engage-zombies","greet","walk")),"defense precedes greeting and wandering");
+   var movement=profile.walkingPatterns().getFirst();
+   check(movement.patternId().equals("indoor-wander")&&movement.area()==null,"V patrols actual home building without guessed bounds");
+   check(number(c,"SELECT count(*) FROM npc_engine.server_spawn WHERE npc_key='agente-v' AND server_key='apoc-dev' AND female AND outfit='PrivateMilitia' AND display_name='Agente V' AND home_x=9373 AND home_y=150 AND home_z=0 AND desired_active")==1,"engine reads exact dev-only spawn and female outfit");
+   try(var s=c.createStatement()){s.execute("INSERT INTO npc_engine.scope(server_key,world) VALUES('apoc-dev','v-test'),('apoc-other','v-test')");}
+   ApocBRNpcStore.materializeServerSpawns(c,"apoc-other","v-test");
+   check(number(c,"SELECT count(*) FROM npc_engine.instance WHERE npc_key='agente-v'")==0,"unrelated server cannot materialize V");
+   ApocBRNpcStore.materializeServerSpawns(c,"apoc-dev","v-test");
+   try(var s=c.createStatement()){s.execute("UPDATE npc_engine.instance SET display_name='Preserved',desired_active=false WHERE npc_key='agente-v'");}
+   ApocBRNpcStore.materializeServerSpawns(c,"apoc-dev","v-test");
+   check(number(c,"SELECT count(*) FROM npc_engine.instance WHERE npc_key='agente-v' AND display_name='Preserved' AND NOT desired_active")==1,"restart preserves existing instance and administrative deactivation");
+   var graphs=ApocBRNpcDialogues.read(c);var labels=ApocBRNpcDialogues.labels(c);
+   var graph=(Map<?,?>)graphs.get("agente-v-lobby");
+   var root=(Map<?,?>)((Map<?,?>)graph.get("nodes")).get("root");
+   check(((List<?>)root.get("options")).size()==1,"exactly one authored dialogue choice");
+   check(number(c,"SELECT count(*) FROM npc_engine.dialogue_choice_text WHERE dialogue_id='agente-v-lobby' AND locale='PTBR' AND title='Que lugar é este?' AND response LIKE '%Umbrella%' AND response LIKE '%Ashford County%' AND response LIKE '%recompensas%' AND length(speech)<=256")==1,"concise PTBR lore and speech are persisted");
+   zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(graphs,labels);
+   var provider=new zombie.apocalipse.humans.dialogue.HumanGreetingProvider(profile.greetingKey(),bound->0);
+   String first=provider.get();check(first!=null&&first.contains("Agente V"),"migration pool is loaded by production provider");
+   String second=provider.get();check(!second.equals(first),"pool avoids immediate repeats");
+   check(new zombie.apocalipse.humans.dialogue.HumanGreetingProvider(profile.greetingKey(),bound->0).get().equals(first),"greeting memory is independent per actor");
+   check(new zombie.apocalipse.humans.dialogue.HumanGreetingProvider("").get()==null,"empty greeting remains silent");
+   check(new zombie.apocalipse.humans.dialogue.HumanGreetingProvider("pool:missing").get()==null,"missing pool remains silent");
+   String legacy="IGUI_ApocExtractionMapUtils_GuideHello";
+   check(new zombie.apocalipse.humans.dialogue.HumanGreetingProvider(legacy).get().equals(zombie.apocalipse.humans.dialogue.HumanLanguage.text(legacy)),"legacy single greeting unchanged");
+   var custom=new HashMap<String,Map<String,Object>>();
+   custom.put("test.32",Map.of("EN",Map.of("text","Only sparse line")));
+   zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(Map.of(),custom);
+   var single=new zombie.apocalipse.humans.dialogue.HumanGreetingProvider("pool:test",bound->0);
+   check(single.get().equals("Only sparse line")&&single.get().equals("Only sparse line"),"single sparse pool and language fallback work");
+   custom.put("test.1",Map.of("PTBR",Map.of("text","x".repeat(257))));
+   zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(Map.of(),custom);
+   try{single.get();throw new AssertionError("Oversized greeting accepted");}catch(IllegalArgumentException expected){checks++;}
+   c.commit();
+   invalid(c,"UPDATE npc_engine.profile_revision SET god_mode=false WHERE profile_id='agente-v-lobby'");
+   invalid(c,"UPDATE npc_engine.dialogue_choice_text SET response='changed' WHERE dialogue_id='agente-v-lobby'");
+  }
+  try(var c=DriverManager.getConnection(url,"apocalipsebr","");var s=c.createStatement()) {
+   s.execute(Files.readString(migration.resolveSibling("V41__Agente_V_Safehouse_Travel_Pools.sql")));
+  }
+  try(var c=DriverManager.getConnection(url,"pz_server_01","")) {
+   c.setAutoCommit(false);
+   var graphs=ApocBRNpcDialogues.read(c);var labels=ApocBRNpcDialogues.labels(c);
+   var graph=(Map<?,?>)graphs.get("agente-v-lobby");
+   var root=(Map<?,?>)((Map<?,?>)graph.get("nodes")).get("root");
+   var options=(List<?>)root.get("options");
+   check(options.size()==2,"V41 preserves lore and adds travel");
+   var travel=(Map<?,?>)options.stream().filter(o->((Map<?,?>)o).get("id").equals("teleport_safehouse")).findFirst().orElseThrow();
+   check(((Map<?,?>)travel.get("action")).get("id").equals("player.teleport_safehouse"),"JDBC loads named action only for server");
+   check(number(c,"SELECT count(*) FROM npc_engine.label_text WHERE label_key LIKE 'safehouse.teleport.%' AND locale='PTBR'")==20,"five variants per outcome");
+   zombie.apocalipse.humans.dialogue.HumanDialogueCatalog.publish(graphs,labels);
+   var responses=new zombie.apocalipse.humans.dialogue.HumanDialogueResponses(n->0);
+   var rendered=responses.resolve("safehouse.teleport","safehouse.teleport.cooldown",Map.of("remainingMinutes","120"));
+   check(rendered.contains("120")&&!rendered.contains("{"),"pool placeholder resolved");
+   check(!responses.resolve("safehouse.teleport","safehouse.teleport.cooldown",Map.of("remainingMinutes","120")).equals(rendered),"response avoids immediate repeats");
+   for(String pool:List.of("success","no_safehouse","unavailable"))check(responses.resolve("safehouse.teleport","safehouse.teleport."+pool,Map.of()).length()<=256,"bounded NPC speech outcome "+pool);
+   try{responses.resolve("safehouse.teleport","foreign.pool",Map.of());throw new AssertionError("Foreign pool accepted");}catch(IllegalArgumentException expected){checks++;}
+   try{responses.resolve("safehouse.teleport","safehouse.teleport.cooldown",Map.of());throw new AssertionError("Missing placeholder accepted");}catch(IllegalArgumentException expected){checks++;}
+   var conversation=new zombie.apocalipse.humans.dialogue.HumanDialogueSession((Map)graph);
+   var choice=conversation.choose("root",((Number)graph.get("revision")).intValue(),"teleport_safehouse",1,Set.of());
+   check(choice!=null,"action choice validated");conversation.advance(choice,false);
+   check(conversation.node().equals("root")&&!conversation.completed()&&conversation.sequence()==1,"failed action consumes sequence without transition");
+   check(conversation.choose("root",conversation.revision(),"teleport_safehouse",1,Set.of())==null,"duplicate sequence rejected");
+   c.commit();
+   invalid(c,"UPDATE npc_engine.dialogue_choice_action SET action_id='changed' WHERE dialogue_id='agente-v-lobby'");
+  }
  }
 }
 '''
@@ -318,6 +397,11 @@ def run(command,**kw):
         if result.stderr: print(result.stderr,end='',flush=True)
         result.check_returncode();return result
     return subprocess.run(list(map(str,command)),check=True,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),**kw)
+if VERSION != '42.22.1':
+    # Keep the historical fixture independent of the new target-only provider.
+    harness=FILES['zombie/savefile/NpcStoreTest.java']
+    harness=harness.replace('  if(args.length>2) testAgenteV(url,Path.of(args[1]));','')
+    FILES['zombie/savefile/NpcStoreTest.java']=harness.split(' static void testAgenteV(')[0]+'}\n'
 with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     work=Path(folder);sources=[]
     for name,content in FILES.items():
@@ -327,6 +411,8 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     sources += [SRC/'apocalipse/humans/encounters/EncounterPolicy.java',SRC/'apocalipse/humans/encounters/HumanRelationships.java']
     sources += [SRC/'savefile/ApocBRNpcMortality.java'] + list((SRC/'apocalipse/humans/death').glob('*.java'))
     sources += [SRC/'savefile/ApocBRNpcSpeech.java'] + list((SRC/'apocalipse/humans/speech').glob('*.java'))
+    if VERSION=='42.22.1':
+        sources += [SRC/'apocalipse/humans/dialogue/HumanGreetingProvider.java',SRC/'apocalipse/humans/dialogue/HumanLanguage.java',SRC/'apocalipse/humans/dialogue/HumanDialogueResponses.java',SRC/'apocalipse/humans/dialogue/HumanDialogueSession.java']
     sources += list((SRC/'apocalipse/humans/state').glob('*.java')) + list((SRC/'apocalipse/humans/movement').glob('*.java')) + list((SRC/'apocalipse/humans/walking').glob('*.java'))
     cp=os.pathsep.join(map(str,[GAME,ROOT/'42.21.0/lib/postgresql-42.7.14.jar']))
     argfile=work/'sources.txt';argfile.write_text('\n'.join('"'+str(s).replace('\\','/')+'"' for s in sources),encoding='utf-8')
@@ -335,7 +421,11 @@ with tempfile.TemporaryDirectory(prefix='apocbr-npc-persistence-') as folder:
     run([BIN/'initdb.exe','-D',work/'data','-U','postgres','-A','trust','--no-locale','-E','UTF8'],stdout=subprocess.DEVNULL)
     try:
         run([BIN/'pg_ctl.exe','-D',work/'data','-l',work/'postgres.log','-o',f'-h 127.0.0.1 -p {port}','-w','start'],stdout=subprocess.DEVNULL)
-        run([JDK/'java.exe','-cp',str(work/'classes')+os.pathsep+cp,'zombie.savefile.NpcStoreTest',f'jdbc:postgresql://127.0.0.1:{port}/postgres',SQL])
+        run([JDK/'java.exe','-cp',str(work/'classes')+os.pathsep+cp,'zombie.savefile.NpcStoreTest',f'jdbc:postgresql://127.0.0.1:{port}/postgres',SQL]+(['42.22.1'] if VERSION=='42.22.1' else []))
+        if '--agente-v-manager-test' in sys.argv:
+            manager=ROOT.parent/'apocalipsebr-manager/manager'
+            env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')
+            run([manager/'mvnw.cmd','-o','-Dmaven.resources.skip=true','-Dtest=NpcAgenteVMigrationTest,NpcDialogueActionsMigrationTest,NpcCrudIntegrationTest,NpcServiceTest,NpcTemplateTest','test'],cwd=manager,env=env)
         if '--manager-test' in sys.argv:
             manager=ROOT.parent/'apocalipsebr-manager/manager'
             env=dict(os.environ,JAVA_HOME=str(JDK.parent),GAME_RUNTIME_TEST_POSTGRES_URL=f'jdbc:postgresql://127.0.0.1:{port}/postgres')

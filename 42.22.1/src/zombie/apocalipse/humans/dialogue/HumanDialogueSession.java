@@ -33,9 +33,14 @@ public final class HumanDialogueSession {
     }
     /** Called only after actor validation, fact acceptance and speech execution succeeded. */
     public void advance(Choice choice) {
+        advance(choice,true);
+    }
+    public void advance(Choice choice,boolean success) {
         if(choice.sequence()!=sequence+1)throw new IllegalStateException("Stale dialogue choice");
+        sequence=choice.sequence();
+        if(!success)return;
         Object flag=choice.option().get("setFlag");if(flag instanceof String text)earned.add(text);
-        node=(String)choice.option().get("nextNode");sequence=choice.sequence();completed=Boolean.TRUE.equals(choice.option().get("close"));
+        node=(String)choice.option().get("nextNode");completed=Boolean.TRUE.equals(choice.option().get("close"));
     }
     private Map<String,Object> publicNode(String id,Set<String> flags) {
         var source=node(id);var result=new ArrayList<Map<String,Object>>();

@@ -24,6 +24,8 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-04 | [Agente V: apoc-dev lobby NPC and cached greeting pools](features/2026-11-04-agente-v-dev-lobby.md) |
+| 2026-11-04 | [Server Lua dialogue actions, pooled responses and safehouse travel](features/2026-11-04-dialogue-lua-actions.md) |
 | 2026-11-04 | [Lobby startup streaming bridge](features/2026-11-04-lobby-startup-streaming.md) |
 | 2026-11-04 | [Bounded server network diagnostics and repeat summaries](features/2026-11-04-network-diagnostics.md) |
 | 2026-11-04 | [Unsigned runtime deployment: signed original preservation and repeatable launcher updates](features/2026-11-04-unsigned-runtime-deployment.md) |

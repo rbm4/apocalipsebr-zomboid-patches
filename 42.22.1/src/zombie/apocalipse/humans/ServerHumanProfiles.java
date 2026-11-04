@@ -1,7 +1,6 @@
 package zombie.apocalipse.humans;
 
 import java.util.Map;
-import zombie.apocalipse.humans.dialogue.HumanLanguage;
 import zombie.apocalipse.humans.brain.*;
 import zombie.apocalipse.humans.profiles.*;
 
@@ -28,7 +27,7 @@ public final class ServerHumanProfiles {
         var registry = new HumanProfileRegistry(WALKING);
         var modules=new zombie.apocalipse.humans.profiles.HumanModuleRegistry();
         modules.register("greet",(p,b)->{GuidePolicy.from(b.parameters());if(b.parameters().containsKey("roamPauseMs"))throw new IllegalArgumentException("Roam timing belongs to roam module");announcements(p);},
-            (p,b)->new GuideBrain(GuidePolicy.from(b.parameters()),()->p.greetingKey().isEmpty()?null:HumanLanguage.text(p.greetingKey()),announcements(p)).greetingOnly());
+            (p,b)->new GuideBrain(GuidePolicy.from(b.parameters()),new zombie.apocalipse.humans.dialogue.HumanGreetingProvider(p.greetingKey()),announcements(p)).greetingOnly());
         modules.register("walk",(p,b)->{if(b.parameters().keySet().stream().anyMatch(k->!k.equals("pauseMs")))throw new IllegalArgumentException("Unknown walking parameter");if(p.walkingPatterns().stream().noneMatch(s->s.slot().equals("background")))throw new IllegalArgumentException("Background walking pattern required");},
             (p,b)->new zombie.apocalipse.humans.brain.WalkingModule(b.parameters().getOrDefault("pauseMs",3000L)*1000000L));
         modules.register("engage-zombies",(p,b)->HumanEngagement.Settings.fromMilliseconds(b.parameters()),
@@ -64,7 +63,7 @@ public final class ServerHumanProfiles {
         },modules::create);
         registry.registerBehavior("guide", p -> { GuidePolicy.from(p.parameters()); announcements(p); },
             p -> new GuideBrain(GuidePolicy.from(p.parameters()),
-                () -> p.greetingKey().isEmpty() ? null : HumanLanguage.text(p.greetingKey()), announcements(p)));
+                new zombie.apocalipse.humans.dialogue.HumanGreetingProvider(p.greetingKey()), announcements(p)));
         registry.registerBehavior("idle", p -> {
             if (!p.parameters().isEmpty() || !p.greetingKey().isEmpty() || !p.announcementId().equals("none"))
                 throw new IllegalArgumentException("Idle profile has no speech or timing configuration");

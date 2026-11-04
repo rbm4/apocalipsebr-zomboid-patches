@@ -66,8 +66,12 @@ public final class ApocBRNpcDialogues {
                         option.put("id",cr.getString(1));option.put("nextNode",cr.getString(2));
                         for(int i=3;i<=6;i++)if(cr.getString(i)!=null)option.put(new String[]{"requiredFlag","forbiddenFlag","setFlag","emote"}[i-3],cr.getString(i));
                         option.put("close",cr.getBoolean(7));
+                        try(var a=query(c,"SELECT action_id,response_prefix FROM npc_engine.dialogue_choice_action WHERE dialogue_id=? AND revision=? AND choice_id=?",id,revision,cr.getString(1));var ar=a.executeQuery()) {
+                            if(ar.next())option.put("action",Map.of("id",ar.getString(1),"responsePrefix",ar.getString(2)));
+                        }
                         var task=task(c,id,revision,cr.getString(1));
                         if(task!=null){
+                            if(option.containsKey("action"))throw new SQLException("Dialogue action/task conflict","22023");
                             if(!cr.getBoolean(7))throw new SQLException("Task choices must close dialogue","22023");
                             option.put("task",task);
                         }
