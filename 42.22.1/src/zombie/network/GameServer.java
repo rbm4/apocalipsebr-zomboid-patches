@@ -69,6 +69,7 @@ import zombie.core.ActionManager;
 import zombie.core.Core;
 import zombie.core.GameMode;
 import zombie.core.ImportantAreaManager;
+import zombie.core.IntegrityReport;
 import zombie.core.Languages;
 import zombie.core.PerformanceSettings;
 import zombie.core.ProxyPrintStream;
@@ -496,10 +497,11 @@ public class GameServer {
         }
 
         DebugType.General.println("version=%s demo=%s", Core.getInstance().getVersion(), false);
-        if (!"e013dbb529".isEmpty()) {
-            DebugType.General.println("revision=%s", "e013dbb529");
+        if (!"71e8410c42".isEmpty()) {
+            DebugType.General.println("revision=%s", "71e8410c42");
         }
 
+        IntegrityReport.collectInBackground(() -> DebugType.General.println("version=%s", Core.getInstance().getVersion()));
         seed = WorldGenUtils.INSTANCE.generateSeed();
 
         for (int nx = 0; nx < args.length; nx++) {
