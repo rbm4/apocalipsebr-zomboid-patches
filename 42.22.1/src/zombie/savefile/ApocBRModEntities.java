@@ -19,7 +19,7 @@ public final class ApocBRModEntities {
     private static Thread owner;
     private static long sequence;
     private record Field(String name,String type,boolean key) {}
-    private record Model(String name,String table,List<Field> fields) {
+    private record Model(String name,String table,List<Field> fields,boolean appendOnly) {
         String target(){return "mod_data.\""+table+"\"";}
         List<Field> keys(){return fields.stream().filter(Field::key).toList();}
         String columns(){return String.join(",",fields.stream().map(f->quote(f.name())).toList());}
@@ -37,6 +37,9 @@ public final class ApocBRModEntities {
         bind(api,"poll",0,(f)->poll());
         bind(api,"character",1,(f)->character(player(f.get(0))));
         bind(api,"submitCharacter",5,(f)->submitCharacter(text(f.get(0)),text(f.get(1)),player(f.get(2)),text(f.get(3)),table(f.get(4))));
+        bind(api,"messageContext",1,(f)->messageContext(player(f.get(0))));
+        bind(api,"newMessageId",0,(f)->UUID.randomUUID().toString());
+        bind(api,"append",4,(f)->append(text(f.get(0)),f.get(1),text(f.get(2)),table(f.get(3))));
         LuaManager.env.rawset("ApocBRModEntities",api);
     }
     private interface Call {Object run(se.krka.kahlua.vm.LuaCallFrame frame);}
@@ -60,8 +63,44 @@ public final class ApocBRModEntities {
         return (KahluaTable)lua(result);
     }
     private record Row(Map<String,Object> values,long revision) {}
+    // An opaque, detached capability created only from the authoritative live binding.
+    // It deliberately survives disconnect/death; historical events do not target the new life.
+    private record MessageContext(UUID character,UUID session,long server,String world,String mode,String identity,long slot) {}
+    private static Object messageContext(IsoPlayer player) {
+        var context=ApocBRPlayerRelationalMutations.entityContext(player);
+        if(context==null)return lua(Map.of("status","IDENTITY_PENDING"));
+        var c=context.candidate();
+        var token=new MessageContext(context.character(),context.session(),ApocBRPayloadProvenance.configuredServerId(),
+            c.world(),c.coop()?"steam_coop":"username",c.identity(),c.slot());
+        return lua(Map.of("status","OK","characterId",token.character().toString(),"session",token.session().toString(),"token",token));
+    }
+    private static Object append(String name,Object token,String messageId,KahluaTable input) {
+        Model model=models.get(name);
+        if(model==null||!model.appendOnly())throw new IllegalArgumentException("Append-only mapping required");
+        if(!(token instanceof MessageContext context))throw new IllegalArgumentException("Trusted message context required");
+        if(model.keys().size()!=1||!model.keys().get(0).name().equals("message_id"))throw new IllegalArgumentException("Message UUID key required");
+        KahluaTable values=LuaManager.platform.newTable();
+        var iterator=input.iterator();
+        while(iterator.advance()) {
+            String key=text(iterator.getKey());
+            if(!Set.of("event_type","payload").contains(key))throw new IllegalArgumentException("Message field is server managed");
+            values.rawset(key,iterator.getValue());
+        }
+        values.rawset("message_id",UUID.fromString(messageId).toString());
+        values.rawset("character_id",context.character().toString());values.rawset("session_id",context.session().toString());
+        values.rawset("source_server_id",context.server());values.rawset("world",context.world());
+        values.rawset("identity_mode",context.mode());values.rawset("identity_key",context.identity());values.rawset("player_index",context.slot());
+        Map<String,Object> captured=copy(model,values,false),keys=copy(model,keysTable(model,captured),true);
+        if(outstanding.get()>=LIMIT)return admission(false,"BUSY");
+        String id=Long.toString(++sequence);outstanding.incrementAndGet();
+        if(!ApocBRPersistence.request(()->execute(id,model,"append",keys,captured,0))) {
+            outstanding.decrementAndGet();return admission(false,"UNAVAILABLE");
+        }
+        return admission(true,id);
+    }
     private static Object submitCharacter(String name,String action,IsoPlayer player,String session,KahluaTable input) {
         Model model=models.get(name);if(model==null)throw new IllegalArgumentException("Unknown entity");
+        if(model.appendOnly())throw new IllegalArgumentException("Append-only mapping cannot be mutated");
         if(!Set.of("loadOrCreate","saveAll","patch").contains(action))throw new IllegalArgumentException("Unknown character operation");
         if(model.fields().stream().noneMatch(f->f.name().equals("character_id")&&f.type().equals("uuid")&&f.key()))throw new IllegalArgumentException("Character UUID ID required");
         var context=ApocBRPlayerRelationalMutations.entityContext(player);
@@ -174,7 +213,9 @@ public final class ApocBRModEntities {
             fields.add(new Field(field,type,Boolean.TRUE.equals(spec.rawget("id"))));
         }
         fields.sort(Comparator.comparing(Field::name));
-        Model model=new Model(name,physical,List.copyOf(fields));
+        boolean appendOnly=Boolean.TRUE.equals(declaration.rawget("appendOnly"));
+        if(physical.equals("backend_message")&&!appendOnly)throw new IllegalArgumentException("Backend messages are append only");
+        Model model=new Model(name,physical,List.copyOf(fields),appendOnly);
         if(model.keys().isEmpty()||model.keys().size()>4)throw new IllegalArgumentException("One to four ID fields required");
         Model existing=models.get(name);
         if(existing!=null){if(!existing.equals(model))throw new IllegalArgumentException("Mapping already defined differently");return true;}
@@ -211,6 +252,7 @@ public final class ApocBRModEntities {
     }
     private static Object submit(String name,String action,KahluaTable keyTable,KahluaTable valuesTable,String revision) {
         Model model=models.get(name);if(model==null)throw new IllegalArgumentException("Unknown entity");
+        if(model.appendOnly()&&!Set.of("validate","find").contains(action))throw new IllegalArgumentException("Use message append");
         if(!Set.of("validate","find","save","patch","delete").contains(action))throw new IllegalArgumentException("Unknown operation");
         long expected=Long.parseLong(revision);if(expected<0||expected==Long.MAX_VALUE)throw new IllegalArgumentException("Invalid revision");
         Map<String,Object> keys=action.equals("validate")?Map.of():copy(model,keyTable,true);
@@ -253,10 +295,21 @@ public final class ApocBRModEntities {
                     else sql="UPDATE "+model.target()+" SET "+String.join(",",model.fields().stream().filter(f->!f.key()&&(!action.equals("patch")||values.containsKey(f.name()))).map(f->quote(f.name())+"=?").toList())+(model.fields().size()==model.keys().size()?"":",")+"revision=revision+1 WHERE "+model.where()+" AND revision=?";
                     try(PreparedStatement statement=prepare(connection,sql)) {
                         int index=1;
-                        if(action.equals("save")||action.equals("patch"))for(Field field:model.fields())if((expected==0||!field.key())&&values.containsKey(field.name()))statement.setObject(index++,values.get(field.name()));
+                        if(action.equals("save")||action.equals("patch")||action.equals("append"))for(Field field:model.fields())if((expected==0||!field.key())&&values.containsKey(field.name()))statement.setObject(index++,values.get(field.name()));
                         if(action.equals("delete")||expected!=0){index=bindKeys(statement,index,model,keys);statement.setLong(index,expected);}
                         int changed=statement.executeUpdate();result.put("status",changed==1?"OK":"CONFLICT");
                         if(changed==1&&!action.equals("delete"))result.put("revision",Long.toString(expected+1));
+                        if(action.equals("append")&&changed==0) {
+                            // Reconcile ambiguous commits without mutating/resetting consumer status.
+                            try(PreparedStatement lookup=prepare(connection,"SELECT "+model.columns()+",revision FROM "+model.target()+" WHERE "+model.where())) {
+                                bindKeys(lookup,1,model,keys);
+                                try(ResultSet rows=lookup.executeQuery()) {
+                                    if(rows.next()&&sameValues(values,read(rows,model))) {
+                                        result.put("status","OK");result.put("duplicate",true);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
                 committing=true;connection.commit();
@@ -266,6 +319,10 @@ public final class ApocBRModEntities {
             result.put("status",committing&&!action.equals("find")&&!action.equals("validate")?"OUTCOME_UNKNOWN":failure.getSQLState()!=null&&failure.getSQLState().startsWith("42")?"SCHEMA_ERROR":"DATABASE_ERROR");
         }catch(RuntimeException failure){result.clear();result.put("id",id);result.put("status","INVALID_DATA");}
         completed.add(Collections.unmodifiableMap(result));
+    }
+    private static boolean sameValues(Map<String,Object> expected,Map<String,Object> actual) {
+        return expected.size()==actual.size()&&expected.entrySet().stream().allMatch(entry->
+            Objects.equals(entry.getValue() instanceof UUID uuid?uuid.toString():entry.getValue(),actual.get(entry.getKey())));
     }
     private static PreparedStatement prepare(Connection connection,String sql)throws SQLException {
         PreparedStatement statement=connection.prepareStatement(sql);statement.setQueryTimeout(2);return statement;

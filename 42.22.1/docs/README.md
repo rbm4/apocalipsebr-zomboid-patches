@@ -24,6 +24,10 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-04 | [Lobby startup streaming bridge](features/2026-11-04-lobby-startup-streaming.md) |
+| 2026-11-04 | [Bounded server network diagnostics and repeat summaries](features/2026-11-04-network-diagnostics.md) |
+| 2026-11-04 | [Unsigned runtime deployment: signed original preservation and repeatable launcher updates](features/2026-11-04-unsigned-runtime-deployment.md) |
+| 2026-11-04 | [Backend messages: immutable appends and 30-second zombie-kill batches](features/2026-11-04-backend-messages.md) |
 | 2026-10-29 | [SpriteConfig persistence and quarantine recovery (42.22.0 server)](features/2026-10-29-player-sprite-config-and-quarantine-recovery.md) |
 | 2026-10-29 | [Reconstruction: item RGB, visual finalization, descriptor and XP baselines](features/2026-10-29-player-reconstruction-visuals-and-progression.md) |
 | 2026-10-29 | [Reconstruction: subtype initialization and health/time baselines](features/2026-10-29-player-reconstruction-subtypes-and-health.md) |
@@ -37,6 +41,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-04 | [Backend message inbox and batched zombie-kill delivery proposal](reports/2026-11-04-backend-message-inbox-and-zombie-kills.md) |
 | 2026-11-04 | [42.22.1 port execution and retained build artifact](reports/2026-11-04-port-execution-and-artifact.md) |
 | 2026-11-04 | [42.22.0 to 42.22.1: vanilla changes and patch carry-forward](reports/2026-11-04-port-42-22-0-to-42-22-1.md) |
 | 2026-10-29 | [Player reconstruction versus native deserialization: 42.22.0](reports/2026-10-29-player-reconstruction-deserialization-audit.md) |

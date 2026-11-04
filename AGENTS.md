@@ -795,7 +795,7 @@ counters, changing timing boundaries or implementing a previously documented pro
 
 ## Safety and compatibility constraints
 
-- Do not modify the game JAR. The repository's deployment model uses loose classpath overrides.
+- Do not modify, replace, rename or delete the original game JAR. The repository's deployment model uses loose classpath overrides. Starting with 42.22.1, deployment creates a separate unsigned `projectzomboid-apocbr.jar` from the read-only original and updates native JSON/batch startup to use it. Follow the [runtime deployment guide](42.22.1/docs/features/2026-11-04-unsigned-runtime-deployment.md); repeated deployments must recheck current launchers and refresh only the derived archive when needed.
 - Do not commit generated `.class` files, downloaded JDKs, backups, temporary compiler output, or game files.
 - Do not remove existing patch behavior while refreshing a file from vanilla source.
 - Avoid broad formatting, renaming, or refactoring of decompiled classes.

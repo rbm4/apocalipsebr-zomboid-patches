@@ -2,7 +2,7 @@
 
 Custom server-side Java patches used on the **[Apocalipse \[BR\]](https://apocalipse.cloud)** Project Zomboid server.
 
-These patches fix bugs and improve multiplayer behavior that cannot be addressed through Lua mods alone. They work by placing a corrected `.class` file next to the game's JAR, which the JVM then loads instead of the original - **the game files are never modified or overwritten.**
+These patches fix bugs and improve multiplayer behavior that cannot be addressed through Lua mods alone. They work by placing corrected `.class` files next to the game's JAR, which the JVM loads before the vanilla classes. **The original game JAR is never modified or overwritten.** Starting with signed build 42.22.1, deployment creates a separate unsigned runtime JAR and configures startup to use it; see the [deployment guide](42.22.1/docs/features/2026-11-04-unsigned-runtime-deployment.md).
 
 ---
 

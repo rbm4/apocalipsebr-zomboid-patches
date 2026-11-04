@@ -5,8 +5,9 @@
 .DESCRIPTION
     Server-only patch script. It compiles every patched Java source under
     .\src\zombie and deploys the generated .class files as loose classpath
-    overrides next to projectzomboid.jar. Before compiling/deploying, it shows
-    a Portuguese feature summary and waits for the player to press a key.
+    overrides next to projectzomboid.jar. Deployment prepares a separate unsigned
+    projectzomboid-apocbr.jar and redirects native JSON/batch launchers to it.
+    The original projectzomboid.jar is only read, never edited or replaced.
 
     Use -ForceJdk to always use the bundled/downloaded Azul Zulu JDK and ignore
     any javac that may be installed on the player's machine.
@@ -53,7 +54,7 @@ $GameJar = Join-Path $PZDir "projectzomboid.jar"
 if (-not (Test-Path -LiteralPath $GameJar)) { $GameJar = Join-Path $PZDir "java\projectzomboid.jar" }
 if (-not (Test-Path -LiteralPath $GameJar)) { $GameJar = Join-Path $PZDir "java\ProjectZomboid.jar" }
 
-$DeployRoot = if (Test-Path -LiteralPath (Join-Path $PZDir "java")) { Join-Path $PZDir "java" } else { $PZDir }
+$DeployRoot = Split-Path -Parent $GameJar
 $SrcRoot = Join-Path $ToolsDir "src"
 $PostgresDriver = Join-Path $ToolsDir "lib\postgresql-42.7.14.jar"
 $HikariPool = Join-Path $ToolsDir "lib\HikariCP-7.1.0.jar"
@@ -257,7 +258,8 @@ if (-not (Test-Path -LiteralPath $PostgresDriver -PathType Leaf)) {
 if (-not (Test-Path -LiteralPath $HikariPool -PathType Leaf)) { throw "HikariCP JAR not found: $HikariPool" }
 $CompileClasspath = @($GameJar, $PostgresDriver, $HikariPool) -join [System.IO.Path]::PathSeparator
 
-# Validate launcher support before compilation or modifying the installation.
+# Validate launchers and the read-only original before compilation. The runtime
+# helper always rechecks current JSON on deployment, including after game updates.
 if (-not $BuildOnly) {
     & (Join-Path $ToolsDir 'tools\Set-PostgresRuntime.ps1') -PZDir $PZDir -DryRun
 }

@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from lupa import LuaRuntime
 
+PACK = Path(os.environ.get('APOCBR_TEST_PACK', r'C:\Users\ricar\Zomboid\Workshop\apocbr\Contents\mods\ApocalisebrPack\42.14'))
 MOD = Path(os.environ.get('APOCBR_TEST_BEYONDTEN', r'C:\Users\ricar\Zomboid\Workshop\apocbr\Contents\mods\BeyondTen\42'))
 
 
@@ -99,6 +100,10 @@ def runtime(server=True):
             lua.globals().module_name = name
             lua.globals().module_source = path.read_text(encoding='utf-8')
             lua.execute('local source=module_source; package.preload[module_name]=function() return assert(load(source))() end')
+    if server:
+        source = (PACK / 'media/lua/server/ApocBR/Entities.lua').read_text(encoding='utf-8')
+        lua.globals().entity_source = source
+        lua.execute("package.preload['ApocBR/Entities']=function() return assert(load(entity_source))() end")
     lua.execute("require('BeyondTen/Server')" if server else "require('BeyondTen/Client')")
     return lua
 

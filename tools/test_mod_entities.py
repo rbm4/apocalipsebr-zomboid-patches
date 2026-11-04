@@ -10,9 +10,10 @@ from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
-parser.add_argument('--version', default='42.21.0', choices=['42.21.0', '42.22.0'])
+parser.add_argument('--version', default='42.21.0', choices=['42.21.0', '42.22.0', '42.22.1'])
 VERSION = parser.parse_args().version
 GAME = Path(os.environ.get('APOCBR_TEST_GAME_JAR', r'Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar'))
+PACK = Path(os.environ.get('APOCBR_TEST_PACK', r'C:\Users\ricar\Zomboid\Workshop\apocbr\Contents\mods\ApocalisebrPack\42.14'))
 MOD = Path(os.environ.get('APOCBR_TEST_BEYONDTEN', r'C:\Users\ricar\Zomboid\Workshop\apocbr\Contents\mods\BeyondTen\42'))
 
 HARNESS = r'''
@@ -111,6 +112,9 @@ with tempfile.TemporaryDirectory(prefix='apocbr_mod_entities_') as folder:
     target = Path(folder)
     sources = []
     stubs = {
+        # Keep the Kahlua fixture in one unsigned package with its Core double.
+        'zombie/core/BoxedStaticValues.java': (ROOT / '42.22.1/decompiled/zombie/core/BoxedStaticValues.java').read_text(encoding='utf-8'),
+        'zombie/savefile/ApocBRPayloadProvenance.java': 'package zombie.savefile; public class ApocBRPayloadProvenance {public static int configuredServerId(){return 1;}}',
         'zombie/core/Core.java': 'package zombie.core; public class Core {public static boolean debug=false;}',
         'zombie/Lua/LuaManager.java': '''package zombie.Lua; public class LuaManager {
           public static class Platform {public se.krka.kahlua.vm.KahluaTable newTable(){return new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());}}
@@ -160,7 +164,7 @@ ApocBRModEntities = {
  poll = function() local result = responses; responses = {}; return result end,
 }
 ''')
-lua.execute((MOD / 'media/lua/server/ApocBR/Entities.lua').read_text(encoding='utf-8'))
+lua.execute((PACK / 'media/lua/server/ApocBR/Entities.lua').read_text(encoding='utf-8'))
 lua.execute((MOD / 'media/lua/server/BeyondTen/Persistence/MasteryEntity.lua').read_text(encoding='utf-8'))
 lua.execute('''
 assert(next(requests) == nil) -- Scaffold causes no automatic DB operations.

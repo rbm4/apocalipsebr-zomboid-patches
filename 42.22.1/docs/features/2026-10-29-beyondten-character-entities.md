@@ -1,5 +1,15 @@
 # BeyondTen character-scoped Lua entity persistence
 
+2026-11-04: the shared `ApocBR/Entities` facade now lives in required
+`APOCALISEBR_PACK`, at `ApocalisebrPack/42.14/media/lua/server/ApocBR/Entities.lua`.
+BeyondTen's module import stays `require "ApocBR/Entities"`; its own facade copy
+is removed. See [backend messages](2026-11-04-backend-messages.md) for the new
+append-only producer contract. Mutable mastery persistence remains unchanged.
+
+Related investigation: [backend message inbox and zombie-kill delivery](../reports/2026-11-04-backend-message-inbox-and-zombie-kills.md)
+(2026-11-04). Its original proposal is preserved; the implemented producer subset
+is described in the backend messages guide above.
+
 Implemented 2026-10-29 for the 42.22.0 dedicated server. This extends the
 [42.21 entity scaffold](../../../42.21.0/docs/features/2026-10-26-lua-mod-entities.md).
 The Lua mod retains its original mastery calculations and GlobalModData cache.

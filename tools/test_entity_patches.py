@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from lupa import LuaRuntime
 
+PACK = Path(os.environ.get('APOCBR_TEST_PACK', r'C:\Users\ricar\Zomboid\Workshop\apocbr\Contents\mods\ApocalisebrPack\42.14'))
 MOD = Path(os.environ.get('APOCBR_TEST_BEYONDTEN', r'C:\Users\ricar\Zomboid\Workshop\apocbr\Contents\mods\BeyondTen\42'))
 lua = LuaRuntime()
 lua.execute('''
@@ -42,7 +43,7 @@ lua.execute('''
     end
     function last() return requests[#requests] end
 ''')
-lua.execute((MOD / 'media/lua/server/ApocBR/Entities.lua').read_text(encoding='utf-8'))
+lua.execute((PACK / 'media/lua/server/ApocBR/Entities.lua').read_text(encoding='utf-8'))
 lua.execute('''
     repo=ApocBREntities.define('Test',{table='test',fields={
         character_id={type='uuid',id=true},perk_id={type='string',id=true},

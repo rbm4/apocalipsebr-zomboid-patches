@@ -1680,7 +1680,9 @@ public class GameServer {
                         }
                     }
 
-                    d.type.onServerPacket(d.buffer, connection);
+                    try (ApocBRNetworkDiagnostics.Scope diagnostics = ApocBRNetworkDiagnostics.receiving(d.type)) {
+                        d.type.onServerPacket(d.buffer, connection);
+                    }
                 } catch (Exception var3) {
                     if (connection == null) {
                         DebugLog.log(DebugType.Network, "Error with packet of type: " + d.type + " connection is null.");

@@ -4,7 +4,8 @@
 # Compiles every patched Java source under ./src/zombie and deploys the
 # generated .class files as loose classpath overrides next to projectzomboid.jar.
 # The JVM loads .class files from the filesystem before looking inside the JAR.
-# The original JAR is untouched.
+# Deployment prepares projectzomboid-apocbr.jar without signature metadata and
+# redirects native launcher JSON to it. The original JAR is only ever read.
 #
 # Usage:
 #   ./patchApocalipseBr.sh [--pz-dir PATH] [--dry-run] [--revert]
@@ -30,13 +31,16 @@ while [[ $# -gt 0 ]]; do
 done
 
 # Auto-detect JAR location (Linux client: PZ root; Linux server: java/ subdir)
-if [[ -f "$PZ_DIR/java/projectzomboid.jar" ]]; then
+if [[ -f "$PZ_DIR/projectzomboid.jar" ]]; then
+    JAR_FILE="$PZ_DIR/projectzomboid.jar"
+elif [[ -f "$PZ_DIR/java/projectzomboid.jar" ]]; then
     JAR_FILE="$PZ_DIR/java/projectzomboid.jar"
-    DEPLOY_BASE="$PZ_DIR/java"
+elif [[ -f "$PZ_DIR/java/ProjectZomboid.jar" ]]; then
+    JAR_FILE="$PZ_DIR/java/ProjectZomboid.jar"
 else
     JAR_FILE="$PZ_DIR/projectzomboid.jar"
-    DEPLOY_BASE="$PZ_DIR"
 fi
+DEPLOY_BASE="$(dirname "$JAR_FILE")"
 
 SRC_ROOT="$SCRIPT_DIR/src"
 POSTGRES_DRIVER="$SCRIPT_DIR/lib/postgresql-42.7.14.jar"

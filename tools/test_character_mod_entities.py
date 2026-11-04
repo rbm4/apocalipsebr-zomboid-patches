@@ -93,6 +93,9 @@ scoped_tests = r'''
 '''
 harness = harness.replace('  KahluaTable keys=', scoped_tests + '\n  KahluaTable keys=')
 stubs = {
+    # Keep the Kahlua fixture in one unsigned package with its Core double.
+    'zombie/core/BoxedStaticValues.java': (ROOT / '42.22.1/decompiled/zombie/core/BoxedStaticValues.java').read_text(encoding='utf-8'),
+    'zombie/savefile/ApocBRPayloadProvenance.java': 'package zombie.savefile; public class ApocBRPayloadProvenance {public static int configuredServerId(){return 1;}}',
     'zombie/core/Core.java': 'package zombie.core; public class Core {public static boolean debug=false;}',
     'zombie/Lua/LuaManager.java': '''package zombie.Lua; public class LuaManager {
       public static class Platform {public se.krka.kahlua.vm.KahluaTable newTable(){return new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());}}
@@ -125,6 +128,6 @@ with tempfile.TemporaryDirectory(prefix='apocbr_character_entities_') as folder:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(contents)
         sources.append(path)
-    sources.append(ROOT / '42.22.0/src/zombie/savefile/ApocBRModEntities.java')
+    sources.append(ROOT / os.environ.get('APOCBR_TEST_VERSION', '42.22.0') / 'src/zombie/savefile/ApocBRModEntities.java')
     subprocess.run([str(ROOT/'jdk/bin/javac.exe'), '--release', '25', '-cp', str(GAME), '-d', folder, *map(str, sources)], check=True)
     subprocess.run([str(ROOT/'jdk/bin/java.exe'), '-cp', folder+os.pathsep+str(GAME), 'zombie.savefile.ModEntitiesTest'], check=True, timeout=30)
