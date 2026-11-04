@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # patchApocalipseBr.sh
-# Server patch script for Project Zomboid 42.22.0.
+# Server patch script for Project Zomboid 42.22.1.
 # Compiles every patched Java source under ./src/zombie and deploys the
 # generated .class files as loose classpath overrides next to projectzomboid.jar.
 # The JVM loads .class files from the filesystem before looking inside the JAR.
@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCH_NAME="ApocBR Server Patch (Build 42.22.0)"
+PATCH_NAME="ApocBR Server Patch (Build 42.22.1)"
 PZ_DIR="/opt/pzserver"
 DRY_RUN=false
 REVERT=false

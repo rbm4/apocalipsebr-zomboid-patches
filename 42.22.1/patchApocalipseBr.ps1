@@ -1,6 +1,6 @@
 ﻿<#
 .SYNOPSIS
-    Compiles and deploys ApocBR server-side Project Zomboid 42.22.0 patches.
+    Compiles and deploys ApocBR server-side Project Zomboid 42.22.1 patches.
 
 .DESCRIPTION
     Server-only patch script. It compiles every patched Java source under
@@ -10,20 +10,33 @@
 
     Use -ForceJdk to always use the bundled/downloaded Azul Zulu JDK and ignore
     any javac that may be installed on the player's machine.
+
+    Use -BuildOnly [-ArtifactDir PATH] for an actual compilation that retains
+    class files and compiler logs without deployment. The output directory must
+    be new; its default location is artifacts/build_<timestamp> in this version.
 #>
 param(
     [string]$PZDir = "Z:\SteamLibrary\steamapps\common\ProjectZomboid",
     [string]$ToolsDir = $PSScriptRoot,
     [switch]$DryRun,
     [switch]$Revert,
-    [switch]$ForceJdk
+    [switch]$ForceJdk,
+    [switch]$BuildOnly,
+    [string]$ArtifactDir
 )
 
 $ErrorActionPreference = "Stop"
 $ForceJdk = $true
 
-$PatchName = "ApocBR Server optimization Patch (Build 42.22.0)"
+$PatchName = "ApocBR Server optimization Patch (Build 42.22.1)"
 $RequiredMajor = 25
+if ($BuildOnly -and ($DryRun -or $Revert)) { throw '-BuildOnly cannot be combined with -DryRun or -Revert.' }
+if ($ArtifactDir -and -not $BuildOnly) { throw '-ArtifactDir requires -BuildOnly.' }
+if ($BuildOnly) {
+    if (-not $ArtifactDir) { $ArtifactDir = Join-Path $PSScriptRoot ('artifacts\build_' + (Get-Date -Format 'yyyyMMdd_HHmmss')) }
+    $ArtifactDir = [IO.Path]::GetFullPath($ArtifactDir)
+    if (Test-Path -LiteralPath $ArtifactDir) { throw "Artifact directory already exists: $ArtifactDir. Choose a fresh directory to avoid stale classes." }
+}
 
 if ([string]::IsNullOrWhiteSpace($ToolsDir)) {
     if (-not [string]::IsNullOrWhiteSpace($PSScriptRoot)) {
@@ -245,7 +258,9 @@ if (-not (Test-Path -LiteralPath $HikariPool -PathType Leaf)) { throw "HikariCP 
 $CompileClasspath = @($GameJar, $PostgresDriver, $HikariPool) -join [System.IO.Path]::PathSeparator
 
 # Validate launcher support before compilation or modifying the installation.
-& (Join-Path $ToolsDir 'tools\Set-PostgresRuntime.ps1') -PZDir $PZDir -DryRun
+if (-not $BuildOnly) {
+    & (Join-Path $ToolsDir 'tools\Set-PostgresRuntime.ps1') -PZDir $PZDir -DryRun
+}
 
 $javac = Find-Javac
 if (-not $javac) { $javac = Install-Jdk }
@@ -302,6 +317,18 @@ if ($CompiledClasses.Count -eq 0) {
 }
 
 Write-Host ""
+if ($BuildOnly) {
+    New-Item -Path $ArtifactDir -ItemType Directory -Force | Out-Null
+    Copy-Item -LiteralPath $OutputDir -Destination (Join-Path $ArtifactDir 'classes') -Recurse
+    Copy-Item -LiteralPath $JavacOut -Destination (Join-Path $ArtifactDir 'javac.out.log')
+    Copy-Item -LiteralPath $JavacErr -Destination (Join-Path $ArtifactDir 'javac.err.log')
+    $resolvedWork = [IO.Path]::GetFullPath($WorkDir)
+    $resolvedTemp = [IO.Path]::GetFullPath($TempRoot).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    if (-not $resolvedWork.StartsWith($resolvedTemp, [StringComparison]::OrdinalIgnoreCase)) { throw 'Compile cleanup path is outside the temporary directory.' }
+    Remove-Item -LiteralPath $WorkDir -Recurse -Force
+    Write-Host "Build complete: $($CompiledClasses.Count) class files retained at $ArtifactDir" -ForegroundColor Green
+    exit 0
+}
 if ($DryRun) {
     Write-Host "[*] DRY RUN: Would deploy $($CompiledClasses.Count) server class files to $DeployRoot" -ForegroundColor Yellow
     foreach ($class in $CompiledClasses) {

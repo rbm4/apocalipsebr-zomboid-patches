@@ -54,8 +54,8 @@ Use the version explicitly requested by the user or implicitly identified by the
 task's paths, active files, logs or existing patch context. If no version is
 identified, select the latest available **server** version automatically: compare
 unsuffixed numeric version directories numerically, excluding `-client` and other
-suffixes. At this update that default is **42.22.0** (pre-release migration target;
-patches are not yet ported or deployment-validated); discover directories again
+suffixes. At this update that default is **42.22.1** (source carry-forward target;
+runtime and deployment validation remain pending); discover directories again
 instead of treating this number as permanent. Do not ask the user to select a
 version merely because they omitted it. Explicit client work still targets its
 separate client directory and exact baseline.
@@ -64,8 +64,8 @@ separate client directory and exact baseline.
 
 All new version-specific documentation belongs under `<version>/docs/`, including
 feature architecture, configuration, investigations, telemetry explanations and
-issue resolutions. For current work start with the [42.22.0 documentation index](42.22.0/docs/README.md)
-and [42.21.0 to 42.22.0 compatibility audit](42.22.0/docs/reports/2026-10-27-port-42-21-to-42-22.md).
+issue resolutions. For current work start with the [42.22.1 documentation index](42.22.1/docs/README.md)
+and [42.22.0 to 42.22.1 compatibility audit](42.22.1/docs/reports/2026-11-04-port-42-22-0-to-42-22-1.md).
 The [42.21.0 index](42.21.0/docs/README.md) remains the previous build's feature reference;
 do not treat its implementations or measurements as verified on 42.22.0.
 Do not create new guide copies in the version root or a nested `docs/docs/`.
@@ -302,6 +302,23 @@ Do not deploy rendering or UI classes as server patches unless the same class is
 ## Version porting
 
 A patch is not automatically valid for a newer build even if the class name is unchanged.
+
+### Current 42.22.1 carry-forward checkpoint
+
+On 2026-11-04 the user authorized copying the complete 42.22.0 working tree into
+42.22.1, applying the audited GameServer merge and committing the progression.
+The 42.22.1 vanilla tree is preserved. All 305 sources are carried forward;
+GameServer alone incorporates changed upstream source (integrity startup and
+revision logging). Libraries, tools and historical documentation are copied;
+ignored old backups remain historical copies. The copy receipt and execution
+report are indexed in 42.22.1/docs/README.md. Build scripts identify 42.22.1.
+The Windows script's -BuildOnly option performs real compilation and retains
+artifacts; it is distinct from -DryRun and does not deploy to the installation.
+Persistence/event labels remain exact 42.22.0 carry-overs. Do not globally replace
+them: exact 42.22.1 dictionary provenance requires a coordinated backend schema,
+publication, historical-read and namespace policy migration. Runtime validation
+and inherited cleanup/concurrency/reconstruction gaps remain open. The older
+42.22.0 checkpoint below is history, not a request to restart its review queue.
 
 ### Current 42.22.0 migration checkpoint
 
