@@ -1,0 +1,17 @@
+--- a/42.22.0/src/zombie/iso/objects/IsoThumpable.java
++++ b/42.22.0/src/zombie/iso/objects/IsoThumpable.java
+@@ -1555,6 +1555,14 @@
+         return ly;
+     }
+ 
++    /** Exact server no-op/deadline predicate; subclasses retain their own update contract. */
++    public boolean apocbrNeedsServerUpdate() {
++        if (!(this.getLifeLeft() > -1.0F)) return false;
++        if (!this.isLightSourceOn()) return this.updateAccumulator != 0.0F || this.lastUpdateHours != -1.0F;
++        int worldAgeMinutes = (int)(GameTime.getInstance().getWorldAgeHours() * 60.0);
++        return Math.abs(worldAgeMinutes - this.lastUpdateHours) > 10.0F;
++    }
++
+     @Override
+     public void update() {
+         if (this.getObjectIndex() != -1) {

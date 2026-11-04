@@ -1,0 +1,62 @@
+--- a/42.22.0/src/zombie/iso/objects/IsoMannequin.java
++++ b/42.22.0/src/zombie/iso/objects/IsoMannequin.java
+@@ -2,6 +2,7 @@
+ package zombie.iso.objects;
+ 
+ import java.io.IOException;
++import zombie.world.ApocBRWorldDictionaryDecode;
+ import java.nio.ByteBuffer;
+ import java.util.ArrayList;
+ import java.util.List;
+@@ -42,6 +43,7 @@
+ import zombie.debug.DebugType;
+ import zombie.gameStates.GameLoadingState;
+ import zombie.inventory.InventoryItem;
++import zombie.savefile.ApocBRPayloadProvenance;
+ import zombie.inventory.ItemContainer;
+ import zombie.inventory.types.Clothing;
+ import zombie.inventory.types.InventoryContainer;
+@@ -247,6 +249,7 @@
+ 
+     @Override
+     public void load(ByteBuffer input, int worldVersion, boolean isDebugSave) throws IOException {
++        try(var dictionary=ApocBRWorldDictionaryDecode.enter(input)) {
+         super.load(input, worldVersion, isDebugSave);
+         this.setForwardIsoDirection(IsoDirections.fromIndex(input.get()));
+         this.init = input.get() != 0;
+@@ -283,6 +286,7 @@
+                 }
+             }
+         }
++            }
+     }
+ 
+     @Override
+@@ -782,8 +786,8 @@
+ 
+     private void syncModel() {
+         this.humanVisual.setForceModelScript(this.modelScriptName);
+-        String i = this.modelScriptName;
+-        switch (i) {
++        String modelScript = this.modelScriptName;
++        switch (modelScript) {
+             case "FemaleBody":
+                 this.humanVisual.setForceModel(ModelManager.instance.femaleModel);
+                 break;
+@@ -902,6 +906,7 @@
+     public void setCustomSettingsToItem(InventoryItem item) throws IOException {
+         if (item instanceof Moveable) {
+             synchronized (SliceY.SliceBufferLock) {
++                var encodingOrigin=ApocBRPayloadProvenance.localEncoding();
+                 ByteBuffer output = SliceY.SliceBuffer;
+                 output.clear();
+                 output.putInt(251);
+@@ -909,6 +914,8 @@
+                 output.flip();
+                 item.byteData = ByteBuffer.allocate(output.limit());
+                 item.byteData.put(output);
++                ApocBRPayloadProvenance.remember(item.byteData,
++                    new ApocBRPayloadProvenance.Metadata(encodingOrigin,251));
+             }
+ 
+             if (this.container != null) {

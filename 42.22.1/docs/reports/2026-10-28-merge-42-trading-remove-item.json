@@ -1,0 +1,45 @@
+{
+  "review": 42,
+  "state": "approved-applied",
+  "path": "zombie/network/packets/TradingUIRemoveItemPacket.java",
+  "recommendation": "Add the NPC destination fallback and existing remove-offer hook on target-native packet APIs, preserving sender scope, exact native trade-pair checks and ID-only payload.",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "target_vanilla_sha256": "03270af1c7249ee0bf4ee3f65c98506a95f779c52c10347b8364b5ef81a087f7",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-42-trading-remove-item.diff",
+  "candidate_diff_sha256": "b41a1775ee2fd6990a8fac23aa808e8a966dfd2cb6d52189bbbc2fc40229f003",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-42-trading-remove-item.md",
+  "dependencies": [
+    "Applied review40 NPC resolver/session adapter and review41 add-item integration. Review43 state/finalize remains separate."
+  ],
+  "candidate_fixture": {
+    "script": "tools/test_trading_remove_item_port.py",
+    "passed": true,
+    "assertions": 120,
+    "scope": "Full candidate remove packet and temporary approved add packet, applied handshake/adapter/offer; native identity fields and exact extracted TradingManager pair/add/remove bodies; engine/inventory/Lua/transport/persistence doubles.",
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "applied_candidate_equivalence": true
+  },
+  "native_retained": [
+    "PlayerRequestPacket sender ConnectionPlayer and destination OnlinePlayer",
+    "Integer item ID setData and two shorts plus int wire body",
+    "Exact TradingManager.isInvalid participant-pair check before ordinary remove/relay",
+    "Native remove affects only the sending participant offer list",
+    "Writer/client event/capability/reliability unchanged"
+  ],
+  "offer_contract": "Withdraw an ID from the offer, not inventory. Any valid removal (including absent/repeated/negative ID) invalidates consent, matching existing helper behavior. No item object/inventory lookup required for withdrawal.",
+  "scope_limits": [
+    "Keep NPC sessions outside native TradingManager.",
+    "No change to sale/receipt/durability policy. Test persistence/encoding are doubles.",
+    "Review43 and removed Trading field design remain pending."
+  ],
+  "target_source_sha256": "926a2714ada1c05341b4c28858282284a21251e263ab1daf12c09140bb7cdb68",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "yes",
+    "date": "2026-10-28",
+    "baseline_commit": "a78d82e37a4c6ccb5dd676c54ba672d067484b73",
+    "installed_files_modified": false
+  }
+}

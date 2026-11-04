@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "target": "42.22.0",
+  "automatic_cleanup_implemented": false,
+  "deployment_status": "Required cleanup is tracked only; implement and verify backup/removal or restore before deployment.",
+  "families": [
+    {
+      "class_root": "zombie/LoadGridsquarePerformanceWorkaround.class",
+      "include_nested_classes": true,
+      "reason": "Old audited raw-array reader patch is obsolete under target List traversal.",
+      "review": 10,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
+    },
+    {
+      "class_root": "zombie/LootRespawn.class",
+      "include_nested_classes": true,
+      "reason": "Old audited raw-array reader patch is obsolete under target List traversal.",
+      "review": 11,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
+    },
+    {
+      "class_root": "zombie/iso/objects/IsoGenerator.class",
+      "include_nested_classes": true,
+      "reason": "Old audited raw-array reader patch is obsolete under target List traversal.",
+      "review": 20,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
+    },
+    {
+      "class_root": "zombie/network/fields/hit/WeaponHit.class",
+      "include_nested_classes": true,
+      "reason": "Removed native target. Old ignore-damage accessor intent is migrated to target Hit/server-body-loss adapters in approved review38; no obsolete WeaponHit class is recreated.",
+      "review": 38,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
+    },
+    {
+      "class_root": "zombie/network/fields/Trading.class",
+      "include_nested_classes": true,
+      "reason": "Removed native target. Old NPC destination fallback is migrated to packet-specific request/accept/reject and UI add/remove/state overrides through approved review43; obsolete shared Trading field not recreated.",
+      "review": 43,
+      "source_retirement_approved": true,
+      "installed_files_modified": false,
+      "cleanup_verified": false
+    }
+  ]
+}

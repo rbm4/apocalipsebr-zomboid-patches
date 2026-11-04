@@ -1,0 +1,383 @@
+--- a/42.22.0/src/zombie/characters/IsoPlayer.java
++++ b/42.22.0/src/zombie/characters/IsoPlayer.java
+@@ -238,6 +238,7 @@
+ import zombie.pathfind.PathFindBehavior2;
+ import zombie.pathfind.Point;
+ import zombie.pathfind.PolygonalMap2;
++import zombie.popman.NetworkZombieManager;
+ import zombie.popman.animal.AnimalInstanceManager;
+ import zombie.savefile.ClientPlayerDB;
+ import zombie.savefile.PlayerDB;
+@@ -425,6 +426,8 @@
+     private final ArrayList<Double> selectedZonesForHighlight = new ArrayList<>();
+     private Double selectedZoneForHighlight = 0.0;
+     private final HashMap<Long, Long> mechanicsItem = new HashMap<>();
++    private long apocbrMechanicsNextExpiry = Long.MIN_VALUE;
++    private long apocbrMechanicsLastTime = Long.MIN_VALUE;
+     private int sleepingPillsTaken;
+     private long lastPillsTaken;
+     private long heavyBreathInstance;
+@@ -1327,6 +1330,7 @@
+ 
+         for (int ix = 0; ix < size; ix++) {
+             this.mechanicsItem.put(input.getLong(), input.getLong());
++            this.apocbrMechanicsNextExpiry = Long.MIN_VALUE;
+         }
+ 
+         this.fitness.load(input, worldVersion);
+@@ -2100,13 +2104,17 @@
+                 this.setVariable("bMoving", this.isPlayerMoving());
+             }
+         } else {
++            long playerStarted = GameServer.server ? System.nanoTime() : 0L;
+             boolean updateBaseAndSend = this.updateInternal2();
++            if (playerStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.internal", System.nanoTime() - playerStarted);
+             if (updateBaseAndSend) {
+                 if (!this.remote) {
+                     this.updateLOS();
+                 }
+ 
++                long baseStarted = GameServer.server ? System.nanoTime() : 0L;
+                 super.update();
++                if (baseStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.base", System.nanoTime() - baseStarted);
+             }
+ 
+             GameClient.instance.sendPlayer2(this);
+@@ -2164,6 +2172,7 @@
+ 
+         this.updateDeathDragDown();
+         this.updateGodModeKey();
++        long movementStarted = GameServer.server ? System.nanoTime() : 0L;
+         PZOptional.ifPresent(this.tryGetECSComponent(NetworkComponent.class), NetworkComponent::updateNetworkAI);
+         this.doDeferredMovement();
+         if (!this.isLocal()) {
+@@ -2172,7 +2181,10 @@
+             this.setVehicleCollision(this.vehicle4testCollision != null && this.testCollideWithVehicles(this.vehicle4testCollision, null));
+         }
+ 
++        if (movementStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.networkAndMovement", System.nanoTime() - movementStarted);
++        long equippedSoundsStarted = GameServer.server ? System.nanoTime() : 0L;
+         this.updateEquippedItemSounds();
++        if (equippedSoundsStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.equippedSounds", System.nanoTime() - equippedSoundsStarted);
+         if (!GameServer.server) {
+             this.updateEmitter();
+         }
+@@ -2182,7 +2194,9 @@
+             this.updateHeavyBreathing();
+             this.updateTemperatureCheck();
+             if (this.isWeaponReady()) {
++                long stanceStarted = GameServer.server ? System.nanoTime() : 0L;
+                 this.updateAimingStance();
++                if (stanceStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.aimingStance", System.nanoTime() - stanceStarted);
+             }
+ 
+             if (this.isLocal()) {
+@@ -2192,10 +2206,14 @@
+             }
+ 
+             if (SystemDisabler.doCharacterStats) {
++                long nutritionStarted = GameServer.server ? System.nanoTime() : 0L;
+                 this.nutrition.update();
+-            }
+-
++                if (nutritionStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.nutrition", System.nanoTime() - nutritionStarted);
++            }
++
++            long fitnessStarted = GameServer.server ? System.nanoTime() : 0L;
+             this.fitness.update();
++            if (fitnessStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.fitness", System.nanoTime() - fitnessStarted);
+             this.updateVisionEffectTargets();
+         }
+ 
+@@ -2236,7 +2254,9 @@
+             this.timeSinceCloseDoor = this.timeSinceCloseDoor + GameTime.instance.getMultiplier();
+             this.lastTargeted = this.lastTargeted + GameTime.instance.getMultiplier();
+             this.targetedByZombie = false;
++            long actionGroupStarted = GameServer.server ? System.nanoTime() : 0L;
+             this.checkActionGroup();
++            if (actionGroupStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.actionGroup", System.nanoTime() - actionGroupStarted);
+             if (this.isJustMoved() && !this.isNpc() && !this.hasPath() && !this.isCurrentActionPathfinding()) {
+                 if (!GameServer.server && UIManager.getSpeedControls().getCurrentGameSpeed() > 1) {
+                     UIManager.getSpeedControls().SetCurrentGameSpeed(1);
+@@ -2265,28 +2285,44 @@
+                 }
+             }
+ 
+-            if (this.updateRemotePlayer()) {
++            long remoteStarted = GameServer.server ? System.nanoTime() : 0L;
++            boolean remoteUpdated = this.updateRemotePlayer();
++            if (remoteStarted != 0L) {
++                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote", System.nanoTime() - remoteStarted);
++                zombie.ApocBRServerTelemetryLite.count("players.remote.inVehicle", this.isSeatedInVehicle() ? 1L : 0L);
++            }
++            if (remoteUpdated) {
+                 if (this.updateWhileDead()) {
+                     return true;
+                 } else {
++                    long remoteSoundsStarted = GameServer.server ? System.nanoTime() : 0L;
+                     this.updateAttackLoopSound();
+                     this.updateBringToBearSound();
+                     this.updateHeartSound();
+                     this.updateDraggingCorpseSounds();
++                    if (remoteSoundsStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remoteSounds", System.nanoTime() - remoteSoundsStarted);
+                     this.checkIsNearWall();
+-                    this.checkIsNearVehicle();
++                    if (!GameServer.server || this.isSneaking()) {
++                        long proximityStarted = GameServer.server ? System.nanoTime() : 0L;
++                        this.checkIsNearVehicle();
++                        if (proximityStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.nearVehicle", System.nanoTime() - proximityStarted);
++                    }
++                    long idleStarted = GameServer.server ? System.nanoTime() : 0L;
+                     this.updateExt();
+                     this.setBeenMovingSprinting();
+                     this.updateAimingDelay();
++                    if (idleStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.idleAndAimingDelay", System.nanoTime() - idleStarted);
+                     if (GameServer.server) {
+                         this.updateMovementRates();
+                     }
+ 
++                    long enduranceStarted = GameServer.server ? System.nanoTime() : 0L;
+                     if (this.getVehicle() != null) {
+                         this.updateEnduranceWhileInVehicle();
+                     } else {
+                         this.updateEndurance();
+                     }
++                    if (enduranceStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.endurance", System.nanoTime() - enduranceStarted);
+ 
+                     return true;
+                 }
+@@ -3044,7 +3080,16 @@
+                 weapon.getFluidContainer().Empty();
+             }
+ 
+-            CombatManager.getInstance().calcValidTargets(this, weapon, s_targetsProne, s_targetsStanding);
++            long targetsStarted = GameServer.server ? System.nanoTime() : 0L;
++            if (targetsStarted != 0L) {
++                zombie.ApocBRServerTelemetryLite.count("players.aiming.targetListEntriesAtStart", IsoWorld.instance.currentCell.getObjectList().size());
++                zombie.ApocBRServerTelemetryLite.count("players.aiming.inVehicle", this.isSeatedInVehicle() ? 1L : 0L);
++            }
++            try {
++                CombatManager.getInstance().calcValidTargets(this, weapon, s_targetsProne, s_targetsStanding);
++            } finally {
++                if (targetsStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.aimingTargets", System.nanoTime() - targetsStarted);
++            }
+             HitInfo bestStanding = s_targetsStanding.isEmpty() ? null : s_targetsStanding.get(0);
+             HitInfo bestProne = s_targetsProne.isEmpty() ? null : s_targetsProne.get(0);
+             if (CombatManager.getInstance().isProneTargetBetter(this, bestStanding, bestProne)) {
+@@ -3767,10 +3812,22 @@
+ 
+     @Override
+     public void updateMovementRates() {
+-        this.calculateWalkSpeed();
+-        this.idleSpeed = this.calculateIdleSpeed();
+-        this.updateFootInjuries();
+-        this.updateInTreesInjuries();
++        long ratesStarted = GameServer.server && !this.isAnimal() ? System.nanoTime() : 0L;
++        try {
++            long speedStarted = ratesStarted != 0L ? System.nanoTime() : 0L;
++            this.calculateWalkSpeed();
++            this.idleSpeed = this.calculateIdleSpeed();
++            if (speedStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.movementRates.speed", System.nanoTime() - speedStarted);
++            long injuriesStarted = ratesStarted != 0L ? System.nanoTime() : 0L;
++            this.updateFootInjuries();
++            this.updateInTreesInjuries();
++            if (injuriesStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.movementRates.injuries", System.nanoTime() - injuriesStarted);
++        } finally {
++            if (ratesStarted != 0L) {
++                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.movementRates", System.nanoTime() - ratesStarted);
++                zombie.ApocBRServerTelemetryLite.count("players.movementRates.inVehicle", this.isSeatedInVehicle() ? 1L : 0L);
++            }
++        }
+     }
+ 
+     @Override
+@@ -4185,21 +4242,20 @@
+     }
+ 
+     private void updateMechanicsItems() {
+-        if (!this.mechanicsItem.isEmpty()) {
+-            Iterator<Long> it = this.mechanicsItem.keySet().iterator();
+-            ArrayList<Long> toremove = new ArrayList<>();
+-
+-            while (it.hasNext()) {
+-                Long item = it.next();
+-                Long milli = this.mechanicsItem.get(item);
+-                if (GameTime.getInstance().getCalender().getTimeInMillis() > milli + 86400000L) {
+-                    toremove.add(item);
+-                }
+-            }
+-
+-            for (int i = 0; i < toremove.size(); i++) {
+-                this.mechanicsItem.remove(toremove.get(i));
+-            }
++        if (this.mechanicsItem.isEmpty()) return;
++        long now = GameTime.getInstance().getCalender().getTimeInMillis();
++        if (now >= this.apocbrMechanicsLastTime && now <= this.apocbrMechanicsNextExpiry) {
++            this.apocbrMechanicsLastTime = now;
++            return;
++        }
++        this.apocbrMechanicsLastTime = now;
++        this.apocbrMechanicsNextExpiry = Long.MAX_VALUE;
++        Iterator<java.util.Map.Entry<Long, Long>> iterator = this.mechanicsItem.entrySet().iterator();
++        while (iterator.hasNext()) {
++            java.util.Map.Entry<Long, Long> entry = iterator.next();
++            long expiry = entry.getValue() + 86400000L;
++            if (now > expiry) iterator.remove();
++            else this.apocbrMechanicsNextExpiry = Math.min(this.apocbrMechanicsNextExpiry, expiry);
+         }
+     }
+ 
+@@ -5758,6 +5814,11 @@
+     }
+ 
+     public void updateLOS() {
++        if (GameServer.server) {
++            this.updateServerZombieAuthorityLOS();
++            return;
++        }
++
+         this.spottedList.clear();
+         this.stats.numVisibleZombies = 0;
+         if (!GameServer.server) {
+@@ -5974,6 +6035,69 @@
+ 
+             this.stats.lastNumVisibleZombies = this.stats.numVisibleZombies;
+             this.stats.lastVeryCloseZombies = vclose;
++        }
++    }
++
++    private void updateServerZombieAuthorityLOS() {
++        this.spottedList.clear();
++        this.lastSpotted.clear();
++        this.stats.numVisibleZombies = 0;
++        // Server chasing counts are owned by the native scheduler frame pass.
++        this.stats.musicZombiesTargetingDistantNotMoving = 0;
++        this.stats.musicZombiesTargetingNearbyNotMoving = 0;
++        this.stats.musicZombiesTargetingDistantMoving = 0;
++        this.stats.musicZombiesTargetingNearbyMoving = 0;
++        this.stats.musicZombiesVisible = 0;
++        this.numSurvivorsInVicinity = 0;
++        this.closestZombie = 1000000.0F;
++        this.stats.lastNumVisibleZombies = 0;
++        this.stats.lastVeryCloseZombies = 0;
++        IsoGridSquare currentSquare = this.getCurrentSquare();
++        IsoCell cell = this.getCell();
++        if (currentSquare == null || cell == null) {
++            return;
++        }
++
++        float playerX = this.getX();
++        float playerY = this.getY();
++        int playerZ = PZMath.fastfloor(this.getZ());
++        float maxDistance = Math.max(20.0F, GameTime.getInstance().getViewDist());
++        float maxDistanceSquared = maxDistance * maxDistance;
++        ArrayList<IsoZombie> zombies = new ArrayList<>();
++        cell.getPlayerSpatialQueries().queryZombies(cell, playerX, playerY, maxDistance, zombies);
++        for (IsoZombie zombie : zombies) {
++            if (zombie == null || zombie.isDead() || zombie.isFakeDead() || zombie.isUseless() || zombie.isReanimatedForGrappleOnly()) {
++                continue;
++            }
++
++            IsoGridSquare zombieSquare = zombie.getCurrentSquare();
++            if (zombieSquare == null || PZMath.fastfloor(zombie.getZ()) != playerZ) {
++                continue;
++            }
++
++            float distanceSquared = IsoUtils.DistanceToSquared(zombie.getX(), zombie.getY(), playerX, playerY);
++            if (distanceSquared > maxDistanceSquared) {
++                continue;
++            }
++
++            boolean targetsPlayer = zombie.getTarget() == this;
++            boolean leadAggro = !targetsPlayer && zombie.isLeadAggro(this);
++            if (!leadAggro && !targetsPlayer && !NetworkZombieManager.canSpotted(zombie)) {
++                continue;
++            }
++
++            if (!ServerLOS.instance.isCouldSee(this, zombieSquare)) {
++                continue;
++            }
++
++            if (leadAggro) {
++                INetworkPacket.send(zombie.getOwner(), PacketTypes.PacketType.ZombieControl, zombie, this);
++            } else {
++                zombie.spotted(this, false);
++                if (distanceSquared < this.closestZombie * this.closestZombie && !zombie.isOnFloor()) {
++                    this.closestZombie = (float)Math.sqrt(distanceSquared);
++                }
++            }
+         }
+     }
+ 
+@@ -6804,12 +6928,16 @@
+             return false;
+         } else {
+             if (this.isSeatedInVehicle()) {
++                long vehicleSyncStarted = GameServer.server && !this.isAnimal() ? System.nanoTime() : 0L;
+                 this.updateRemotePlayerInVehicle();
++                if (vehicleSyncStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.vehicleSync", System.nanoTime() - vehicleSyncStarted);
+             }
+ 
+             if (GameServer.server) {
++                long losStarted = System.nanoTime();
+                 ServerLOS.instance.doServerZombieLOS(this);
+                 ServerLOS.instance.updateLOS(this);
++                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.los", System.nanoTime() - losStarted);
+                 if (this.isDead()) {
+                     return true;
+                 }
+@@ -6836,13 +6964,31 @@
+                     LuaEventManager.triggerEvent("OnPlayerMove", this);
+                 }
+ 
+-                this.removeFromSquare();
+-                this.setForceX(this.realx);
+-                this.setForceY(this.realy);
+-                this.setZ(this.realz);
+-                this.setLastZ(this.realz);
+-                this.ensureOnTile();
+-                this.setMovingSquareNow();
++                long squareStarted = !this.isAnimal() ? System.nanoTime() : 0L;
++                IsoGridSquare previousSquare = squareStarted != 0L ? this.getCurrentSquare() : null;
++                boolean unchangedPosition = squareStarted != 0L && this.getX() == this.realx && this.getY() == this.realy && this.getZ() == this.realz;
++                try {
++                    long detachStarted = squareStarted != 0L ? System.nanoTime() : 0L;
++                    this.removeFromSquare();
++                    if (detachStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.square.detach", System.nanoTime() - detachStarted);
++                    this.setForceX(this.realx);
++                    this.setForceY(this.realy);
++                    this.setZ(this.realz);
++                    this.setLastZ(this.realz);
++                    long ensureStarted = squareStarted != 0L ? System.nanoTime() : 0L;
++                    this.ensureOnTile();
++                    if (ensureStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.square.ensureOnTile", System.nanoTime() - ensureStarted);
++                    long membershipStarted = squareStarted != 0L ? System.nanoTime() : 0L;
++                    this.setMovingSquareNow();
++                    if (membershipStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.square.membership", System.nanoTime() - membershipStarted);
++                    if (squareStarted != 0L) {
++                        zombie.ApocBRServerTelemetryLite.count("players.remote.square.unchangedPosition", unchangedPosition ? 1L : 0L);
++                        zombie.ApocBRServerTelemetryLite.count("players.remote.square.sameSquare", previousSquare != null && previousSquare == this.getCurrentSquare() ? 1L : 0L);
++                        zombie.ApocBRServerTelemetryLite.count("players.remote.square.missingSquare", this.getCurrentSquare() == null ? 1L : 0L);
++                    }
++                } finally {
++                    if (squareStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.square", System.nanoTime() - squareStarted);
++                }
+                 if (this.slowTimer > 0.0F) {
+                     this.slowTimer = this.slowTimer - GameTime.instance.getRealworldSecondsSinceLastUpdate();
+                     this.slowFactor = this.slowFactor - GameTime.instance.getMultiplier() / 100.0F;
+@@ -7686,6 +7832,7 @@
+         }
+ 
+         this.mechanicsItem.put(Long.parseLong(itemid), milli);
++        this.apocbrMechanicsNextExpiry = Long.MIN_VALUE;
+     }
+ 
+     private void updateTemperatureCheck() {
+@@ -8465,6 +8612,7 @@
+         } else {
+             this.DoDeath(killer.getUseHandWeapon(), killer, isGory);
+         }
++        zombie.network.ApocBRBackendBridgeHooks.onDeath(this, killer);
+     }
+ 
+     private void onDied(IsoGameCharacter sender, IsoDeadBody body) {
