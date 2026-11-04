@@ -49,6 +49,7 @@ and deployment validation require the matching target installation. See the
 
 | Date | Document |
 | --- | --- |
+| 2026-11-04 | [42.22.1 successor audit: vanilla changes and carry-forward assessment](../../42.22.1/docs/reports/2026-11-04-port-42-22-0-to-42-22-1.md) |
 | 2026-10-29 | [Native player load versus reconstruction: step matrix and action tracker](reports/2026-10-29-native-player-load-reconstruction-matrix.md) |
 | 2026-10-29 | [Player reconstruction versus native deserialization: weight and state coverage audit](reports/2026-10-29-player-reconstruction-deserialization-audit.md) |
 | 2026-10-28 | [Cross-build character reconstruction: failure paths and recovery design](reports/2026-10-28-cross-build-character-reconstruction.md) |

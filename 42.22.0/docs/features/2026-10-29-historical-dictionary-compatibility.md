@@ -1,5 +1,9 @@
 # Historical dictionaries during the 42.22.0 upgrade
 
+Successor assessment: the [2026-11-04 42.22.1 audit](../../../42.22.1/docs/reports/2026-11-04-port-42-22-0-to-42-22-1.md)
+identifies the build/world-pair and backend constraint work required for the next
+minor build. That migration has not been applied by the audit.
+
 Implemented 2026-10-29 for the dedicated-server PostgreSQL dictionary mirror.
 Publication, exact-view reads and ID translation passed focused fixtures; all
 303 patch sources compiled in a dry run against the installed world251 game JAR.
