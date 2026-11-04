@@ -86,9 +86,9 @@ one-time relocation helper. Account IDs use exact unsigned Steam ID strings;
 non-Steam servers use username identity.
 
 ExtractionMapUtils owns safehouse membership/destination policy, six-hour
-cooldowns and confirmation. Revision 5 uses `SafeHouse.hasSafehouse(player)` (owner or
-member), then the registered claim origin `getX(), getY(), 0`, matching vanilla
-`ISSafehousesList` Teleport. It calls the existing native server teleport bridge
+cooldowns and confirmation. Revision 6 uses `SafeHouse.hasSafehouse(player)` (owner or
+member), then `X + floor(H/2), Y + floor(W/2), 0`, matching the exact 42.22.1
+IsoWorld death-respawn coordinate calculation (including its dimension order). It calls the existing native server teleport bridge
 without loaded-square checks or forced destination streaming, like the lobby
 relocation transport. The native client handles relocation/loading. No Java
 change accompanies this mod-only correction.

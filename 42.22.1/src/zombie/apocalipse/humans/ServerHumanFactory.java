@@ -141,7 +141,7 @@ public final class ServerHumanFactory {
                     for(var restored:loaded.instances()) {
                         var state=restored.state();if(state.retired())continue;
                         ServerHumanProfiles.registry().require(state.definition().profileId());checkOnlineName(state.definition());
-                        if(!names.add(canonicalName(state.definition().username())))throw new IllegalArgumentException("Conflicting NPC names");
+                        if(!names.add(canonicalName(state.definition().displayName())))throw new IllegalArgumentException("Conflicting NPC names");
                     }
                 } catch(RuntimeException failure) {
                     configurationRejected=true;
@@ -149,7 +149,7 @@ public final class ServerHumanFactory {
                 }
                 configured=true;
                 for(var restored:loaded.instances()) {
-                    var state=restored.state();if(state.retired()){retiredKeys.add(state.definition().key());reservedNames.add(canonicalName(state.definition().username()));continue;}
+                    var state=restored.state();if(state.retired()){retiredKeys.add(state.definition().key());reservedNames.add(canonicalName(state.definition().displayName()));continue;}
                     registerDormant(state.definition());
                     instances.get(state.definition().key()).restore(state.lifecycle(),state.activations(),state.profileRevision());
                     instances.get(state.definition().key()).physiology().restore(state.physiology());
@@ -248,7 +248,7 @@ public final class ServerHumanFactory {
         if(instances.size()+retiredKeys.size()>=256)throw new IllegalStateException("NPC logical instance limit reached");
         if(retiredKeys.contains(definition.key()))throw new IllegalArgumentException("NPC key permanently retired");
         if (instances.containsKey(definition.key())) throw new IllegalArgumentException("Duplicate human key: " + definition.key());
-        String name = canonicalName(definition.username());
+        String name = canonicalName(definition.displayName());
         if (reservedNames.contains(name)) throw new IllegalArgumentException("Human username already used in this server process");
         checkOnlineName(definition);
         instances.put(definition.key(),new HumanLifecycle(definition,this::requireOwner));
@@ -292,7 +292,7 @@ public final class ServerHumanFactory {
     }
 
     private void checkOnlineName(ServerHumanDefinition definition) {
-        String name = canonicalName(definition.username());
+        String name = canonicalName(definition.displayName());
         for (zombie.characters.IsoPlayer player : GameServer.IDToPlayerMap.values()) {
             if (player.getUsername() != null && canonicalName(player.getUsername()).equals(name))
                 throw new IllegalArgumentException("Human username conflicts with an online player");

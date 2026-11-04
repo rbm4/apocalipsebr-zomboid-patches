@@ -14,6 +14,8 @@ pool support in this build as well as the migration.
 
 `server_spawn` contains only `(apoc-dev, agente-v)`, username `NPC_AgenteV`, display
 name **Agente V**, female, `PrivateMilitia`, home `(9373,150,0)`, facing south.
+The [native presentation name fix](2026-11-04-npc-display-names.md) uses **Agente V**
+for overhead labels and native speech while retaining `NPC_AgenteV` in configuration.
 The mod's `42/media/clothing/clothing.xml` overrides the female `PrivateMilitia`
 outfit; that mod and its assets must be enabled on the server and clients.
 

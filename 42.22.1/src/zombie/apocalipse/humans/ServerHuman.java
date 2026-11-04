@@ -72,8 +72,9 @@ final class ServerHuman {
         this.player.remote = true;
         this.player.playerIndex = -1;
         this.player.setOnlineID(onlineId);
-        // The factory reserves names for the process lifetime to protect chat caches.
-        this.player.setUsername(definition.username());
+        // Stock overhead rendering resets displayName and rebuilds it from username.
+        // The factory reserves this presentation name for the lifetime of the process.
+        this.player.setUsername(definition.displayName());
         this.player.setDisplayName(definition.displayName());
         this.player.setGodMod(profile.cheats().godMode(), true);
         this.player.setInvisible(profile.cheats().invisible(), true);
