@@ -14,6 +14,7 @@ and compatibility assessment.
 | `9c2ef2d` | Copy the existing patched GameServer as a byte-identical baseline into the target. |
 | `886f0e5` | Apply the exact reviewed GameServer merge: integrity import/startup and revision update. |
 | `e863606` | Copy remaining sources, libraries, scripts, tools and historical documentation; record per-file hashes. |
+| `41ef8ee` | Configure target labels/documentation and actual build-only artifact retention. |
 
 The complete [copy receipt](2026-11-04-port-copy-receipt.json) records 4,954
 verified file copies, including 4,486 ignored historical backup files. The
@@ -62,8 +63,28 @@ Command from the repository root:
 .\42.22.1\patchApocalipseBr.ps1 -PZDir 'Z:\SteamLibrary\steamapps\common\ProjectZomboid' -BuildOnly -ArtifactDir 'Z:\git\Github\apocalipsebr-zomboid-patches\42.22.1\artifacts\build-2026-11-04'
 ```
 
-Build result and package receipt will be recorded after execution. Generated
-artifacts are ignored by Git; source, documentation and build receipts are committed.
+**Result: PASS**, javac 25.0.4, exit 0, **305 Java sources / 902 class files**.
+The target JAR revision is `71e8410c42`, world format 251. Its SHA-256 and the
+compiled source commit are recorded in the
+[build receipt](2026-11-04-port-build-receipt.json). Inspection of the actual
+GameServer bytecode confirms the `IntegrityReport.collectInBackground` call.
+
+Deliverables:
+
+- [ApocBR-server-42.22.1.zip](../../artifacts/ApocBR-server-42.22.1.zip), 4,356,973 bytes.
+- [Retained class output](../../artifacts/build-2026-11-04/classes/).
+- [Complete source/class/dependency hash manifest](../../artifacts/build-2026-11-04/manifest.json).
+- [Compiler standard output](../../artifacts/build-2026-11-04/javac.out.log) and
+  [diagnostics](../../artifacts/build-2026-11-04/javac.err.log).
+
+ZIP SHA-256:
+`134a93c2c1c54fb1f3c489cf755eba0b3366bdea329896832e6fe345c3a25683`.
+The ZIP contains the 902 compiled classes at their package paths, both dependency
+JARs, runtime-classpath helpers, the retirement manifest, README and hash manifest.
+Archive CRCs and all 902 archived class hashes were verified against compiler
+output. It does not include historical backups. Generated artifacts are ignored
+by Git; source, documentation and build receipts are committed. The game
+installation, launcher and live database were not modified by this build.
 
 ## Validation boundaries
 

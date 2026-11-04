@@ -314,6 +314,11 @@ ignored old backups remain historical copies. The copy receipt and execution
 report are indexed in 42.22.1/docs/README.md. Build scripts identify 42.22.1.
 The Windows script's -BuildOnly option performs real compilation and retains
 artifacts; it is distinct from -DryRun and does not deploy to the installation.
+The actual target build passed on 2026-11-04: javac25.0.4, 305 sources, 902 class
+files, installed JAR revision71e8410c42/world251. Retained classes, ZIP and hash
+manifest are under 42.22.1/artifacts/ (ignored); the build receipt is committed
+under docs/reports/. All archived class hashes and GameServer integrity-startup
+bytecode were verified. This build did not modify the game installation.
 Persistence/event labels remain exact 42.22.0 carry-overs. Do not globally replace
 them: exact 42.22.1 dictionary provenance requires a coordinated backend schema,
 publication, historical-read and namespace policy migration. Runtime validation

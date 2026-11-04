@@ -6,6 +6,11 @@ GameServer includes the reviewed upstream integrity-report startup and revision
 update. The Windows build supports actual compilation with retained artifacts
 through `-BuildOnly -ArtifactDir PATH`.
 
+The actual 2026-11-04 build passed: **305 sources / 902 class files**. The
+[retained ZIP](../artifacts/ApocBR-server-42.22.1.zip) and
+[build receipt](reports/2026-11-04-port-build-receipt.json) record the output;
+the installation was not modified.
+
 Start with the [port execution and artifact report](reports/2026-11-04-port-execution-and-artifact.md)
 and the [vanilla compatibility audit](reports/2026-11-04-port-42-22-0-to-42-22-1.md).
 Persistence/event build labels remain 42.22.0 for this exact carry-forward; exact
