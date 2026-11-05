@@ -8,7 +8,18 @@ from test_human_healing import STUBS, ROOT, SOURCE
 
 FIXTURES=dict(STUBS)
 FIXTURES['zombie/characters/IsoGameCharacter.java']='package zombie.characters; public class IsoGameCharacter {}'
-FIXTURES['zombie/characters/IsoPlayer.java']=STUBS['zombie/characters/IsoPlayer.java'].replace('public class IsoPlayer {','public class IsoPlayer extends IsoGameCharacter {public short onlineId=768;public short getOnlineID(){return onlineId;}')
+FIXTURES['zombie/characters/IsoZombie.java']='''package zombie.characters;public class IsoZombie extends IsoGameCharacter {
+ public float x,y;public int z;public boolean dead;public short id;public int instance;
+ public float getX(){return x;}public float getY(){return y;}public float getZ(){return z;}public int getZi(){return z;}public boolean isDead(){return dead;}}
+'''
+FIXTURES['zombie/apocalipse/humans/brain/HumanCombatTactics.java']='package zombie.apocalipse.humans.brain;public class HumanCombatTactics {public static final double IMMEDIATE_RANGE=1.5;}'
+FIXTURES['zombie/apocalipse/zombies/ServerZombieController.java']='''package zombie.apocalipse.zombies;public class ServerZombieController {
+ static final ServerZombieController INSTANCE=new ServerZombieController();public static ServerZombieController getInstance(){return INSTANCE;}
+ public void engage(zombie.characters.IsoZombie target,short player){}}'''
+FIXTURES['zombie/apocalipse/humans/ServerHumanWeaponBackend.java']='''package zombie.apocalipse.humans;import zombie.apocalipse.humans.brain.*;
+class ServerHumanWeaponBackend implements ServerHumanCombat.Backend {ServerHumanWeaponBackend(ServerHuman human){}
+ public HumanCombat.Execution begin(zombie.characters.IsoPlayer a,zombie.characters.IsoZombie z,long id,HumanCombat.Request r,long now){return HumanCombat.finished(new HumanCombat.Result(HumanCombat.Status.COMPLETED,HumanCombat.Reason.NONE));}}'''
+FIXTURES['zombie/characters/IsoPlayer.java']=STUBS['zombie/characters/IsoPlayer.java'].replace('public class IsoPlayer {','public class IsoPlayer extends IsoGameCharacter {public short onlineId=768;public short getOnlineID(){return onlineId;}public int getXi(){return (int)Math.floor(x);}public int getYi(){return (int)Math.floor(y);}')
 FIXTURES['zombie/network/GameServer.java']='package zombie.network;public class GameServer {public static boolean server=true;}'
 FIXTURES['zombie/apocalipse/humans/ServerHumanFactory.java']='''package zombie.apocalipse.humans;class ServerHumanFactory {
  static final int FIRST_ID=768,LAST_ID=1023;static ServerHuman target;static int queries;
@@ -29,10 +40,11 @@ class ServerHumanRetaliation {static Active module(ServerHuman actor){return act
 FIXTURES['zombie/apocalipse/humans/ServerHuman.java']='''package zombie.apocalipse.humans;
 import java.util.*;import zombie.characters.IsoPlayer;import zombie.apocalipse.humans.groups.*;import zombie.apocalipse.humans.state.*;import zombie.apocalipse.humans.brain.*;import zombie.apocalipse.humans.walking.*;
 class ServerHuman {
- record Definition(String key,HumanGroupMembership group){}
+ record Definition(String key,HumanGroupMembership group){int z(){return 0;}}
  final Definition definition;final String incarnation=UUID.randomUUID().toString();final IsoPlayer player=new IsoPlayer();final Store state=new Store();
  final Profile profile;final HumanActivityController activity;final Territory territory=new Territory();final GroupPatrolModule module=new GroupPatrolModule();
  final ServerHumanRetaliation.Active retaliation=new ServerHumanRetaliation.Active();
+ ServerHumanSquadAssist squadAssist;final Perception perception=new Perception();final Movement movement=new Movement();final Walking walking=new Walking();
  ServerHuman(String key,String group,int slot,List<WalkingPatternSpec.Point> route){
   definition=new Definition(key,new HumanGroupMembership(group,slot));profile=new Profile(route);
   activity=new HumanActivityController(new HumanModuleRuntime(List.of(new HumanModuleRuntime.Entry("group-patrol",1000,100,module))));
@@ -41,6 +53,26 @@ class ServerHuman {
  static class Store {HumanState value=HumanState.INITIAL;HumanState snapshot(){return value;}}
  static class Profile {double capacity=1;double healthMultiplier(){return capacity;}final List<WalkingPatternSpec> patterns;Profile(List<WalkingPatternSpec.Point> points){patterns=List.of(new WalkingPatternSpec("background","waypoint-circuit",64,points,new WalkingPatternSpec.Area(9788,2395,9894,2472)));}List<WalkingPatternSpec> walkingPatterns(){return patterns;}}
  static class Territory {boolean inside=true;boolean contains(float x,float y,float z){return inside;}}
+ static class Perception {
+  HumanSenses.Frame frame=HumanSenses.Frame.EMPTY;final Map<HumanSenses.Identity,zombie.characters.IsoZombie> known=new HashMap<>();int hints;
+  HumanSenses.Frame awarenessFrame;HumanSenses.Frame snapshot(){return frame;}HumanSenses.Frame awareness(){return awarenessFrame==null?frame:awarenessFrame;}
+  zombie.characters.IsoZombie trackedZombie(HumanSenses.Identity id){var z=known.get(id);return z!=null&&!z.dead?z:null;}
+  zombie.characters.IsoZombie resolveZombie(HumanSenses.Identity id){return frame.contacts().stream().anyMatch(c->c.identity().equals(id)&&c.visible())?trackedZombie(id):null;}
+  void hintZombie(zombie.characters.IsoZombie z){hints++;}
+ }
+ static class Square {}
+ static class Movement {
+  int starts,stops;boolean loaded=true;HumanActuator.MotionStatus result=HumanActuator.MotionStatus.RUNNING;
+  boolean available(){return loaded;}Square square(int x,int y){return loaded?new Square():null;}
+  boolean traversing(){return false;}
+  boolean walkable(zombie.apocalipse.humans.movement.MovementGrid.Tile t){return loaded;}
+  boolean freeOfBlockingBodies(Square s){return true;}
+  boolean connected(zombie.apocalipse.humans.movement.MovementGrid.Tile a,zombie.apocalipse.humans.movement.MovementGrid.Tile b){return true;}
+  int traversalCost(zombie.apocalipse.humans.movement.MovementGrid.Tile a,zombie.apocalipse.humans.movement.MovementGrid.Tile b){return 1;}
+  boolean start(List<zombie.apocalipse.humans.movement.MovementGrid.Tile> r,zombie.apocalipse.humans.movement.MovementGrid g,zombie.apocalipse.humans.movement.MovementModifiers.Pace p,long n){starts++;return !r.isEmpty();}
+  HumanActuator.MotionStatus update(long now){return result;}void stop(){stops++;}
+ }
+ static class Walking {int stops;void stop(){stops++;}}
 }'''
 
 HARNESS=r'''
@@ -205,12 +237,13 @@ class NativeBodyPartFixture {final zombie.characters.IsoGameCharacter parentChar
  static class PZMath {static float clamp(float value,float min,float max){return Math.clamp(value,min,max);}}
 '''+seam+'}'
     FIXTURES['zombie/apocalipse/humans/ServerHumanPlayerDamage.java']='package zombie.apocalipse.humans;import zombie.characters.IsoPlayer;public class ServerHumanPlayerDamage {'+adapter+'}'
-    production=list((SOURCE/'groups').glob('*.java'))+[SOURCE/'ServerHumanGroups.java']
-    production += [SOURCE/'brain'/name for name in ('HumanObservation.java','HumanSenses.java','HumanTerritory.java','TacticalIntent.java','HumanModule.java','HumanBehavior.java','HumanModuleRuntime.java','HumanAction.java','HumanActionExecution.java','HumanCombat.java')]
+    production=list((SOURCE/'groups').glob('*.java'))+[SOURCE/'ServerHumanGroups.java',SOURCE/'ServerHumanSquadAssist.java',SOURCE/'ServerHumanCombat.java']
+    production += [SOURCE/'brain'/name for name in ('HumanObservation.java','HumanSenses.java','HumanTerritory.java','TacticalIntent.java','HumanModule.java','HumanBehavior.java','HumanModuleRuntime.java','HumanAction.java','HumanActionExecution.java','HumanCombat.java','HumanEngagement.java','EngageZombiesModule.java')]
     production += [SOURCE/'walking'/name for name in ('WalkingPatternSpec.java','MovementRequest.java')]
-    production += [SOURCE/'movement'/name for name in ('MovementGrid.java','DestinationRoutePlanner.java')]
+    production += [SOURCE/'movement'/name for name in ('MovementGrid.java','DestinationRoutePlanner.java','CombatRoutePlanner.java','MovementModifiers.java')]
     production += [SOURCE/'state'/name for name in ('HumanState.java','HumanMutation.java','HumanStateReducer.java','HumanHealthCapacity.java')]
-    production += [SOURCE/'survival'/name for name in ('SurvivalSettings.java','SurvivalPort.java')]
+    production += [SOURCE/'survival'/name for name in ('SurvivalSettings.java','SurvivalPort.java','SurvivalModule.java','ThreatAssessment.java')]
+    production += [SOURCE/'healing'/name for name in ('HealingSettings.java','HumanHealingPort.java','HealingModule.java')]
     with tempfile.TemporaryDirectory(prefix='apocbr-groups-') as folder:
         work=Path(folder);sources=list(production)
         for name,content in {**FIXTURES,'zombie/apocalipse/humans/GroupTest.java':HARNESS}.items():

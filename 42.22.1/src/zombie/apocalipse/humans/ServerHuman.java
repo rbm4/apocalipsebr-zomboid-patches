@@ -35,6 +35,7 @@ final class ServerHuman {
     final zombie.apocalipse.humans.state.HumanStateStore state;
     final ServerHumanPhysiology physiology;
     final ServerHumanHealing healing;
+    ServerHumanSquadAssist squadAssist;
     float postX, postY;
     String emote;
     private boolean disposed;

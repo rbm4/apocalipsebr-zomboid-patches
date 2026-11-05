@@ -14,12 +14,19 @@ public final class EngageZombiesModule implements HumanModule {
     private boolean suspended,stopped,backingOff;
     private long retryAt,urgentRetryAt;
     private Result lastResult;
+    private zombie.apocalipse.humans.groups.SquadAssistModule assistance;
+    private boolean assisting;
+    public void bindAssistance(zombie.apocalipse.humans.groups.SquadAssistPort port){
+        if(assistance!=null)throw new IllegalStateException("Squad assistance already bound");
+        assistance=new zombie.apocalipse.humans.groups.SquadAssistModule(port);
+    }
     public EngageZombiesModule(Settings settings){this(GUARD_ZOMBIES,settings,Template.GUARD_BASIC);}
     public EngageZombiesModule(Policy policy,Settings settings,Template template){
         this.policy=Objects.requireNonNull(policy);this.settings=Objects.requireNonNull(settings);this.template=Objects.requireNonNull(template);
     }
     public boolean eligible(HumanObservation observation){
         if(!available()||suspended)return false;
+        if(assistance!=null&&assistance.eligible(observation))return true;
         var next=selector.preview(observation,policy,settings);
         boolean urgent=next.choice()==Choice.ENGAGE&&next.target().distanceSquared()<=HumanCombatTactics.IMMEDIATE_RANGE*HumanCombatTactics.IMMEDIATE_RANGE;
         return (!backingOff||observation.nowNanos()>=retryAt||urgent&&observation.nowNanos()>=urgentRetryAt)&&next.choice()!=Choice.IGNORE;
@@ -33,6 +40,11 @@ public final class EngageZombiesModule implements HumanModule {
     public Result lastResult(){return lastResult;}
     public void update(HumanObservation observation,HumanActuator actuator){
         if(!eligible(observation))return;
+        if(assistance!=null&&assistance.eligible(observation)){
+            if(!assisting){cancel(Reason.PREEMPTED);selector.clear();assisting=true;}
+            assistance.update(observation,actuator);return;
+        }
+        cancelAssistance(actuator);
         var next=selector.preview(observation,policy,settings);
         boolean changed=!Objects.equals(selector.target(),next.target().identity());
         if(changed)cancel(Reason.TARGET_CHANGED);
@@ -53,8 +65,9 @@ public final class EngageZombiesModule implements HumanModule {
         var owned=execution;execution=null;
         if(owned!=null){owned.cancel(reason);lastResult=new Result(Status.CANCELLED,reason);}
     }
-    public void interrupt(long now,HumanActuator actuator){cancel(Reason.PREEMPTED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
-    public void suspend(long now,HumanActuator actuator){suspended=true;cancel(Reason.SUSPENDED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
+    private void cancelAssistance(HumanActuator actuator){if(assisting)assistance.cancel(actuator);assisting=false;}
+    public void interrupt(long now,HumanActuator actuator){cancelAssistance(actuator);cancel(Reason.PREEMPTED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
+    public void suspend(long now,HumanActuator actuator){suspended=true;cancelAssistance(actuator);cancel(Reason.SUSPENDED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
     public void resume(HumanObservation.Identity visitor,long now,HumanActuator actuator){suspended=false;selector.clear();}
-    public void stop(long now,HumanActuator actuator){stopped=true;cancel(Reason.STOPPED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
+    public void stop(long now,HumanActuator actuator){stopped=true;cancelAssistance(actuator);cancel(Reason.STOPPED);selector.clear();actuator.tactical(TacticalIntent.NONE);}
 }

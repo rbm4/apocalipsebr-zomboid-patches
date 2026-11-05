@@ -10,6 +10,9 @@ public final class RetreatPlanner {
     public record Threat(double x,double y){
         public Threat {if(!Double.isFinite(x)||!Double.isFinite(y))throw new IllegalArgumentException("Invalid threat position");}
     }
+    public record Rendezvous(double x,double y){
+        public Rendezvous {if(!Double.isFinite(x)||!Double.isFinite(y))throw new IllegalArgumentException("Invalid support position");}
+    }
     private record Node(Tile tile,Node parent,int depth,long cost,double clearance,double score,long order){ }
     private static double clearance(Tile tile,List<Threat> threats){
         double result=Double.POSITIVE_INFINITY;
@@ -20,11 +23,21 @@ public final class RetreatPlanner {
         return plan(grid,start,supplied,distance,false);
     }
     public static List<Tile> plan(MovementGrid grid,Tile start,List<Threat> supplied,int distance,boolean elevated){
+        return plan(grid,start,supplied,distance,elevated,List.of());
+    }
+    public static List<Tile> plan(MovementGrid grid,Tile start,List<Threat> supplied,int distance,boolean elevated,List<Rendezvous> support){
+        if(support.size()>7)throw new IllegalArgumentException("Too many retreat helpers");
         if(distance<2||distance>24||supplied.isEmpty()||supplied.size()>48||!grid.available()||!grid.walkable(start))return List.of();
         var free=new HashMap<Tile,Boolean>();
         java.util.function.Predicate<Tile> walkable=t->free.computeIfAbsent(t,grid::walkable);
         var threats=List.copyOf(supplied);
         double initial=clearance(start,threats),floor=Math.min(elevated?.65:1.25,initial);
+        var rendezvous=support.stream().min(Comparator.comparingDouble((Rendezvous r)->Math.hypot(start.x()+.5-r.x(),start.y()+.5-r.y()))
+            .thenComparingDouble(Rendezvous::x).thenComparingDouble(Rendezvous::y)).orElse(null);
+        double supportDistance=rendezvous==null?0:Math.hypot(start.x()+.5-rendezvous.x(),start.y()+.5-rendezvous.y());
+        // Flanking toward support must not exploit a closer threat envelope than
+        // the ordinary escape. Once three tiles clear, keep that clearance en route.
+        if(rendezvous!=null)floor=Math.max(floor,Math.min(initial,3));
         var queue=new PriorityQueue<Node>(Comparator.comparingDouble(Node::score).reversed().thenComparingLong(Node::order));
         var seen=new HashSet<Tile>();long order=0;
         var root=new Node(start,null,0,0,initial,initial,order++);queue.add(root);seen.add(start);Node best=null;
@@ -47,10 +60,16 @@ public final class RetreatPlanner {
                 int edge=grid.traversalCost(node.tile(),tile);if(edge<=0)continue;
                 long cost=node.cost()+edge;int depth=node.depth()+1;
                 double score=Math.min(24,gap)-depth*.10-cost*.04;
+                if(rendezvous!=null){
+                    double progress=supportDistance-Math.hypot(tile.x()+.5-rendezvous.x(),tile.y()+.5-rendezvous.y());
+                    // Beyond a safe separation, additional distance from the horde
+                    // must not always outweigh gradually closing with active support.
+                    score=Math.min(Math.max(6,initial+2),gap)-depth*.10-cost*.04+progress*.8;
+                }
                 seen.add(tile);queue.add(new Node(tile,node,depth,cost,gap,score,order++));
             }
         }
-        if(best==null)return List.of();
+        if(best==null)return rendezvous==null?List.of():plan(grid,start,supplied,distance,elevated,List.of());
         var route=new ArrayList<Tile>();for(var node=best;node!=null;node=node.parent())route.add(node.tile());
         Collections.reverse(route);return List.copyOf(route);
     }

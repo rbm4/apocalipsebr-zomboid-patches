@@ -221,6 +221,15 @@ final class ServerHumanPerception {
         }
         for(var id:old.keySet())HumanLog.log(HumanLog.Level.DEBUG,()->"perception key="+human.definition.key()+"; contact="+id+"; state=FORGOTTEN");
     }
+    /** World-thread squad-board validation; this does not grant visibility or attack authority. */
+    void hintZombie(IsoZombie zombie){
+        if(eligible(zombie)&&distance(zombie)<=awarenessRadius*awarenessRadius)bind(zombie);
+    }
+    IsoZombie trackedZombie(Identity identity){
+        for(var binding:bindings.values())if(binding.identity().equals(identity)&&valid(binding)
+            &&binding.body() instanceof IsoZombie zombie)return zombie;
+        return null;
+    }
     /** Revalidate a sensor-local handle against current native membership before combat uses it. */
     IsoZombie resolveZombie(Identity identity){
         if(identity.kind()!=Kind.ZOMBIE||frame.contacts().stream().noneMatch(c->c.identity().equals(identity)&&c.visible()))return null;

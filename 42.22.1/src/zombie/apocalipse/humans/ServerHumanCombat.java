@@ -37,6 +37,8 @@ final class ServerHumanCombat implements Port {
         if(!frame.sampled()||now<frame.sampledAtNanos()||now-frame.sampledAtNanos()>HumanCombat.MAX_SAMPLE_AGE_NANOS)return Reason.STALE_OBSERVATION;
         var target=human.perception.resolveZombie(request.target());
         if(target==null)return Reason.INVALID_TARGET;
+        if(request.template()==Template.SQUAD_ASSIST)
+            return human.squadAssist!=null&&human.squadAssist.permits(request.target(),now)?Reason.NONE:Reason.OUTSIDE_TERRITORY;
         if(!human.territory.contains(human.player.getX(),human.player.getY(),human.player.getZ())
             ||!human.territory.contains(target.getX(),target.getY(),target.getZ()))return Reason.OUTSIDE_TERRITORY;
         return Reason.NONE;

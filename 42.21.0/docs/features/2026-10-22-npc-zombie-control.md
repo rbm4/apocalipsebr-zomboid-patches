@@ -1,5 +1,11 @@
 # Server-controlled zombie interactions
 
+Cross-version follow-up (2026-11-05): the
+[42.22.1 sprinter-speed investigation](../../../42.22.1/docs/reports/2026-11-05-server-zombie-sprinter-speed.md)
+documents the helper-derived 2.4 tiles/s fallback, missing measured sprint gaits,
+and proposed capture/calibration work. It does not change this guide's historical
+implementation or establish native sprint parity.
+
 Native client gait, correction and packet timing can be measured using the
 [opt-in diagnostic client sampler](2026-10-23-client-zombie-sampler.md). It does not change
 the production server controller or require a patch on ordinary clients.

@@ -20,6 +20,8 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
     private boolean retreating;
     private long retreatDeadline;
     private boolean ranged;
+    private java.util.function.Predicate<Tile> assistanceScope;
+    void assistanceScope(java.util.function.Predicate<Tile> value){assistanceScope=value;}
     ServerHumanCombatApproach(ServerHuman human,IsoGameCharacter target){this(human,target,()->ThreadLocalRandom.current().nextDouble());}
     ServerHumanCombatApproach(ServerHuman human,IsoGameCharacter target,DoubleSupplier random){this.human=human;this.target=target;tactics=new HumanCombatTactics(random);}
     double distance(){return Math.hypot(target.getX()-human.player.getX(),target.getY()-human.player.getY());}
@@ -95,7 +97,8 @@ final class ServerHumanCombatApproach implements CombatRoutePlanner.Grid {
     public boolean walkable(Tile tile){
         var square=human.movement.square(tile.x(),tile.y());
         boolean current=tile.x()==human.player.getXi()&&tile.y()==human.player.getYi();
-        if(square==null||!human.movement.walkable(tile)||!human.territory.contains(tile.x()+.5F,tile.y()+.5F,human.player.getZ()))return false;
+        if(square==null||!human.movement.walkable(tile)||!(assistanceScope!=null?assistanceScope.test(tile)
+            :human.territory.contains(tile.x()+.5F,tile.y()+.5F,human.player.getZ())))return false;
         if(!current&&!square.isFree(true)&&(square.getMovingObjects().isEmpty()||!human.movement.bodyClear(tile.x()+.5F,tile.y()+.5F,tile.x()+.5F,tile.y()+.5F)))return false;
         if(!current)for(var contact:human.perception.awareness().contacts()){
             if(contact.visible()&&contact.identity().kind()==HumanSenses.Kind.ZOMBIE

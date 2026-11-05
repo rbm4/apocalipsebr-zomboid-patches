@@ -37,7 +37,8 @@ final class ServerHumanSurvival implements SurvivalPort {
                 return cost<=0?0:cost+(elevated&&!human.movement.freeOfBlockingBodies(human.movement.square(to.x(),to.y()))?4:0);
             }
         };
-        var route=RetreatPlanner.plan(planning,start,positions,settings.retreatDistance(),elevated);
+        var support=human.squadAssist==null?List.<RetreatPlanner.Rendezvous>of():human.squadAssist.retreatSupport(now);
+        var route=RetreatPlanner.plan(planning,start,positions,settings.retreatDistance(),elevated,support);
         if(route.size()<2){
             double nearest=threats.stream().mapToDouble(Contact::distanceSquared).min().orElse(Double.POSITIVE_INFINITY);
             HumanLog.log(HumanLog.Level.DEBUG,()->"retreat unavailable key="+human.definition.key()+"; reason=no_reachable_escape"
@@ -47,7 +48,7 @@ final class ServerHumanSurvival implements SurvivalPort {
         progressX=human.player.getX();progressY=human.player.getY();lastProgress=now;
         boolean started=human.movement.start(route,planning,Pace.RUN,now);
         if(started)HumanLog.log(HumanLog.Level.DEBUG,()->"retreat route key="+human.definition.key()+"; from="+start
-            +"; goal="+route.getLast()+"; steps="+(route.size()-1)+"; threats="+positions.size()+"; elevated="+elevated);
+            +"; goal="+route.getLast()+"; steps="+(route.size()-1)+"; threats="+positions.size()+"; elevated="+elevated+"; support="+support);
         return started;
     }
     public void failed(boolean timedOut,long now){

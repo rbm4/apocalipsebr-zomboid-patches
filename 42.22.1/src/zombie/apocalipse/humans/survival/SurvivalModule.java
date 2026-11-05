@@ -89,8 +89,10 @@ public final class SurvivalModule implements HumanModule {
             cancelDefense();actuator.stopMoving();actuator.tactical(TacticalIntent.NONE);failedAttempts=0;
             transition(Phase.SAFE,"recovered",facts,actuator);return;
         }
-        // Distant contacts alone must not hold an opening/retry loop after local pressure ends.
-        if(controlled&&phase!=Phase.RECOVERING){
+        // One incomplete/briefly clear observation must not abort escape and reset
+        // the route again on the next pressured sample. Require sustained relief.
+        boolean reliefHeld=controlledSince!=Long.MIN_VALUE&&now-controlledSince>=1_000_000_000L;
+        if(reliefHeld&&phase!=Phase.RECOVERING){
             cancelDefense();actuator.stopMoving();failedAttempts=0;nextAttempt=now;openingUntil=now;
             transition(Phase.RECOVERING,"pressure_relieved",facts,actuator);
         }

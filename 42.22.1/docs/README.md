@@ -24,6 +24,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-04 | [Squad combat assistance: A-life threat reports, last-known leads and bounded helper authority](features/2026-11-04-npc-squad-combat-assistance.md) |
 | 2026-11-04 | [Shared group patrol: Umbrella R.P.D. Alpha, health capacity and migrations](features/2026-11-04-npc-group-patrol.md) |
 | 2026-11-04 | [NPC self-treatment, bleeding and stock-client first-aid packets](features/2026-11-04-npc-healing.md) |
 | 2026-11-04 | [NPC overhead names: display names with spaces](features/2026-11-04-npc-display-names.md) |
@@ -46,6 +47,8 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Squad assistance run: helpers follow distress but never reach engagement](reports/2026-11-05-squad-assistance-following-without-engagement.md) |
+| 2026-11-05 | [Server-controlled sprinter speed: measured gait model and implementation proposal](reports/2026-11-05-server-zombie-sprinter-speed.md) |
 | 2026-11-04 | [Backend message inbox and batched zombie-kill delivery proposal](reports/2026-11-04-backend-message-inbox-and-zombie-kills.md) |
 | 2026-11-04 | [42.22.1 port execution and retained build artifact](reports/2026-11-04-port-execution-and-artifact.md) |
 | 2026-11-04 | [42.22.0 to 42.22.1: vanilla changes and patch carry-forward](reports/2026-11-04-port-42-22-0-to-42-22-1.md) |
@@ -116,6 +119,8 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Separated fleeing squadmate: distress beyond nearby assistance range and stable retreat relief](issues/2026-11-05-squad-distress-outside-assistance-radius.md) |
+| 2026-11-04 | [NPC patrol encounter: retreat oscillation, missing group support and deployed dwell mismatch](issues/2026-11-04-npc-patrol-combat-runaway.md) |
 | 2026-11-04 | [ServerZombiePath rejected by Java polygon mover classification](issues/2026-11-04-server-zombie-path-unsupported-mover.md) |
 | 2026-11-04 | [Lobby startup cleanup finishes before virtual zombies appear](issues/2026-11-04-lobby-cleanup-zero-removals.md) |
 | 2026-10-29 | [RequestUserLog rejected with SQLState 55000](issues/2026-10-29-userlog-simulation-thread-sql.md) |

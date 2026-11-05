@@ -7,6 +7,20 @@ has been executed.
 
 Crowded-combat pathfinding follow-up: [Java fallback rejected ServerZombiePath](../issues/2026-11-04-server-zombie-path-unsupported-mover.md).
 
+Latest encounter investigation: [retreat oscillation, missing zombie group support,
+terrain inputs and deployed dwell mismatch](../issues/2026-11-04-npc-patrol-combat-runaway.md).
+
+Combat support follow-up: [A-life squad threat reports, last-known approaches and
+bounded assistance combat](2026-11-04-npc-squad-combat-assistance.md) are implemented
+in source. Group members with zombie engagement now help nearby threatened allies
+when their own higher-priority survival/healing/retaliation permits it. Deployment
+and dedicated-server validation remain pending.
+
+2026-11-05: [separated squadmate distress](../issues/2026-11-05-squad-distress-outside-assistance-radius.md)
+extends aid to fleeing members up to 256 tiles away, using validated awareness
+reports and fixed emergency bounds. Short pressure gaps now preserve retreat
+until one full second of relief. Dedicated-server validation remains pending.
+
 ## Authored group
 
 | Slot | Logical key | Name | Outfit | Initial position |

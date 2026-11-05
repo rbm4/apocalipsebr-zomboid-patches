@@ -13,6 +13,8 @@ final class ServerHumanWeaponBackend implements ServerHumanCombat.Backend {
         if(!request.externalMovement()&&human.actuator.intent().objective()==TacticalIntent.Objective.NONE)
             human.actuator.tactical(new TacticalIntent(TacticalIntent.Objective.ENGAGE,TacticalIntent.Posture.GUARDED,request.target(),false));
         var approach=new ServerHumanCombatApproach(human,target);
+        if(request.template()==HumanCombat.Template.SQUAD_ASSIST)
+            approach.assistanceScope(tile->human.squadAssist!=null&&human.squadAssist.contains(tile.x()+.5F,tile.y()+.5F,human.player.getZi()));
         var mode=HumanWeaponCombat.Mode.valueOf(System.getProperty("apocbr.npc.combat.testWeapon","AUTO").trim().toUpperCase(Locale.ROOT));
         return new HumanWeaponCombat(human.inventory,new HumanWeaponCombat.Operations(){
             public boolean canAttackMoving(){return human.actuator.intent().guarded()&&!human.movement.traversing();}
@@ -46,6 +48,7 @@ final class ServerHumanWeaponBackend implements ServerHumanCombat.Backend {
             public void stop(){if(!request.externalMovement())human.movement.stop();}
             public void aim(boolean enabled){if(!request.externalMovement()){if(enabled)posture(true);else ServerHumanTransport.aim(human,false);}}
             public boolean commit(HumanCombatInventory.Weapon weapon,long strike,long at){
+                if(request.template()==HumanCombat.Template.SQUAD_ASSIST&&(human.squadAssist==null||!human.squadAssist.permits(request.target(),at)))return false;
                 if(human.perception.resolveZombie(request.target())!=target||distance()>weapon.reach()||!clearAttackLine(weapon))return false;
                 return ServerHumanCombatNetwork.commit(human,target,weapon.itemId(),executionId,strike,at);
             }
