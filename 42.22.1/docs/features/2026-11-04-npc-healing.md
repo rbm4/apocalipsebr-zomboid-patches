@@ -205,3 +205,5 @@ Related: [NPC architecture](../../../42.21.0/docs/features/2026-10-20-npc-engine
 [current version index](../README.md).
 
 Follow-up: [eight-zombie encounter and bandage presentation fixes](../issues/2026-11-05-eight-zombie-contact-and-bandage-presentation.md). Medical DEBUG receipts now record transaction start, commit and cancellation with inventory/fallback source.
+
+2026-11-05 follow-up: [wounded recovery gait and local squad roaming](2026-11-05-squad-recovery-roaming.md) replace whole-squad waiting during convalescence with short local walks around a retained patient anchor. Actual dressing remains stationary, and the shared patrol waypoint is preserved.

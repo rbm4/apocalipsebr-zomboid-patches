@@ -37,7 +37,7 @@ revision:
 | Mode | Patrol behavior |
 | --- | --- |
 | PATROL | Follow the shared waypoint with formation offsets and companion-aware route cost. |
-| HOLD | A roster member is interrupted, for example actively bandaging. Other patrol executions stop; emergency/healing/combat modules retain their own higher-priority authority. |
+| HOLD | A roster member is interrupted. Ordinary patrol stops; the recovery camp can supply local movement while a member heals. Emergency/combat/exclusive activity retain their higher-priority authority. |
 | RETURN | At least one member is outside the assigned area. Everyone receives one shared, validated re-entry rally instead of individual home/boundary fallbacks. |
 | REGROUP | The travelling roster has spread too far. Reunite at a shared rally before resuming the same waypoint. |
 
@@ -175,3 +175,5 @@ of this implementation verification.
 ## Close-spawn encounter follow-up
 
 The [eight-zombie investigation](../issues/2026-11-05-eight-zombie-contact-and-bandage-presentation.md) records the 10:40 encounter, adds minimum opening commitment, fixes unsafe origin recentering and medical action-bit continuity, and makes a fallback wrap available without inventory supplies. Source and fixture validation passed; a gameplay replay remains required.
+
+2026-11-05 follow-up: [wounded recovery gait and local squad roaming](2026-11-05-squad-recovery-roaming.md) replace whole-squad waiting during convalescence with short local walks around a retained patient anchor. Actual dressing remains stationary, and the shared patrol waypoint is preserved.

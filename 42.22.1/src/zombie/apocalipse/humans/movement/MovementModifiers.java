@@ -8,11 +8,12 @@ public final class MovementModifiers {
     public enum Posture { RELAXED, ALERT, THREAT }
     public enum BurstStyle { SPRINTER, JOGGER }
     public enum Reason { REQUESTED, IMMOBILE, RUN_DISABLED, LEG_WOUND, SWEEP, FLIGHT,
-        HIT_ESCAPE, BURST, DANGER, ENDURANCE, RUN_WINDOW }
+        HIT_ESCAPE, BURST, DANGER, ENDURANCE, RUN_WINDOW, RECOVERY }
 
     /** Fractions are 0..1. Signed leg injury selects the native limp side. */
     public record Health(float health, float endurance, float legInjury,
-                         boolean immobile, boolean downed, boolean bleedingOut) {
+                         boolean immobile, boolean downed, boolean bleedingOut,boolean recovering) {
+        public Health(float health,float endurance,float legInjury,boolean immobile,boolean downed,boolean bleedingOut){this(health,endurance,legInjury,immobile,downed,bleedingOut,false);}
         public static final Health HEALTHY = new Health(1, 1, 0, false, false, false);
         public Health {
             fraction(health); fraction(endurance);
@@ -104,6 +105,7 @@ public final class MovementModifiers {
         boolean blocked = health.immobile() || health.downed() || health.bleedingOut() || health.health() == 0;
         if (blocked) { pace = Pace.WALK; reason = Reason.IMMOBILE; }
         else if (health.legWounded()) { pace = Pace.WALK; reason = Reason.LEG_WOUND; }
+        else if (health.recovering()) { pace = Pace.WALK; reason = Reason.RECOVERY; }
         else if (!settings.allowRun()) { pace = Pace.WALK; reason = Reason.RUN_DISABLED; }
         else if (effects.flight().active(now)) {
             pace = health.endurance() > settings.jogMinimum() ? effects.flightPace() : Pace.WALK;
@@ -132,7 +134,7 @@ public final class MovementModifiers {
 
         float common = context.terrainScale() * context.coldScale() * context.equipmentScale() * context.strideScale();
         boolean hurt = health.health() < 0.65F;
-        float walk = common * (hurt ? 0.78F / 1.02F : 1);
+        float walk = common * (hurt||health.recovering() ? 0.78F / 1.02F : 1);
         float run = common * (hurt ? 0.60F / 0.78F : 1);
         float sprint = common * (hurt ? 0.66F / 0.84F : 1);
         if (context.sweepSlow()) walk *= 0.72F;
@@ -144,7 +146,7 @@ public final class MovementModifiers {
         sprint = Math.min(sprint, 8 / settings.speeds().sprint());
         float factor = switch (pace) { case RUN -> run; case SPRINT -> sprint; default -> walk; };
         return new Resolved(pace, blocked ? 0 : settings.speeds().forPace(pace) * factor,
-            new Animation(health.legInjury(), walk, pace == Pace.SPRINT ? sprint : run,
+            new Animation(health.legWounded()?health.legInjury():health.recovering()?.5F:0, walk, pace == Pace.SPRINT ? sprint : run,
                 context.sneaking() && !health.legWounded()), reason);
     }
 

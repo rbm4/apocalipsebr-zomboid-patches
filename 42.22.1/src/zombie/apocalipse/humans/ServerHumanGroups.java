@@ -9,11 +9,13 @@ import zombie.apocalipse.humans.walking.WalkingPatternSpec;
 final class ServerHumanGroups {
     private static final int COMBAT_SUPPORT_RADIUS=6;
     private record Entry(ServerHuman human,GroupPatrolModule module) { }
-    private record Sample(long at,GroupPatrolCoordinator.Member member,boolean inside) { }
+    private record Sample(long at,GroupPatrolCoordinator.Member member,boolean inside,boolean recovering,boolean careAvailable) { }
     private final Map<String,Entry> entries=new HashMap<>();
     private final Map<String,GroupPatrolCoordinator> groups=new HashMap<>();
     private final Map<String,GroupCohesionCoordinator> cohesion=new HashMap<>();
     private final Map<String,SquadCombatCoordinator> combatGroups=new HashMap<>();
+    private final Map<String,GroupRecoveryCoordinator> recovery=new HashMap<>();
+    private long sampledAt;
     private Map<String,Sample> samples=Map.of();
     private final java.util.function.LongSupplier dwellMillis;
     ServerHumanGroups(){this(GroupPatrolCoordinator::randomDwellMillis);}
@@ -30,8 +32,11 @@ final class ServerHumanGroups {
         if(existing!=null&&!existing.route().equals(pattern.points()))throw new IllegalArgumentException("Group members must share the same patrol route");
         groups.computeIfAbsent(membership.groupId(),id->new GroupPatrolCoordinator(pattern.points(),2,2,dwellMillis));
         cohesion.computeIfAbsent(membership.groupId(),id->new GroupCohesionCoordinator());
+        recovery.computeIfAbsent(membership.groupId(),id->new GroupRecoveryCoordinator());
         entries.put(human.definition.key(),new Entry(human,module));
         module.bind(()->observe(human),membership.slot());
+        var survival=((HumanModuleRuntime)human.activity.behavior()).module(zombie.apocalipse.humans.survival.SurvivalModule.class);
+        if(survival!=null){var convalescence=new GroupPatrolModule();convalescence.bindRecovery(()->observe(human),membership.slot());survival.bindRecoveryMovement(convalescence);}
         var engagement=((HumanModuleRuntime)human.activity.behavior()).module(EngageZombiesModule.class);
         if(engagement!=null){
             human.squadAssist=new ServerHumanSquadAssist(human);engagement.bindAssistance(human.squadAssist);
@@ -41,10 +46,11 @@ final class ServerHumanGroups {
     void remove(ServerHuman human){
         entries.remove(human.definition.key());String group=human.definition.group().groupId();
         if(human.squadAssist!=null)human.squadAssist.close();
-        if(entries.values().stream().noneMatch(e->e.human.definition.group().groupId().equals(group))){groups.remove(group);combatGroups.remove(group);cohesion.remove(group);}
+        if(entries.values().stream().noneMatch(e->e.human.definition.group().groupId().equals(group))){groups.remove(group);combatGroups.remove(group);cohesion.remove(group);recovery.remove(group);}
     }
     /** Invoked only on the registered world thread while holding the factory monitor. */
     void capture(long now){
+        sampledAt=now;
         var detached=new HashMap<String,Sample>();
         for(var e:entries.values()){
             var human=e.human;if(human.state.snapshot().dead())continue;
@@ -52,9 +58,13 @@ final class ServerHumanGroups {
             var retaliation=ServerHumanRetaliation.module(human);
             boolean participating=human.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&(selected==null||selected.equals("group-patrol"))
                 &&(retaliation==null||retaliation.aggressor()==null);
+            var survival=((HumanModuleRuntime)human.activity.behavior()).module(zombie.apocalipse.humans.survival.SurvivalModule.class);
+            boolean careAvailable=human.activity.mode()==HumanActivityController.Mode.AUTONOMOUS&&(retaliation==null||retaliation.aggressor()==null)
+                &&(selected==null||selected.equals("group-patrol")||selected.equals("healing")
+                    ||selected.equals("survival")&&survival!=null&&survival.phase()==zombie.apocalipse.humans.survival.SurvivalModule.Phase.RECOVERING);
             detached.put(human.definition.key(),new Sample(now,new GroupPatrolCoordinator.Member(human.definition.key(),human.incarnation,
                 human.definition.group().slot(),human.player.getX(),human.player.getY(),human.player.getZi(),participating),
-                human.territory.contains(human.player.getX(),human.player.getY(),human.player.getZ())));
+                human.territory.contains(human.player.getX(),human.player.getY(),human.player.getZ()),human.healing!=null&&human.healing.recovering(),careAvailable));
         }
         samples=Map.copyOf(detached);
         captureCombat(now);
@@ -151,7 +161,10 @@ final class ServerHumanGroups {
                 if(s!=null&&now>=s.at&&now-s.at<=500_000_000L&&s.member.incarnation().equals(actor.human.incarnation))members.add(s.member);
                 else complete=false;
             }
-            if(!complete){entry.getValue().pauseDwell();continue;}
+            if(!complete){recovery.get(entry.getKey()).pause();entry.getValue().pauseDwell();continue;}
+            var camp=recovery.get(entry.getKey());long previous=camp.revision();
+            camp.update(now,members.stream().map(m->new GroupRecoveryCoordinator.Member(m,samples.get(m.key()).recovering(),samples.get(m.key()).careAvailable())).toList());
+            if(previous!=camp.revision())HumanLog.log(HumanLog.Level.DEBUG,()->"group recovery id="+entry.getKey()+"; patient="+camp.patient()+"; active="+camp.active()+"; revision="+camp.revision());
             var state=cohesion.get(entry.getKey());
             var roster=members.stream().map(m->new GroupCohesionCoordinator.Member(m,samples.get(m.key()).inside())).toList();
             var representative=entries.get(members.getFirst().key()).human;
@@ -160,6 +173,7 @@ final class ServerHumanGroups {
             long revision=state.revision();state.update(roster,candidate);
             if(revision!=state.revision())HumanLog.log(HumanLog.Level.DEBUG,()->"group cohesion id="+entry.getKey()
                 +"; mode="+state.mode()+"; revision="+state.revision()+"; rally="+state.rally()+"; waypoint="+entry.getValue().waypoint());
+            if(camp.active()){entry.getValue().displaced();continue;}
             if(state.mode()!=GroupCohesionCoordinator.Mode.PATROL){
                 if(state.mode()==GroupCohesionCoordinator.Mode.RETURN||state.mode()==GroupCohesionCoordinator.Mode.REGROUP)entry.getValue().displaced();
                 else entry.getValue().pauseDwell();
@@ -196,9 +210,18 @@ final class ServerHumanGroups {
             if(peer!=null&&sample!=null&&peer.at()==sample.at()&&peer.member.z()==sample.member.z())
                 companions.add(new WalkingPatternSpec.Point(Math.max(0,(int)Math.floor(peer.member.x())),Math.max(0,(int)Math.floor(peer.member.y())),peer.member.z()));
         }
+        var camp=recovery.get(human.definition.group().groupId());
+        boolean caring=valid&&camp!=null&&camp.active();
+        if(caring){
+            var local=camp.goal(human.definition.key(),human.definition.group().slot(),sampledAt);
+            boolean usable=local.available()&&local.destination().z()==human.player.getZi()
+                &&human.movement.walkable(new zombie.apocalipse.humans.movement.MovementGrid.Tile(local.destination().x(),local.destination().y()));
+            goal=new GroupPatrolCoordinator.Goal(goal.waypoint(),local.center(),local.destination(),usable,local.dwelling());
+            hold=false;regroup=false;
+        }
         return new GroupPatrolPort.Observation(valid?sample.at:0,goal,
             valid?sample.member.x():0,valid?sample.member.y():0,valid?sample.member.z():0,valid&&sample.inside,
-            state==null?0:state.revision(),regroup,hold,companions);
+            caring?-camp.revision()-1:state==null?0:state.revision(),regroup,hold,companions,caring);
     }
     private WalkingPatternSpec.Point rally(ServerHuman reference,GroupCohesionCoordinator state,
             List<GroupCohesionCoordinator.Member> roster,GroupPatrolCoordinator patrol){

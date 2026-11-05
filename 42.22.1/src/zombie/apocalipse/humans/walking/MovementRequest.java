@@ -5,6 +5,12 @@ import zombie.apocalipse.humans.profiles.HumanProfile;
 
 /** Intent from an objective/module to navigation. Execution progress stays in the actor's movement service. */
 public sealed interface MovementRequest {
+    /** Local movement may leave patrol territory, but is bounded around an explicit center. */
+    record Nearby(WalkingPatternSpec.Point destination,WalkingPatternSpec.Point center,int radius) implements MovementRequest {
+        public Nearby {Objects.requireNonNull(destination);Objects.requireNonNull(center);
+            if(radius<1||radius>8||destination.z()!=center.z()||Math.abs((long)destination.x()-center.x())>radius
+                ||Math.abs((long)destination.y()-center.y())>radius)throw new IllegalArgumentException("Invalid local destination");}
+    }
     record Pattern(String slot) implements MovementRequest {
         public Pattern { HumanProfile.identifier(slot); }
     }

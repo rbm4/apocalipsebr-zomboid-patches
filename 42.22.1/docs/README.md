@@ -24,6 +24,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Wounded recovery gait and squad roaming around the patient](features/2026-11-05-squad-recovery-roaming.md) |
 | 2026-11-05 | [Squad cohesion, moving passive recovery and immersive state-change speech](features/2026-11-05-squad-cohesion-healing-and-state-speech.md) |
 | 2026-11-05 | [Async NPC authority: detached planning, server-owned execution and deadlock prevention](features/2026-11-05-npc-async-authority.md) |
 | 2026-11-05 | [NPC movement: simulation-tick publication, shared snapshots and native prediction](features/2026-11-05-npc-movement-replication.md) |

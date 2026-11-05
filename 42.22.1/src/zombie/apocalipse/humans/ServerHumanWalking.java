@@ -50,6 +50,10 @@ final class ServerHumanWalking implements WalkingPattern.World {
                 HumanLog.log(HumanLog.Level.DEBUG,()->"area return key="+human.definition.key()+"; from="+context.current()
                     +"; anchor="+anchor+"; goal="+end+"; steps="+steps);
             }else{active=selected;route=selected.plan(context);}
+        } else if(request instanceof MovementRequest.Nearby nearby){
+            if(nearby.destination().z()!=context.z())return false;
+            scope=new VicinityGrid(recoveryGrid(context.current()),context.current(),new Tile(nearby.center().x(),nearby.center().y()),nearby.radius());
+            return navigate(scope,context.current(),new Tile(nearby.destination().x(),nearby.destination().y()),true,now);
         } else {
             var objective = (MovementRequest.To)request;
             var destination = objective.destination();
@@ -64,15 +68,16 @@ final class ServerHumanWalking implements WalkingPattern.World {
                 if(!assigned.walkable(context.current()))scope=recoveryGrid(context.current());
             }
             if(!objective.companions().isEmpty())scope=new CohesionGrid(scope,objective.companions());
-            if(human.planning!=null){
-                if(!scope.available()||!scope.walkable(context.current()))return false;
-                pending=new Pending(scope,context.current(),goal,objective.partialLeg(),now+2_000_000_000L);
-                return true; // Accepted navigation execution; update remains RUNNING until planning completes.
-            }
-            route = objective.partialLeg()?DestinationRoutePlanner.planLeg(scope,context.current(),goal):DestinationRoutePlanner.plan(scope,context.current(),goal);
+            return navigate(scope,context.current(),goal,objective.partialLeg(),now);
         }
         if (!human.movement.start(route, scope, now)) { finish(false); return false; }
         return true;
+    }
+    private boolean navigate(MovementGrid scope,Tile start,Tile goal,boolean partial,long now){
+        if(!scope.available()||!scope.walkable(start))return false;
+        if(human.planning!=null){pending=new Pending(scope,start,goal,partial,now+2_000_000_000L);return true;}
+        var route=partial?DestinationRoutePlanner.planLeg(scope,start,goal):DestinationRoutePlanner.plan(scope,start,goal);
+        return human.movement.start(route,scope,now);
     }
     private Tile returnAnchor(WalkingPattern.Context context,MovementGrid assigned){
         var spec=human.profile.walkingPatterns().stream().filter(p->p.slot().equals("background")).findFirst().orElseThrow();

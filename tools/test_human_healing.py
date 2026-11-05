@@ -249,6 +249,33 @@ public class HealingTest {
   var doubled=wounded();doubled.profile.capacity=2;doubled.player.body.parts.add(new BodyPart(BodyPartType.Head,10));service(doubled,0);
   check(Math.abs(ordinary.state.snapshot().injuries().bleedingPerSecond()/2-doubled.state.snapshot().injuries().bleedingPerSecond())<.000001,"double health also scales logical bleeding once");
  }
+ static void recoveryMovement(){
+  class Movement implements HumanModule {int updates,cancels;
+   public boolean available(){return true;}public boolean eligible(HumanObservation o){return true;}
+   public void update(HumanObservation o,HumanActuator a){updates++;}public void interrupt(long n,HumanActuator a){cancels++;}
+   public void suspend(long n,HumanActuator a){interrupt(n,a);}public void resume(HumanObservation.Identity v,long n,HumanActuator a){}public void stop(long n,HumanActuator a){interrupt(n,a);}
+  }
+  var module=new SurvivalModule(SurvivalSettings.DEFAULT);var walking=new Movement();module.bindRecoveryMovement(walking);var a=new Actuator();
+  var low=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Damage(.8f,0,0,0));
+  module.update(observation(0,low,false),a);
+  check(walking.updates==1&&module.phase()==SurvivalModule.Phase.RECOVERING,"safe low-health survivor walks locally instead of waiting below reengage health");
+  module.update(observation(S/10,low,true),a);check(walking.cancels>0&&walking.updates==1,"renewed danger interrupts recovery walking before escape or defense");
+  var h=wounded();h.player.body.parts.add(new BodyPart(BodyPartType.Head,10));var p=service(h,0);
+  module=new SurvivalModule(SurvivalSettings.DEFAULT);walking=new Movement();module.bindRecoveryMovement(walking);module.bindHealing(p,settings(0));
+  module.update(observation(0,low,false),a);p.serverTick(0);
+  check(walking.updates==0&&walking.cancels>0&&h.player.performing,"real bandaging owns stationary movement before recovery roaming");
+ }
+ static void recoveryState(){
+  var recovery=new HumanRecoveryState();var state=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Damage(.6f,0,0,0));
+  recovery.update(state,false);check(recovery.recovering(),"serious damage enters explicit recovering state");
+  state=HumanStateReducer.reduce(state,new HumanMutation.Heal(.3f));recovery.update(state,false);
+  check(recovery.recovering(),"recovery latch survives health crossing its entry threshold");
+  var reactivated=new HumanRecoveryState();reactivated.update(state,false);check(reactivated.recovering(),"reactivation reconstructs convalescence from persisted sub-85-percent health");
+  state=HumanStateReducer.reduce(state,new HumanMutation.Heal(.2f));recovery.update(state,false);
+  check(!recovery.recovering(),"sufficient health and no wound release convalescence");
+  recovery.update(state,true);check(recovery.recovering(),"an open wound enters recovery even above health threshold");
+  recovery.update(HumanStateReducer.reduce(state,new HumanMutation.Kill()),true);check(!recovery.recovering(),"death clears convalescence");
+ }
  static void openingDwell(){
   class A implements HumanActuator {
    int routes;
@@ -291,7 +318,7 @@ public class HealingTest {
   check(resting.state.snapshot().vitals().health()==before,"nearby danger prevents passive healing too");
  }
  public static void main(String[] args)throws Exception {
-  openingDwell();transactions();nativeTreatment();cancellation();policy();viewersAndOwnership();recoveryLoop();
+  recoveryMovement();recoveryState();openingDwell();transactions();nativeTreatment();cancellation();policy();viewersAndOwnership();recoveryLoop();
   rejected(()->HealingSettings.from(Map.of("bandages",33L)));rejected(()->HealingSettings.from(Map.of("wat",1L)));
   rejected(()->HealingSettings.from(Map.of("clearTiles",Long.MAX_VALUE)));rejected(()->HealingSettings.from(Map.of("recoveryPermillePerSecond",11L)));
   var dead=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Kill());check(HumanStateReducer.reduce(dead,new HumanMutation.Heal(1))==dead,"medicine cannot revive dead actors");

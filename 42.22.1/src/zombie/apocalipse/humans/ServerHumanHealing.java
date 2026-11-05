@@ -33,6 +33,8 @@ final class ServerHumanHealing implements HumanHealingPort {
     private MedicalExecution execution;
     private String region;
     private boolean seeded,nativeWounds;
+    private final HumanRecoveryState recovery=new HumanRecoveryState();
+    boolean recovering(){return recovery.recovering();}
     ServerHumanHealing(ServerHuman human,HealingSettings settings){this.human=human;this.settings=settings;}
     public Snapshot snapshot(){return snapshot;}
     void hurt(long now){hurtAt=now;}
@@ -153,6 +155,8 @@ final class ServerHumanHealing implements HumanHealingPort {
             else if(region==null&&presented.containsKey(viewer))presentation(viewer,false);
         }
         boolean wounded=target()!=null||!nativeWounds&&logicalWound();
+        boolean before=recovery.recovering();recovery.update(human.state.snapshot(),wounded);
+        if(before!=recovery.recovering())HumanLog.log(HumanLog.Level.DEBUG,()->"recovery key="+human.definition.key()+"; active="+recovery.recovering()+"; health="+human.state.snapshot().vitals().health());
         if(!wounded&&seconds>0&&ready(now)&&settings.recoveryPerSecond()>0
             &&(human.state.snapshot().vitals().health()<1||logicalWound())
             &&human.state.snapshot().injuries().bleedingPerSecond()==0

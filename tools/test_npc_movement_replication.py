@@ -197,6 +197,11 @@ traversal.landed();check(t.viewers.getFirst().wire.size()==2,"landing callback b
 check(s.movement.snapshot().predictionUnits()>0,"running actor has prediction before new obstacle");
 PolygonalMap2.instance.blocked=true;ServerHumanTransport.movement(s);
 check(last(s.viewers.getFirst()).prediction.type==0,"new obstacle suppresses extrapolation without extending unsafe horizon");
+var recoveryHealth=new Health(.7f,1,0,false,false,false,true);
+var recoveryMotion=MovementModifiers.resolve(Pace.RUN,new Conditions(recoveryHealth,Context.NORMAL,Effects.NONE),Settings.DEFAULT,0,0);
+check(recoveryMotion.pace()==Pace.WALK&&recoveryMotion.speed()<2&&recoveryMotion.animation().walkInjury()==.5f,"recovering state requests slowed native light-limp walking after bandaging");
+var leftInjury=MovementModifiers.resolve(Pace.RUN,new Conditions(new Health(.7f,1,-.8f,false,false,false,true),Context.NORMAL,Effects.NONE),Settings.DEFAULT,0,0);
+check(leftInjury.animation().walkInjury()==-.8f,"recovery preserves actual signed leg injury instead of replacing its side");
 // Neighbor tile overlap can block recentering even when the origin has no bodies.
 PolygonalMap2.instance.blocked=false;
 var overlap=actor();overlap.player.x=2.604f;overlap.player.y=2.5f;

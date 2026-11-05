@@ -11,23 +11,24 @@ public final class GroupPatrolModule implements HumanModule {
     private long revision=-1;
     private long retry;
     private long startupDelay;
-    private boolean suspended,stopped;
+    private boolean suspended,stopped,recoveryOnly;
+    public void bindRecovery(GroupPatrolPort port,int slot){recoveryOnly=true;bind(port,slot);}
     public void bind(GroupPatrolPort port){if(this.port!=null)throw new IllegalStateException("Already bound");this.port=java.util.Objects.requireNonNull(port);}
     public void bind(GroupPatrolPort port,int slot){bind(port);startupDelay=slot*500_000_000L;}
     public boolean available(){return !stopped;}
     public boolean eligible(HumanObservation o){
         if(port==null||stopped||suspended||!o.movementAvailable())return false;
-        var v=port.observe();return v.goal().available()&&o.nowNanos()>=v.sampledAt()&&o.nowNanos()-v.sampledAt()<=500_000_000L;
+        var v=port.observe();return (!recoveryOnly||v.recovery())&&v.goal().available()&&o.nowNanos()>=v.sampledAt()&&o.nowNanos()-v.sampledAt()<=500_000_000L;
     }
     public void update(HumanObservation o,HumanActuator actuator){
         if(!eligible(o))return;
         var v=port.observe();long now=o.nowNanos();
         if(v.hold()||v.goal().dwelling()){cancel(actuator);return;}
         if(waypoint!=v.goal().waypoint()||revision!=v.revision()){boolean initial=waypoint<0;cancel(actuator);waypoint=v.goal().waypoint();revision=v.revision();failures=0;retry=now+(initial?startupDelay:0);}
-        var destination=failures>=2?v.goal().center():v.goal().destination();
-        if(v.inside()&&v.z()==destination.z()&&Math.hypot(v.x()-(destination.x()+.5),v.y()-(destination.y()+.5))<=1.25){cancel(actuator);return;}
+        var destination=!v.recovery()&&failures>=2?v.goal().center():v.goal().destination();
+        if((v.recovery()||v.inside())&&v.z()==destination.z()&&Math.hypot(v.x()-(destination.x()+.5),v.y()-(destination.y()+.5))<=(v.recovery()?.35:1.25)){cancel(actuator);return;}
         if(execution==null&&now>=retry)execution=new HumanActionExecution(new HumanAction.Move(
-            new MovementRequest.To(destination,"background",true,v.regroup()||!v.inside(),v.companions())));
+            v.recovery()?new MovementRequest.Nearby(destination,v.goal().center(),4):new MovementRequest.To(destination,"background",true,v.regroup()||!v.inside(),v.companions())));
         if(execution!=null){
             execution.update(now,actuator);
             if(execution.terminal()){

@@ -229,3 +229,5 @@ Related: [healing](2026-11-04-npc-healing.md),
 [architecture](../../../42.21.0/docs/features/2026-10-20-npc-engine-architecture.md),
 [movement](../../../42.21.0/docs/features/2026-10-21-npc-movement.md),
 [retaliation](../../../42.21.0/docs/features/2026-10-25-npc-player-retaliation.md).
+
+2026-11-05 follow-up: [wounded recovery gait and local squad roaming](2026-11-05-squad-recovery-roaming.md) replace whole-squad waiting during convalescence with short local walks around a retained patient anchor. Actual dressing remains stationary, and the shared patrol waypoint is preserved.

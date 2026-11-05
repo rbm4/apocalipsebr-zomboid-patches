@@ -46,6 +46,7 @@ class ServerHuman {
  final Definition definition;final String incarnation=UUID.randomUUID().toString();final IsoPlayer player=new IsoPlayer();final Store state=new Store();
  final Profile profile;final HumanActivityController activity;final Territory territory=new Territory();final GroupPatrolModule module=new GroupPatrolModule();
  final ServerHumanRetaliation.Active retaliation=new ServerHumanRetaliation.Active();
+ Healing healing;static class Healing {boolean active;boolean recovering(){return active;}}
  ServerHumanSquadAssist squadAssist;final Perception perception=new Perception();final Movement movement=new Movement();final Walking walking=new Walking();
  ServerHuman(String key,String group,int slot,List<WalkingPatternSpec.Point> route){
   definition=new Definition(key,new HumanGroupMembership(group,slot));profile=new Profile(route);
@@ -165,6 +166,9 @@ public class GroupTest {
   public boolean startMovement(MovementRequest request,long now){
    starts++;
    if(request instanceof MovementRequest.Pattern){returning=true;return true;}
+   if(request instanceof MovementRequest.Nearby nearby){
+    route=DestinationRoutePlanner.planLeg(new Grid(),new Tile((int)actor.player.x,(int)actor.player.y),new Tile(nearby.destination().x(),nearby.destination().y()));cursor=0;return !route.isEmpty();
+   }
    var to=(MovementRequest.To)request;returning=to.returnToArea();check(to.partialLeg(),"group movement explicitly requests segmented legs");
    var grid=new zombie.apocalipse.humans.movement.CohesionGrid(new Grid(),to.companions());
    route=DestinationRoutePlanner.planLeg(grid,new Tile((int)actor.player.x,(int)actor.player.y),new Tile(to.destination().x(),to.destination().y()));cursor=0;return !route.isEmpty();
@@ -250,6 +254,38 @@ public class GroupTest {
   for(var a:actors)a.walking.loaded=false;groups.capture(S);groups.update(S);
   for(var a:actors)check(!port(a).observe().goal().available(),"unloaded shared rally pauses everyone without divergent home fallback");
  }
+ static void recoveryCamp()throws Exception{
+  var groups=new ServerHumanGroups(()->15000);var actors=new ArrayList<ServerHuman>();
+  for(int i=0;i<3;i++){var a=new ServerHuman("care"+i,"care",i,route());a.player.x=9850.5f;a.player.y=2449.5f;groups.register(a);actors.add(a);}
+  var patient=actors.get(2);patient.healing=new ServerHuman.Healing();patient.healing.active=true;
+  groups.capture(0);groups.update(0);var center=port(patient).observe().goal().center();int waypoint=port(patient).observe().goal().waypoint();
+  check(port(patient).observe().recovery()&&!port(patient).observe().hold(),"recovering patient replaces whole-squad HOLD with local camp");
+  check(Math.abs(port(patient).observe().goal().destination().x()-center.x())<=1,"patient receives small local steps");
+  var first=port(actors.get(0)).observe().goal().destination();
+  var motor=new Motor(actors.get(0));actors.get(0).module.update(observe(0),motor);
+  check(motor.starts==1&&!motor.route.isEmpty(),"healthy helper starts roaming rather than waiting for full healing");
+  groups.capture(9*S);groups.update(9*S);actors.get(0).module.update(observe(9*S),motor);
+  check(port(actors.get(0)).observe().goal().dwelling()&&motor.route.isEmpty(),"roam has a short settled pause");
+  groups.capture(10*S);groups.update(10*S);var next=port(actors.get(0)).observe();
+  check(!next.goal().destination().equals(first)&&next.goal().waypoint()==waypoint,"next short walk changes destination without advancing patrol");
+  check(next.revision()<0,"camp revision namespace cannot alias normal patrol state");
+  actors.get(0).retaliation.aggressor=new HumanObservation.Identity((short)1,1);groups.capture(11*S);groups.update(11*S);
+  check(!port(patient).observe().goal().available(),"authenticated aggression pauses recovery roaming before emergency modules act");
+  actors.get(0).retaliation.aggressor=null;
+  var other=actors.get(1);other.healing=new ServerHuman.Healing();other.healing.active=true;
+  groups.capture(12*S);groups.update(12*S);
+  check(port(other).observe().goal().center().equals(center),"another wounded member does not thrash the retained patient anchor");
+  groups.remove(patient);groups.capture(13*S);groups.update(13*S);
+  check(port(other).observe().recovery(),"patient removal switches to another live recovering member");
+  other.healing.active=false;groups.capture(14*S);groups.update(14*S);
+  check(!port(other).observe().recovery()&&port(other).observe().goal().waypoint()==waypoint,"all recovered returns to the same shared patrol waypoint");
+  var standalone=new GroupRecoveryCoordinator();
+  var pose=at("p",0,new Point(9850,2449,0),false);
+  standalone.update(0,List.of(new GroupRecoveryCoordinator.Member(pose,true,true)));
+  standalone.pause();check(!standalone.goal("p",0,S).available(),"missing member sample pauses camp movement");
+  standalone.update(S,List.of(new GroupRecoveryCoordinator.Member(new GroupPatrolCoordinator.Member("p","new-life",0,9860.5f,2449.5f,0,false),true,true)));
+  check(standalone.goal("p",0,S).center().x()==9860,"new incarnation cannot inherit an old-life camp anchor");
+ }
  static void capacity(){
   check(HumanHealthCapacity.damage(20,1)==20&&HumanHealthCapacity.damage(20,2)==10,"double HP scales native loss once");
   float health=15;health=Math.max(0,health-HumanHealthCapacity.damage(20,2));check(health==5,"near-death hit has a linear loss");
@@ -264,7 +300,7 @@ public class GroupTest {
   var impostor=new zombie.characters.IsoPlayer();var impostorPart=new NativeBodyPartFixture(impostor,15);impostorPart.ReduceHealth(20);check(impostorPart.health==0,"native identity must match the registered actor reference");
   zombie.network.GameServer.server=false;nativePart=new NativeBodyPartFixture(actor.player,15);nativePart.ReduceHealth(20);check(nativePart.health==0,"client damage processing stays vanilla");zombie.network.GameServer.server=true;
  }
- public static void main(String[] args)throws Exception{coordinator();dwellTiming();navigation();moduleDwell();adapterAndPatrol();cohesion();capacity();System.out.println("Group patrol: "+checks+" assertions passed (42.22.1 production classes; engine doubles)");}
+ public static void main(String[] args)throws Exception{coordinator();dwellTiming();navigation();moduleDwell();adapterAndPatrol();cohesion();recoveryCamp();capacity();System.out.println("Group patrol: "+checks+" assertions passed (42.22.1 production classes; engine doubles)");}
 }
 '''
 

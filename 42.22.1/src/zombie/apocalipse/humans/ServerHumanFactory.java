@@ -237,7 +237,7 @@ public final class ServerHumanFactory {
             if(human.player.isDead())human.state.dispatch(new HumanMutation.Kill());
             human.physiology.update(now);
             var inputs=human.movement.inputs();
-            human.movement.derivedConditions(HumanConditionCalculator.movement(human.state.snapshot(),inputs.context(),inputs.effects()));
+            human.movement.derivedConditions(HumanConditionCalculator.movement(human.state.snapshot(),inputs.context(),inputs.effects(),human.healing!=null&&human.healing.recovering()));
             if (human.state.snapshot().dead()) {
                 if (dead == null) dead = new java.util.ArrayList<>();
                 dead.add(human.definition.key());
