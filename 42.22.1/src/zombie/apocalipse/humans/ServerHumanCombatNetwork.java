@@ -48,6 +48,7 @@ final class ServerHumanCombatNetwork {
             ||!human.territory.contains(human.player.getX(),human.player.getY(),human.player.getZ())))return false;
         var actor=human.player;
         if(!ServerHumanAttackLine.clear(human,target,actor.getX(),actor.getY(),weapon.isRanged()))return false;
+        if(human.healing!=null)human.healing.combat(now);
         actor.setUseHandWeapon(weapon);actor.setDoShove(false);actor.setAimAtFloor(target.isOnFloor());
         actor.setAttackType(weapon.isRanged()?AttackType.SHOT:target.isOnFloor()?AttackType.MELEE_TO_FLOOR:AttackType.MELEE_SWING);
         actor.useChargeDelta=2;

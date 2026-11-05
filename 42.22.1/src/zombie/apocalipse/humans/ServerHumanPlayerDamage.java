@@ -11,6 +11,14 @@ import zombie.core.network.ByteBufferWriter;
 /** Import native body loss once; never roll another DamageFromWeapon here. */
 public final class ServerHumanPlayerDamage {
     private ServerHumanPlayerDamage(){ }
+    /** Called before native BodyPart clamps health. Real players/animals retain the exact original amount. */
+    public static float nativeDamage(zombie.characters.IsoGameCharacter character,float amount){
+        if(!zombie.network.GameServer.server||!(character instanceof IsoPlayer player))return amount;
+        if(player.getOnlineID()<ServerHumanFactory.FIRST_ID||player.getOnlineID()>ServerHumanFactory.LAST_ID)return amount;
+        var human=ServerHumanFactory.tradingHuman(player.getOnlineID());
+        if(human==null||human.player!=player||human.profile.healthMultiplier()==1)return amount;
+        return zombie.apocalipse.humans.state.HumanHealthCapacity.damage(amount,human.profile.healthMultiplier());
+    }
     public static boolean valid(List<Hit> hits,HandWeapon weapon){
         if(weapon==null||hits.isEmpty())return false;
         long limit=Math.min(32L,(long)Math.max(1,weapon.getProjectileCount())*Math.max(1,weapon.getMaxHitCount()));
@@ -34,6 +42,7 @@ public final class ServerHumanPlayerDamage {
         float after=health(victim);
         if(!Float.isFinite(before)||!Float.isFinite(after))return;
         float loss=Math.clamp((before-after)/100F,0,1);
+        if(loss>0&&human.healing!=null)human.healing.hurt(System.nanoTime());
         if(loss>0)human.state.dispatch(new HumanMutation.Damage(loss,0,0,0));
         if(human.state.snapshot().dead()&&human.profile.encounter().enabled())human.deathKiller=ServerHumanEncounters.key(human,attacker);
         human.physiology.project();

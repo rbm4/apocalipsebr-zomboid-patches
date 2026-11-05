@@ -8,8 +8,12 @@ import zombie.iso.IsoDirections;
 public record ServerHumanDefinition(
     String key, String username, String displayName, float x, float y, int z,
     IsoDirections facing, boolean female, String outfit, String profileId,
-    zombie.apocalipse.humans.death.HumanDeathPolicy deathPolicy
+    zombie.apocalipse.humans.death.HumanDeathPolicy deathPolicy,
+    zombie.apocalipse.humans.groups.HumanGroupMembership group
 ) {
+    public ServerHumanDefinition(String key,String username,String displayName,float x,float y,int z,IsoDirections facing,boolean female,String outfit,String profileId,zombie.apocalipse.humans.death.HumanDeathPolicy deathPolicy){
+        this(key,username,displayName,x,y,z,facing,female,outfit,profileId,deathPolicy,zombie.apocalipse.humans.groups.HumanGroupMembership.NONE);
+    }
     public ServerHumanDefinition(String key,String username,String displayName,float x,float y,int z,IsoDirections facing,boolean female,String outfit,String profileId){
         this(key,username,displayName,x,y,z,facing,female,outfit,profileId,zombie.apocalipse.humans.death.HumanDeathPolicy.DEFAULT);
     }
@@ -26,6 +30,7 @@ public record ServerHumanDefinition(
         requireText(outfit, "outfit");
         Objects.requireNonNull(facing, "facing");
         Objects.requireNonNull(deathPolicy,"deathPolicy");
+        Objects.requireNonNull(group,"group");
         if (!Float.isFinite(x) || !Float.isFinite(y) || x < 0 || y < 0
             || x >= Integer.MAX_VALUE || y >= Integer.MAX_VALUE || z < -32 || z > 31) {
             throw new IllegalArgumentException("Invalid human world coordinates");

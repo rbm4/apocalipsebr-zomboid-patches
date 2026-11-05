@@ -10,6 +10,8 @@ public sealed interface HumanMutation {
         }
     }
     record Heal(float amount) implements HumanMutation { public Heal { HumanState.fraction(amount); } }
+    /** Authoritative native-wound observation; replaces a rate, never applies a second hit. */
+    record Bleeding(float perSecond) implements HumanMutation { public Bleeding { HumanState.fraction(perSecond); } }
     record Adjust(HumanState.Stat stat, float delta) implements HumanMutation {
         public Adjust {
             Objects.requireNonNull(stat);

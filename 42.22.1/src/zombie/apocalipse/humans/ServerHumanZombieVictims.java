@@ -31,6 +31,7 @@ final class ServerHumanZombieVictims implements ZombieVictimPort {
         boolean hit=body.AddRandomDamageFromZombie(attacker,"Bite",-1);
         body.calculateOverallHealth();
         float loss=Math.clamp((before-body.getOverallBodyHealth())/100F,0,1);
+        if(loss>0&&human.healing!=null)human.healing.hurt(System.nanoTime());
         if(loss>0)human.state.dispatch(new zombie.apocalipse.humans.state.HumanMutation.Damage(loss,0,0,0));
         if(human.player.isDeathDragDown())human.state.dispatch(new zombie.apocalipse.humans.state.HumanMutation.Kill());
         human.physiology.project();

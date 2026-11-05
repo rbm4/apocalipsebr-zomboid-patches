@@ -72,7 +72,7 @@ public final class ServerHumanPlayerAttacks {
         long now=System.nanoTime();
         if(!human.playerAttackReplay.accept(attacker,connection,weapon,fingerprint,now))return reject(victim,"exact payload repeated within 500ms");
         var module=ServerHumanRetaliation.module(human);
-        if(module!=null)module.attacked(new HumanObservation.Identity(attacker.getOnlineID(),attacker.getID()),now);
+        ServerHumanFactory.authenticatedAggression(human,new HumanObservation.Identity(attacker.getOnlineID(),attacker.getID()),now);
         trace(human,"accepted; retaliationModule="+(module!=null)+"; attackerGod="+attacker.isGodMod()+"; attackerInvisible="+attacker.isInvisible());
         if(human.profile.encounter().enabled())new ServerHumanEncounters(human).record(new zombie.apocalipse.humans.encounters.EncounterPort.Player(
             new HumanObservation.Identity(attacker.getOnlineID(),attacker.getID()),ServerHumanEncounters.key(human,attacker),0,true,false),HumanRelationships.Outcome.ATTACKED,human.profile.encounter());

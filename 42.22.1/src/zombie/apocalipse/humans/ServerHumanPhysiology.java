@@ -15,6 +15,7 @@ final class ServerHumanPhysiology {
         if(human.player.getBodyDamage()!=null)nativeHealth=Math.min(nativeHealth,human.player.getBodyDamage().getOverallBodyHealth()/100F);
         // Import new native loss once. Native regeneration/god-mode resets cannot silently revive/heal logical state.
         if(Float.isFinite(nativeHealth)&&nativeHealth<projectedHealth-0.000001F){
+            if(human.healing!=null)human.healing.hurt(now);
             float loss=Math.clamp(projectedHealth-nativeHealth,0,1);
             human.state.dispatch(new HumanMutation.Damage(loss,0,0,0));
             human.speech.damage(null,loss,null,now);

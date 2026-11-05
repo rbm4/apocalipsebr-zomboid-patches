@@ -24,6 +24,8 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-04 | [Shared group patrol: Umbrella R.P.D. Alpha, health capacity and migrations](features/2026-11-04-npc-group-patrol.md) |
+| 2026-11-04 | [NPC self-treatment, bleeding and stock-client first-aid packets](features/2026-11-04-npc-healing.md) |
 | 2026-11-04 | [NPC overhead names: display names with spaces](features/2026-11-04-npc-display-names.md) |
 | 2026-11-04 | [Agente V: apoc-dev lobby NPC and cached greeting pools](features/2026-11-04-agente-v-dev-lobby.md) |
 | 2026-11-04 | [Server Lua dialogue actions, pooled responses and safehouse travel](features/2026-11-04-dialogue-lua-actions.md) |

@@ -9,7 +9,13 @@ public record HumanProfile(String id, int revision, String behaviorId, Map<Strin
                            double perceptionRadius, int perceptionIntervalMs, boolean requireLos,
                            java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> walkingPatterns,
                            HumanCheats cheats,zombie.apocalipse.humans.survival.SurvivalSettings survival,
-                           zombie.apocalipse.humans.encounters.EncounterPolicy encounter) {
+                           zombie.apocalipse.humans.encounters.EncounterPolicy encounter,double healthMultiplier) {
+    public HumanProfile(String id,int revision,String behaviorId,Map<String,Long> parameters,String greetingKey,String announcementId,boolean dialogue,boolean trading,
+                        java.util.List<HumanModuleBinding> modules,double perceptionRadius,int perceptionIntervalMs,boolean requireLos,
+                        java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> walkingPatterns,HumanCheats cheats,zombie.apocalipse.humans.survival.SurvivalSettings survival,
+                        zombie.apocalipse.humans.encounters.EncounterPolicy encounter){
+        this(id,revision,behaviorId,parameters,greetingKey,announcementId,dialogue,trading,modules,perceptionRadius,perceptionIntervalMs,requireLos,walkingPatterns,cheats,survival,encounter,1);
+    }
     public HumanProfile(String id,int revision,String behaviorId,Map<String,Long> parameters,String greetingKey,String announcementId,boolean dialogue,boolean trading,
                         java.util.List<HumanModuleBinding> modules,double perceptionRadius,int perceptionIntervalMs,boolean requireLos,
                         java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> walkingPatterns,HumanCheats cheats,zombie.apocalipse.humans.survival.SurvivalSettings survival) {
@@ -32,6 +38,7 @@ public record HumanProfile(String id, int revision, String behaviorId, Map<Strin
     }
     public HumanProfile {
         Objects.requireNonNull(cheats);Objects.requireNonNull(survival);Objects.requireNonNull(encounter);
+        if(!Double.isFinite(healthMultiplier)||healthMultiplier<1||healthMultiplier>10)throw new IllegalArgumentException("Invalid NPC health capacity");
         identifier(id); identifier(behaviorId); identifier(announcementId);
         walkingPatterns=java.util.List.copyOf(walkingPatterns);
         if(walkingPatterns.size()>8||walkingPatterns.stream().map(zombie.apocalipse.humans.walking.WalkingPatternSpec::slot).distinct().count()!=walkingPatterns.size())

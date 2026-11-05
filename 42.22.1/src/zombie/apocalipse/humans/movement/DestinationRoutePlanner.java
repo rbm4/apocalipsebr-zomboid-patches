@@ -8,16 +8,24 @@ public final class DestinationRoutePlanner {
     private DestinationRoutePlanner() { }
     private record Node(Tile tile, Node parent, int depth, long cost, long order) { }
     public static List<Tile> plan(MovementGrid grid, Tile start, Tile destination) {
-        if (!grid.available() || !grid.walkable(start) || !grid.walkable(destination)) return List.of();
+        return plan(grid,start,destination,false);
+    }
+    /** A bounded progress leg is not arrival at the requested objective. */
+    public static List<Tile> planLeg(MovementGrid grid,Tile start,Tile destination){return plan(grid,start,destination,true);}
+    private static List<Tile> plan(MovementGrid grid,Tile start,Tile destination,boolean partial){
+        if (!grid.available() || !grid.walkable(start) || !partial&&!grid.walkable(destination)) return List.of();
         var best = new HashMap<Tile, Node>();
         var queue = new PriorityQueue<Node>(Comparator.comparingLong((Node n) -> n.cost()
             + Math.abs((long)n.tile().x()-destination.x()) + Math.abs((long)n.tile().y()-destination.y()))
             .thenComparing(Comparator.comparingLong(Node::cost).reversed()).thenComparingLong(Node::order));
         long order = 0;
         var root = new Node(start, null, 0, 0, order++); best.put(start, root); queue.add(root);
+        Node nearest=root;long nearestDistance=Math.abs((long)start.x()-destination.x())+Math.abs((long)start.y()-destination.y());
         int[][] directions = {{1,0},{0,1},{-1,0},{0,-1}};
         for (int expanded = 0; !queue.isEmpty() && expanded < 256; expanded++) {
             var node = queue.remove(); if (best.get(node.tile()) != node) continue;
+            long remaining=Math.abs((long)node.tile().x()-destination.x())+Math.abs((long)node.tile().y()-destination.y());
+            if(remaining<nearestDistance){nearest=node;nearestDistance=remaining;}
             if (node.tile().equals(destination)) {
                 var route = new ArrayList<Tile>();
                 for (var step = node; step != null; step = step.parent()) route.add(step.tile());
@@ -33,6 +41,8 @@ public final class DestinationRoutePlanner {
                 var child = new Node(next, node, node.depth()+1, total, order++); best.put(next, child); queue.add(child);
             }
         }
-        return List.of();
+        if(!partial||nearest==root)return List.of();
+        var route=new ArrayList<Tile>();for(var node=nearest;node!=null;node=node.parent())route.add(node.tile());
+        Collections.reverse(route);return List.copyOf(route);
     }
 }

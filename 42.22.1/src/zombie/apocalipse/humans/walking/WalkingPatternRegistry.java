@@ -63,8 +63,8 @@ public final class WalkingPatternRegistry {
         private int cursor;
         Circuit(WalkingPatternSpec spec) { this.spec = spec; }
         public MovementGrid scope(Context context) {
-            return restrict(context, tile -> (spec.area()==null||spec.area().contains(tile.x(),tile.y()))
-                && Math.abs((long)tile.x()-context.current().x()) <= 64 && Math.abs((long)tile.y()-context.current().y()) <= 64);
+            return restrict(context, tile -> spec.area()!=null?spec.area().contains(tile.x(),tile.y())
+                :Math.abs((long)tile.x()-context.current().x()) <= 64 && Math.abs((long)tile.y()-context.current().y()) <= 64);
         }
         public List<Tile> plan(Context context) {
             var destination = spec.points().get(cursor);

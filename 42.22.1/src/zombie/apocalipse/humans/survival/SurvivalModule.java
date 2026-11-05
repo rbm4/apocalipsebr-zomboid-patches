@@ -15,6 +15,11 @@ public final class SurvivalModule implements HumanModule {
     private long started,nextAttempt,nextDefense,routeDeadline,openingUntil,clearSince=Long.MIN_VALUE,controlledSince=Long.MIN_VALUE;
     private Execution defense;
     private boolean externalDefense;
+    private zombie.apocalipse.humans.healing.HealingModule healing;
+    public void bindHealing(zombie.apocalipse.humans.healing.HumanHealingPort port,zombie.apocalipse.humans.healing.HealingSettings settings){
+        if(healing!=null)throw new IllegalStateException("Healing already bound");
+        healing=new zombie.apocalipse.humans.healing.HealingModule(settings);healing.bind(port);
+    }
     private HumanSenses.Identity defended;
     public SurvivalModule(SurvivalSettings settings){this.settings=java.util.Objects.requireNonNull(settings);}
     public Phase phase(){return phase;}
@@ -80,6 +85,7 @@ public final class SurvivalModule implements HumanModule {
         if((clearSince!=Long.MIN_VALUE&&now-clearSince>=settings.safeHoldMs()*1_000_000L
             ||controlledSince!=Long.MIN_VALUE&&now-controlledSince>=Math.max(settings.safeHoldMs(),settings.minimumRetreatMs())*1_000_000L)
             &&now-started>=settings.minimumRetreatMs()*1_000_000L&&vitals.health()>=settings.reengageHealth()&&vitals.endurance()>=settings.reengageEndurance()){
+            if(healing!=null)healing.interrupt(now,actuator);
             cancelDefense();actuator.stopMoving();actuator.tactical(TacticalIntent.NONE);failedAttempts=0;
             transition(Phase.SAFE,"recovered",facts,actuator);return;
         }
@@ -89,6 +95,12 @@ public final class SurvivalModule implements HumanModule {
             transition(Phase.RECOVERING,"pressure_relieved",facts,actuator);
         }
         var target=target(o,actuator);publish(actuator,target);
+        if(healing!=null){
+            if(phase==Phase.RECOVERING&&healing.eligible(o)){
+                cancelDefense();healing.update(o,actuator);return;
+            }
+            healing.interrupt(now,actuator);
+        }
         if(phase==Phase.ESCAPING){
             var result=actuator.updateMovement(now);
             String problem=result==FAILED?"route_failed":result==SUCCEEDED?null:now>=routeDeadline?"route_timeout":actuator.survival().routeProblem(now);
@@ -115,6 +127,7 @@ public final class SurvivalModule implements HumanModule {
         publish(actuator,target);
     }
     public void interrupt(long now,HumanActuator actuator){
+        if(healing!=null)healing.interrupt(now,actuator);
         cancelDefense();selector.clear();actuator.stopMoving();actuator.tactical(TacticalIntent.NONE);
         if(phase!=Phase.SAFE)phase=Phase.RECOVERING;clearSince=controlledSince=Long.MIN_VALUE;nextAttempt=now;
     }

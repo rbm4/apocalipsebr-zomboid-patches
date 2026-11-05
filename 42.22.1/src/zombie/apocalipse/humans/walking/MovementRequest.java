@@ -8,7 +8,8 @@ public sealed interface MovementRequest {
     record Pattern(String slot) implements MovementRequest {
         public Pattern { HumanProfile.identifier(slot); }
     }
-    record To(WalkingPatternSpec.Point destination, String slot) implements MovementRequest {
+    record To(WalkingPatternSpec.Point destination, String slot,boolean partialLeg) implements MovementRequest {
+        public To(WalkingPatternSpec.Point destination,String slot){this(destination,slot,false);}
         public To(WalkingPatternSpec.Point destination){this(destination,"background");}
         public To { Objects.requireNonNull(destination); HumanProfile.identifier(slot); }
     }

@@ -34,6 +34,7 @@ public final class ServerHumanFactory {
     private final Map<String, HumanLifecycle> instances = new LinkedHashMap<>();
     private final Map<String, ServerHuman> humans = new LinkedHashMap<>();
     private final Map<Short, ServerHuman> byId = new HashMap<>();
+    private final ServerHumanGroups groups=new ServerHumanGroups();
     private final ServerHumanZombieVictims zombieVictims = new ServerHumanZombieVictims();
     private final zombie.apocalipse.humans.traversal.TraversalWorld traversalWorld = new zombie.apocalipse.humans.traversal.TraversalWorld();
     private final Set<String> reservedNames = new HashSet<>();
@@ -79,6 +80,7 @@ public final class ServerHumanFactory {
         if (!GameServer.server || GameServer.udpEngine == null
             || IsoWorld.instance == null || IsoWorld.instance.currentCell == null) return;
         // Bootstrap/configuration and Lua API installation remain on the calling server thread.
+        INSTANCE.serverMedicalTick(System.nanoTime());
         if (INSTANCE.worker == null) {
             INSTANCE.tick(System.nanoTime());
             if (ASYNC && INSTANCE.configured && !INSTANCE.configurationRejected) INSTANCE.startWorker();
@@ -92,6 +94,21 @@ public final class ServerHumanFactory {
         worker = new ServerHumanSimulationWorker(BRAIN_UPDATE_NANOS, this::tick, this::workerFailed);
         DebugLog.log("[ApocBR][NPC] simulation=async; targetHz=10; thread=ApocBR-NPC-Simulation; live-world experiment");
         worker.start();
+    }
+
+    /** Medical native observations, inventory commits and action packets stay on the world thread. */
+    private synchronized void serverMedicalTick(long now) {
+        if(owner==null)return;
+        if(Thread.currentThread()!=owner)throw new IllegalStateException("NPC medicine requires the registered server thread");
+        groups.capture(now);
+        for(var human:humans.values())if(human.healing!=null){
+            try {human.healing.serverTick(now);}
+            catch(RuntimeException failure){
+                human.healing.close();human.activity.stop(now,human.actuator);
+                try {human.healing.serverTick(now);}catch(RuntimeException cleanup){failure.addSuppressed(cleanup);}
+                HumanLog.log(HumanLog.Level.ERROR,()->"NPC medicine stopped key="+human.definition.key()+"; issue="+failure);
+            }
+        }
     }
 
     private synchronized void workerFailed(Throwable failure) {
@@ -109,6 +126,8 @@ public final class ServerHumanFactory {
         synchronized(INSTANCE) {
             INSTANCE.acceptMutations=false;
             INSTANCE.rejectPending(HumanStateStore.Status.UNAVAILABLE);
+            for(var human:INSTANCE.humans.values())if(human.healing!=null){human.healing.close();}
+            if(Thread.currentThread()==INSTANCE.owner)INSTANCE.serverMedicalTick(System.nanoTime());
             for(String key:INSTANCE.instances.keySet())INSTANCE.checkpoint(key,false);
         }
     }
@@ -193,6 +212,7 @@ public final class ServerHumanFactory {
             command.result().complete(mutate(command.key(),command.activation(),command.revision(),command.mutation()));
         }
         boolean heartbeat = now >= nextUpdate;
+        groups.update(now);
         if (heartbeat) nextUpdate = now + UPDATE_NANOS;
         java.util.List<String> dead = null;
         for (ServerHuman human : humans.values()) {
@@ -277,6 +297,7 @@ public final class ServerHumanFactory {
             short id = allocateId();
             if(instance.physiology().snapshot().dead())throw new IllegalStateException("Dead NPC physical state cannot activate");
             ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell,instance.physiology(),traversalWorld);
+            try{groups.register(human);}catch(RuntimeException failure){human.dispose();throw failure;}
             var restored=checkpoints.get(key);
             if(restored!=null&&!respawn){human.player.setX(restored.x());human.player.setY(restored.y());human.player.setZ(restored.z());human.player.realx=restored.x();human.player.realy=restored.y();human.player.realz=(byte)restored.z();human.postX=restored.x();human.postY=restored.y();}
             humans.put(key,human); byId.put(id,human); instance.active(human.profile.revision());
@@ -311,6 +332,7 @@ public final class ServerHumanFactory {
         requireOwner();
         ServerHuman human = humans.remove(key);
         if (human == null) return false;
+        groups.remove(human);
         byId.remove(human.player.getOnlineID());
         if (death) {instances.get(key).physiology().dispatch(new HumanMutation.Kill());instances.get(key).dead();}
         else instances.get(key).dormant();
@@ -457,6 +479,14 @@ public final class ServerHumanFactory {
 
     static ServerHuman tradingHuman(short id) {
         synchronized(INSTANCE){return INSTANCE.findTradingHuman(id);}
+    }
+    static void authenticatedAggression(ServerHuman victim,zombie.apocalipse.humans.brain.HumanObservation.Identity attacker,long now){
+        synchronized(INSTANCE){
+            INSTANCE.requireOwner();
+            if(INSTANCE.humans.get(victim.definition.key())!=victim)return;
+            var retaliation=ServerHumanRetaliation.module(victim);if(retaliation!=null)retaliation.attacked(attacker,now);
+            INSTANCE.groups.attacked(victim,attacker,now);
+        }
     }
     private ServerHuman findTradingHuman(short id) {
         if (!GameServer.server || INSTANCE.owner == null) return null;

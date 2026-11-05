@@ -27,6 +27,7 @@ final class ServerHumanTransport {
         emote(human, connection, human.emote != null);
         human.movement.announceTraversal(connection);
         human.actuator.announceCorpseDrag(connection);
+        if(human.healing!=null)human.healing.requestAnnouncement(connection);
     }
 
     static void idle(ServerHuman human, UdpConnection connection) {

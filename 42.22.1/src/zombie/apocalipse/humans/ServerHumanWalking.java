@@ -55,7 +55,8 @@ final class ServerHumanWalking implements WalkingPattern.World {
             var assigned=scope(objective.slot());
             if(assigned==null&&!objective.slot().equals("background"))return false;
             scope=assigned==null?this:assigned;
-            route = DestinationRoutePlanner.plan(scope, context.current(), new Tile(destination.x(), destination.y()));
+            var goal=new Tile(destination.x(),destination.y());
+            route = objective.partialLeg()?DestinationRoutePlanner.planLeg(scope,context.current(),goal):DestinationRoutePlanner.plan(scope,context.current(),goal);
         }
         if (!human.movement.start(route, scope, now)) { finish(false); return false; }
         return true;

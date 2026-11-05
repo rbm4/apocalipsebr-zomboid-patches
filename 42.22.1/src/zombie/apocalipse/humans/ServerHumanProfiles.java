@@ -26,6 +26,19 @@ public final class ServerHumanProfiles {
     private static HumanProfileRegistry builtins() {
         var registry = new HumanProfileRegistry(WALKING);
         var modules=new zombie.apocalipse.humans.profiles.HumanModuleRegistry();
+        modules.register("group-patrol",(p,b)->{
+            if(!b.parameters().isEmpty()||p.modules().stream().anyMatch(other->other.moduleId().equals("walk")))throw new IllegalArgumentException("Group patrol replaces background walk scheduling");
+            var pattern=p.walkingPatterns().stream().filter(s->s.slot().equals("background")).findFirst().orElseThrow();
+            if(!pattern.patternId().equals("waypoint-circuit")||pattern.area()==null)throw new IllegalArgumentException("Group patrol requires a bounded waypoint circuit");
+            if(p.modules().stream().anyMatch(other->!other.moduleId().equals("group-patrol")&&other.priority()>=b.priority()))throw new IllegalArgumentException("Group patrol must follow defensive/medical modules");
+        },(p,b)->new zombie.apocalipse.humans.groups.GroupPatrolModule());
+        modules.register("healing",(p,b)->{
+            var settings=zombie.apocalipse.humans.healing.HealingSettings.from(b.parameters());
+            if(settings.clearTiles()>p.perceptionRadius())throw new IllegalArgumentException("Healing clearance must fit perception radius");
+            if(p.modules().stream().anyMatch(other->(other.moduleId().equals("survival")||other.moduleId().equals("retaliate-player"))&&other.priority()>=b.priority()
+                ||!(other.moduleId().equals("survival")||other.moduleId().equals("retaliate-player")||other.moduleId().equals("healing"))&&other.priority()<=b.priority()))
+                throw new IllegalArgumentException("Healing must follow survival/retaliation and precede routine activity/combat");
+        },(p,b)->new zombie.apocalipse.humans.healing.HealingModule(zombie.apocalipse.humans.healing.HealingSettings.from(b.parameters())));
         modules.register("greet",(p,b)->{GuidePolicy.from(b.parameters());if(b.parameters().containsKey("roamPauseMs"))throw new IllegalArgumentException("Roam timing belongs to roam module");announcements(p);},
             (p,b)->new GuideBrain(GuidePolicy.from(b.parameters()),new zombie.apocalipse.humans.dialogue.HumanGreetingProvider(p.greetingKey()),announcements(p)).greetingOnly());
         modules.register("walk",(p,b)->{if(b.parameters().keySet().stream().anyMatch(k->!k.equals("pauseMs")))throw new IllegalArgumentException("Unknown walking parameter");if(p.walkingPatterns().stream().noneMatch(s->s.slot().equals("background")))throw new IllegalArgumentException("Background walking pattern required");},

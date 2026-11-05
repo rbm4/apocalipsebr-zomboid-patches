@@ -515,6 +515,7 @@ public final class BodyPart {
     }
 
     public void ReduceHealth(float val) {
+        val=zombie.apocalipse.humans.ServerHumanPlayerDamage.nativeDamage(this.parentChar,val);
         this.health = PZMath.clamp(this.health - val, 0.0F, 100.0F);
     }
 

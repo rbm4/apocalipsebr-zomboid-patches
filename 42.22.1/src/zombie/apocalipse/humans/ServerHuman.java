@@ -34,6 +34,7 @@ final class ServerHuman {
     final java.util.Map<UdpConnection,ServerHumanTransport.Equipment> equipmentPresentation=new IdentityHashMap<>();
     final zombie.apocalipse.humans.state.HumanStateStore state;
     final ServerHumanPhysiology physiology;
+    final ServerHumanHealing healing;
     float postX, postY;
     String emote;
     private boolean disposed;
@@ -97,6 +98,13 @@ final class ServerHuman {
         this.combat = new ServerHumanCombat(this);
         this.actuator = new ServerHumanActuator(this);
         this.physiology = new ServerHumanPhysiology(this);
+        var medical=profile.modules().stream().filter(b->b.moduleId().equals("healing")).findFirst().orElse(null);
+        this.healing=medical==null?null:new ServerHumanHealing(this,zombie.apocalipse.humans.healing.HealingSettings.from(medical.parameters()));
+        if(healing!=null&&activity.behavior() instanceof zombie.apocalipse.humans.brain.HumanModuleRuntime runtime){
+            runtime.module(zombie.apocalipse.humans.healing.HealingModule.class).bind(healing);
+            var survival=runtime.module(zombie.apocalipse.humans.survival.SurvivalModule.class);
+            if(survival!=null)survival.bindHealing(healing,healing.settings);
+        }
         this.speech = new ServerHumanSpeech(this);
         ServerHumanEncounters.bind(this);
         ServerHumanRetaliation.bind(this);
@@ -112,6 +120,7 @@ final class ServerHuman {
     void stopActivities() {
         if(activitiesStopped)return;activitiesStopped=true;
         speech.cancel();
+        if(healing!=null)healing.close();
         activity.stop(System.nanoTime(), actuator);
         combat.stop();
         actuator.closeCorpses();

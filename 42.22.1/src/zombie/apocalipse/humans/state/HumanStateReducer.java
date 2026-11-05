@@ -17,6 +17,7 @@ public final class HumanStateReducer {
                     Math.max(injury.bleedingPerSecond(),d.bleedingPerSecond()),injury.immobile(),injury.downed());
             }
             case HumanMutation.Heal h -> v[0]=clamp(v[0]+h.amount());
+            case HumanMutation.Bleeding b -> injury=new HumanState.Injuries(injury.leg(),injury.arms(),b.perSecond(),injury.immobile(),injury.downed());
             case HumanMutation.Adjust a -> {int i=a.stat().ordinal()+1;v[i]=clamp(v[i]+a.delta());}
             case HumanMutation.Treat t -> injury=new HumanState.Injuries(
                 Math.copySign(Math.max(0,Math.abs(injury.leg())-t.legRecovery()),injury.leg()),
