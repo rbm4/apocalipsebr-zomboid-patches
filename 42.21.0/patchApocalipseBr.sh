@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # patchApocalipseBr.sh
-# Client-only patch script for Project Zomboid 42.19.
+# Server patch script for Project Zomboid 42.21.0.
 # Compiles every patched Java source under ./src/zombie and deploys the
 # generated .class files as loose classpath overrides next to projectzomboid.jar.
 # The JVM loads .class files from the filesystem before looking inside the JAR.
@@ -11,7 +11,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PATCH_NAME="ApocBR Client FPS Patch (Build 42.19)"
+PATCH_NAME="ApocBR Server Patch (Build 42.21.0)"
 PZ_DIR="/opt/pzserver"
 DRY_RUN=false
 REVERT=false
@@ -39,8 +39,10 @@ else
 fi
 
 SRC_ROOT="$SCRIPT_DIR/src"
-BACKUP_DIR="$SCRIPT_DIR/backups/ApocalipseBrClient"
-WORK_DIR="$(mktemp -d /tmp/pzpatch_apocbr_client.XXXXXX)"
+POSTGRES_DRIVER="$SCRIPT_DIR/lib/postgresql-42.7.14.jar"
+HIKARI_POOL="$SCRIPT_DIR/lib/HikariCP-7.1.0.jar"
+BACKUP_DIR="$SCRIPT_DIR/backups/ApocalipseBrServer"
+WORK_DIR="$(mktemp -d /tmp/pzpatch_apocbr_server.XXXXXX)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 OUTPUT_DIR="$WORK_DIR/classes"
 
@@ -58,7 +60,11 @@ fi
 
 # --- Revert ---
 if [[ "$REVERT" == "true" ]]; then
-    echo "[*] Reverting client patch class overrides from $DEPLOY_BASE..."
+    runtime_flags=(--revert)
+    if [[ "$DRY_RUN" == "true" ]]; then runtime_flags+=(--dry-run); fi
+    python3 "$SCRIPT_DIR/tools/set_postgres_runtime.py" --pz-dir "$PZ_DIR" "${runtime_flags[@]}"
+    if [[ "$DRY_RUN" == "true" ]]; then echo 'DRY RUN: Would remove patch classes.'; exit 0; fi
+    echo "[*] Reverting server patch class overrides from $DEPLOY_BASE..."
     reverted=false
     while IFS= read -r -d '' src; do
         rel="${src#$SRC_ROOT/}"
@@ -79,7 +85,7 @@ if [[ "$REVERT" == "true" ]]; then
         done
     done < <(find "$SRC_ROOT/zombie" -type f -name "*.java" -print0 | sort -z)
     if [[ "$reverted" == false ]]; then
-        echo "    No client patch class overrides found."
+        echo "    No server patch class overrides found."
     fi
     echo ""
     echo "=== Revert complete ==="
@@ -103,6 +109,17 @@ if [[ ${#SOURCES[@]} -eq 0 ]]; then
     exit 1
 fi
 
+if [[ ! -f "$POSTGRES_DRIVER" ]]; then
+    echo "ERROR: PostgreSQL JDBC driver not found: $POSTGRES_DRIVER. Restore the version's bundled lib directory." >&2
+    exit 1
+fi
+if [[ ! -f "$HIKARI_POOL" ]]; then
+    echo "ERROR: HikariCP JAR not found: $HIKARI_POOL" >&2
+    exit 1
+fi
+COMPILE_CLASSPATH="$JAR_FILE:$POSTGRES_DRIVER:$HIKARI_POOL"
+python3 "$SCRIPT_DIR/tools/set_postgres_runtime.py" --pz-dir "$PZ_DIR" --dry-run
+
 # Find javac
 JAVAC=""
 if command -v javac &>/dev/null; then
@@ -122,19 +139,20 @@ fi
 
 echo "[*] PZ dir:  $PZ_DIR"
 echo "[*] JAR:     $JAR_FILE"
+echo "[*] JDBC:    $POSTGRES_DRIVER"
 echo "[*] Deploy:  $DEPLOY_BASE"
-echo "[*] Sources: ${#SOURCES[@]} client Java files"
+echo "[*] Sources: ${#SOURCES[@]} server Java files"
 echo "[*] javac:   $JAVAC ($("$JAVAC" -version 2>&1 | head -1))"
 echo ""
 
 # --- Compile ---
 mkdir -p "$OUTPUT_DIR"
 JAVAC_LOG="$WORK_DIR/javac.log"
-echo "[*] Compiling client patched sources..."
+echo "[*] Compiling server patched sources..."
 if ! "$JAVAC" --release 25 \
     -Xlint:none \
     -implicit:none \
-    -cp "$JAR_FILE" \
+    -cp "$COMPILE_CLASSPATH" \
     -sourcepath "$SRC_ROOT" \
     -d "$OUTPUT_DIR" \
     -encoding UTF-8 \
@@ -160,14 +178,15 @@ fi
 # --- Deploy ---
 echo ""
 if [[ "$DRY_RUN" == "true" ]]; then
-    echo "[*] DRY RUN: Would deploy ${#CLASSES[@]} client class files to $DEPLOY_BASE"
+    echo "[*] DRY RUN: Would deploy ${#CLASSES[@]} server class files to $DEPLOY_BASE"
     for class_file in "${CLASSES[@]}"; do
         echo "    $class_file"
     done
     echo ""
     echo "=== Dry run complete. No files changed. ==="
 else
-    echo "[*] Deploying client class overrides..."
+    python3 "$SCRIPT_DIR/tools/set_postgres_runtime.py" --pz-dir "$PZ_DIR"
+    echo "[*] Deploying server class overrides..."
     mkdir -p "$BACKUP_DIR"
     ts=$(date +%Y%m%d_%H%M%S)
     deployed=0
@@ -186,7 +205,7 @@ else
         echo "    Deployed: $class_file"
         deployed=$((deployed + 1))
     done
-    echo "    Deployed $deployed client class files."
+    echo "    Deployed $deployed server class files."
 fi
 
 echo ""

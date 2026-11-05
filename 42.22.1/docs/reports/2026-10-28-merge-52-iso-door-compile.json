@@ -1,0 +1,39 @@
+{
+  "review": 52,
+  "state": "approved-applied-unverified",
+  "path": "zombie/iso/objects/IsoDoor.java",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "preimage_sha256": "d6b1c9f852ff69ba3aff395912f7662467b445063b9539fc9472c4737a1ab34c",
+  "candidate_diff_sha256": "42e9a5b9af7718ff6e1da3354a3fa46eb96321e81831f5a817ae60a9297c88b6",
+  "change": "Remove decompiler-generated default arm from getBaseForceOpenChance: unconditional GameEntityScript pattern plus explicit null already cover selector type.",
+  "existing_review": 21,
+  "verification": {
+    "source_contracts": true,
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "candidate_build": {
+      "source_count": 303,
+      "compiler_exit": 1,
+      "iso_door_compile_error_resolved": true,
+      "remaining_errors": 3,
+      "remaining_classes": [
+        "ServerHumanTransport",
+        "ServerZombiePath"
+      ],
+      "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_review52_compile_n0xlk68_\\javac.log",
+      "scope": "All target sources with only approved sources plus proposed52 overlay; build still fails on remaining copied APIs, no runtime."
+    }
+  },
+  "scope_limits": [
+    "Extends already merged review21 source; do not copy another baseline.",
+    "Keeps all chance/trait/property logic and null fall-through; no runtime lockpicking claim."
+  ],
+  "applied_sha256": "91f159f5747e5dfefb273e8f8b23abbf70e474c7628a383ea3cd9cbc1239932c",
+  "applied_candidate_equivalence": true,
+  "approval": {
+    "date": "2026-10-28",
+    "user_instruction": "yes",
+    "decision": "apply redundant decompiler default-arm removal"
+  }
+}

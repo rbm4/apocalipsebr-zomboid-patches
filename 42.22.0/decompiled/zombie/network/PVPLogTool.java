@@ -1,0 +1,154 @@
+// Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
+package zombie.network;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Calendar;
+import zombie.UsedFromLua;
+import zombie.characters.Capability;
+import zombie.characters.IsoPlayer;
+import zombie.core.logger.LoggerManager;
+import zombie.core.raknet.UdpConnection;
+import zombie.debug.DebugType;
+import zombie.network.chat.ChatServer;
+import zombie.network.packets.INetworkPacket;
+import zombie.util.StringUtils;
+
+@UsedFromLua
+public class PVPLogTool {
+    private static final int MAX_EVENTS = 10;
+    private static final ArrayList<PVPLogTool.PVPEvent> events = new ArrayList<>();
+
+    private PVPLogTool() {
+    }
+
+    public static void clearEvents() {
+        for (PVPLogTool.PVPEvent event : events) {
+            event.reset(null, null, null, 0.0F, 0.0F, 0.0F);
+        }
+    }
+
+    public static ArrayList<PVPLogTool.PVPEvent> getEvents() {
+        return events;
+    }
+
+    public static void logSafety(IsoPlayer player, String event) {
+        String message = String.format("Safety: \"%s\" %s %s", player.getUsername(), event, player.getSafety().isEnabled());
+        String text = String.format(
+            "Safety: \"%s\" %s %s %s", player.getUsername(), LoggerManager.getPlayerCoords(player), event, player.getSafety().isEnabled()
+        );
+        log(message, text, "LOG");
+    }
+
+    public static void logKill(IsoPlayer wielder, IsoPlayer target) {
+        String targetName = target.isAnimal() ? target.getFullName() : target.getUsername();
+        String message = String.format("Kill: \"%s\" killed \"%s\"", wielder.getUsername(), targetName);
+        String text = String.format(
+            "Kill: \"%s\" %s killed \"%s\" %s",
+            wielder.getUsername(),
+            LoggerManager.getPlayerCoords(wielder),
+            targetName,
+            LoggerManager.getPlayerCoords(target)
+        );
+        boolean announceAnimalDeath = ServerOptions.instance.announceAnimalDeath.getValue();
+        if (!target.isAnimal() || announceAnimalDeath) {
+            log(message, text, "IMPORTANT");
+        }
+
+        boolean shouldAnnounce = target.isAnimal() ? announceAnimalDeath : ServerOptions.instance.announceDeath.getValue();
+        if (shouldAnnounce) {
+            ChatServer.getInstance().sendMessageToServerChat(message);
+        }
+    }
+
+    public static void logCombat(IsoPlayer wielder, IsoPlayer target, String weapon, float damage) {
+        String message = String.format("Combat: \"%s\" hit \"%s\" \"%s\" %f", wielder.getUsername(), target.getUsername(), weapon, damage);
+        String text = String.format(
+            "Combat: wielder=\"%s\" coords=\"%s\" hit target=\"%s\" coords=\"%s\" weapon=\"%s\" damage=%f",
+            wielder.getUsername(),
+            LoggerManager.getPlayerCoords(wielder),
+            target.getUsername(),
+            LoggerManager.getPlayerCoords(target),
+            weapon,
+            damage
+        );
+        log(message, text, "INFO");
+        PVPLogTool.PVPEvent event = events.remove(9);
+        event.reset(wielder.getUsername(), target.getUsername(), wielder.getX(), wielder.getY(), wielder.getZ());
+        events.addFirst(event);
+
+        for (UdpConnection connection : GameServer.udpEngine.connections) {
+            if (connection.isFullyConnected() && connection.getRole().hasCapability(Capability.PVPLogTool)) {
+                INetworkPacket.send(connection, PacketTypes.PacketType.PVPEvents, false);
+            }
+        }
+    }
+
+    private static void log(String message, String text, String level) {
+        if (GameServer.server) {
+            if (ServerOptions.getInstance().pvpLogToolChat.getValue()) {
+                ChatServer.getInstance().sendMessageToAdminChat(message);
+            }
+
+            if (ServerOptions.getInstance().pvpLogToolFile.getValue()) {
+                LoggerManager.getLogger("pvp").write(text, level);
+            }
+
+            DebugType.Multiplayer.debugln(text);
+        }
+    }
+
+    static {
+        for (int i = 0; i < 10; i++) {
+            events.add(new PVPLogTool.PVPEvent(null, null, 0.0F, 0.0F, 0.0F));
+        }
+    }
+
+    @UsedFromLua
+    public static class PVPEvent {
+        private static final SimpleDateFormat format = new SimpleDateFormat("dd-MM-yy HH:mm:ss.SSS");
+        public String timestamp;
+        public String wielder;
+        public String target;
+        public float x;
+        public float y;
+        public float z;
+
+        public PVPEvent(String wielder, String target, float x, float y, float z) {
+            this.reset(wielder, target, x, y, z);
+        }
+
+        public void reset(String wielder, String target, float x, float y, float z) {
+            this.reset(format.format(Calendar.getInstance().getTime()), wielder, target, x, y, z);
+        }
+
+        public void reset(String timestamp, String wielder, String target, float x, float y, float z) {
+            this.x = x;
+            this.y = y;
+            this.z = z;
+            this.wielder = wielder;
+            this.target = target;
+            this.timestamp = timestamp;
+        }
+
+        public String getText() {
+            return String.format("[%s] \"%s\" hit \"%s\"", this.timestamp, this.wielder, this.target);
+        }
+
+        public boolean isSet() {
+            return !StringUtils.isNullOrEmpty(this.wielder) && !StringUtils.isNullOrEmpty(this.target);
+        }
+
+        public float getX() {
+            return this.x;
+        }
+
+        public float getY() {
+            return this.y;
+        }
+
+        public float getZ() {
+            return this.z;
+        }
+    }
+}

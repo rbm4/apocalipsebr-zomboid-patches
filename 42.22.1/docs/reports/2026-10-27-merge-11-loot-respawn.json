@@ -1,0 +1,20 @@
+{
+  "review": 11,
+  "state": "approved-retired-use-target-vanilla",
+  "path": "zombie/LootRespawn.java",
+  "proposal": "Use target vanilla directly; omit a redundant Java replacement.",
+  "source_evidence": "The only old patch is an audited raw-array reader; sole conflict resolved to upstream List traversal makes the entire class equal target vanilla.",
+  "target_vanilla_sha256": "a55e670efbec7f91d7a02f6deabd3fceb9646ea38dad264107d89da9fc807cff",
+  "target_source_should_exist": false,
+  "custom_behavior_remaining": false,
+  "deployment_dependency": "Family tracked in retirement manifest; stale loose-class backup/cleanup implementation and validation remain required before deployment.",
+  "review_document": "42.22.0/docs/reports/2026-10-27-merge-11-loot-respawn.md",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "Retire the reader patch only",
+    "source_retirement_applied": true,
+    "installed_files_modified": false
+  },
+  "cleanup_manifest": "42.22.0/tools/retired-class-families.json",
+  "automatic_cleanup_implemented": false
+}

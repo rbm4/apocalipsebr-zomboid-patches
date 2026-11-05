@@ -1,0 +1,37 @@
+--- a/42.22.0/src/zombie/savefile/ApocBRWorldDictionaryDatabase.java
++++ b/42.22.0/src/zombie/savefile/ApocBRWorldDictionaryDatabase.java
+@@ -38,12 +38,14 @@
+                 stage="SET_LOCK_TIMEOUT";stageStarted=System.nanoTime();
+                 update(connection,"SET LOCAL lock_timeout = '2s'");
+                 stage="PROVISION_NAMESPACE";stageStarted=System.nanoTime();
+-                update(connection,"INSERT INTO player_rel.world_dictionary_namespace(id,name,game_build,world_version,dictionary_format_version) VALUES(?,?,'42.21.0',249,1) ON CONFLICT(id) DO NOTHING",origin.namespace(),origin.name());
++                update(connection,"INSERT INTO player_rel.world_dictionary_namespace(id,name,game_build,world_version,dictionary_format_version) VALUES(?,?,'42.22.0',251,1) ON CONFLICT(id) DO NOTHING",origin.namespace(),origin.name());
+                 stage="LOCK_NAMESPACE";stageStarted=System.nanoTime();
+                 long revision;
+-                try(PreparedStatement lock=preparePublication(connection,"SELECT current_revision,name FROM player_rel.world_dictionary_namespace WHERE id=? FOR UPDATE")) {
++                try(PreparedStatement lock=preparePublication(connection,"SELECT current_revision,name,game_build,world_version,dictionary_format_version FROM player_rel.world_dictionary_namespace WHERE id=? FOR UPDATE")) {
+                     bind(lock,origin.namespace());try(ResultSet rows=lock.executeQuery()) {
+                         if(!rows.next()||!origin.name().equals(rows.getString(2)))throw new SQLException("Dictionary namespace configuration mismatch","22023");
++                        if(!"42.22.0".equals(rows.getString(3))||rows.getInt(4)!=251||rows.getInt(5)!=1)
++                            throw new SQLException("Dictionary namespace build/version mismatch; configure a new namespace","22023");
+                         revision=Math.addExact(rows.getLong(1),1);
+                     }
+                 }
+@@ -162,7 +164,7 @@
+         if(entries.size()!=snapshot.entries().size()||registries.size()!=snapshot.registries().size())return null;
+         for(var r:snapshot.registries())if(!r.equals(registries.get(r.key())))return null;
+         UUID view;
+-        try(var query=preparePublication(connection,"SELECT v.id FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.server_id=? AND v.save_key=? AND v.identity_revision=? AND v.status='ready' AND n.game_build='42.21.0' AND n.world_version=249 AND n.dictionary_format_version=1 ORDER BY v.published_at DESC,v.id DESC LIMIT 1")) {
++        try(var query=preparePublication(connection,"SELECT v.id FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.server_id=? AND v.save_key=? AND v.identity_revision=? AND v.status='ready' AND n.game_build='42.22.0' AND n.world_version=251 AND n.dictionary_format_version=1 ORDER BY v.published_at DESC,v.id DESC LIMIT 1")) {
+             bind(query,origin.namespace(),origin.serverId(),origin.save(),revision);
+             try(var rows=query.executeQuery()){if(!rows.next())return null;view=rows.getObject(1,UUID.class);}
+         }
+@@ -239,7 +241,7 @@
+             try {
+                 stage="FIND_READY_SOURCE_VIEW";
+                 long revision;
+-                try(var query=prepare(connection,"SELECT v.identity_revision FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.id=? AND v.server_id=? AND v.status='ready' AND n.game_build='42.21.0' AND n.world_version=249 AND n.dictionary_format_version=1")) {
++                try(var query=prepare(connection,"SELECT v.identity_revision FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.id=? AND v.server_id=? AND v.status='ready' AND n.game_build='42.22.0' AND n.world_version=251 AND n.dictionary_format_version=1")) {
+                     bind(query,origin.namespaceId(),origin.viewId(),origin.serverId());
+                     try(var rows=query.executeQuery()){if(!rows.next())throw new SQLException("Source dictionary view unavailable","55000");revision=rows.getLong(1);}
+                 }

@@ -4579,7 +4579,7 @@ public final class IsoChunk {
                     IsoGridSquare square = this.getGridSquare(x, y, z);
                     if (square != null) {
                         int numObjects = square.getObjects().size();
-                        IsoObject[] objects = square.getObjects().getElements();
+                        IsoObject[] objects = (GameServer.server ? square.getObjects().apocbrReadOnlyElements() : square.getObjects().getElements());
 
                         for (int i = 0; i < numObjects; i++) {
                             IsoObject obj = objects[i];

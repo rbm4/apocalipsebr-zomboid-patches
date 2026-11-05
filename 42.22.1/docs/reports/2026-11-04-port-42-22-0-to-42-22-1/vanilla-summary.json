@@ -1,0 +1,36 @@
+{
+  "old_file_count": 3106,
+  "new_file_count": 3107,
+  "unchanged": 3102,
+  "changed": [
+    {
+      "path": "zombie/GitVersion.java",
+      "old_sha256": "f0176955f53710535c98ac95e1a6c0656b9b85fe80537d2fd5e9f73778b23cdb",
+      "new_sha256": "6488524ba0c8f8b4e6519ca165a6e63272a691c1be4159bb20553994c6d3bd44"
+    },
+    {
+      "path": "zombie/core/Core.java",
+      "old_sha256": "46533bf163ae1c877f41588081e8c56e1e8fe9936d3ce38ff1ff254cdce50512",
+      "new_sha256": "ddfada91ce048d267c6a1ba399b0b50fe70727d7f1e2d2ea08b1f03eb8792608"
+    },
+    {
+      "path": "zombie/gameStates/MainScreenState.java",
+      "old_sha256": "0fdbdc17e57ea1fb78d8706e08cc413c984331c59d59fa6410227d789eb4f40b",
+      "new_sha256": "c6a21f811d52b67614f93292aa91cbfa26aee41f932e40126a5186e877891c34"
+    },
+    {
+      "path": "zombie/network/GameServer.java",
+      "old_sha256": "7c7bd96fc775d48f78419403b8ebb0a527114ede66bb922395a4955be2222f0c",
+      "new_sha256": "0e663f700c10ce38c39a4985ce050c51b1ef34f276af4541e6902935b7ac3d7b"
+    }
+  ],
+  "added": [
+    {
+      "path": "zombie/core/IntegrityReport.java",
+      "sha256": "3e598764c3e0e508c6c015c797beec817061474024b34a6093376e986afa00bc"
+    }
+  ],
+  "removed": [],
+  "non_java_old": [],
+  "non_java_new": []
+}

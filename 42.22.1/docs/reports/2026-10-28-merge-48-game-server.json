@@ -1,0 +1,73 @@
+{
+  "review": 48,
+  "state": "approved-applied-unverified",
+  "path": "zombie/network/GameServer.java",
+  "recommendation": "Integrate the old startup/login/NPC/backend/telemetry hooks onto target GameServer while preserving review38 reservation and every upstream change. Include the coupled existing packer writer API adaptation.",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "affected_sources": [
+    "zombie/network/GameServer.java",
+    "zombie/popman/NetworkZombiePacker.java"
+  ],
+  "existing_baseline_commit": "a5e1000",
+  "do_not_recopy_vanilla": true,
+  "preimage_sha256": {
+    "zombie/network/GameServer.java": "66eb05d5b9e6c51d50ef3554080ad3af9f133d2007aecaa5f3315548fa80b653",
+    "zombie/popman/NetworkZombiePacker.java": "655f310519a7fafecf0323fee287e567f9eb45b49a304a899355a4c17d49779d"
+  },
+  "target_vanilla_sha256": "7c7bd96fc775d48f78419403b8ebb0a527114ede66bb922395a4955be2222f0c",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-48-game-server.diff",
+  "candidate_diff_sha256": "3465b5fbddd80a71ccb7d57239e6cd5eebcf416dedb9c48f28cb60dd5fd522ea",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-48-game-server.md",
+  "conflict_resolution": "One RCON profiler conflict: keep native var118 and the old rcon.update telemetry resource. Existing reservation stays intact.",
+  "candidate_fixture": {
+    "script": "tools/test_game_server_port.py",
+    "passed": true,
+    "counted_assertions": 824,
+    "async_coordinator_checks": 38,
+    "login_dispatch_checks": 18,
+    "snapshot_writer_checks": 768,
+    "additional_checks": [
+      "Deferred ConnectPacket follow-up ordering",
+      "Native method/silent-player block retention",
+      "Startup ordering and existing NPC slot reservation source contracts"
+    ],
+    "scope": "Actual target async coordinator plus extracted candidate login dispatch and native writer/ZombiePacket write body with controlled/recording ports; source contracts. No full GameServer/Packer/JAR or real DB/native activation/network.",
+    "full_game_jar_compile": false,
+    "target_runtime": false
+  },
+  "packer_adaptation": "Reuse one final ByteBufferWriter wrapping the existing snapshotBuffer; write target ZombiePacket via that API and freeze actual written bytes. No per-zombie writer allocation or sender scheduling redesign.",
+  "native_retained": [
+    "LocaleManager initialisation and GameMode enum; removed UnitTests hook stays removed",
+    "Silent-player stop/resend and delayed-dead-player handling",
+    "MedicalRequests/TradingRequests disconnect cleanup",
+    "Native chat whisper ownership signature and local-player permission API",
+    "Inventory/save format251 and transaction cancellation by online ID",
+    "Removed legacy packet helpers stay removed",
+    "review38 fixed NPC connection-slot reservation"
+  ],
+  "remaining_after_queue": [
+    "Removed PZArrayList/List-cache design",
+    "Remaining relational database/reconstruction/dictionary support adaptations and event-control metadata audit",
+    "Exact target JAR identification/full build and runtime/DB/client validation",
+    "Vehicle PostgreSQL gap repair before enabling; user deferred while disabled",
+    "Stale class-family backup/prune/restore deployment cleanup remains unimplemented"
+  ],
+  "scope_limits": [
+    "Candidate is against existing GameServer source, not vanilla baseline. Do not run Copy-PZPatchBaseline on it again.",
+    "Native receivePlayerConnectReady activation body, full auth/bootstrap/roles, native world, actual JDBC/schema/credit durability and RakNet were not executed.",
+    "AwaitWorkers is a compatibility name for nonblocking completion polling, not a new wait.",
+    "Telemetry measures reached scopes; no zero-overhead or simulation speedup claim."
+  ],
+  "approval": {
+    "date": "2026-10-28",
+    "user_instruction": "yes",
+    "decision": "apply both reviewed files"
+  },
+  "applied_sha256": {
+    "zombie/network/GameServer.java": "79b079b7f8abbfe07f01cc13c9d619da0e34d199abe853be359beb2f7323843d",
+    "zombie/popman/NetworkZombiePacker.java": "194b0ecfcaba889abcd7db40e473133f17304ff99e9bb5fa835965e638419db2"
+  },
+  "applied_candidate_equivalence": true,
+  "post_application_fixture_passed": true
+}

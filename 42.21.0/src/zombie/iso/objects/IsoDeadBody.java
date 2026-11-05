@@ -2,6 +2,7 @@
 package zombie.iso.objects;
 
 import java.io.IOException;
+import zombie.world.ApocBRWorldDictionaryDecode;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -748,6 +749,7 @@ public final class IsoDeadBody
 
     @Override
     public void load(ByteBuffer input, int worldVersion, boolean isDebugSave) throws IOException {
+        try(var dictionary=ApocBRWorldDictionaryDecode.enter(input)) {
         super.load(input, worldVersion, isDebugSave);
         this.female = input.get() != 0;
         this.wasZombie = input.get() != 0;
@@ -883,6 +885,7 @@ public final class IsoDeadBody
                 }
             }
         }
+            }
     }
 
     @Override

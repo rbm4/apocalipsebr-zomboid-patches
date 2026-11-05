@@ -575,7 +575,7 @@ public final class IsoGridSquare {
     }
 
     public void removeUnderground() {
-        IsoObject[] elements = this.objects.getElements();
+        IsoObject[] elements = (GameServer.server ? this.objects.apocbrReadOnlyElements() : this.objects.getElements());
 
         for (int i = 0; i < elements.length; i++) {
             IsoObject element = elements[i];
@@ -7334,7 +7334,7 @@ public final class IsoGridSquare {
         boolean nonTransparentCutW = false;
         boolean forceRender = false;
         int numObjects = this.objects.size();
-        IsoObject[] objectArray = this.objects.getElements();
+        IsoObject[] objectArray = (GameServer.server ? this.objects.apocbrReadOnlyElements() : this.objects.getElements());
 
         for (int n = 0; n < numObjects; n++) {
             IsoObject obj = objectArray[n];
@@ -8067,7 +8067,7 @@ public final class IsoGridSquare {
         setBlendFunc();
         int flags = 0;
         int size = this.objects.size();
-        IsoObject[] objectArray = this.objects.getElements();
+        IsoObject[] objectArray = (GameServer.server ? this.objects.apocbrReadOnlyElements() : this.objects.getElements());
 
         for (int n = 0; n < size; n++) {
             IsoObject obj = objectArray[n];
@@ -8352,7 +8352,7 @@ public final class IsoGridSquare {
 
     public void RenderOpenDoorOnly() {
         int numObjects = this.objects.size();
-        IsoObject[] objectArray = this.objects.getElements();
+        IsoObject[] objectArray = (GameServer.server ? this.objects.apocbrReadOnlyElements() : this.objects.getElements());
 
         try {
             int start = 0;
@@ -8372,7 +8372,7 @@ public final class IsoGridSquare {
     public boolean RenderMinusFloorFxMask(int maxZ, boolean doSE, boolean vegitationRender) {
         boolean hasSE = false;
         int numObjects = this.objects.size();
-        IsoObject[] objectArray = this.objects.getElements();
+        IsoObject[] objectArray = (GameServer.server ? this.objects.apocbrReadOnlyElements() : this.objects.getElements());
         long currentTimeMillis = System.currentTimeMillis();
 
         try {
@@ -8499,7 +8499,7 @@ public final class IsoGridSquare {
             boolean bInStencilRect = cell.isInStencil(sx, sy);
             boolean hasSE = false;
             int numObjects = this.objects.size();
-            IsoObject[] objectArray = this.objects.getElements();
+            IsoObject[] objectArray = (GameServer.server ? this.objects.apocbrReadOnlyElements() : this.objects.getElements());
             tempWorldInventoryObjects.clear();
             int start = doSE ? numObjects - 1 : 0;
             int end = doSE ? 0 : numObjects - 1;
@@ -8946,7 +8946,7 @@ public final class IsoGridSquare {
 
     public IsoObject getContainerItem(String type) {
         int numObjects = this.getObjects().size();
-        IsoObject[] objectArray = this.getObjects().getElements();
+        IsoObject[] objectArray = (GameServer.server ? this.getObjects().apocbrReadOnlyElements() : this.getObjects().getElements());
 
         for (int i = 0; i < numObjects; i++) {
             IsoObject o = objectArray[i];
@@ -9610,7 +9610,6 @@ public final class IsoGridSquare {
     public void setX(int x) {
         this.x = x;
         this.cachedScreenValue = -1;
-        if (GameServer.server) zombie.entity.ServerIsoEntityRegistry.listChanged(this.objects);
     }
 
     /**
@@ -9620,7 +9619,6 @@ public final class IsoGridSquare {
     public void setY(int y) {
         this.y = y;
         this.cachedScreenValue = -1;
-        if (GameServer.server) zombie.entity.ServerIsoEntityRegistry.listChanged(this.objects);
     }
 
     /**
@@ -9632,7 +9630,6 @@ public final class IsoGridSquare {
         z = Math.min(31, z);
         this.z = z;
         this.cachedScreenValue = -1;
-        if (GameServer.server) zombie.entity.ServerIsoEntityRegistry.listChanged(this.objects);
     }
 
     /**
@@ -10139,7 +10136,7 @@ public final class IsoGridSquare {
     }
 
     public void fixPlacedItemRenderOffsets() {
-        IsoObject[] objects = this.objects.getElements();
+        IsoObject[] objects = (GameServer.server ? this.objects.apocbrReadOnlyElements() : this.objects.getElements());
         int nObjects = this.objects.size();
         int nOffsets = 0;
 
@@ -10427,7 +10424,7 @@ public final class IsoGridSquare {
 
     public boolean haveFire() {
         int size = this.objects.size();
-        IsoObject[] objectArray = this.objects.getElements();
+        IsoObject[] objectArray = (GameServer.server ? this.objects.apocbrReadOnlyElements() : this.objects.getElements());
 
         for (int n = 0; n < size; n++) {
             IsoObject obj = objectArray[n];
