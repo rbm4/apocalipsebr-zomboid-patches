@@ -171,3 +171,7 @@ combat/retreat preemption, deaths/rejoins, delayed plans and speech chatter over
 several state changes. Verify the shared waypoint never skips and health/supplies
 are applied only once. No deployment, live schema change or game command is part
 of this implementation verification.
+
+## Close-spawn encounter follow-up
+
+The [eight-zombie investigation](../issues/2026-11-05-eight-zombie-contact-and-bandage-presentation.md) records the 10:40 encounter, adds minimum opening commitment, fixes unsafe origin recentering and medical action-bit continuity, and makes a fallback wrap available without inventory supplies. Source and fixture validation passed; a gameplay replay remains required.

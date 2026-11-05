@@ -126,6 +126,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Eight-zombie contact, tactical retries and hidden bandaging](issues/2026-11-05-eight-zombie-contact-and-bandage-presentation.md) |
 | 2026-11-05 | [Patrol separation: independent area-return routes while Vector remains in healing](issues/2026-11-05-patrol-separated-area-return-and-healing.md) |
 | 2026-11-05 | [Confirmed server deadlock: NPC weapon equip versus Lua dialogue API factory lock](issues/2026-11-05-npc-lua-factory-deadlock.md) |
 | 2026-11-05 | [Separated fleeing squadmate: distress beyond nearby assistance range and stable retreat relief](issues/2026-11-05-squad-distress-outside-assistance-radius.md) |

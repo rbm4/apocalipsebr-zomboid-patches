@@ -12,7 +12,7 @@ public final class SurvivalModule implements HumanModule {
     private Phase phase=Phase.SAFE;
     private boolean stopped,suspended;
     private int failedAttempts;
-    private long started,nextAttempt,nextDefense,routeDeadline,openingUntil,clearSince=Long.MIN_VALUE,controlledSince=Long.MIN_VALUE;
+    private long started,nextAttempt,nextDefense,routeDeadline,openingUntil,openingRetryAt,clearSince=Long.MIN_VALUE,controlledSince=Long.MIN_VALUE;
     private Execution defense;
     private boolean externalDefense;
     private zombie.apocalipse.humans.healing.HealingModule healing;
@@ -68,7 +68,9 @@ public final class SurvivalModule implements HumanModule {
     }
     private void failed(long now,String reason,ThreatAssessment facts,HumanActuator actuator){
         failedAttempts++;
-        if(failedAttempts>=2){openingUntil=now+4_000_000_000L;nextAttempt=openingUntil;nextDefense=now;
+        // A landed strike does not prove that a route has opened. Hold the tactic
+        // for at least two seconds before allowing a strike to shorten its four-second window.
+        if(failedAttempts>=2){openingRetryAt=now+2_000_000_000L;openingUntil=now+4_000_000_000L;nextAttempt=openingUntil;nextDefense=now;
             transition(Phase.CREATE_OPENING,"repeated_"+reason,facts,actuator);}
         else {nextAttempt=now+settings.retryMs()*1_000_000L;transition(Phase.CORNERED,reason,facts,actuator);}
     }
@@ -127,7 +129,7 @@ public final class SurvivalModule implements HumanModule {
             failed(now,"no_safe_route",facts,actuator);
         }
         target=target(o,actuator);publish(actuator,target);
-        if(nearby){if(defend(o,actuator,target,false)&&phase==Phase.CREATE_OPENING){openingUntil=now;nextAttempt=now;}}
+        if(nearby){if(defend(o,actuator,target,false)&&phase==Phase.CREATE_OPENING&&now>=openingRetryAt){openingUntil=now;nextAttempt=now;}}
         else {cancelDefense();transition(Phase.RECOVERING,"threat_separated",facts,actuator);}
         publish(actuator,target);
     }

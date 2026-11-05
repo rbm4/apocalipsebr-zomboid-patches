@@ -75,8 +75,11 @@ The most strongly bleeding unbandaged body part is selected first. Clean
 in that order. Infected items are refused. Inventory discovery is limited to the
 first 256 items in the top-level inventory; nested bag management is later work.
 
-One completed dressing consumes one actual item and calls native `setBandaged`
-with its power, alcohol flag and full item type. It treats that body part, not
+One completed dressing consumes its actual item when available and calls native
+`setBandaged` with its power, alcohol flag and full item type. Until inventory
+management is implemented, an empty supply uses a transaction-local clean
+`Base.RippedSheets` wrap: `sheetsMs`, power 1, no alcohol, no inventory/loot item.
+The fallback retains all treatment safety and cancellation checks. It treats that body part, not
 every wound. Remaining open parts continue bleeding and require another dressing.
 Treatment does not grant an instant health refill. Safe passive recovery restores
 logical health in the medical service using actual elapsed time capped at 150 ms
@@ -129,7 +132,8 @@ the existing reserved remote-player replica; no fake client request or new clien
 Java class is used.
 
 Completion sends native `BodyPartSync` using the vanilla `ISApplyBandage` mask.
-Action exits clear playback on completion/cancellation. New/reannounced relevant
+The native performing-action flag stays set during dressing and is serialized
+in each movement packet; action exits clear it on completion/cancellation. New/reannounced relevant
 viewers receive the current action; a viewer returning after an interruption
 receives its pending exit. Health/item effects never depend on a client animation
 event. Terminal state is set before commitment, preventing repeated polling or
@@ -157,8 +161,8 @@ was traced through target `StatePacket`, `PZNetKahluaTableImpl`, `Variables`,
 The current inventory remains transient, like the existing combat loadout.
 Initial supplies are created once per incarnation, never replenished by a tick.
 Reactivation/restart creates fresh supplies; durable supply conservation requires
-the later inventory persistence work. Set `bandages=0` for externally supplied
-actors. Persistent scavenging/resupply is outside this module.
+the later inventory persistence work. Set `bandages=0` to omit initial inventory supplies; fallback wraps remain
+available. Persistent scavenging/resupply is outside this module.
 
 Health and aggregate injuries/bleeding continue using existing physical-state
 columns and version 1. No schema migration is required by the new mutation.
@@ -199,3 +203,5 @@ Related: [NPC architecture](../../../42.21.0/docs/features/2026-10-20-npc-engine
 [physical state](../../../42.21.0/docs/features/2026-10-21-npc-state.md),
 [survival](../../../42.21.0/docs/features/2026-10-21-npc-survival.md),
 [current version index](../README.md).
+
+Follow-up: [eight-zombie encounter and bandage presentation fixes](../issues/2026-11-05-eight-zombie-contact-and-bandage-presentation.md). Medical DEBUG receipts now record transaction start, commit and cancellation with inventory/fallback source.

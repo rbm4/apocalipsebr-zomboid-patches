@@ -49,6 +49,7 @@ public class HealingProfileTest {
 '''
 
 STUBS = {
+'zombie/apocalipse/humans/HumanLog.java': '''package zombie.apocalipse.humans;class HumanLog {enum Level {DEBUG}static void log(Level l,java.util.function.Supplier<String> s){s.get();}}''',
 'zombie/GameTime.java': '''package zombie; public class GameTime {public static GameTime getInstance(){return new GameTime();}public float getTrueMultiplier(){return 1;}}''',
 'zombie/core/raknet/UdpConnection.java': '''package zombie.core.raknet; public class UdpConnection {}''',
 'zombie/network/PacketTypes.java': '''package zombie.network; public class PacketTypes {public enum PacketType { State, BodyPartSync }}''',
@@ -88,7 +89,7 @@ public class InventoryItem {public static int next;public final int id=++next;pu
  public void setBandaged(boolean value,float life,boolean alcoholic,String type){bandaged=value;applications++;}
 }''',
 'zombie/characters/IsoPlayer.java': '''package zombie.characters;import java.util.*;import zombie.inventory.*;import zombie.characters.BodyDamage.*;
-public class IsoPlayer {public float x=10,y=10;public int z;public boolean dead;public int blood;public final ItemContainer inventory=new ItemContainer();public final Body body=new Body();
+public class IsoPlayer {public float x=10,y=10;public int z;public boolean dead,performing;public void setPerformingAnAction(boolean v){performing=v;}public int blood;public final ItemContainer inventory=new ItemContainer();public final Body body=new Body();
  public boolean isDead(){return dead;}public float getX(){return x;}public float getY(){return y;}public float getZ(){return z;}public int getZi(){return z;}
  public ItemContainer getInventory(){return inventory;}public Body getBodyDamage(){return body;}public void splatBloodFloor(){blood++;}
  public static class Body {public final List<BodyPart> parts=new ArrayList<>();public List<BodyPart> getBodyParts(){return parts;}}
@@ -106,6 +107,7 @@ public class IsoPlayer {public float x=10,y=10;public int z;public boolean dead;
 'zombie/apocalipse/humans/ServerHuman.java': '''package zombie.apocalipse.humans;
 import zombie.characters.IsoPlayer;import zombie.core.raknet.UdpConnection;import zombie.apocalipse.humans.state.*;import zombie.apocalipse.humans.brain.*;
 class ServerHuman {
+ final Definition definition=new Definition();record Definition(){String key(){return "fixture";}}
  final Capture actuator=new Capture();final Speech speech=new Speech();boolean danger;
  class Capture {HumanObservation observe(long now){return HealingTest.observation(now,state.snapshot(),danger);}}
  static class Speech {int calls;void state(zombie.apocalipse.humans.speech.SpeechEvent event,long now){calls++;}}
@@ -162,6 +164,7 @@ public class HealingTest {
   float before=h.state.snapshot().vitals().health();h.state.dispatch(new HumanMutation.Advance(.1f,0,0,0,0));
   check(Math.abs(h.state.snapshot().vitals().health()-(before-rate*.1f))<.000001,"one reducer applies bleeding once");
   var e=port.begin(0);port.serverTick(0);
+  check(h.player.performing,"server keeps medical action flag while dressing");
   check(StatePacket.sent.size()==1,"one native action start");var packet=StatePacket.sent.getFirst();
   var vars=(Variables)packet.parameters().get("variables");
   check(packet.sub()&&packet.stage()==zombie.ai.State.Stage.Enter&&vars.get().get("PerformingAction").equals("Bandage")
@@ -195,10 +198,15 @@ public class HealingTest {
     case "death"->h.state.dispatch(new HumanMutation.Kill());case "traversal"->h.movement.traversing=true;default->{}}
    if(!cause.equals("lease"))e.update(S/10);p.serverTick(cause.equals("lease")?S:S/10);p.serverTick(5*S);
    check(!part.bandaged()&&h.player.inventory.removes==0,"cancel without consumption: "+cause);
-   check(StatePacket.sent.getLast().stage()==zombie.ai.State.Stage.Exit,"cancel clears remote action: "+cause);
+   check(StatePacket.sent.getLast().stage()==zombie.ai.State.Stage.Exit&&!h.player.performing,"cancel clears remote action and movement flag: "+cause);
   }
   var h=wounded();h.player.body.parts.add(new BodyPart(BodyPartType.Hand_R,10));var p=service(h,0);
-  check(!p.snapshot().supply()&&p.snapshot().wounded(),"no automatic unlimited dressings");
+  check(p.snapshot().supply()&&p.snapshot().wounded(),"fallback supplies available with empty inventory");
+  var fallback=p.begin(0);p.serverTick(0);
+  for(int i=1;i<=57;i++){fallback.update(i*S/10);p.serverTick(i*S/10);}
+  check(h.player.body.parts.getFirst().bandaged()&&h.player.inventory.removes==0&&h.player.inventory.items.isEmpty(),"fallback wraps wound without creating or consuming inventory");
+  p.serverTick(6*S);check(h.player.body.parts.getFirst().applications==1&&!h.player.performing,"fallback commits once and clears action flag");
+  h=wounded();h.player.body.parts.add(new BodyPart(BodyPartType.Hand_R,10));p=service(h,0);
   h.player.inventory.AddItem(new InventoryItem("Base.RippedSheets"));p.serverTick(0);var e=p.begin(0);p.serverTick(0);
   for(int i=1;i<=55;i++){e.update(i*S/10);p.serverTick(i*S/10);}check(h.player.inventory.removes==0,"sheets have longer duration");
   e.update(56*S/10);p.serverTick(56*S/10);check(h.player.inventory.removes==1,"sheets used once at deadline");
@@ -241,6 +249,24 @@ public class HealingTest {
   var doubled=wounded();doubled.profile.capacity=2;doubled.player.body.parts.add(new BodyPart(BodyPartType.Head,10));service(doubled,0);
   check(Math.abs(ordinary.state.snapshot().injuries().bleedingPerSecond()/2-doubled.state.snapshot().injuries().bleedingPerSecond())<.000001,"double health also scales logical bleeding once");
  }
+ static void openingDwell(){
+  class A implements HumanActuator {
+   int routes;
+   public zombie.apocalipse.humans.survival.SurvivalPort survival(){return new zombie.apocalipse.humans.survival.SurvivalPort(){
+    public boolean escape(List<HumanSenses.Contact> threats,SurvivalSettings settings,long now){routes++;return false;}
+    public HumanSenses.Contact openingTarget(List<HumanSenses.Contact> candidates){return candidates.isEmpty()?null:candidates.getFirst();}
+   };}
+   public HumanCombat.Port combat(){return (r,n)->HumanCombat.finished(new HumanCombat.Result(HumanCombat.Status.COMPLETED,HumanCombat.Reason.NONE));}
+  }
+  var a=new A();var module=new SurvivalModule(SurvivalSettings.DEFAULT);
+  var low=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Damage(.8f,0,0,0));
+  module.update(observation(0,low,true),a);module.update(observation(2*S,low,true),a);
+  check(module.phase()==SurvivalModule.Phase.CREATE_OPENING&&a.routes==2,"repeated blocked escape starts opening dwell");
+  for(int i=21;i<40;i++)module.update(observation(i*S/10,low,true),a);
+  check(module.phase()==SurvivalModule.Phase.CREATE_OPENING&&a.routes==2,"successful strikes cannot trigger subsecond flee/fight retries");
+  for(int i=40;i<=46;i++)module.update(observation(i*S/10,low,true),a);
+  check(a.routes==3,"opening may retry after its minimum two-second commitment; routes="+a.routes+" phase="+module.phase());
+ }
  static void policy(){
   var h=wounded();h.player.body.parts.add(new BodyPart(BodyPartType.Torso_Upper,10));var p=service(h,1);var module=new HealingModule(settings(1));module.bind(p);var a=new Actuator();
   var safe=observation(0,h.state.snapshot(),false);check(module.eligible(safe)&&module.eligible(safe)&&a.stops==0,"eligibility is pure");
@@ -265,7 +291,7 @@ public class HealingTest {
   check(resting.state.snapshot().vitals().health()==before,"nearby danger prevents passive healing too");
  }
  public static void main(String[] args)throws Exception {
-  transactions();nativeTreatment();cancellation();policy();viewersAndOwnership();recoveryLoop();
+  openingDwell();transactions();nativeTreatment();cancellation();policy();viewersAndOwnership();recoveryLoop();
   rejected(()->HealingSettings.from(Map.of("bandages",33L)));rejected(()->HealingSettings.from(Map.of("wat",1L)));
   rejected(()->HealingSettings.from(Map.of("clearTiles",Long.MAX_VALUE)));rejected(()->HealingSettings.from(Map.of("recoveryPermillePerSecond",11L)));
   var dead=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Kill());check(HumanStateReducer.reduce(dead,new HumanMutation.Heal(1))==dead,"medicine cannot revive dead actors");

@@ -101,7 +101,8 @@ final class ServerHumanMovement implements MovementGrid {
         // Preserve ordinary centering/prediction. In an occupied origin, do not first
         // recenter toward an overlapping body before attempting to separate.
         var origin=square(human.player.getXi(),human.player.getYi());
-        waypoint=copy.size()>1&&origin!=null&&!freeOfBlockingBodies(origin)
+        waypoint=copy.size()>1&&origin!=null&&(!freeOfBlockingBodies(origin)
+            ||(occupiedGaps||guarded())&&!bodyClear(human.player.getX(),human.player.getY(),origin.x+.5F,origin.y+.5F))
             &&copy.getFirst().equals(new Tile(human.player.getXi(),human.player.getYi()))?1:0;
         this.policy = policy;
         lastStep = now;

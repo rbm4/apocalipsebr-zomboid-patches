@@ -100,6 +100,7 @@ final class ServerHumanHealing implements HumanHealingPort {
     }
     private void stopPresentation(){
         if(region==null)return;
+        human.player.setPerformingAnAction(false);
         try{for(var viewer:human.viewers)if(human.isRelevant(viewer))presentation(viewer,false);}
         finally{region=null;}
     }
@@ -156,52 +157,62 @@ final class ServerHumanHealing implements HumanHealingPort {
             &&(human.state.snapshot().vitals().health()<1||logicalWound())
             &&human.state.snapshot().injuries().bleedingPerSecond()==0
             &&HealingModule.safe(human.actuator.observe(now),settings.clearTiles()))recover(seconds);
-        snapshot=new Snapshot(ready(now),now,wounded,dressing()!=null,
+        snapshot=new Snapshot(ready(now),now,wounded,true,
             !wounded&&(human.state.snapshot().vitals().health()<1||logicalWound())&&settings.recoveryPerSecond()>0);
     }
     private MedicalExecution create(){
         final BodyPart part=target();final boolean dressingNeeded=part!=null||!nativeWounds&&logicalWound();
         if(!dressingNeeded)return null;
-        final InventoryItem item=dressingNeeded?dressing():null;
+        // Until inventory management is available, missing supplies use a clean field wrap.
+        // It is a transaction-local fallback, never an item inserted into loot/inventory.
+        final InventoryItem item=dressing();
+        final String dressingType=item==null?"Base.RippedSheets":item.getFullType();
         final long injuryAt=hurtAt;
         final float x=human.player.getX(),y=human.player.getY();final int z=human.player.getZi();
         return new MedicalExecution(new MedicalExecution.World(){
+            private boolean committed;
+            private void trace(String phase){HumanLog.log(HumanLog.Level.DEBUG,()->"medical key="+human.definition.key()
+                +"; token="+processing+"; phase="+phase+"; dressing="+dressingType+"; source="+(item==null?"fallback":"inventory"));}
             public boolean valid(){
                 return leased(serverNow)&&ready(serverNow)&&hurtAt==injuryAt
                     &&human.player.getX()==x&&human.player.getY()==y&&human.player.getZi()==z
                     &&!human.movement.traversing()&&!human.movement.snapshot().moving()
-                    &&(!dressingNeeded||item!=null&&human.player.getInventory().getItemWithID(item.getID())==item
-                        &&!item.isInfected()&&(part==null?logicalWound():wound(part)));
+                    &&(item==null||human.player.getInventory().getItemWithID(item.getID())==item&&!item.isInfected())
+                    &&(part==null?logicalWound():wound(part));
             }
             public long durationNanos(){return !dressingNeeded?1_000_000_000L:
-                (item.getFullType().contains("RippedSheets")?settings.sheetsMs():settings.bandageMs())*1_000_000L;}
+                (dressingType.contains("RippedSheets")?settings.sheetsMs():settings.bandageMs())*1_000_000L;}
             public boolean start(){
                 if(dressingNeeded){
                     var injury=human.state.snapshot().injuries();
+                    human.player.setPerformingAnAction(true);
                     region=part!=null?region(part.getType()):Math.abs(injury.leg())>0?(injury.leg()<0?"LeftLeg":"RightLeg"):injury.arms()>0?"LeftArm":"UpperBody";
                     for(var viewer:human.viewers)if(human.isRelevant(viewer))presentation(viewer,true);
+                    trace("started");
                     human.speech.state(zombie.apocalipse.humans.speech.SpeechEvent.HEALING,serverNow);
                 }
                 return true;
             }
             public boolean commit(){
                 if(dressingNeeded){
-                    // Consume before network delivery; a failed send must never yield a free dressing.
-                    human.player.getInventory().Remove(item);
+                    // Real supplies are consumed before network delivery; fallback wraps own no item.
+                    if(item!=null)human.player.getInventory().Remove(item);
                     if(part!=null){
-                        part.setBandaged(true,Math.max(1,item.getBandagePower()+1),item.isAlcoholic(),item.getFullType());
+                        part.setBandaged(true,item==null?1:Math.max(1,item.getBandagePower()+1),item!=null&&item.isAlcoholic(),dressingType);
                         // Recompute from all remaining wounds immediately; a second wound continues bleeding.
                         float remaining=0;
                         for(var other:human.player.getBodyDamage().getBodyParts())if(!other.bandaged()&&other.getBleedingTime()>0)
                             remaining+=.2857143F*other.getDamageScaler()*48F*(other.getBleedingTime()/10F)/100F;
                         human.state.dispatch(new HumanMutation.Bleeding(Math.clamp(remaining*GameTime.getInstance().getTrueMultiplier()/(float)human.profile.healthMultiplier(),0,1)));
-                        for(var viewer:human.viewers)if(human.isRelevant(viewer))
-                            INetworkPacket.send(viewer,PacketTypes.PacketType.BodyPartSync,part,0xc001966b8eL);
                     }else human.state.dispatch(new HumanMutation.Treat(1,1,1));
+                    // Record native commitment before delivery: a send failure cannot undo treatment.
+                    committed=true;trace("committed");
+                    if(part!=null)for(var viewer:human.viewers)if(human.isRelevant(viewer))
+                        INetworkPacket.send(viewer,PacketTypes.PacketType.BodyPartSync,part,0xc001966b8eL);
                 }
                 return true;
             }
-            public void stop(){stopPresentation();}
+            public void stop(){if(!committed)trace("cancelled");stopPresentation();}
         });
     }
     /** Passive recovery has no movement lease, stationary requirement or animation. */

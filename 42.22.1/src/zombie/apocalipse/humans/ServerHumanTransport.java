@@ -82,6 +82,9 @@ final class ServerHumanTransport {
         // Omitting continuation makes the client lay down an otherwise valid grapple.
         if (human.player.isDoContinueGrapple())
             packet.booleanVariables |= (short)(1 << NetworkPlayerVariables.Flags.isDoContinueGrapple.ordinal());
+        // State packets start timed actions; movement flags must preserve them until exit.
+        if (human.player.isPerformingAnAction())
+            packet.booleanVariables |= (short)(1 << NetworkPlayerVariables.Flags.isPerformingAction.ordinal());
         packet.disconnected = false;
         packet.variables.set(human.player);
         return packet;

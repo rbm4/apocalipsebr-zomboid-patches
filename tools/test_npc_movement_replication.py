@@ -58,7 +58,7 @@ public float getX(){return x;}public float getY(){return y;}public int getID(){r
     "zombie/characters/IsoGameCharacter.java": """package zombie.characters;
 public class IsoGameCharacter extends zombie.iso.IsoMovingObject {public boolean isDead(){return false;}public float getHealth(){return 100;}}""",
     "zombie/characters/IsoPlayer.java": """package zombie.characters;import java.util.*;import zombie.iso.*;
-public class IsoPlayer extends IsoGameCharacter {public float realx,realy,angle;public boolean grapple;
+public class IsoPlayer extends IsoGameCharacter {public float realx,realy,angle;public boolean grapple,performing;public boolean isPerformingAnAction(){return performing;}
 public final Map<String,Float> vars=new HashMap<>();public String action="run";
 public final AI ai=new AI();public final IsoCell cell=new IsoCell();public static class AI {public float walkSpeed,runSpeed;}
 public AI getNetworkCharacterAI(){return ai;}public int getZi(){return 0;}public int getXi(){return (int)Math.floor(x);}
@@ -197,6 +197,19 @@ traversal.landed();check(t.viewers.getFirst().wire.size()==2,"landing callback b
 check(s.movement.snapshot().predictionUnits()>0,"running actor has prediction before new obstacle");
 PolygonalMap2.instance.blocked=true;ServerHumanTransport.movement(s);
 check(last(s.viewers.getFirst()).prediction.type==0,"new obstacle suppresses extrapolation without extending unsafe horizon");
+// Neighbor tile overlap can block recentering even when the origin has no bodies.
+PolygonalMap2.instance.blocked=false;
+var overlap=actor();overlap.player.x=2.604f;overlap.player.y=2.5f;
+var body=new zombie.characters.IsoGameCharacter();body.x=1.97f;body.y=2.5f;
+overlap.player.cell.getGridSquare(1,2,0).bodies.add(body);
+overlap.movement.tactical(body.x,body.y,true);
+check(overlap.movement.start(List.of(new Tile(2,2),new Tile(3,2)),overlap.movement,Pace.RUN,0),"admit escape from neighboring-body overlap");
+check(overlap.movement.nextTile().equals(new Tile(3,2)),"unsafe centering is skipped even with empty origin moving-object list");
+var status=overlap.movement.update(STEP);check(status==zombie.apocalipse.humans.brain.HumanActuator.MotionStatus.RUNNING&&overlap.player.x>2.604f,"escape separates outward while retaining body clearance; status="+status+" x="+overlap.player.x+" failure="+overlap.movement.lastFailure());
+var medical=actor(new UdpConnection());medical.player.performing=true;ServerHumanTransport.movement(medical);
+check(flag(last(medical.viewers.getFirst()),Flags.isPerformingAction),"movement preserves active bandage action");
+medical.player.performing=false;ServerHumanTransport.movement(medical);
+check(!flag(last(medical.viewers.getFirst()),Flags.isPerformingAction),"movement clears action after completion/cancellation");
 h.viewers.clear();ServerHumanTransport.movement(h);h.movement.close();
 System.out.println("42.22.1 NPC movement replication: "+checks+" checks passed");
 }}
