@@ -19,10 +19,11 @@ final class ServerHumanMovement implements MovementGrid {
     static final int MAX_WAYPOINTS = 256;
     enum Gait { IDLE, WALK, RUN, SPRINT }
     /** Gait determines native animation; speed is physical tiles per second. */
-    record Snapshot(Gait gait, float speed, int predictionUnits, Animation animation) {
+    record Snapshot(float x, float y, int z, float facing, float travelDirection,
+                    Gait gait, float speed, int predictionUnits, Animation animation) {
         boolean moving() { return gait != Gait.IDLE; }
     }
-    record Presentation(Gait gait, float speed, Animation animation) { }
+    record Presentation(Gait gait, float speed, float travelDirection, Animation animation) { }
 
     record Failure(String reason, Tile from, Tile to, float x, float y) { }
     private Failure lastFailure;
@@ -58,13 +59,11 @@ final class ServerHumanMovement implements MovementGrid {
         traversal = new HumanTraversal(human.player, human.definition.z(), world,
             (from, to) -> policy != null && (policy == this || policy.walkable(from) && policy.walkable(to) && policy.connected(from, to)),
             entering -> {
+                ServerHumanTransport.movement(human);
                 for (var viewer : human.viewers) if (human.isRelevant(viewer)) {
-                    ServerHumanTransport.idle(human, viewer);
                     sendTraversal(viewer, entering);
                 }
-            }, () -> {
-                for (var viewer : human.viewers) if (human.isRelevant(viewer)) ServerHumanTransport.idle(human, viewer);
-            });
+            }, () -> ServerHumanTransport.movement(human));
     }
     private void sendTraversal(zombie.core.raknet.UdpConnection viewer, boolean entering) { traversal.send(viewer, entering); }
     void announceTraversal(zombie.core.raknet.UdpConnection viewer) { traversal.announce(viewer); }
@@ -151,7 +150,9 @@ final class ServerHumanMovement implements MovementGrid {
         return switch (resolved.pace()) { case RUN -> Gait.RUN; case SPRINT -> Gait.SPRINT; default -> Gait.WALK; };
     }
 
-    Presentation presentation() { return new Presentation(gait(), moving ? resolved.speed() : 0, resolved.animation()); }
+    Presentation presentation() {
+        return new Presentation(gait(), moving ? resolved.speed() : 0, moving ? travelDirection() : 0, resolved.animation());
+    }
 
     private void applyPresentation() {
         Gait gait = gait();
@@ -170,7 +171,9 @@ final class ServerHumanMovement implements MovementGrid {
 
     /** Resolved gait/speed for native animation flags and prediction. */
     Snapshot snapshot() {
-        return new Snapshot(gait(), moving ? resolved.speed() : 0, predictionDistanceUnits(), resolved.animation());
+        return new Snapshot(human.player.getX(), human.player.getY(), human.player.getZi(),
+            human.player.getDirectionAngleRadians(), travelDirection(),
+            gait(), moving ? resolved.speed() : 0, predictionDistanceUnits(), resolved.animation());
     }
 
     HumanActuator.MotionStatus update(long now) {

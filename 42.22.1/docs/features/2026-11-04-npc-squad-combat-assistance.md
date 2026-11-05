@@ -6,6 +6,8 @@ assistance scope. Deployment and dedicated-server validation remain pending.
 Related: [group patrol](2026-11-04-npc-group-patrol.md) and
 [encounter investigation](../issues/2026-11-04-npc-patrol-combat-runaway.md).
 
+2026-11-05: [confirmed factory/Lua deadlock during squad weapon equip](../issues/2026-11-05-npc-lua-factory-deadlock.md).
+
 2026-11-05 follow-up: [separated fleeing member distress and retreat relief](../issues/2026-11-05-squad-distress-outside-assistance-radius.md).
 
 Earlier runtime evidence: [helpers follow but never reach engagement](../reports/2026-11-05-squad-assistance-following-without-engagement.md).

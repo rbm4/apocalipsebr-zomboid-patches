@@ -10,6 +10,14 @@ public final class EngageZombiesModule implements HumanModule {
     private final Settings settings;
     private final Template template;
     private final Selector selector=new Selector();
+    private Planning planning;
+    public void bindPlanning(Planning planning){
+        if(this.planning!=null||policy!=GUARD_ZOMBIES)throw new IllegalStateException("Unsupported engagement planning binding");
+        this.planning=Objects.requireNonNull(planning);
+    }
+    private Selection preview(HumanObservation observation){
+        return planning==null?selector.preview(observation,policy,settings):planning.preview(observation,selector.held(),settings);
+    }
     private Execution execution;
     private boolean suspended,stopped,backingOff;
     private long retryAt,urgentRetryAt;
@@ -27,7 +35,7 @@ public final class EngageZombiesModule implements HumanModule {
     public boolean eligible(HumanObservation observation){
         if(!available()||suspended)return false;
         if(assistance!=null&&assistance.eligible(observation))return true;
-        var next=selector.preview(observation,policy,settings);
+        var next=preview(observation);
         boolean urgent=next.choice()==Choice.ENGAGE&&next.target().distanceSquared()<=HumanCombatTactics.IMMEDIATE_RANGE*HumanCombatTactics.IMMEDIATE_RANGE;
         return (!backingOff||observation.nowNanos()>=retryAt||urgent&&observation.nowNanos()>=urgentRetryAt)&&next.choice()!=Choice.IGNORE;
     }
@@ -45,7 +53,7 @@ public final class EngageZombiesModule implements HumanModule {
             assistance.update(observation,actuator);return;
         }
         cancelAssistance(actuator);
-        var next=selector.preview(observation,policy,settings);
+        var next=preview(observation);
         boolean changed=!Objects.equals(selector.target(),next.target().identity());
         if(changed)cancel(Reason.TARGET_CHANGED);
         selector.retain(next);
@@ -62,6 +70,7 @@ public final class EngageZombiesModule implements HumanModule {
         }
     }
     private void cancel(Reason reason){
+        if(planning!=null&&(reason==Reason.PREEMPTED||reason==Reason.SUSPENDED||reason==Reason.STOPPED))planning.cancel();
         var owned=execution;execution=null;
         if(owned!=null){owned.cancel(reason);lastResult=new Result(Status.CANCELLED,reason);}
     }

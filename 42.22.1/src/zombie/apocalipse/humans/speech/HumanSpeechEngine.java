@@ -17,6 +17,7 @@ public final class HumanSpeechEngine {
     private final DoubleSupplier random;
     private final EnumMap<SpeechEvent,Long> cooldowns=new EnumMap<>(SpeechEvent.class);
     private long nextSpeech;
+    private long nextStateSpeech=Long.MIN_VALUE;
     private int lastPriority;
     public HumanSpeechEngine(String npc,String locale,HumanSpeechMemory memory,Supplier<HumanSpeechCatalog> catalog,DoubleSupplier random){
         new HumanSpeechMemory.Key(npc,"npc","_");
@@ -49,7 +50,7 @@ public final class HumanSpeechEngine {
             case FIRST_HIT, NEW_AGGRESSOR, MULTIPLE_AGGRESSORS -> Reaction.ALERT;
             case REPEATED_HIT, ATTACKED_BY_PLAYER, ATTACK_PLAYER, CHASE_STARTED, CHASING -> Reaction.DEFEND;
             case DAMAGE_TAKEN, BLEEDING, LOW_HEALTH -> Reaction.PAIN;
-            case RETREAT -> Reaction.RETREAT;case SURRENDER -> Reaction.SURRENDER;
+            case RETREAT, DESPERATION -> Reaction.RETREAT;case SURRENDER -> Reaction.SURRENDER;
             case ZOMBIE_KILL -> Reaction.CONFIRM_KILL;default -> Reaction.NONE;
         };
         if(event==SpeechEvent.DAMAGE_TAKEN&&c.damage()<=0)return silent(event,reaction,Status.NO_CONTENT);
@@ -61,9 +62,11 @@ public final class HumanSpeechEngine {
         var eligible=content.lines(event,locale).stream().filter(line->line.fits(c)).toList();
         if(eligible.isEmpty())return silent(event,reaction,Status.NO_CONTENT);
         int priority=hey?100:rule.priority();
+        if(event.stateChange()&&now<nextStateSpeech)return silent(event,reaction,Status.COOLDOWN);
         if(now<nextSpeech&&priority<=lastPriority||now<cooldowns.getOrDefault(family,Long.MIN_VALUE))return silent(event,reaction,Status.COOLDOWN);
         // One chance roll per event, even when the caller subsequently has no viewer.
-        cooldowns.put(family,now+Math.max(1000,rule.cooldownMs())*1_000_000L);
+        cooldowns.put(family,now+Math.max(event.stateChange()?30_000:1000,rule.cooldownMs())*1_000_000L);
+        if(event.stateChange())nextStateSpeech=now+15_000_000_000L;
         if(!hey&&roll()*100>=rule.chance())return silent(event,reaction,Status.CHANCE);
         var old=memory.get(speaker());var recent=old==null?List.<String>of():old.recent();
         var fresh=eligible.stream().filter(line->!recent.contains(line.id())).toList();
@@ -82,5 +85,5 @@ public final class HumanSpeechEngine {
     private static Decision silent(SpeechEvent event,Reaction reaction,Status reason){return new Decision(event,reaction,reason,"","",false,0);}
     /** Only delivered text enters repeat avoidance. No cooldown or active execution is durable. */
     public boolean delivered(Decision decision){return decision.speaks()&&memory.remember(speaker(),decision.messageId());}
-    public void cancel(){nextSpeech=0;lastPriority=0;cooldowns.clear();}
+    public void cancel(){nextSpeech=0;lastPriority=0;cooldowns.entrySet().removeIf(e->!e.getKey().stateChange());}
 }

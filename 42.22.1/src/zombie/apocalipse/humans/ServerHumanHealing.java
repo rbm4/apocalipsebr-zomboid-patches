@@ -14,7 +14,7 @@ import zombie.network.PacketTypes;
 import zombie.network.packets.INetworkPacket;
 
 /** Native work is restricted to Factory.serverMedicalTick on the registered server thread.
- * Worker methods exchange a single immutable leased command and detached results only. */
+ * Server-owned policy renews dressing leases; passive recovery owns no movement execution. */
 final class ServerHumanHealing implements HumanHealingPort {
     private record Demand(long token,long renewed,boolean cancelled) { }
     private record Result(long token,Status status) { }
@@ -27,7 +27,7 @@ final class ServerHumanHealing implements HumanHealingPort {
     private volatile long hurtAt=Long.MIN_VALUE;
     private volatile long combatAt=Long.MIN_VALUE;
     private volatile boolean closed;
-    private long sequence,processing,nextBlood,serverNow;
+    private long sequence,processing,nextBlood,serverNow,lastRecovery=Long.MIN_VALUE;
     private final java.util.Map<UdpConnection,Boolean> presented=new java.util.IdentityHashMap<>();
     private final java.util.concurrent.ArrayBlockingQueue<UdpConnection> announcements=new java.util.concurrent.ArrayBlockingQueue<>(256);
     private MedicalExecution execution;
@@ -40,7 +40,8 @@ final class ServerHumanHealing implements HumanHealingPort {
     /** Transport identity only; no connection/world access or packet construction on the caller. */
     void requestAnnouncement(UdpConnection viewer){announcements.offer(viewer);}
     public Execution begin(long now){
-        if(closed||!snapshot.available()||demand!=null&&result.token()==demand.token()&&result.status()==Status.RUNNING)return null;
+        if(closed||!snapshot.available()||!snapshot.wounded()||!snapshot.supply()
+            ||demand!=null&&result.token()==demand.token()&&result.status()==Status.RUNNING)return null;
         long token=++sequence;demand=new Demand(token,now,false);result=new Result(token,Status.RUNNING);
         return new Execution(){
             public Status update(long at){
@@ -52,7 +53,7 @@ final class ServerHumanHealing implements HumanHealingPort {
             public void cancel(){var current=demand;if(current!=null&&current.token()==token)demand=new Demand(token,current.renewed(),true);}
         };
     }
-    /** No native operation here: disposal may originate on the NPC worker. */
+    /** No native operation here; the server medical phase finalizes cancellation. */
     void close(){closed=true;var current=demand;if(current!=null)demand=new Demand(current.token(),current.renewed(),true);}
     private boolean ready(long now){
         var state=human.state.snapshot();
@@ -105,6 +106,8 @@ final class ServerHumanHealing implements HumanHealingPort {
     /** Called under the factory monitor on the registered server thread, in both startup modes. */
     void serverTick(long now){
         serverNow=now;
+        float seconds=lastRecovery==Long.MIN_VALUE?0:(float)Math.clamp((now-lastRecovery)/1_000_000_000.0,0,.15);
+        lastRecovery=lastRecovery==Long.MIN_VALUE?now:Math.max(lastRecovery,now);
         if(closed){if(execution!=null)execution.cancel();stopPresentation();snapshot=new Snapshot(false,now,false,false,false);return;}
         if(!seeded){
             seeded=true;
@@ -149,11 +152,16 @@ final class ServerHumanHealing implements HumanHealingPort {
             else if(region==null&&presented.containsKey(viewer))presentation(viewer,false);
         }
         boolean wounded=target()!=null||!nativeWounds&&logicalWound();
+        if(!wounded&&seconds>0&&ready(now)&&settings.recoveryPerSecond()>0
+            &&(human.state.snapshot().vitals().health()<1||logicalWound())
+            &&human.state.snapshot().injuries().bleedingPerSecond()==0
+            &&HealingModule.safe(human.actuator.observe(now),settings.clearTiles()))recover(seconds);
         snapshot=new Snapshot(ready(now),now,wounded,dressing()!=null,
             !wounded&&(human.state.snapshot().vitals().health()<1||logicalWound())&&settings.recoveryPerSecond()>0);
     }
     private MedicalExecution create(){
         final BodyPart part=target();final boolean dressingNeeded=part!=null||!nativeWounds&&logicalWound();
+        if(!dressingNeeded)return null;
         final InventoryItem item=dressingNeeded?dressing():null;
         final long injuryAt=hurtAt;
         final float x=human.player.getX(),y=human.player.getY();final int z=human.player.getZi();
@@ -172,6 +180,7 @@ final class ServerHumanHealing implements HumanHealingPort {
                     var injury=human.state.snapshot().injuries();
                     region=part!=null?region(part.getType()):Math.abs(injury.leg())>0?(injury.leg()<0?"LeftLeg":"RightLeg"):injury.arms()>0?"LeftArm":"UpperBody";
                     for(var viewer:human.viewers)if(human.isRelevant(viewer))presentation(viewer,true);
+                    human.speech.state(zombie.apocalipse.humans.speech.SpeechEvent.HEALING,serverNow);
                 }
                 return true;
             }
@@ -189,24 +198,23 @@ final class ServerHumanHealing implements HumanHealingPort {
                         for(var viewer:human.viewers)if(human.isRelevant(viewer))
                             INetworkPacket.send(viewer,PacketTypes.PacketType.BodyPartSync,part,0xc001966b8eL);
                     }else human.state.dispatch(new HumanMutation.Treat(1,1,1));
-                }else {
-                    if(target()!=null||human.state.snapshot().injuries().bleedingPerSecond()>0)return false;
-                    float before=human.state.snapshot().vitals().health();
-                    human.state.dispatch(new HumanMutation.Heal(settings.recoveryPerSecond()/(float)human.profile.healthMultiplier()));
-                    float after=human.state.snapshot().vitals().health();
-                    // Keep native hit rolls from accumulating permanently damaged body parts after
-                    // logical recovery. Preserve wound timers, infection, bullets and fractures.
-                    if(after>before&&before<1&&human.player.getBodyDamage()!=null){
-                        float remaining=(1-after)/(1-before);
-                        for(var bodyPart:human.player.getBodyDamage().getBodyParts())
-                            bodyPart.SetHealth(100-(100-bodyPart.getHealth())*remaining);
-                    }
-                    human.state.dispatch(new HumanMutation.Treat(settings.recoveryPerSecond(),settings.recoveryPerSecond(),0));
-                    human.physiology.project();
                 }
                 return true;
             }
             public void stop(){stopPresentation();}
         });
+    }
+    /** Passive recovery has no movement lease, stationary requirement or animation. */
+    private void recover(float seconds){
+        float before=human.state.snapshot().vitals().health();
+        float amount=settings.recoveryPerSecond()*seconds;
+        human.state.dispatch(new HumanMutation.Heal(amount/(float)human.profile.healthMultiplier()));
+        float after=human.state.snapshot().vitals().health();
+        if(after>before&&before<1&&human.player.getBodyDamage()!=null){
+            float remaining=(1-after)/(1-before);
+            for(var part:human.player.getBodyDamage().getBodyParts())part.SetHealth(100-(100-part.getHealth())*remaining);
+        }
+        human.state.dispatch(new HumanMutation.Treat(amount,amount,0));
+        human.physiology.project();
     }
 }

@@ -11,7 +11,7 @@ public final class HumanStateStore {
     private volatile HumanState state;
     private boolean initialized;
     public HumanStateStore(HumanState initial){this(initial,null);}
-    /** Factory-managed experimental simulation supplies its explicit server/worker access guard. */
+    /** Factory-managed authority supplies its server-only access guard. */
     public HumanStateStore(HumanState initial,Runnable access){state=Objects.requireNonNull(initial);this.access=access;}
     public HumanState snapshot(){return state;}
     public synchronized Result dispatch(long expectedRevision,HumanMutation mutation){

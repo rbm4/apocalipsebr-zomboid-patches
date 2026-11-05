@@ -23,7 +23,7 @@ public final class HealingModule implements HumanModule {
     public boolean eligible(HumanObservation o) {
         var s=port.snapshot();long age=o.nowNanos()-s.sampledAt();
         return !stopped&&!suspended&&s.available()&&age>=0&&age<=500_000_000L
-            &&safe(o,settings.clearTiles())&&(execution!=null||s.wounded()&&s.supply()||s.recovering());
+            &&safe(o,settings.clearTiles())&&(execution!=null||s.wounded()&&s.supply());
     }
     public void update(HumanObservation o,HumanActuator actuator) {
         if(!eligible(o)){interrupt(o.nowNanos(),actuator);return;}

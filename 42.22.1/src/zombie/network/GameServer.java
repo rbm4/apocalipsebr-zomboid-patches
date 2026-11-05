@@ -1270,6 +1270,9 @@ public class GameServer {
                 }
             }
 
+            // NPC native cleanup/checkpoint belongs to the authority thread, before
+            // the JVM shutdown hook tears down world and persistence services.
+            zombie.apocalipse.humans.ServerHumanFactory.shutdown();
             System.exit(0);
         }
     }

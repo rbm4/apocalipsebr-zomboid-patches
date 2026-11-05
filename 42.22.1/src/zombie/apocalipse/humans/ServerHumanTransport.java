@@ -9,7 +9,7 @@ import zombie.network.packets.INetworkPacket;
 import zombie.network.packets.character.PlayerPacketReliable;
 import zombie.network.chat.ChatServer;
 
-/** Only vanilla 42.22.0 packets cross the wire; clients need no new Java classes. */
+/** Only vanilla 42.22.1 packets cross the wire; clients need no new Java classes. */
 final class ServerHumanTransport {
     record Equipment(int primary,int secondary,int condition,int ammo,boolean chambered,boolean jammed) { }
     private ServerHumanTransport() {
@@ -22,7 +22,7 @@ final class ServerHumanTransport {
         equipment(human,connection);
         if(human.aiming)new ServerHumanAimPacket(human,true).sendToClient(PacketTypes.PacketType.State,connection);
         human.movementPresentation.remove(connection);
-        movementPresentation(human, connection, human.movement.snapshot());
+        movementPresentation(human, connection, human.movement.presentation().animation());
         // Also clear a previously interrupted emote when a known client reloads.
         emote(human, connection, human.emote != null);
         human.movement.announceTraversal(connection);
@@ -31,20 +31,39 @@ final class ServerHumanTransport {
     }
 
     static void idle(ServerHuman human, UdpConnection connection) {
+        var motion = human.movement.snapshot();
+        movementPresentation(human, connection, motion.animation());
+        movementPacket(human, motion).sendToClient(PacketTypes.PacketType.PlayerUpdateReliable, connection);
+    }
+
+    /** Factory-owner thread only. Capture once, send synchronously, retain no actor snapshot. */
+    static void movement(ServerHuman human) {
+        PlayerPacketReliable packet = null;
+        ServerHumanMovement.Snapshot motion = null;
+        for (var viewer : human.viewers) {
+            if (!human.isRelevant(viewer)) continue;
+            if (packet == null) {
+                motion = human.movement.snapshot();
+                packet = movementPacket(human, motion);
+            }
+            movementPresentation(human, viewer, motion.animation());
+            packet.sendToClient(PacketTypes.PacketType.PlayerUpdateReliable, viewer);
+        }
+    }
+
+    private static PlayerPacketReliable movementPacket(ServerHuman human, ServerHumanMovement.Snapshot motion) {
         PlayerPacketReliable packet = new PlayerPacketReliable();
         packet.player.set(human.player);
         // Native prediction, clipped to a collision-checked straight segment.
         packet.prediction.type = 0;
-        packet.prediction.x = human.player.getX();
-        packet.prediction.y = human.player.getY();
-        packet.prediction.z = (byte)human.player.getZi();
-        packet.prediction.direction = human.player.getDirectionAngleRadians();
-        ServerHumanMovement.Snapshot motion = human.movement.snapshot();
-        movementPresentation(human, connection, motion);
+        packet.prediction.x = motion.x();
+        packet.prediction.y = motion.y();
+        packet.prediction.z = motion.z();
+        packet.prediction.direction = motion.facing();
         int predictionUnits = motion.predictionUnits();
         if (predictionUnits > 0) {
             packet.prediction.type = 1;
-            packet.prediction.moveDirection = human.movement.travelDirection();
+            packet.prediction.moveDirection = motion.travelDirection();
             packet.prediction.speed = motion.speed();
             packet.prediction.distance = (byte)predictionUnits;
         }
@@ -65,14 +84,15 @@ final class ServerHumanTransport {
             packet.booleanVariables |= (short)(1 << NetworkPlayerVariables.Flags.isDoContinueGrapple.ordinal());
         packet.disconnected = false;
         packet.variables.set(human.player);
-        packet.sendToClient(PacketTypes.PacketType.PlayerUpdateReliable, connection);
+        return packet;
     }
 
-    private static void movementPresentation(ServerHuman human, UdpConnection connection, ServerHumanMovement.Snapshot motion) {
-        if (motion.animation().equals(human.movementPresentation.get(connection))) return;
+    private static void movementPresentation(ServerHuman human, UdpConnection connection,
+            zombie.apocalipse.humans.movement.MovementModifiers.Animation animation) {
+        if (animation.equals(human.movementPresentation.get(connection))) return;
         // Native injury packet supplies the cached walk/run modifiers used by remote-player animation.
         INetworkPacket.send(connection, PacketTypes.PacketType.PlayerInjuries, human.player);
-        human.movementPresentation.put(connection, motion.animation());
+        human.movementPresentation.put(connection, animation);
     }
 
     static void remove(ServerHuman human, UdpConnection connection) {

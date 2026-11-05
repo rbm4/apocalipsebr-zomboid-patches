@@ -5,13 +5,14 @@ import zombie.apocalipse.humans.brain.*;
 import zombie.apocalipse.humans.groups.*;
 import zombie.apocalipse.humans.walking.WalkingPatternSpec;
 
-/** Factory-owned composition/adapter. Main thread captures positions; worker policy sees detached values. */
+/** Server-owned composition/geometry capture; pure coordinators consume detached member facts. */
 final class ServerHumanGroups {
     private static final int COMBAT_SUPPORT_RADIUS=6;
     private record Entry(ServerHuman human,GroupPatrolModule module) { }
     private record Sample(long at,GroupPatrolCoordinator.Member member,boolean inside) { }
     private final Map<String,Entry> entries=new HashMap<>();
     private final Map<String,GroupPatrolCoordinator> groups=new HashMap<>();
+    private final Map<String,GroupCohesionCoordinator> cohesion=new HashMap<>();
     private final Map<String,SquadCombatCoordinator> combatGroups=new HashMap<>();
     private Map<String,Sample> samples=Map.of();
     private final java.util.function.LongSupplier dwellMillis;
@@ -28,6 +29,7 @@ final class ServerHumanGroups {
         var existing=groups.get(membership.groupId());
         if(existing!=null&&!existing.route().equals(pattern.points()))throw new IllegalArgumentException("Group members must share the same patrol route");
         groups.computeIfAbsent(membership.groupId(),id->new GroupPatrolCoordinator(pattern.points(),2,2,dwellMillis));
+        cohesion.computeIfAbsent(membership.groupId(),id->new GroupCohesionCoordinator());
         entries.put(human.definition.key(),new Entry(human,module));
         module.bind(()->observe(human),membership.slot());
         var engagement=((HumanModuleRuntime)human.activity.behavior()).module(EngageZombiesModule.class);
@@ -39,7 +41,7 @@ final class ServerHumanGroups {
     void remove(ServerHuman human){
         entries.remove(human.definition.key());String group=human.definition.group().groupId();
         if(human.squadAssist!=null)human.squadAssist.close();
-        if(entries.values().stream().noneMatch(e->e.human.definition.group().groupId().equals(group))){groups.remove(group);combatGroups.remove(group);}
+        if(entries.values().stream().noneMatch(e->e.human.definition.group().groupId().equals(group))){groups.remove(group);combatGroups.remove(group);cohesion.remove(group);}
     }
     /** Invoked only on the registered world thread while holding the factory monitor. */
     void capture(long now){
@@ -139,7 +141,7 @@ final class ServerHumanGroups {
             }
         }
     }
-    /** Pure group policy, once per NPC tick; never touches live positions or native navigation. */
+    /** Server-owned bounded rally validation followed by detached group policy. */
     void update(long now){
         for(var entry:groups.entrySet()){
             var members=new ArrayList<GroupPatrolCoordinator.Member>();
@@ -150,6 +152,19 @@ final class ServerHumanGroups {
                 else complete=false;
             }
             if(!complete){entry.getValue().pauseDwell();continue;}
+            var state=cohesion.get(entry.getKey());
+            var roster=members.stream().map(m->new GroupCohesionCoordinator.Member(m,samples.get(m.key()).inside())).toList();
+            var representative=entries.get(members.getFirst().key()).human;
+            var candidate=members.stream().allMatch(GroupPatrolCoordinator.Member::participating)
+                ?rally(representative,state,roster,entry.getValue()):null;
+            long revision=state.revision();state.update(roster,candidate);
+            if(revision!=state.revision())HumanLog.log(HumanLog.Level.DEBUG,()->"group cohesion id="+entry.getKey()
+                +"; mode="+state.mode()+"; revision="+state.revision()+"; rally="+state.rally()+"; waypoint="+entry.getValue().waypoint());
+            if(state.mode()!=GroupCohesionCoordinator.Mode.PATROL){
+                if(state.mode()==GroupCohesionCoordinator.Mode.RETURN||state.mode()==GroupCohesionCoordinator.Mode.REGROUP)entry.getValue().displaced();
+                else entry.getValue().pauseDwell();
+                continue;
+            }
             var before=entry.getValue().phase();entry.getValue().update(now,members);
             if(before!=entry.getValue().phase())HumanLog.log(HumanLog.Level.DEBUG,()->"group patrol id="+entry.getKey()+"; intent=PATROL; phase="+entry.getValue().phase()+"; waypoint="+entry.getValue().waypoint());
         }
@@ -159,8 +174,54 @@ final class ServerHumanGroups {
         var entry=entries.get(human.definition.key());
         boolean valid=entry!=null&&entry.human==human&&sample!=null&&sample.member.incarnation().equals(human.incarnation)&&group!=null;
         var goal=group==null?new GroupPatrolCoordinator.Goal(-1,new WalkingPatternSpec.Point(0,0,0),new WalkingPatternSpec.Point(0,0,0),false):group.goal(human.definition.group().slot(),valid);
+        var state=cohesion.get(human.definition.group().groupId());
+        boolean regroup=state!=null&&(state.mode()==GroupCohesionCoordinator.Mode.RETURN||state.mode()==GroupCohesionCoordinator.Mode.REGROUP);
+        boolean hold=state!=null&&state.mode()==GroupCohesionCoordinator.Mode.HOLD;
+        if(regroup){
+            var center=state.rally();
+            if(center==null)goal=new GroupPatrolCoordinator.Goal(goal.waypoint(),goal.center(),goal.destination(),false,false);
+            else{
+                int dx=goal.destination().x()-goal.center().x(),dy=goal.destination().y()-goal.center().y();
+                var offset=new WalkingPatternSpec.Point(Math.max(0,center.x()+dx),Math.max(0,center.y()+dy),center.z());
+                var area=human.profile.walkingPatterns().stream().filter(p->p.slot().equals("background")).findFirst().orElseThrow().area();
+                if(area!=null)offset=new WalkingPatternSpec.Point(Math.clamp(offset.x(),area.x1(),area.x2()),Math.clamp(offset.y(),area.y1(),area.y2()),offset.z());
+                var scope=human.walking.scope("background");
+                if(scope==null||!scope.walkable(new zombie.apocalipse.humans.movement.MovementGrid.Tile(offset.x(),offset.y())))offset=center;
+                goal=new GroupPatrolCoordinator.Goal(goal.waypoint(),center,offset,valid,false);
+            }
+        }
+        var companions=new ArrayList<WalkingPatternSpec.Point>();
+        for(var other:entries.values())if(other.human!=human&&other.human.definition.group().groupId().equals(human.definition.group().groupId())){
+            var peer=samples.get(other.human.definition.key());
+            if(peer!=null&&sample!=null&&peer.at()==sample.at()&&peer.member.z()==sample.member.z())
+                companions.add(new WalkingPatternSpec.Point(Math.max(0,(int)Math.floor(peer.member.x())),Math.max(0,(int)Math.floor(peer.member.y())),peer.member.z()));
+        }
         return new GroupPatrolPort.Observation(valid?sample.at:0,goal,
-            valid?sample.member.x():0,valid?sample.member.y():0,valid?sample.member.z():0,valid&&sample.inside);
+            valid?sample.member.x():0,valid?sample.member.y():0,valid?sample.member.z():0,valid&&sample.inside,
+            state==null?0:state.revision(),regroup,hold,companions);
+    }
+    private WalkingPatternSpec.Point rally(ServerHuman reference,GroupCohesionCoordinator state,
+            List<GroupCohesionCoordinator.Member> roster,GroupPatrolCoordinator patrol){
+        var scope=reference.walking.scope("background");if(scope==null)return null;
+        if(state.rally()!=null&&scope.walkable(new zombie.apocalipse.humans.movement.MovementGrid.Tile(state.rally().x(),state.rally().y())))return state.rally();
+        boolean outside=roster.stream().anyMatch(m->!m.inside());double spread=0;
+        for(var a:roster)for(var b:roster)spread=Math.max(spread,Math.hypot(a.pose().x()-b.pose().x(),a.pose().y()-b.pose().y()));
+        int maxSlot=roster.stream().mapToInt(m->m.pose().slot()).max().orElse(0);
+        if(!outside&&spread<=GroupCohesionCoordinator.separationLimit(maxSlot)&&state.mode()==GroupCohesionCoordinator.Mode.PATROL)return null;
+        int x=(int)Math.floor(roster.stream().mapToDouble(m->m.pose().x()).average().orElseThrow());
+        int y=(int)Math.floor(roster.stream().mapToDouble(m->m.pose().y()).average().orElseThrow());
+        var pattern=reference.profile.walkingPatterns().stream().filter(p->p.slot().equals("background")).findFirst().orElseThrow();
+        var area=pattern.area();
+        if(area!=null){x=Math.clamp(x,area.x1(),area.x2());y=Math.clamp(y,area.y1(),area.y2());}
+        else{x=patrol.route().get(patrol.waypoint()).x();y=patrol.route().get(patrol.waypoint()).y();}
+        // One shared candidate, bounded to 49 static queries. No actor-local home fallback.
+        for(int radius=0;radius<=3;radius++)for(int dx=-radius;dx<=radius;dx++)for(int dy=-radius;dy<=radius;dy++){
+            if(Math.max(Math.abs(dx),Math.abs(dy))!=radius)continue;
+            long tx=(long)x+dx,ty=(long)y+dy;if(tx<0||ty<0||tx>=Integer.MAX_VALUE||ty>=Integer.MAX_VALUE)continue;
+            var tile=new zombie.apocalipse.humans.movement.MovementGrid.Tile((int)tx,(int)ty);
+            if(scope.walkable(tile))return new WalkingPatternSpec.Point(tile.x(),tile.y(),patrol.route().get(patrol.waypoint()).z());
+        }
+        return null;
     }
     /** Authenticated aggression only. Identity/visibility/PvP is revalidated by each member's existing combat adapter. */
     void attacked(ServerHuman victim,HumanObservation.Identity attacker,long now){

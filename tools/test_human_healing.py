@@ -106,6 +106,9 @@ public class IsoPlayer {public float x=10,y=10;public int z;public boolean dead;
 'zombie/apocalipse/humans/ServerHuman.java': '''package zombie.apocalipse.humans;
 import zombie.characters.IsoPlayer;import zombie.core.raknet.UdpConnection;import zombie.apocalipse.humans.state.*;import zombie.apocalipse.humans.brain.*;
 class ServerHuman {
+ final Capture actuator=new Capture();final Speech speech=new Speech();boolean danger;
+ class Capture {HumanObservation observe(long now){return HealingTest.observation(now,state.snapshot(),danger);}}
+ static class Speech {int calls;void state(zombie.apocalipse.humans.speech.SpeechEvent event,long now){calls++;}}
  final IsoPlayer player=new IsoPlayer();final Store state=new Store();final Movement movement=new Movement();final Profile profile=new Profile();
  final HumanActivityController activity=new HumanActivityController();final java.util.Set<UdpConnection> viewers=new java.util.HashSet<>();final java.util.Set<UdpConnection> distant=new java.util.HashSet<>();final Physiology physiology=new Physiology();boolean aggressor;
  boolean isRelevant(UdpConnection c){return !distant.contains(c);}
@@ -173,11 +176,13 @@ public class HealingTest {
   check(StatePacket.sent.getLast().stage()==zombie.ai.State.Stage.Enter,"late observer receives current action");
   for(int i=51;i<=92;i++){e.update(i*S/10);port.serverTick(i*S/10);}
   check(second.bandaged()&&h.player.inventory.removes==2&&h.state.snapshot().injuries().bleedingPerSecond()==0,"second bandage stops remaining bleeding");
-  before=h.state.snapshot().vitals().health();e=port.begin(10*S);port.serverTick(10*S);
-  for(int i=101;i<=110;i++){e.update(i*S/10);port.serverTick(i*S/10);}
-  check(h.state.snapshot().vitals().health()>before&&h.player.inventory.removes==2,"quiet rest restores health without consuming another dressing");
+  before=h.state.snapshot().vitals().health();check(port.begin(10*S)==null,"passive recovery cannot acquire a treatment lease");
+  h.movement.moving=true;
+  for(int i=100;i<=110;i++){h.player.x+=.2f;port.serverTick(i*S/10);}
+  check(h.state.snapshot().vitals().health()>before&&h.player.inventory.removes==2,"passive recovery restores health while moving without consuming another dressing");
+  check(h.speech.calls==2,"healing speech fires on two real dressing starts, not passive recovery ticks");
   check(first.getHealth()>50&&second.getHealth()>50,"native body parts recover with logical health without erasing wound timers");
-  final var workerExecution=port.begin(12*S);int sent=StatePacket.sent.size();
+  final var workerExecution=e;int sent=StatePacket.sent.size();
   var workerFailure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
   Thread worker=new Thread(()->{try{workerExecution.update(12*S);workerExecution.cancel();port.snapshot();}catch(Throwable problem){workerFailure.set(problem);}});worker.start();worker.join();
   check(workerFailure.get()==null&&StatePacket.sent.size()==sent,"worker commands do not touch packet/native presentation");port.serverTick(12*S);
@@ -254,7 +259,10 @@ public class HealingTest {
   check(h.player.inventory.removes==0,"survival interruption preserves supplies");
   var resting=wounded();var restPort=service(resting,0);var restModule=new HealingModule(settings(0));restModule.bind(restPort);
   for(int i=0;i<=11;i++){long at=i*S/10;restPort.serverTick(at);restModule.update(observation(at,resting.state.snapshot(),false),a);}
-  check(restModule.eligible(observation(11*S/10,resting.state.snapshot(),false)),"retry interval retains rest ownership instead of briefly restarting walking/combat");
+  check(!restModule.eligible(observation(11*S/10,resting.state.snapshot(),false)),"passive recovery never owns the healing module or stops patrol");
+  check(resting.state.snapshot().vitals().health()>.6f,"passive recovery works without selected medical execution");
+  resting.danger=true;float before=resting.state.snapshot().vitals().health();restPort.serverTick(12*S/10);
+  check(resting.state.snapshot().vitals().health()==before,"nearby danger prevents passive healing too");
  }
  public static void main(String[] args)throws Exception {
   transactions();nativeTreatment();cancellation();policy();viewersAndOwnership();recoveryLoop();
@@ -268,7 +276,7 @@ public class HealingTest {
 
 def main():
     production = list((SOURCE / 'healing').glob('*.java'))
-    production += [SOURCE / name for name in ('ServerHumanHealing.java', 'ServerHumanMedicalPacket.java')]
+    production += [SOURCE / name for name in ('ServerHumanHealing.java', 'ServerHumanMedicalPacket.java','speech/SpeechEvent.java')]
     production += [SOURCE / 'state' / name for name in ('HumanState.java','HumanMutation.java','HumanStateReducer.java')]
     production += [SOURCE / 'brain' / name for name in ('HumanObservation.java','HumanSenses.java','HumanTerritory.java','TacticalIntent.java',
         'HumanBehavior.java','HumanModule.java','HumanModuleRuntime.java','HumanCombat.java','HumanCombatInventory.java','HumanCombatTactics.java','HumanEngagement.java')]

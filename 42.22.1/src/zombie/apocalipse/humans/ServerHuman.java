@@ -12,6 +12,10 @@ import zombie.iso.IsoCell;
 
 /** A server-owned presentation actor, deliberately outside live-player simulation. */
 final class ServerHuman {
+    private final Thread authority = Thread.currentThread();
+    void requireAuthority() {
+        if(Thread.currentThread()!=authority)throw new IllegalStateException("NPC native capability requires server owner");
+    }
     final ServerHumanDefinition definition;
     final String incarnation = java.util.UUID.randomUUID().toString();
     final IsoPlayer player;
@@ -27,6 +31,15 @@ final class ServerHuman {
     final ServerHumanCombat combat;
     final ServerHumanInventory inventory;
     final ServerHumanSpeech speech;
+    ServerHumanPlanning planning;
+    void attachPlanning(zombie.apocalipse.humans.planning.NpcDecisionPlanner planner) {
+        if(planning!=null)throw new IllegalStateException("Planning already bound");
+        planning=new ServerHumanPlanning(planner);
+        if(activity.behavior() instanceof zombie.apocalipse.humans.brain.HumanModuleRuntime runtime){
+            var engagement=runtime.module(zombie.apocalipse.humans.brain.EngageZombiesModule.class);
+            if(engagement!=null)engagement.bindPlanning(planning);
+        }
+    }
     boolean aiming;
     final ServerHumanAttackReplay playerAttackReplay = new ServerHumanAttackReplay();
     long nextPlayerHitTrace;
@@ -119,7 +132,9 @@ final class ServerHuman {
     }
 
     void stopActivities() {
+        requireAuthority();
         if(activitiesStopped)return;activitiesStopped=true;
+        try {
         speech.cancel();
         if(healing!=null)healing.close();
         activity.stop(System.nanoTime(), actuator);
@@ -129,6 +144,7 @@ final class ServerHuman {
         ServerHumanTrading.close(this);
         movement.close();
         perception.clear();
+        } finally {if(planning!=null)planning.close();}
     }
     void dispose() {
         if (disposed) return;

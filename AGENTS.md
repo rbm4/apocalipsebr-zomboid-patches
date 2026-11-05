@@ -876,6 +876,14 @@ Keep policy, execution, native authority and persistence as separate collaborato
 
 ### NPC simulation worker versus world simulation
 
+**42.22.1 update (2026-11-05):** the current target replaces the live-world worker
+with [detached planning and server-owned native authority](42.22.1/docs/features/2026-11-05-npc-async-authority.md).
+`ServerHumanFactory.tick()` and native services now execute only on the server
+thread. `apocbr.npc.async=true` runs sealed value-only selection/navigation jobs on
+the worker; it does not authorize worker access to the factory, actors or Lua.
+Do not reintroduce native worker ports or `this::tick` worker callbacks. The
+42.21.0 description below records the older experiment, not current ownership.
+
 The default 42.21.0 mode is asynchronous: one daemon
 `ApocBR-NPC-Simulation` worker targets 10 Hz independently of vanilla world ticks.
 `-Dapocbr.npc.async=false` selects synchronous execution at JVM startup; changing

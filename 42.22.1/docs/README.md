@@ -24,6 +24,9 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Squad cohesion, moving passive recovery and immersive state-change speech](features/2026-11-05-squad-cohesion-healing-and-state-speech.md) |
+| 2026-11-05 | [Async NPC authority: detached planning, server-owned execution and deadlock prevention](features/2026-11-05-npc-async-authority.md) |
+| 2026-11-05 | [NPC movement: simulation-tick publication, shared snapshots and native prediction](features/2026-11-05-npc-movement-replication.md) |
 | 2026-11-05 | [Squad-aware fight or flight: capable nearby allies, recovery and crowd pressure](features/2026-11-05-npc-squad-fight-or-flight.md) |
 | 2026-11-05 | [Retreat rendezvous: gradually flank toward squadmates actively providing assistance](features/2026-11-05-npc-retreat-squad-rendezvous.md) |
 | 2026-11-04 | [Squad combat assistance: A-life threat reports, last-known leads and bounded helper authority](features/2026-11-04-npc-squad-combat-assistance.md) |
@@ -49,6 +52,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Permanent async NPC deadlock fix draft: detached decisions and server-owned native execution](reports/2026-11-05-npc-async-deadlock-permanent-fix-draft.md) |
 | 2026-11-05 | [NPC running replication: animation root motion, clipped prediction and publication cadence](reports/2026-11-05-npc-running-replication.md) |
 | 2026-11-05 | [Squad assistance run: helpers follow distress but never reach engagement](reports/2026-11-05-squad-assistance-following-without-engagement.md) |
 | 2026-11-05 | [Server-controlled sprinter speed: measured gait model and implementation proposal](reports/2026-11-05-server-zombie-sprinter-speed.md) |
@@ -122,6 +126,8 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Patrol separation: independent area-return routes while Vector remains in healing](issues/2026-11-05-patrol-separated-area-return-and-healing.md) |
+| 2026-11-05 | [Confirmed server deadlock: NPC weapon equip versus Lua dialogue API factory lock](issues/2026-11-05-npc-lua-factory-deadlock.md) |
 | 2026-11-05 | [Separated fleeing squadmate: distress beyond nearby assistance range and stable retreat relief](issues/2026-11-05-squad-distress-outside-assistance-radius.md) |
 | 2026-11-04 | [NPC patrol encounter: retreat oscillation, missing group support and deployed dwell mismatch](issues/2026-11-04-npc-patrol-combat-runaway.md) |
 | 2026-11-04 | [ServerZombiePath rejected by Java polygon mover classification](issues/2026-11-04-server-zombie-path-unsupported-mover.md) |

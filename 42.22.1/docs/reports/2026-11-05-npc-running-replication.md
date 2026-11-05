@@ -1,8 +1,10 @@
 # NPC running: authoritative movement versus client playback
 
 Date: 2026-11-05. Target: **42.22.1 dedicated server and stock clients**.
-Status: source diagnosis and implementation proposal; the reported visual
-clipping has not been reproduced or measured. No runtime changes or deployment.
+Status: source diagnosis followed by an applied publication/snapshot change on
+2026-11-05. See the [implemented movement publication guide](../features/2026-11-05-npc-movement-replication.md)
+for current behavior and validation. Native gait calibration remains proposed;
+the reported visual clipping has not been reproduced or measured. No deployment.
 
 ## Finding
 
@@ -108,6 +110,10 @@ modes with two observing clients, delayed delivery, long straight fleeing,
 repeated corners, injury/fatigue changes and simulation overruns. Compare client
 error over time and stop settling; higher packet counts alone are not success.
 
-This investigation changed documentation only. Local report links and its index
-entry were checked. No Java fixtures, build, game installation, live server or
-database were modified or executed for validation.
+The initial investigation changed documentation only. After user approval,
+proposal steps 1 and 2 were implemented with call-local snapshots/packet reuse
+and moving publication on each simulation tick. The focused 42.22.1 fixture
+passes 146 checks and the real-JAR build passes with 331 sources / 958 classes.
+See the implementation guide for fixture boundaries and retained artifacts.
+Native gait calibration, multiplayer playback and traffic measurements remain
+open. No game installation, live server or database was modified.

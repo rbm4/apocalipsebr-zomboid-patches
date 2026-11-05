@@ -103,7 +103,10 @@ final class ServerHumanSquadAssist implements SquadAssistPort {
         return human.movement.update(now);
     }
     public void stopApproach(){human.movement.stop();}
-    public void transition(String phase,Order value){HumanLog.log(HumanLog.Level.DEBUG,()->"squad assist key="+human.definition.key()
+    public void transition(String phase,Order value){
+        if(phase.equals("APPROACHING")||phase.equals("ENGAGING"))
+            human.speech.state(zombie.apocalipse.humans.speech.SpeechEvent.ALLY_ASSIST,System.nanoTime());
+        HumanLog.log(HumanLog.Level.DEBUG,()->"squad assist key="+human.definition.key()
         +"; phase="+phase+"; ally="+value.report().ally()+"; distress="+value.report().distress()
         +"; target="+value.report().threat().identity()+"; reason="+problem+"; x="+human.player.getX()+"; y="+human.player.getY());}
 }

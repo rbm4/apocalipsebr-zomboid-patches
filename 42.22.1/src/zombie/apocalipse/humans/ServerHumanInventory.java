@@ -16,11 +16,13 @@ final class ServerHumanInventory implements HumanCombatInventory {
     ServerHumanInventory(ServerHuman human){this.human=human;}
     /** Combat test supplies are not an implicit loot table. Worn/native personal items remain. */
     void releaseForCorpse(){
+        human.requireAuthority();
         if(!initialized)return;
         human.player.setPrimaryHandItem(null);human.player.setSecondaryHandItem(null);
         for(var item:List.of(crowbar,pistol,clip,bullets))human.player.getInventory().Remove(item);
     }
     private void initialize(){
+        human.requireAuthority();
         if(initialized)return;
         // Validate the entire fixed fixture before adding anything to the native inventory.
         var melee=InventoryItemFactory.CreateItem(MELEE);var ranged=InventoryItemFactory.CreateItem(RANGED);
@@ -49,6 +51,7 @@ final class ServerHumanInventory implements HumanCombatInventory {
     }
     public List<Weapon> weapons(){initialize();return List.of(describe(crowbar),describe(pistol));}
     public boolean equip(int id){
+        human.requireAuthority();
         var weapon=item(id);if(weapon==null||weapon.getCondition()<=0)return false;
         if(human.player.getPrimaryHandItem()==weapon)return true;
         human.player.setPrimaryHandItem(weapon);
@@ -58,6 +61,7 @@ final class ServerHumanInventory implements HumanCombatInventory {
         return true;
     }
     public boolean spendRound(int id){
+        human.requireAuthority();
         var weapon=item(id);
         if(weapon==null||!weapon.isRanged()||weapon.isJammed()||!weapon.isRoundChambered())return false;
         if(weapon.getCurrentAmmoCount()>0)weapon.setCurrentAmmoCount(weapon.getCurrentAmmoCount()-1);
@@ -67,6 +71,7 @@ final class ServerHumanInventory implements HumanCombatInventory {
         return true;
     }
     public boolean reload(int id){
+        human.requireAuthority();
         var weapon=item(id);if(weapon==null||!weapon.isRanged()||human.player.getInventory().getItemWithID(clip.getID())!=clip)return false;
         int current=weapon.getCurrentAmmoCount()+(weapon.isRoundChambered()?1:0),available=reserve();
         int used=Math.min(available,Math.max(0,weapon.getMaxAmmo()-current));

@@ -15,8 +15,8 @@ import zombie.iso.IsoWorld;
 import zombie.network.GameServer;
 
 /**
- * Factory and lifecycle owner for server-owned human replicas. Experimental async
- * mode runs native NPC simulation on one worker, concurrently with the live world.
+ * Server-thread lifecycle/native authority. Async mode runs only detached planning
+ * on its worker; neither live-world adapters nor Lua are worker capabilities.
  */
 public final class ServerHumanFactory {
     // Stock 42.22 clients require PlayerHit envelope IDs below 1024.
@@ -40,6 +40,9 @@ public final class ServerHumanFactory {
     private final Set<String> reservedNames = new HashSet<>();
     private volatile Thread owner;
     private volatile ServerHumanSimulationWorker worker;
+    private final zombie.apocalipse.humans.planning.NpcDecisionPlanner planner =
+        new zombie.apocalipse.humans.planning.NpcDecisionPlanner(ASYNC);
+    private boolean planningFailureHandled;
     private volatile boolean stopping;
     private boolean configured;
     private zombie.savefile.ApocBRNpcStore store;
@@ -81,18 +84,16 @@ public final class ServerHumanFactory {
             || IsoWorld.instance == null || IsoWorld.instance.currentCell == null) return;
         // Bootstrap/configuration and Lua API installation remain on the calling server thread.
         INSTANCE.serverMedicalTick(System.nanoTime());
-        if (INSTANCE.worker == null) {
-            INSTANCE.tick(System.nanoTime());
-            if (ASYNC && INSTANCE.configured && !INSTANCE.configurationRejected) INSTANCE.startWorker();
-        } else ServerHumanDialogue.install();
+        INSTANCE.tick(System.nanoTime());
+        if (ASYNC && INSTANCE.configured && !INSTANCE.configurationRejected) INSTANCE.startWorker();
         zombie.apocalipse.zombies.ServerZombieController.getInstance().install(INSTANCE.zombieVictims);
     }
 
     private synchronized void startWorker() {
         if (worker != null || stopping) return;
         requireOwner();
-        worker = new ServerHumanSimulationWorker(BRAIN_UPDATE_NANOS, this::tick, this::workerFailed);
-        DebugLog.log("[ApocBR][NPC] simulation=async; targetHz=10; thread=ApocBR-NPC-Simulation; live-world experiment");
+        worker = new ServerHumanSimulationWorker(BRAIN_UPDATE_NANOS, planner::tick, planner::fail);
+        DebugLog.log("[ApocBR][NPC] simulation=async-planning; authority=server; targetHz=10; thread=ApocBR-NPC-Simulation");
         worker.start();
     }
 
@@ -111,9 +112,17 @@ public final class ServerHumanFactory {
         }
     }
 
-    private synchronized void workerFailed(Throwable failure) {
+    private void planningFailed(Throwable failure,long now) {
+        requireOwner();
+        if(planningFailureHandled)return;
+        planningFailureHandled=true;
         acceptMutations=false;
         rejectPending(HumanStateStore.Status.UNAVAILABLE);
+        for(var human:humans.values()){
+            ServerHumanDialogue.close(human,"planning_unavailable");ServerHumanTrading.close(human);
+            human.activity.setBlocked(true,now,human.actuator);human.speech.cancel();
+            ServerHumanTransport.movement(human);
+        }
         DebugLog.log("[ApocBR][NPC] async simulation stopped after failure; restart required; ticks="+worker.ticks()
             +"; lastDurationNanos="+worker.lastDurationNanos()+"; overruns="+worker.overruns());
         failure.printStackTrace();
@@ -121,11 +130,17 @@ public final class ServerHumanFactory {
 
     public static void shutdown() {
         INSTANCE.stopping=true;
+        INSTANCE.planner.stop();
         var running=INSTANCE.worker;
         if(running!=null)running.shutdown();
         synchronized(INSTANCE) {
             INSTANCE.acceptMutations=false;
             INSTANCE.rejectPending(HumanStateStore.Status.UNAVAILABLE);
+            if(Thread.currentThread()!=INSTANCE.owner){
+                DebugLog.log("[ApocBR][NPC] planner stopped off-owner; native teardown/checkpoint requires server shutdown phase");
+                return;
+            }
+            for(var human:INSTANCE.humans.values())human.stopActivities();
             for(var human:INSTANCE.humans.values())if(human.healing!=null){human.healing.close();}
             if(Thread.currentThread()==INSTANCE.owner)INSTANCE.serverMedicalTick(System.nanoTime());
             for(String key:INSTANCE.instances.keySet())INSTANCE.checkpoint(key,false);
@@ -135,11 +150,12 @@ public final class ServerHumanFactory {
     synchronized void tick(long now) {
         if(stopping)return;
         if (owner == null) {
-            owner = Thread.currentThread(); ServerHumanPlayerAttacks.ready();
+            owner = Thread.currentThread(); planner.bindOwner(); ServerHumanPlayerAttacks.ready();
             if(!ASYNC)DebugLog.log("[ApocBR][NPC] simulation=sync; targetHz=10; thread="+owner.getName());
         }
         requireOwner();
-        if(worker==null||!worker.isWorkerThread())ServerHumanDialogue.install();
+        ServerHumanDialogue.install();
+        if(planner.failure()!=null){planningFailed(planner.failure(),now);return;}
         if(configurationRejected)return;
         if(!configured) {
             if(zombie.savefile.ApocBRNpcStore.enabled()) {
@@ -196,7 +212,7 @@ public final class ServerHumanFactory {
                     ServerHumanDialogue.close(human,"persistence_unavailable");ServerHumanTrading.close(human);
                     human.activity.setBlocked(true,now,human.actuator);
                     human.speech.cancel();
-                    for(var viewer:human.viewers)ServerHumanTransport.idle(human,viewer);
+                    ServerHumanTransport.movement(human);
                 }
                 persistencePaused=true;return;
             }
@@ -205,6 +221,7 @@ public final class ServerHumanFactory {
         }
         if (now < nextBrainUpdate) return;
         nextBrainUpdate = now + BRAIN_UPDATE_NANOS;
+        planner.beginServerTick();
         respawnDue(System.currentTimeMillis());
         acceptMutations=true;
         for(int count=0;count<128;count++){
@@ -248,17 +265,20 @@ public final class ServerHumanFactory {
             human.speech.update(now);
             human.actuator.updateCorpseDrag(now);
             human.movement.refresh(now);
-            // Simulate at 10 Hz, but publish routine motion only on the 2 Hz heartbeat.
-            // Turns and gait/speed/animation changes replace stale client prediction immediately.
+            // Moving actors publish each actual simulation tick: clipped prediction can
+            // expire before the idle heartbeat. Do not queue or replay missed updates.
             boolean turned = Float.compare(previousDirection, human.player.getDirectionAngleRadians()) != 0;
-            if (heartbeat || turned || !previousMotion.equals(human.movement.presentation())) {
-                for (UdpConnection connection : human.viewers) {
-                    if (human.isRelevant(connection)) ServerHumanTransport.idle(human, connection);
-                }
+            if (shouldPublishMotion(heartbeat, turned, previousMotion, human.movement.presentation())) {
+                ServerHumanTransport.movement(human);
             }
         }
         if (dead != null) for (String key : dead) markDead(key);
         if(store!=null&&now>=nextCheckpoint){nextCheckpoint=now+CHECKPOINT_NANOS;for(String key:instances.keySet())checkpoint(key,false);}
+    }
+
+    static boolean shouldPublishMotion(boolean heartbeat, boolean turned,
+            ServerHumanMovement.Presentation previous, ServerHumanMovement.Presentation current) {
+        return heartbeat || turned || current.gait() != ServerHumanMovement.Gait.IDLE || !previous.equals(current);
     }
 
     /** Register logical state independently of a live presentation. Simulation thread only. */
@@ -297,6 +317,7 @@ public final class ServerHumanFactory {
             short id = allocateId();
             if(instance.physiology().snapshot().dead())throw new IllegalStateException("Dead NPC physical state cannot activate");
             ServerHuman human = new ServerHuman(definition,id,IsoWorld.instance.currentCell,instance.physiology(),traversalWorld);
+            try{human.attachPlanning(planner);}catch(RuntimeException failure){human.dispose();throw failure;}
             try{groups.register(human);}catch(RuntimeException failure){human.dispose();throw failure;}
             var restored=checkpoints.get(key);
             if(restored!=null&&!respawn){human.player.setX(restored.x());human.player.setY(restored.y());human.player.setZ(restored.z());human.player.realx=restored.x();human.player.realy=restored.y();human.player.realz=(byte)restored.z();human.postX=restored.x();human.postY=restored.y();}
@@ -499,9 +520,8 @@ public final class ServerHumanFactory {
     }
 
     private void requireOwner() {
-        var running=worker;
-        if (!GameServer.server || owner == null || Thread.currentThread() != owner && (running==null||!running.isWorkerThread())) {
-            throw new IllegalStateException("ServerHumanFactory requires the initialized server thread or its NPC simulation worker");
+        if (!GameServer.server || owner == null || Thread.currentThread() != owner) {
+            throw new IllegalStateException("ServerHumanFactory requires the initialized server thread");
         }
     }
 }

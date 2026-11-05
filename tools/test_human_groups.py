@@ -39,7 +39,9 @@ class ServerHumanRetaliation {static Active module(ServerHuman actor){return act
  static class Active {int attacks;HumanObservation.Identity aggressor;HumanObservation.Identity aggressor(){return aggressor;}void attacked(HumanObservation.Identity value,long now){attacks++;aggressor=value;}}}'''
 FIXTURES['zombie/apocalipse/humans/ServerHuman.java']='''package zombie.apocalipse.humans;
 import java.util.*;import zombie.characters.IsoPlayer;import zombie.apocalipse.humans.groups.*;import zombie.apocalipse.humans.state.*;import zombie.apocalipse.humans.brain.*;import zombie.apocalipse.humans.walking.*;
+import zombie.apocalipse.humans.movement.MovementGrid.Tile;
 class ServerHuman {
+ final Speech speech=new Speech();static class Speech {int calls;void state(zombie.apocalipse.humans.speech.SpeechEvent event,long now){calls++;}}
  record Definition(String key,HumanGroupMembership group){int z(){return 0;}}
  final Definition definition;final String incarnation=UUID.randomUUID().toString();final IsoPlayer player=new IsoPlayer();final Store state=new Store();
  final Profile profile;final HumanActivityController activity;final Territory territory=new Territory();final GroupPatrolModule module=new GroupPatrolModule();
@@ -78,7 +80,10 @@ class ServerHuman {
   boolean start(List<zombie.apocalipse.humans.movement.MovementGrid.Tile> r,zombie.apocalipse.humans.movement.MovementGrid g,zombie.apocalipse.humans.movement.MovementModifiers.Pace p,long n){starts++;lastRoute=List.copyOf(r);return !r.isEmpty();}
   HumanActuator.MotionStatus update(long now){return result;}void stop(){stops++;}
  }
- static class Walking {int stops;void stop(){stops++;}}
+ static class Walking {int stops;boolean loaded=true;void stop(){stops++;}
+  zombie.apocalipse.humans.movement.MovementGrid scope(String slot){return new zombie.apocalipse.humans.movement.MovementGrid(){
+   public boolean walkable(Tile t){return loaded&&t.x()>=9788&&t.x()<=9894&&t.y()>=2395&&t.y()<=2472;}
+   public boolean connected(Tile a,Tile b){return walkable(a)&&walkable(b);}};}}
 }'''
 
 HARNESS=r'''
@@ -160,11 +165,11 @@ public class GroupTest {
   public boolean startMovement(MovementRequest request,long now){
    starts++;
    if(request instanceof MovementRequest.Pattern){returning=true;return true;}
-   var to=(MovementRequest.To)request;check(to.partialLeg(),"group movement explicitly requests segmented legs");
-   route=DestinationRoutePlanner.planLeg(new Grid(),new Tile((int)actor.player.x,(int)actor.player.y),new Tile(to.destination().x(),to.destination().y()));cursor=0;return !route.isEmpty();
+   var to=(MovementRequest.To)request;returning=to.returnToArea();check(to.partialLeg(),"group movement explicitly requests segmented legs");
+   var grid=new zombie.apocalipse.humans.movement.CohesionGrid(new Grid(),to.companions());
+   route=DestinationRoutePlanner.planLeg(grid,new Tile((int)actor.player.x,(int)actor.player.y),new Tile(to.destination().x(),to.destination().y()));cursor=0;return !route.isEmpty();
   }
   public MotionStatus updateMovement(long now){
-   if(returning)return MotionStatus.RUNNING;
    if(cursor>=route.size())return MotionStatus.SUCCEEDED;
    var next=route.get(cursor++);actor.player.x=next.x()+.5f;actor.player.y=next.y()+.5f;
    return cursor>=route.size()?MotionStatus.SUCCEEDED:MotionStatus.RUNNING;
@@ -204,10 +209,46 @@ public class GroupTest {
   var dead=members.get(2);dead.state.value=HumanStateReducer.reduce(dead.state.value,new HumanMutation.Kill());groups.attacked(members.get(0),attacker,stale);
   check(dead.retaliation.attacks==1,"dead allies do not receive aggression");groups.remove(dead);
   int stopped=motors.get(2).starts;dead.module.update(observe(stale),motors.get(2));check(motors.get(2).starts==stopped,"retired incarnation cannot actuate through an old port");
-  members.get(0).territory.inside=false;groups.capture(stale);groups.update(stale);members.get(0).module.interrupt(stale,motors.get(0));members.get(0).module.update(observe(stale),motors.get(0));
-  check(motors.get(0).returning,"out-of-area member uses existing area recovery capability");
+  members.get(0).territory.inside=false;members.get(0).player.x=9931.5f;members.get(0).player.y=2510.5f;
+  groups.capture(stale);groups.update(stale);members.get(0).module.interrupt(stale,motors.get(0));members.get(0).module.update(observe(stale),motors.get(0));
+  check(motors.get(0).route.isEmpty(),"an interrupted squadmate holds patrol instead of sending others away");
+  members.get(1).retaliation.aggressor=null;groups.capture(stale+S/10);groups.update(stale+S/10);members.get(0).module.update(observe(stale+S/10),motors.get(0));
+  check(motors.get(0).returning,"out-of-area member uses the shared return destination");
   int count=motors.get(1).starts;members.get(1).module.suspend(stale,motors.get(1));members.get(1).module.update(observe(stale),motors.get(1));
   check(motors.get(1).starts==count,"exclusive interaction suspension prevents patrol actuation");
+ }
+ static GroupPatrolPort port(ServerHuman actor)throws Exception{var field=GroupPatrolModule.class.getDeclaredField("port");field.setAccessible(true);return (GroupPatrolPort)field.get(actor.module);}
+ static void cohesion()throws Exception{
+  var closed=new ArrayList<>(route());closed.add(closed.getFirst());var c=new GroupPatrolCoordinator(closed,2,2,()->15000);
+  check(!c.destination(0).equals(c.destination(1)),"repeated closing point does not collapse first-leg formation offsets");
+  var policy=new GroupCohesionCoordinator();var target=new Point(9894,2472,0);
+  var outside=List.of(new GroupCohesionCoordinator.Member(at("a",0,new Point(9931,2510,0),true),false),new GroupCohesionCoordinator.Member(at("b",1,new Point(9931,2510,0),true),false));
+  policy.update(outside,target);long revision=policy.revision();check(policy.mode()==GroupCohesionCoordinator.Mode.RETURN&&policy.rally().equals(target),"one shared re-entry goal");
+  policy.update(outside,target);check(policy.revision()==revision,"stable rally does not restart routes every tick");
+  var split=List.of(new GroupCohesionCoordinator.Member(at("a",0,target,true),true),new GroupCohesionCoordinator.Member(at("b",1,new Point(9860,2440,0),true),true));
+  policy.update(split,target);check(policy.mode()==GroupCohesionCoordinator.Mode.RETURN,"individual area entry cannot release shared recovery");
+  var arrived=List.of(new GroupCohesionCoordinator.Member(at("a",0,target,true),true),new GroupCohesionCoordinator.Member(at("b",1,new Point(9892,2472,0),true),true));
+  policy.update(arrived,target);check(policy.mode()==GroupCohesionCoordinator.Mode.PATROL,"whole roster rejoins before patrol resumes");
+  policy.update(split,new Point(9877,2456,0));check(policy.mode()==GroupCohesionCoordinator.Mode.REGROUP,"separation triggers shared regroup");
+  policy.update(List.of(arrived.get(0),new GroupCohesionCoordinator.Member(at("b",1,target,false),true)),null);
+  check(policy.mode()==GroupCohesionCoordinator.Mode.HOLD,"bandaging/exclusive interruption holds remaining patrol only");
+  var edgeActor=new ServerHuman("edge","edge",0,closed);var edgeMotor=new Motor(edgeActor);var edgeModule=new GroupPatrolModule();
+  edgeModule.bind(()->new GroupPatrolPort.Observation(0,new GroupPatrolCoordinator.Goal(0,target,target,true,false),9894.5f,2473.5f,0,false,1,true,false,List.of()));
+  edgeModule.update(observe(0),edgeMotor);check(edgeMotor.starts==1,"arrival tolerance outside the rectangle cannot prematurely stop re-entry");
+  var dwell=new GroupPatrolCoordinator(closed,2,2,()->15000);var parked=List.of(at("one",0,dwell.destination(0),true));
+  dwell.update(0,parked);dwell.update(14*S,parked);dwell.displaced();dwell.update(20*S,parked);dwell.update(21*S,parked);
+  check(dwell.waypoint()==0,"regroup displacement resets dwell without advancing the waypoint");
+  var weighted=new zombie.apocalipse.humans.movement.CohesionGrid(new Grid(),List.of(new Point(9860,2440,0)));
+  check(weighted.traversalCost(new Tile(9860,2440),new Tile(9861,2440))<weighted.traversalCost(new Tile(9880,2440),new Tile(9881,2440)),"soft cost favors paths near companions");
+  check(weighted.walkable(new Tile(9890,2440)),"soft cohesion is not a hard leash that fabricates blocked geometry");
+  var groups=new ServerHumanGroups(()->15000);var actors=new ArrayList<ServerHuman>();
+  for(int i=0;i<3;i++){var a=new ServerHuman("recover"+i,"recovery",i,closed);a.player.x=9931.5f;a.player.y=2510.5f;a.territory.inside=false;groups.register(a);actors.add(a);}
+  groups.capture(0);groups.update(0);var shared=port(actors.getFirst()).observe().goal().center();
+  check(actors.stream().map(a->{try{return port(a).observe().goal().destination();}catch(Exception e){throw new RuntimeException(e);}}).distinct().count()==3,"boundary formation clamps slot destinations without collapsing everyone onto one point");
+  for(var a:actors){var view=port(a).observe();check(view.regroup()&&view.goal().center().equals(shared)&&view.companions().size()==2,"native adapter publishes same rally and detached peers to all members");
+   var motor=new Motor(a);a.module.update(observe(2*S/10),motor);check(motor.returning||a.definition.group().slot()!=0,"recovery emits explicit shared To request, not personal background pattern");}
+  for(var a:actors)a.walking.loaded=false;groups.capture(S);groups.update(S);
+  for(var a:actors)check(!port(a).observe().goal().available(),"unloaded shared rally pauses everyone without divergent home fallback");
  }
  static void capacity(){
   check(HumanHealthCapacity.damage(20,1)==20&&HumanHealthCapacity.damage(20,2)==10,"double HP scales native loss once");
@@ -223,7 +264,7 @@ public class GroupTest {
   var impostor=new zombie.characters.IsoPlayer();var impostorPart=new NativeBodyPartFixture(impostor,15);impostorPart.ReduceHealth(20);check(impostorPart.health==0,"native identity must match the registered actor reference");
   zombie.network.GameServer.server=false;nativePart=new NativeBodyPartFixture(actor.player,15);nativePart.ReduceHealth(20);check(nativePart.health==0,"client damage processing stays vanilla");zombie.network.GameServer.server=true;
  }
- public static void main(String[] args){coordinator();dwellTiming();navigation();moduleDwell();adapterAndPatrol();capacity();System.out.println("Group patrol: "+checks+" assertions passed (42.22.1 production classes; engine doubles)");}
+ public static void main(String[] args)throws Exception{coordinator();dwellTiming();navigation();moduleDwell();adapterAndPatrol();cohesion();capacity();System.out.println("Group patrol: "+checks+" assertions passed (42.22.1 production classes; engine doubles)");}
 }
 '''
 
@@ -243,7 +284,7 @@ class NativeBodyPartFixture {final zombie.characters.IsoGameCharacter parentChar
  static class PZMath {static float clamp(float value,float min,float max){return Math.clamp(value,min,max);}}
 '''+seam+'}'
     FIXTURES['zombie/apocalipse/humans/ServerHumanPlayerDamage.java']='package zombie.apocalipse.humans;import zombie.characters.IsoPlayer;public class ServerHumanPlayerDamage {'+adapter+'}'
-    production=list((SOURCE/'groups').glob('*.java'))+[SOURCE/'ServerHumanGroups.java',SOURCE/'ServerHumanSquadAssist.java',SOURCE/'ServerHumanCombat.java']
+    production=list((SOURCE/'groups').glob('*.java'))+[SOURCE/'ServerHumanGroups.java',SOURCE/'ServerHumanSquadAssist.java',SOURCE/'ServerHumanCombat.java',SOURCE/'speech/SpeechEvent.java',SOURCE/'movement/CohesionGrid.java']
     production += [SOURCE/'brain'/name for name in ('HumanObservation.java','HumanSenses.java','HumanTerritory.java','TacticalIntent.java','HumanModule.java','HumanBehavior.java','HumanModuleRuntime.java','HumanAction.java','HumanActionExecution.java','HumanCombat.java','HumanEngagement.java','EngageZombiesModule.java')]
     production += [SOURCE/'walking'/name for name in ('WalkingPatternSpec.java','MovementRequest.java')]
     production += [SOURCE/'movement'/name for name in ('MovementGrid.java','DestinationRoutePlanner.java','CombatRoutePlanner.java','MovementModifiers.java')]

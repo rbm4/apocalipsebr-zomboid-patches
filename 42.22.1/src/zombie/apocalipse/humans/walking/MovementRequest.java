@@ -8,9 +8,12 @@ public sealed interface MovementRequest {
     record Pattern(String slot) implements MovementRequest {
         public Pattern { HumanProfile.identifier(slot); }
     }
-    record To(WalkingPatternSpec.Point destination, String slot,boolean partialLeg) implements MovementRequest {
+    record To(WalkingPatternSpec.Point destination, String slot,boolean partialLeg,
+              boolean returnToArea,java.util.List<WalkingPatternSpec.Point> companions) implements MovementRequest {
+        public To(WalkingPatternSpec.Point destination,String slot,boolean partialLeg){this(destination,slot,partialLeg,false,java.util.List.of());}
         public To(WalkingPatternSpec.Point destination,String slot){this(destination,slot,false);}
         public To(WalkingPatternSpec.Point destination){this(destination,"background");}
-        public To { Objects.requireNonNull(destination); HumanProfile.identifier(slot); }
+        public To { Objects.requireNonNull(destination); HumanProfile.identifier(slot);companions=java.util.List.copyOf(companions);
+            if(companions.size()>7||companions.stream().anyMatch(p->p.z()!=destination.z()))throw new IllegalArgumentException("Invalid companion bounds"); }
     }
 }

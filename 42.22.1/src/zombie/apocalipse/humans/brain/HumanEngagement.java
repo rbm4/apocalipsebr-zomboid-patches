@@ -39,8 +39,14 @@ public final class HumanEngagement {
         public static final Selection NONE=new Selection(null,Choice.IGNORE);
         public Selection { Objects.requireNonNull(choice);if((target==null)!=(choice==Choice.IGNORE))throw new IllegalArgumentException("Invalid target selection"); }
     }
+    /** Advisory detached planning; authority/executions remain on the caller's server owner. */
+    public interface Planning {
+        Selection preview(HumanObservation observation,Contact held,Settings settings);
+        void cancel();
+    }
     public static final class Selector {
         private Contact held;
+        public Contact held(){return held;}
         /** Pure preview: scheduler eligibility must never acquire a target or mutate timers. */
         public Selection preview(HumanObservation observation,Policy policy,Settings settings){
             var immediate=observation.senses().contacts().stream()

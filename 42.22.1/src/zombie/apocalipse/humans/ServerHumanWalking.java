@@ -13,6 +13,9 @@ final class ServerHumanWalking implements WalkingPattern.World {
     private WalkingPattern active;
     private boolean returning;
     private long sequence;
+    private record Pending(MovementGrid scope,Tile start,Tile goal,boolean partial,long deadline) { }
+    private Pending pending;
+    private boolean submitted;
     ServerHumanWalking(ServerHuman human) {
         this.human = human;
         for (var spec : human.profile.walkingPatterns()) patterns.put(spec.slot(), ServerHumanProfiles.walkingPatterns().create(spec));
@@ -56,6 +59,16 @@ final class ServerHumanWalking implements WalkingPattern.World {
             if(assigned==null&&!objective.slot().equals("background"))return false;
             scope=assigned==null?this:assigned;
             var goal=new Tile(destination.x(),destination.y());
+            if(objective.returnToArea()){
+                if(assigned==null||!assigned.walkable(goal))return false;
+                if(!assigned.walkable(context.current()))scope=recoveryGrid(context.current());
+            }
+            if(!objective.companions().isEmpty())scope=new CohesionGrid(scope,objective.companions());
+            if(human.planning!=null){
+                if(!scope.available()||!scope.walkable(context.current()))return false;
+                pending=new Pending(scope,context.current(),goal,objective.partialLeg(),now+2_000_000_000L);
+                return true; // Accepted navigation execution; update remains RUNNING until planning completes.
+            }
             route = objective.partialLeg()?DestinationRoutePlanner.planLeg(scope,context.current(),goal):DestinationRoutePlanner.plan(scope,context.current(),goal);
         }
         if (!human.movement.start(route, scope, now)) { finish(false); return false; }
@@ -79,6 +92,19 @@ final class ServerHumanWalking implements WalkingPattern.World {
         };
     }
     MotionStatus update(long now) {
+        if(pending!=null){
+            var request=pending;
+            if(now>=request.deadline()||human.player.getXi()!=request.start().x()||human.player.getYi()!=request.start().y()){
+                stop();return MotionStatus.FAILED;
+            }
+            if(!submitted)submitted=human.planning.route(request.scope(),request.start(),request.goal(),request.partial(),now);
+            if(!submitted)return MotionStatus.RUNNING;
+            var route=human.planning.routeResult(now);
+            if(route==null)return MotionStatus.RUNNING;
+            pending=null;submitted=false;
+            if(!human.movement.start(route,request.scope(),now)){finish(false);return MotionStatus.FAILED;}
+            return MotionStatus.RUNNING;
+        }
         var result = human.movement.update(now);
         if (result != MotionStatus.RUNNING) finish(result == MotionStatus.SUCCEEDED);
         return result;
@@ -89,7 +115,11 @@ final class ServerHumanWalking implements WalkingPattern.World {
             +"; inside="+permitted(new Tile(human.player.getXi(),human.player.getYi())));}
         if(previous!=null)previous.completed(success);
     }
-    void stop() { try { human.movement.stop(); } finally { finish(false); } }
+    void stop() {
+        pending=null;submitted=false;
+        if(human.planning!=null)human.planning.cancelRoute();
+        try { human.movement.stop(); } finally { finish(false); }
+    }
     public boolean available() { return human.movement.available(); }
     public boolean walkable(Tile tile) { return human.movement.walkable(tile); }
     public boolean connected(Tile from, Tile to) { return human.movement.connected(from, to); }

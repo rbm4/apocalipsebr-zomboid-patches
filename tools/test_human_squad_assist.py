@@ -324,6 +324,7 @@ def main():
     production += [SOURCE/'state'/name for name in ('HumanState.java', 'HumanMutation.java', 'HumanStateReducer.java')]
     production += [SOURCE/'survival'/name for name in ('SurvivalSettings.java', 'SurvivalPort.java', 'ThreatAssessment.java', 'SurvivalModule.java', 'RetreatPlanner.java', 'RouteRefusals.java')]
     production += [SOURCE/'healing'/name for name in ('HealingSettings.java', 'HumanHealingPort.java', 'HealingModule.java')]
+    production += [SOURCE/'speech/SpeechEvent.java']
     with tempfile.TemporaryDirectory(prefix='apocbr-squad-assist-') as folder:
         work=Path(folder);sources=list(production)
         for name,content in {**FIXTURES, 'zombie/apocalipse/humans/SquadTest.java': HARNESS}.items():

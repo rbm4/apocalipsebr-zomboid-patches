@@ -166,6 +166,7 @@ public final class HumanSpeechDefaults {
         result.add(new HumanSpeechCatalog.Line("damage_taken.19",SpeechEvent.DAMAGE_TAKEN,"PTBR","Preciso de ajuda aqui!",1,0F,0.35F,SpeechContext.AttackKind.ANY,"ANY",0));
         result.add(new HumanSpeechCatalog.Line("damage_taken.20",SpeechEvent.DAMAGE_TAKEN,"EN","No, no. Not like this!",1,0F,0.35F,SpeechContext.AttackKind.ANY,"ANY",0));
         result.add(new HumanSpeechCatalog.Line("damage_taken.20",SpeechEvent.DAMAGE_TAKEN,"PTBR","Não, não. Assim não!",1,0F,0.35F,SpeechContext.AttackKind.ANY,"ANY",0));
+        result.addAll(HumanStateSpeechDefaults.lines());
         return List.copyOf(result);
     }
     public static HumanSpeechCatalog catalog(){
@@ -173,7 +174,10 @@ public final class HumanSpeechDefaults {
             SpeechEvent.ATTACK_PLAYER,new HumanSpeechCatalog.Rule(20,12000,40),
             SpeechEvent.ATTACKED_BY_PLAYER,new HumanSpeechCatalog.Rule(60,6000,90),
             SpeechEvent.ZOMBIE_KILL,new HumanSpeechCatalog.Rule(34,15000,30),
-            SpeechEvent.DAMAGE_TAKEN,new HumanSpeechCatalog.Rule(68,6000,95)),lines());
+            SpeechEvent.DAMAGE_TAKEN,new HumanSpeechCatalog.Rule(68,6000,95),
+            SpeechEvent.HEALING,new HumanSpeechCatalog.Rule(100,60000,35),
+            SpeechEvent.DESPERATION,new HumanSpeechCatalog.Rule(100,45000,70),
+            SpeechEvent.ALLY_ASSIST,new HumanSpeechCatalog.Rule(100,45000,45)),lines());
     }
     private HumanSpeechDefaults(){}
 }

@@ -80,6 +80,8 @@ final class ServerHumanSurvival implements SurvivalPort {
         transition(phase,reason,nearby,0,0);
     }
     public void transition(String phase,String reason,int nearby,int allies,int crowdLimit){
+        if(phase.equals("ESCAPING")||phase.equals("CORNERED")||phase.equals("CREATE_OPENING"))
+            human.speech.state(zombie.apocalipse.humans.speech.SpeechEvent.DESPERATION,System.nanoTime());
         HumanLog.log(HumanLog.Level.DEBUG,()->"survival key="+human.definition.key()+"; phase="+phase+"; reason="+reason
             +"; nearby="+nearby+"; allies="+allies+"; crowdLimit="+crowdLimit+"; health="+human.state.snapshot().vitals().health()+"; endurance="+human.state.snapshot().vitals().endurance());
     }

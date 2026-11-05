@@ -57,6 +57,10 @@ final class ServerHumanSpeech {
     HumanSpeechEngine.Decision zombieKilled(long now){
         var result=engine.onZombieKill(context(null,0,null),now);offer(result,null,now);return result;
     }
+    void state(SpeechEvent event,long now){
+        if(!event.stateChange())throw new IllegalArgumentException("Not a state speech event");
+        offer(engine.onEvent(event,context(null,0,null),now),null,now);
+    }
     private void offer(HumanSpeechEngine.Decision decision,HumanObservation.Identity target,long now){
         if(!decision.speaks())return;
         if(pending!=null&&pending.priority()>=decision.priority())return;

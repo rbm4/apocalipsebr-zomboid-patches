@@ -1,6 +1,6 @@
 package zombie.apocalipse.humans.healing;
 
-/** Worker-facing detached observations and commands. No native references cross this port. */
+/** Medical policy capability with detached snapshots; factory-owned execution stays on the server. */
 public interface HumanHealingPort {
     enum Status { RUNNING, COMPLETED, FAILED, CANCELLED }
     record Snapshot(boolean available, long sampledAt, boolean wounded, boolean supply, boolean recovering) { }

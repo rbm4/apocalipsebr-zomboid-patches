@@ -51,6 +51,10 @@ walkable or pin unloaded chunks.
 
 ## Shared intent and individual execution
 
+2026-11-05 correction: [shared cohesion/re-entry and moving passive recovery](2026-11-05-squad-cohesion-healing-and-state-speech.md)
+now address [independent area returns while a member heals](../issues/2026-11-05-patrol-separated-area-return-and-healing.md).
+The shared waypoint stays authoritative while the roster returns/regroups.
+
 `groups/GroupPatrolCoordinator` owns one transient `Intent.PATROL`, waypoint cursor
 and moving/regrouping/stalled/dwelling phase for each group. It consumes immutable member
 positions and participation facts. It does not hold native actors or send packets.
@@ -80,8 +84,10 @@ A member in combat/healing does not get silently dropped from that arrival
 barrier. Arriving members wait for the others. After 20 seconds of regrouping,
 the phase becomes `STALLED` with diagnostics; the group retains the waypoint
 rather than skipping authored coverage. Dead/removed members leave the roster.
-An entirely interrupted group retains progress. An actor returning from survival
-uses existing background-area recovery before resuming its group destination.
+An entirely interrupted group retains progress. Returning members now use a
+shared group re-entry rally instead of separate background/home return anchors.
+A soft companion-centroid route cost and travelling separation threshold prefer
+cohesion; see the linked implementation for limits and interruption behavior.
 
 Failure retries are per actor, throttled to two seconds. After two failed moves,
 that actor can try the authored center instead of its lateral offset. Completing

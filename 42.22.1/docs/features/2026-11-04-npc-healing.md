@@ -31,6 +31,9 @@ the later rollout. Existing standalone profiles also remain unchanged.
 
 ## Thread contract
 
+2026-11-05 behavior update: [moving passive recovery and state speech](2026-11-05-squad-cohesion-healing-and-state-speech.md).
+Only an actual dressing execution owns the medical movement pause.
+
 `ServerHumanFactory.update` services medicine on the registered server thread in
 both asynchronous and synchronous startup modes. It does so under the existing
 factory monitor, serializing this feature with factory-owned NPC ticks. New
@@ -39,17 +42,16 @@ blood effects and medical packet construction/delivery run in that server-thread
 adapter. The worker does not run Lua timed actions, body-part updates or native
 medical transactions.
 
-The worker publishes one immutable token/renewal/cancellation command per actor;
+The server-owned module publishes one token/renewal/cancellation command per actor;
 results and observations are immutable volatile values. A 500 ms lease expires
-when the worker stops renewing. Commands never accumulate. Each handle can cancel
+when execution stops renewing. Commands never accumulate. Each handle can cancel
 only its own token, and a new incarnation gets an independent adapter. Transport
 reannouncements enqueue connection identities in a bounded 256-entry mailbox;
 only the server thread reads connection state and sends medical packets.
 
-This is not a general isolation of the experimental NPC worker. Existing movement,
-perception, native damage callbacks and other transports retain their documented
-threading debt. Server medicine still acquires the factory monitor, and can wait
-for an NPC tick. See the [worker contract](../../../42.21.0/docs/features/2026-10-26-npc-async-worker.md).
+The [current async authority split](2026-11-05-npc-async-authority.md) runs all
+native NPC execution on the server owner. The worker now receives only detached
+selection/navigation values and cannot hold the factory while requesting Lua.
 
 ## Treatment and survival recovery
 
@@ -76,9 +78,10 @@ first 256 items in the top-level inventory; nested bag management is later work.
 One completed dressing consumes one actual item and calls native `setBandaged`
 with its power, alcohol flag and full item type. It treats that body part, not
 every wound. Remaining open parts continue bleeding and require another dressing.
-Treatment does not grant an instant health refill. Safe, wound-free rest restores
-logical health in completed one-second work intervals; time spent preempted or
-without a valid lease grants no recovery. Native body-part health deficits also
+Treatment does not grant an instant health refill. Safe passive recovery restores
+logical health in the medical service using actual elapsed time capped at 150 ms
+per call. It requires no movement lease or stationary pose and can run while
+walking. Unsafe/unavailable observations grant no recovery. Native body-part health deficits also
 shrink proportionally during recovery so hidden native damage does not remain
 permanent after logical health has healed. Wound timers and infection are not
 erased by this projection.

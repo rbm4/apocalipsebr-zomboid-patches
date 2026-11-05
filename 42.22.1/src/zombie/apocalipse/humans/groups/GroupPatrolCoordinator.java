@@ -33,7 +33,8 @@ public final class GroupPatrolCoordinator {
     public Phase phase(){return phase;}
     public int waypoint(){return cursor;}
     public Point destination(int slot){
-        var center=route.get(cursor);var previous=route.get((cursor+route.size()-1)%route.size());
+        var center=route.get(cursor);var previous=center;
+        for(int i=1;i<route.size()&&previous.equals(center);i++)previous=route.get((cursor+route.size()-i)%route.size());
         double dx=center.x()-previous.x(),dy=center.y()-previous.y(),length=Math.max(1,Math.hypot(dx,dy));
         int rank=(slot+1)/2,side=slot==0?0:slot%2==1?-1:1;
         return new Point(Math.max(0,center.x()+(int)Math.round(-dy/length*spacing*rank*side)),
@@ -64,5 +65,7 @@ public final class GroupPatrolCoordinator {
         }
     }
     public void pauseDwell(){lastDwellUpdate=Long.MIN_VALUE;}
+    /** Spatial displacement invalidates dwell time, never the shared waypoint. */
+    public void displaced(){waiting=Long.MIN_VALUE;remainingDwell=Long.MIN_VALUE;pauseDwell();phase=Phase.MOVING;}
     public Goal goal(int slot,boolean available){return new Goal(cursor,route.get(cursor),destination(slot),available,phase==Phase.DWELLING);}
 }
