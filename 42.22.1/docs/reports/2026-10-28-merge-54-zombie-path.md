@@ -1,5 +1,9 @@
 # Follow-up review 54: zombie native path-request argument
 
+2026-11-04 runtime follow-up: the Java fallback rejects the dedicated mover in
+PMMover. See the [diagnosis, compatibility fix and regression](../issues/2026-11-04-server-zombie-path-unsupported-mover.md).
+The historical compile-only result below did not validate that backend.
+
 Created2026-10-28. Status: **approved/applied; full source build passed, runtime unverified**. Review53 is applied.
 See the [subsystem tracker](../features/2026-10-27-subsystem-port-tracker.md),
 [candidate diff](2026-10-28-merge-54-zombie-path.diff),

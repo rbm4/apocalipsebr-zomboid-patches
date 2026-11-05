@@ -12,6 +12,9 @@ final class ServerHumanGroups {
     private final Map<String,Entry> entries=new HashMap<>();
     private final Map<String,GroupPatrolCoordinator> groups=new HashMap<>();
     private Map<String,Sample> samples=Map.of();
+    private final java.util.function.LongSupplier dwellMillis;
+    ServerHumanGroups(){this(GroupPatrolCoordinator::randomDwellMillis);}
+    ServerHumanGroups(java.util.function.LongSupplier dwellMillis){this.dwellMillis=java.util.Objects.requireNonNull(dwellMillis);}
     void register(ServerHuman human){
         var membership=human.definition.group();
         var module=human.activity.behavior() instanceof HumanModuleRuntime runtime?runtime.module(GroupPatrolModule.class):null;
@@ -22,7 +25,7 @@ final class ServerHumanGroups {
         var pattern=human.profile.walkingPatterns().stream().filter(p->p.slot().equals("background")).findFirst().orElseThrow();
         var existing=groups.get(membership.groupId());
         if(existing!=null&&!existing.route().equals(pattern.points()))throw new IllegalArgumentException("Group members must share the same patrol route");
-        groups.computeIfAbsent(membership.groupId(),id->new GroupPatrolCoordinator(pattern.points(),2,2));
+        groups.computeIfAbsent(membership.groupId(),id->new GroupPatrolCoordinator(pattern.points(),2,2,dwellMillis));
         entries.put(human.definition.key(),new Entry(human,module));
         module.bind(()->observe(human),membership.slot());
     }
@@ -55,7 +58,7 @@ final class ServerHumanGroups {
                 if(s!=null&&now>=s.at&&now-s.at<=500_000_000L&&s.member.incarnation().equals(actor.human.incarnation))members.add(s.member);
                 else complete=false;
             }
-            if(!complete)continue;
+            if(!complete){entry.getValue().pauseDwell();continue;}
             var before=entry.getValue().phase();entry.getValue().update(now,members);
             if(before!=entry.getValue().phase())HumanLog.log(HumanLog.Level.DEBUG,()->"group patrol id="+entry.getKey()+"; intent=PATROL; phase="+entry.getValue().phase()+"; waypoint="+entry.getValue().waypoint());
         }

@@ -7,16 +7,25 @@ import zombie.apocalipse.humans.walking.WalkingPatternSpec.Point;
 public final class GroupPatrolCoordinator {
     public enum Intent { PATROL }
     public Intent intent(){return Intent.PATROL;}
-    public enum Phase { MOVING, REGROUPING, STALLED }
+    public enum Phase { MOVING, REGROUPING, STALLED, DWELLING }
     public record Member(String key,String incarnation,int slot,float x,float y,int z,boolean participating) { }
-    public record Goal(int waypoint,Point center,Point destination,boolean available) { }
+    public record Goal(int waypoint,Point center,Point destination,boolean available,boolean dwelling) {
+        public Goal(int waypoint,Point center,Point destination,boolean available){this(waypoint,center,destination,available,false);}
+    }
+    public static long randomDwellMillis(){return java.util.concurrent.ThreadLocalRandom.current().nextLong(15_000,45_001);}
     private final List<Point> route;
     private final int spacing,arrival;
+    private final java.util.function.LongSupplier dwellMillis;
     private int cursor;
     private long waiting=Long.MIN_VALUE;
+    private long remainingDwell=Long.MIN_VALUE,lastDwellUpdate=Long.MIN_VALUE;
     private Phase phase=Phase.MOVING;
     public GroupPatrolCoordinator(List<Point> route,int spacing,int arrival){
+        this(route,spacing,arrival,GroupPatrolCoordinator::randomDwellMillis);
+    }
+    public GroupPatrolCoordinator(List<Point> route,int spacing,int arrival,java.util.function.LongSupplier dwellMillis){
         this.route=List.copyOf(route);this.spacing=spacing;this.arrival=arrival;
+        this.dwellMillis=Objects.requireNonNull(dwellMillis);
         if(route.isEmpty()||route.size()>32||route.stream().map(Point::z).distinct().count()!=1||spacing<1||spacing>4||arrival<1||arrival>4)
             throw new IllegalArgumentException("Invalid group patrol");
     }
@@ -36,11 +45,24 @@ public final class GroupPatrolCoordinator {
     public void update(long now,List<Member> members){
         if(members.size()>8||members.stream().map(Member::slot).distinct().count()!=members.size())throw new IllegalArgumentException("Duplicate/oversized patrol roster");
         var active=members.stream().filter(Member::participating).toList();
-        if(active.isEmpty()){waiting=Long.MIN_VALUE;return;}
+        if(active.isEmpty()){waiting=Long.MIN_VALUE;pauseDwell();return;}
         boolean any=active.stream().anyMatch(this::arrived),all=members.stream().allMatch(this::arrived);
-        if(all){cursor=(cursor+1)%route.size();waiting=Long.MIN_VALUE;phase=Phase.MOVING;}
-        else if(any){if(waiting==Long.MIN_VALUE)waiting=now;phase=now-waiting>=20_000_000_000L?Phase.STALLED:Phase.REGROUPING;}
-        else {waiting=Long.MIN_VALUE;phase=Phase.MOVING;}
+        if(all){
+            waiting=Long.MIN_VALUE;phase=Phase.DWELLING;
+            if(remainingDwell==Long.MIN_VALUE){
+                long duration=dwellMillis.getAsLong();
+                if(duration<15_000||duration>45_000)throw new IllegalArgumentException("Patrol dwell must be 15-45 seconds");
+                remainingDwell=duration*1_000_000L;
+            }else if(active.size()==members.size()&&lastDwellUpdate!=Long.MIN_VALUE)
+                remainingDwell-=Math.max(0,now-lastDwellUpdate);
+            lastDwellUpdate=active.size()==members.size()?now:Long.MIN_VALUE;
+            if(remainingDwell<=0){cursor=(cursor+1)%route.size();remainingDwell=Long.MIN_VALUE;pauseDwell();phase=Phase.MOVING;}
+        }else {
+            remainingDwell=Long.MIN_VALUE;pauseDwell();
+            if(any){if(waiting==Long.MIN_VALUE)waiting=now;phase=now-waiting>=20_000_000_000L?Phase.STALLED:Phase.REGROUPING;}
+            else {waiting=Long.MIN_VALUE;phase=Phase.MOVING;}
+        }
     }
-    public Goal goal(int slot,boolean available){return new Goal(cursor,route.get(cursor),destination(slot),available);}
+    public void pauseDwell(){lastDwellUpdate=Long.MIN_VALUE;}
+    public Goal goal(int slot,boolean available){return new Goal(cursor,route.get(cursor),destination(slot),available,phase==Phase.DWELLING);}
 }

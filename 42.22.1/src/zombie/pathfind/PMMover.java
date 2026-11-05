@@ -26,7 +26,13 @@ public final class PMMover {
         this.crawling = false;
         this.canClimbFences = false;
         this.canClimbTallFences = false;
-        if (request.mover instanceof IsoAnimal isoAnimal) {
+        boolean walkOnly = request.mover instanceof zombie.apocalipse.pathfind.WalkOnlyMover;
+        if (walkOnly) {
+            // Generic type 0 matches native PathfindNative's custom-mover classification.
+            // Animal graph rules forbid fence climbing and opening closed doors without
+            // claiming this identity is an actual IsoZombie or reading its live body.
+            this.type = MoverType.Animal;
+        } else if (request.mover instanceof IsoAnimal isoAnimal) {
             this.type = MoverType.Animal;
             this.canClimbFences = isoAnimal.canClimbFences();
         } else if (request.mover instanceof IsoPlayer) {
@@ -41,9 +47,9 @@ public final class PMMover {
             this.crawling = isoZombie.crawling;
         }
 
-        this.canCrawl = request.canCrawl;
-        this.ignoreCrawlCost = request.ignoreCrawlCost;
-        this.canThump = request.canThump;
+        this.canCrawl = !walkOnly && request.canCrawl;
+        this.ignoreCrawlCost = !walkOnly && request.ignoreCrawlCost;
+        this.canThump = !walkOnly && request.canThump;
         this.minLevel = request.minLevel;
         this.maxLevel = request.maxLevel;
         this.allowedChunkLevels = request.allowedChunkLevels;

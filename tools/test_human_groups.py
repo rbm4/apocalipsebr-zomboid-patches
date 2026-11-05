@@ -60,19 +60,46 @@ public class GroupTest {
  static HumanObservation observe(long now){return new HumanObservation(now,List.of(),true);}
  static GroupPatrolCoordinator.Member at(String key,int slot,Point p,boolean ready){return new GroupPatrolCoordinator.Member(key,key,slot,p.x()+.5f,p.y()+.5f,p.z(),ready);}
  static void coordinator(){
-  var c=new GroupPatrolCoordinator(route(),2,2);var lead=at("hunk",0,c.destination(0),true);
+  var c=new GroupPatrolCoordinator(route(),2,2,()->15000);var lead=at("hunk",0,c.destination(0),true);
   var follower=at("vector",1,new Point(9857,2419,0),true);
   c.update(0,List.of(lead,follower));check(c.waypoint()==0&&c.phase()==GroupPatrolCoordinator.Phase.REGROUPING,"leader waits for its group");
   c.update(21*S,List.of(lead,follower));check(c.waypoint()==0&&c.phase()==GroupPatrolCoordinator.Phase.STALLED,"blocked member reports a stall without silently skipping patrol points");
-  c.update(22*S,List.of(lead,at("vector",1,c.destination(1),true)));check(c.waypoint()==1,"shared waypoint advances once after all arrive");
+  var arrived=List.of(lead,at("vector",1,c.destination(1),true));c.update(22*S,arrived);
+  check(c.waypoint()==0&&c.phase()==GroupPatrolCoordinator.Phase.DWELLING,"shared pause starts after all arrive");
+  c.update(37*S,arrived);check(c.waypoint()==1,"shared waypoint advances once after the pause");
   check(c.arrived(at("vector",1,route().get(1),true)),"center fallback satisfies arrival even when rounded lateral offset exceeds two tiles");
-  int index=c.waypoint();c.update(23*S,List.of(at("hunk",0,c.destination(0),false)));check(c.waypoint()==index,"all-combat group retains PATROL progress");
-  c.update(24*S,List.of(at("hunk",0,c.destination(0),true),at("vector",1,new Point(9857,2419,0),false)));
+  int index=c.waypoint();c.update(38*S,List.of(at("hunk",0,c.destination(0),false)));check(c.waypoint()==index,"all-combat group retains PATROL progress");
+  c.update(39*S,List.of(at("hunk",0,c.destination(0),true),at("vector",1,new Point(9857,2419,0),false)));
   check(c.waypoint()==index,"a recovering member is not abandoned");
   check(!c.destination(0).equals(c.destination(1))&&!c.destination(1).equals(c.destination(2)),"separate formation slots");
-  for(int i=0;i<7;i++){var members=List.of(at("a",0,c.destination(0),true),at("b",1,c.destination(1),true),at("c",2,c.destination(2),true));c.update((25+i)*S,members);}
+  for(int i=0;i<7;i++){var members=List.of(at("a",0,c.destination(0),true),at("b",1,c.destination(1),true),at("c",2,c.destination(2),true));c.update((40+i*16)*S,members);c.update((55+i*16)*S,members);}
   check(c.waypoint()==0,"eighth point loops to first");
   try{c.update(40*S,List.of(at("a",0,c.destination(0),true),at("b",0,c.destination(0),true)));throw new AssertionError();}catch(IllegalArgumentException expected){checks++;}
+ }
+ static void dwellTiming(){
+  var draws=new java.util.concurrent.atomic.AtomicInteger();
+  var c=new GroupPatrolCoordinator(route(),2,2,()->draws.incrementAndGet()==1?15000:45000);
+  var members=List.of(at("a",0,c.destination(0),true),at("b",1,c.destination(1),true));
+  c.update(0,members);c.update(14999_000_000L,members);
+  check(c.waypoint()==0&&draws.get()==1&&c.goal(0,true).dwelling(),"minimum dwell is shared, sampled once and holds current waypoint");
+  c.update(15*S,members);check(c.waypoint()==1&&!c.goal(0,true).dwelling(),"15-second boundary releases the group");
+  members=List.of(at("a",0,c.destination(0),true),at("b",1,c.destination(1),true));c.update(16*S,members);
+  c.update(60999_000_000L,members);check(c.waypoint()==1&&draws.get()==2,"fresh maximum dwell applies at the next waypoint");
+  c.update(61*S,members);check(c.waypoint()==2,"45-second boundary releases once");
+  c=new GroupPatrolCoordinator(route(),2,2,()->15000);members=List.of(at("a",0,c.destination(0),true),at("b",1,c.destination(1),true));
+  c.update(0,members);c.update(5*S,members);
+  c.update(6*S,List.of(at("a",0,c.destination(0),true),at("b",1,c.destination(1),false)));
+  c.update(60*S,List.of(at("a",0,c.destination(0),false),at("b",1,c.destination(1),false)));
+  c.update(65*S,members);c.update(74999_000_000L,members);
+  check(c.waypoint()==0,"combat or healing interruption does not consume remaining patrol rest");
+  c.update(75*S,members);check(c.waypoint()==1,"rest resumes with remaining time after interruption");
+  c=new GroupPatrolCoordinator(route(),2,2,()->15000);members=List.of(at("a",0,c.destination(0),true));c.update(0,members);c.update(5*S,members);c.pauseDwell();c.update(60*S,members);
+  check(c.waypoint()==0,"missing world observations pause dwell rather than charging an unknown interval");
+  c.update(70*S,members);check(c.waypoint()==1,"fresh observations resume dwell without restarting it");
+  c=new GroupPatrolCoordinator(route(),2,2,()->15000);members=List.of(at("a",0,c.destination(0),true),at("b",1,c.destination(1),true));c.update(0,members);c.update(5*S,members);
+  c.update(6*S,List.of(members.getFirst(),at("b",1,new Point(9857,2419,0),true)));c.update(7*S,members);c.update(21999_000_000L,members);
+  check(c.waypoint()==0,"displacement requires regrouping and a fresh full waypoint pause");c.update(22*S,members);check(c.waypoint()==1,"regrouped pause finishes normally");
+  try{var invalid=new GroupPatrolCoordinator(route(),2,2,()->45001);invalid.update(0,List.of(at("a",0,invalid.destination(0),true)));throw new AssertionError();}catch(IllegalArgumentException expected){checks++;}
  }
  static class Grid implements MovementGrid {
   final Set<Tile> blocked=new HashSet<>();int reads;
@@ -106,19 +133,29 @@ public class GroupTest {
   }
   public void stopMoving(){cancels++;route=List.of();}
  }
+ static void moduleDwell(){
+  var actor=new ServerHuman("hold","alpha",0,route());var motor=new Motor(actor);var module=new GroupPatrolModule();
+  var point=route().getFirst();var current=new GroupPatrolPort.Observation[]{new GroupPatrolPort.Observation(0,new GroupPatrolCoordinator.Goal(0,point,point,true,false),9857.5f,2419.5f,0,true)};
+  module.bind(()->current[0]);module.update(observe(0),motor);int starts=motor.starts;
+  current[0]=new GroupPatrolPort.Observation(S/10,new GroupPatrolCoordinator.Goal(0,point,point,true,true),9857.5f,2419.5f,0,true);
+  module.update(observe(S/10),motor);module.update(observe(2*S/10),motor);
+  check(motor.cancels>0&&motor.route.isEmpty()&&motor.starts==starts,"shared dwell cancels owned movement and prevents corrective walking");
+  var next=route().get(1);current[0]=new GroupPatrolPort.Observation(S,new GroupPatrolCoordinator.Goal(1,next,next,true,false),9857.5f,2419.5f,0,true);module.update(observe(S),motor);
+  check(motor.starts==starts+1,"next waypoint resumes movement after shared dwell");
+ }
  static void adapterAndPatrol(){
-  var groups=new ServerHumanGroups();var members=new ArrayList<ServerHuman>();var motors=new ArrayList<Motor>();
+  var groups=new ServerHumanGroups(()->15000);var members=new ArrayList<ServerHuman>();var motors=new ArrayList<Motor>();
   for(int i=0;i<3;i++){var h=new ServerHuman("npc"+i,"alpha",i,route());groups.register(h);members.add(h);motors.add(new Motor(h));}
   groups.capture(0);groups.update(0);
   for(int i=0;i<3;i++)members.get(i).module.update(observe(0),motors.get(i));
   check(motors.get(0).starts==1&&motors.get(1).starts==0&&motors.get(2).starts==0,"startup is staggered to separate shared spawn occupants");
   var initialX=members.get(1).player.x;
-  for(int tick=1;tick<1500;tick++){
+  for(int tick=1;tick<5000;tick++){
    long now=tick*S/10;groups.capture(now);groups.update(now);
    for(int i=0;i<3;i++)members.get(i).module.update(observe(now),motors.get(i));
   }
   check(members.get(1).player.x!=initialX&&motors.stream().allMatch(m->m.starts>8),"three members execute multiple coordinated patrol legs");
-  long stale=160*S;int before=motors.get(0).starts;members.get(0).module.update(observe(stale),motors.get(0));
+  long stale=501*S;int before=motors.get(0).starts;members.get(0).module.update(observe(stale),motors.get(0));
   check(motors.get(0).starts==before,"stale world snapshots cannot start movement");
   var isolated=new ServerHuman("other","beta",0,route());groups.register(isolated);
   var attacker=new HumanObservation.Identity((short)12,41);groups.attacked(members.get(0),attacker,stale);
@@ -148,7 +185,7 @@ public class GroupTest {
   var impostor=new zombie.characters.IsoPlayer();var impostorPart=new NativeBodyPartFixture(impostor,15);impostorPart.ReduceHealth(20);check(impostorPart.health==0,"native identity must match the registered actor reference");
   zombie.network.GameServer.server=false;nativePart=new NativeBodyPartFixture(actor.player,15);nativePart.ReduceHealth(20);check(nativePart.health==0,"client damage processing stays vanilla");zombie.network.GameServer.server=true;
  }
- public static void main(String[] args){coordinator();navigation();adapterAndPatrol();capacity();System.out.println("Group patrol: "+checks+" assertions passed (42.22.1 production classes; engine doubles)");}
+ public static void main(String[] args){coordinator();dwellTiming();navigation();moduleDwell();adapterAndPatrol();capacity();System.out.println("Group patrol: "+checks+" assertions passed (42.22.1 production classes; engine doubles)");}
 }
 '''
 

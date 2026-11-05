@@ -12,7 +12,7 @@ import zombie.pathfind.nativeCode.PathfindNative;
 
 /** Main-thread request owner. A separate mover keeps requests out of native AI's slot.
  * Walk-only defaults deliberately exclude thumping/crawling/climbing execution. */
-final class ServerZombiePath implements Mover {
+final class ServerZombiePath implements zombie.apocalipse.pathfind.WalkOnlyMover {
     record Point(float x,float y) { }
     private final IsoZombie body;
     private final int instance;

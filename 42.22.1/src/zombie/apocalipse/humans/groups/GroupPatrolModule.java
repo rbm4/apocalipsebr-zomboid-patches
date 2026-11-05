@@ -21,6 +21,7 @@ public final class GroupPatrolModule implements HumanModule {
     public void update(HumanObservation o,HumanActuator actuator){
         if(!eligible(o))return;
         var v=port.observe();long now=o.nowNanos();
+        if(v.goal().dwelling()){cancel(actuator);return;}
         if(waypoint!=v.goal().waypoint()){boolean initial=waypoint<0;cancel(actuator);waypoint=v.goal().waypoint();failures=0;retry=now+(initial?startupDelay:0);}
         var destination=failures>=2?v.goal().center():v.goal().destination();
         if(v.inside()&&v.z()==destination.z()&&Math.hypot(v.x()-(destination.x()+.5),v.y()-(destination.y()+.5))<=1.25){cancel(actuator);return;}

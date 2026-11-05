@@ -116,6 +116,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-04 | [ServerZombiePath rejected by Java polygon mover classification](issues/2026-11-04-server-zombie-path-unsupported-mover.md) |
 | 2026-11-04 | [Lobby startup cleanup finishes before virtual zombies appear](issues/2026-11-04-lobby-cleanup-zero-removals.md) |
 | 2026-10-29 | [RequestUserLog rejected with SQLState 55000](issues/2026-10-29-userlog-simulation-thread-sql.md) |
 | 2026-10-28 | [Dictionary startup blocked by database build constraint](issues/2026-10-28-dictionary-build-constraint-startup.md) |

@@ -5,6 +5,8 @@ capabilities and seed one three-member patrol for **apoc-dev**. Sources and
 migrations are prepared; no live migration, deployment, restart or game command
 has been executed.
 
+Crowded-combat pathfinding follow-up: [Java fallback rejected ServerZombiePath](../issues/2026-11-04-server-zombie-path-unsupported-mover.md).
+
 ## Authored group
 
 | Slot | Logical key | Name | Outfit | Initial position |
@@ -36,7 +38,7 @@ walkable or pin unloaded chunks.
 ## Shared intent and individual execution
 
 `groups/GroupPatrolCoordinator` owns one transient `Intent.PATROL`, waypoint cursor
-and moving/regrouping/stalled phase for each group. It consumes immutable member
+and moving/regrouping/stalled/dwelling phase for each group. It consumes immutable member
 positions and participation facts. It does not hold native actors or send packets.
 `GroupPatrolModule` owns each actor's cancellable `HumanActionExecution`; the
 existing navigation, physical movement and transport execute the move.
@@ -47,8 +49,19 @@ spawn tile; initial movement requests are staggered by 500 ms per slot to reduce
 contention. This is a waypoint/spacing heuristic, not a rigid collision-free
 formation. Existing body separation and collision logic still decides movement.
 
-The shared waypoint advances only when all live roster members are within the
-arrival tolerance of their slots or the authored center, and at least one is participating in patrol.
+Once all live roster members are within the arrival tolerance of their slots or
+the authored center, the group enters `DWELLING`. It draws one shared random
+duration from **15,000 through 45,000 milliseconds, inclusive**, once per visit.
+The current waypoint remains selected and patrol modules cancel owned movement
+for the entire pause, including minor corrective walking. Only after the pause
+does the shared cursor advance to the next point (including point eight to one).
+
+Combat/healing/exclusive activity can still preempt patrol. The remaining pause
+does not decrease while any roster member is not participating, or while world
+observations are unavailable/stale. If the group stays at the point, it resumes
+the remaining time when patrol resumes. Displacement requires regrouping and a
+fresh full pause. The monotonic countdown is transient; it is not persisted.
+
 A member in combat/healing does not get silently dropped from that arrival
 barrier. Arriving members wait for the others. After 20 seconds of regrouping,
 the phase becomes `STALLED` with diagnostics; the group retains the waypoint
@@ -171,11 +184,15 @@ The manager's `NpcGroupPatrolMigrationTest` applies V42-V43 in a disposable
 PostgreSQL database with distinct creator/engine roles, checks route order,
 server scope, profile immutability, constraints, grants and repeat Flyway behavior.
 
-Verified 2026-11-04: group/native-damage fixtures **155 assertions**; healing
+Waypoint-pause verification on 2026-11-04: the updated group/native-damage fixture
+passes **141 assertions**, including both 15/45-second boundaries, one draw per
+visit, shared movement hold, interruptions, stale observations, displacement,
+looping and resumed movement. Earlier group/HP verification passed 155 assertions
+before dwell timing changed the simulated patrol schedule. Healing
 fixtures **70 assertions**; actual compiled profile registration **12 assertions**;
 manager migration **4 tests**, service **15 tests**, editor JavaScript **7 tests**.
-Full exact-JAR `-BuildOnly` compilation passed with **325 sources / 944 classes**,
-retained under `42.22.1/artifacts/build_20261104_222838/`. No game binaries were deployed.
+The updated exact-JAR `-BuildOnly` compilation passed with **327 sources / 946 classes**,
+retained under `42.22.1/artifacts/build_20261104_231736/`. No game binaries were deployed.
 
 Apply V42-V43 through the manager's game-runtime Flyway process **before** running
 this engine: profile and membership queries require the new schema. Deploy the
