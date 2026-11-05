@@ -198,8 +198,21 @@ public class SquadTest {
   check(fleeing.squadAssist.observe()==null,"a fleeing member is not assigned to rescue another actor");
   var actuator=new Actuator();((HumanModuleRuntime)helper.activity.behavior()).update(observation(0,List.of()),actuator);
   check(((HumanModuleRuntime)helper.activity.behavior()).selectedModule().equals("engage-zombies")&&actuator.begins==0,"distress preempts helper patrol without authorizing blind fire");
+  check(fleeing.squadAssist.retreatSupport(0).isEmpty(),"assignment alone does not attract retreat before actual pursuit starts");
+  groups.capture(100_000_000L);
+  check(fleeing.squadAssist.retreatSupport(100_000_000L).size()==1,"renewed helper execution publishes its detached actual position to the fleeing member");
+  var nativeRetreat=new ServerHumanSurvival(fleeing);
+  check(nativeRetreat.escape(contacts,SurvivalSettings.DEFAULT,100_000_000L),"native escape adapter consumes the support snapshot");
+  var end=fleeing.movement.lastRoute.getLast();
+  double original=Math.hypot(fleeing.player.x-helper.player.x,fleeing.player.y-helper.player.y);
+  check(Math.hypot(end.x()+.5-helper.player.x,end.y()+.5-helper.player.y)<original,"native retreat gradually closes with the pursuing helper behind the threats");
+  check(fleeing.squadAssist.retreatSupport(S).isEmpty(),"stale support samples cannot steer retreat");
   helper.movement.loaded=false;helper.squadAssist.stopApproach();
   check(!helper.squadAssist.approach(order,0),"distress still respects unloaded terrain");
+  groups.capture(200_000_000L);check(fleeing.squadAssist.retreatSupport(200_000_000L).isEmpty(),"unloaded helpers stop attracting the retreat even with an unexpired pursuit lease");
+  helper.movement.loaded=true;
+  ((HumanModuleRuntime)helper.activity.behavior()).suspend(200_000_000L,actuator);
+  groups.capture(300_000_000L);check(fleeing.squadAssist.retreatSupport(300_000_000L).isEmpty(),"preempted helper execution clears rendezvous support");
  }
  static void relief(){
   var survival=new SurvivalModule(SurvivalSettings.DEFAULT);var flight=new Flight();
@@ -216,18 +229,100 @@ public class SquadTest {
   check(survival.phase()==SurvivalModule.Phase.ESCAPING,"relief must last the full second");
   survival.update(observation(6*S,List.of()),flight);check(survival.phase()==SurvivalModule.Phase.RECOVERING,"sustained relief still allows recovery");
  }
- public static void main(String[] args){board();policy();adapters();arbitration();distress();relief();System.out.println("Squad assistance: "+checks+" assertions passed (42.22.1 production policies/adapters; engine doubles)");}
+ static void retreatPlanning(){
+  var start=new zombie.apocalipse.humans.movement.MovementGrid.Tile(100,100);
+  var open=new zombie.apocalipse.humans.movement.MovementGrid(){
+   public boolean walkable(Tile t){return t.x()>=70&&t.x()<=130&&t.y()>=70&&t.y()<=130;}
+   public boolean connected(Tile a,Tile b){return true;}
+  };
+  var threats=List.of(new RetreatPlanner.Threat(100.5,98.5));
+  var ordinary=RetreatPlanner.plan(open,start,threats,12,false);
+  check(ordinary.equals(RetreatPlanner.plan(open,start,threats,12,false,List.of())),"ungrouped retreat retains the exact previous route");
+  var helper=new RetreatPlanner.Rendezvous(100.5,70.5);
+  var flank=RetreatPlanner.plan(open,start,threats,12,false,List.of(helper));
+  check(!flank.isEmpty(),"helper behind threat admits a safe flanking retreat");
+  var end=flank.getLast();check(Math.hypot(end.x()+.5-helper.x(),end.y()+.5-helper.y())<30,"flank closes the squad gap rather than maximizing distance forever");
+  for(var tile:flank)check(Math.hypot(tile.x()+.5-100.5,tile.y()+.5-98.5)>=2-.0001,"support preference never moves through the existing threat envelope");
+  check(Math.hypot(end.x()+.5-100.5,end.y()+.5-98.5)>=4,"support endpoint still increases nearest threat clearance by two tiles");
+  var corridor=new zombie.apocalipse.humans.movement.MovementGrid(){
+   public boolean walkable(Tile t){return t.y()==100&&t.x()>=100&&t.x()<=112;}public boolean connected(Tile a,Tile b){return true;}
+  };
+  var behind=new RetreatPlanner.Rendezvous(70.5,100.5);var west=List.of(new RetreatPlanner.Threat(98.5,100.5));
+  var only=RetreatPlanner.plan(corridor,start,west,12,false,List.of(behind));
+  check(!only.isEmpty()&&only.getLast().x()>100,"when squadward movement is blocked the actor still escapes away from threats");
+  var far=new RetreatPlanner.Rendezvous(100.5,0.5);
+  check(flank.equals(RetreatPlanner.plan(open,start,threats,12,false,List.of(far,helper))),"nearest active helper supplies the rendezvous preference");
+  var blocked=new zombie.apocalipse.humans.movement.MovementGrid(){public boolean walkable(Tile t){return false;}public boolean connected(Tile a,Tile b){return false;}};
+  check(RetreatPlanner.plan(blocked,start,threats,12,false,List.of(helper)).isEmpty(),"support never bypasses an unavailable movement origin");
+  try{new RetreatPlanner.Rendezvous(Double.NaN,0);throw new AssertionError();}catch(IllegalArgumentException expected){checks++;}
+ }
+ static HumanObservation supported(long now,int count,HumanState state,HumanObservation.Support support){
+  var contacts=new ArrayList<Contact>();for(int n=0;n<count;n++)contacts.add(contact(id(100+n,1),1,now,true));
+  var frame=frame(now,contacts);
+  return new HumanObservation(now,List.of(),true,state,frame,new HumanTerritory(true,true,contacts.stream().map(Contact::identity).collect(java.util.stream.Collectors.toSet())),frame,support);
+ }
+ static void localStrength(){
+  var groups=new ServerHumanGroups();var a=new ServerHuman("a","squad",0,route());var b=new ServerHuman("b","squad",1,route());var c=new ServerHuman("c","squad",2,route());
+  for(var h:List.of(a,b,c)){arm(h);h.player.x=9850;h.player.y=2510;groups.register(h);}
+  b.player.x+=2;c.player.x+=4;groups.capture(0);
+  for(var h:List.of(a,b,c)){
+   var facts=ThreatAssessment.assess(supported(0,6,HumanState.INITIAL,h.squadAssist.strength()),SurvivalSettings.DEFAULT);
+   check(facts.allies()==2&&facts.crowdLimit()==12&&!facts.pressured(),"six zombies facing three capable nearby squadmates do not trigger solo retreat");
+  }
+  check(ThreatAssessment.assess(supported(0,12,HumanState.INITIAL,a.squadAssist.strength()),SurvivalSettings.DEFAULT).pressured(),"a truly overwhelming crowd still forces a squad retreat");
+  check(ThreatAssessment.assess(supported(500_000_001L,6,HumanState.INITIAL,a.squadAssist.strength()),SurvivalSettings.DEFAULT).allies()==0,"stale strength fails closed to solo capacity");
+  check(ThreatAssessment.assess(supported(-1,6,HumanState.INITIAL,a.squadAssist.strength()),SurvivalSettings.DEFAULT).allies()==0,"future strength cannot increase capacity");
+  var low=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Damage(.8f,0,0,0));
+  check(ThreatAssessment.assess(supported(0,6,low,a.squadAssist.strength()),SurvivalSettings.DEFAULT).pressure().equals("low_health"),"allies cannot override personal health emergency");
+  var tired=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Adjust(HumanState.Stat.ENDURANCE,-.9f));
+  check(ThreatAssessment.assess(supported(0,6,tired,a.squadAssist.strength()),SurvivalSettings.DEFAULT).pressure().equals("exhausted"),"allies cannot override personal exhaustion");
+  b.player.x=a.player.x+6;c.player.x=a.player.x+6.01f;groups.capture(0);
+  check(a.squadAssist.strength().allies()==1,"local strength includes six-tile boundary and excludes distant reinforcement");
+  c.player.x=a.player.x+4;b.player.z=1;groups.capture(0);check(a.squadAssist.strength().allies()==1,"another floor supplies no capacity");b.player.z=0;
+  b.activity.mode=HumanActivityController.Mode.DIALOGUE;groups.capture(0);check(a.squadAssist.strength().allies()==1,"exclusive dialogue actor is not a combat reserve");b.activity.mode=HumanActivityController.Mode.AUTONOMOUS;
+  b.state.value=low;groups.capture(0);check(a.squadAssist.strength().allies()==1,"wounded ally is excluded");b.state.value=tired;groups.capture(0);check(a.squadAssist.strength().allies()==1,"exhausted ally is excluded");
+  b.state.value=new HumanState(1,HumanState.Vitals.HEALTHY,new HumanState.Injuries(0,0,.01f,false,false));groups.capture(0);check(a.squadAssist.strength().allies()==1,"actively bleeding ally is excluded");
+  b.state.value=new HumanState(1,HumanState.Vitals.HEALTHY,new HumanState.Injuries(0,0,0,false,true));groups.capture(0);check(a.squadAssist.strength().allies()==1,"downed ally is excluded");b.state.value=HumanState.INITIAL;
+  b.movement.loaded=false;groups.capture(0);check(a.squadAssist.strength().allies()==1,"unloaded ally is excluded");b.movement.loaded=true;
+  b.retaliation.aggressor=new HumanObservation.Identity((short)3,7);groups.capture(0);check(a.squadAssist.strength().allies()==1,"ally occupied with player retaliation is excluded");b.retaliation.aggressor=null;
+  b.activity.behavior=new HumanModuleRuntime(List.of(new HumanModuleRuntime.Entry("healing",10,100,new HumanModule(){
+   public boolean eligible(HumanObservation o){return true;}public boolean available(){return true;}
+   public void update(HumanObservation o,HumanActuator p){}public void interrupt(long now,HumanActuator p){}
+   public void suspend(long now,HumanActuator p){}public void resume(HumanObservation.Identity visitor,long now,HumanActuator p){}public void stop(long now,HumanActuator p){}
+  }),new HumanModuleRuntime.Entry("group-patrol",1000,100,b.module)));
+  ((HumanModuleRuntime)b.activity.behavior()).update(observation(0,List.of()),new Actuator());groups.capture(0);check(a.squadAssist.strength().allies()==1,"ally executing healing does not lend combat capacity");arm(b);
+  a.perception.supportVisible=false;groups.capture(0);check(a.squadAssist.strength().allies()==0,"occluded allies cannot increase local capacity");a.perception.supportVisible=true;
+  var outsider=new ServerHuman("outsider","other",0,route());arm(outsider);outsider.player.x=a.player.x;outsider.player.y=a.player.y;groups.register(outsider);groups.capture(0);
+  check(a.squadAssist.strength().allies()==2&&outsider.squadAssist.strength().allies()==0,"support stays within registered squad membership");
+  var engagement=arm(b);var survival=new SurvivalModule(SurvivalSettings.DEFAULT);var flight=new Flight();
+  b.activity.behavior=new HumanModuleRuntime(List.of(new HumanModuleRuntime.Entry("survival",10,100,survival),new HumanModuleRuntime.Entry("engage-zombies",100,100,engagement),new HumanModuleRuntime.Entry("group-patrol",1000,100,b.module)));
+  survival.update(supported(0,6,HumanState.INITIAL,HumanObservation.Support.NONE),flight);
+  check(survival.phase()==SurvivalModule.Phase.ESCAPING,"isolated actor first enters survival");groups.capture(0);
+  check(a.squadAssist.strength().allies()==2&&b.squadAssist.strength().allies()==2,"survival phase does not recursively erase physically capable support");
+  for(int second=1;second<=9;second++){
+   groups.capture(second*S);survival.update(supported(second*S,6,HumanState.INITIAL,b.squadAssist.strength()),flight);
+  }
+  check(survival.phase()==SurvivalModule.Phase.SAFE&&flight.escapes==1,"reinforced actor stops fleeing after sustained relief even with a close enemy; no repeated escape legs");
+  groups.remove(c);groups.capture(10*S);check(a.squadAssist.strength().allies()==1&&c.squadAssist.strength().allies()==0,"removal fences old incarnation and removes its contribution");
+  var runtime=(HumanModuleRuntime)b.activity.behavior();var motor=new Actuator();
+  runtime.update(supported(10*S,6,HumanState.INITIAL,b.squadAssist.strength()),motor);
+  check(runtime.selectedModule().equals("engage-zombies"),"squad-aware eligibility lets combat win after relief");
+  groups.remove(a);groups.capture(11*S);check(b.squadAssist.strength().allies()==0,"last separated member returns to solo capacity");
+  runtime.update(supported(11*S,6,HumanState.INITIAL,b.squadAssist.strength()),new Flight());
+  check(runtime.selectedModule().equals("survival"),"loss of local reinforcements restores normal retreat priority");
+ }
+ public static void main(String[] args){board();policy();adapters();arbitration();distress();relief();retreatPlanning();localStrength();System.out.println("Squad assistance: "+checks+" assertions passed (42.22.1 production policies/adapters; engine doubles)");}
 }
 '''
 
 def main():
     production = list((SOURCE/'groups').glob('*.java'))
-    production += [SOURCE/name for name in ('ServerHumanGroups.java', 'ServerHumanSquadAssist.java', 'ServerHumanCombat.java')]
+    production += [SOURCE/name for name in ('ServerHumanGroups.java', 'ServerHumanSquadAssist.java', 'ServerHumanCombat.java', 'ServerHumanSurvival.java')]
     production += [SOURCE/'brain'/name for name in ('HumanObservation.java', 'HumanSenses.java', 'HumanTerritory.java', 'TacticalIntent.java', 'HumanModule.java', 'HumanBehavior.java', 'HumanModuleRuntime.java', 'HumanAction.java', 'HumanActionExecution.java', 'HumanCombat.java', 'HumanEngagement.java', 'EngageZombiesModule.java')]
     production += [SOURCE/'movement'/name for name in ('MovementGrid.java', 'MovementModifiers.java', 'CombatRoutePlanner.java', 'DestinationRoutePlanner.java')]
     production += [SOURCE/'walking'/name for name in ('WalkingPatternSpec.java', 'MovementRequest.java')]
     production += [SOURCE/'state'/name for name in ('HumanState.java', 'HumanMutation.java', 'HumanStateReducer.java')]
-    production += [SOURCE/'survival'/name for name in ('SurvivalSettings.java', 'SurvivalPort.java', 'ThreatAssessment.java', 'SurvivalModule.java')]
+    production += [SOURCE/'survival'/name for name in ('SurvivalSettings.java', 'SurvivalPort.java', 'ThreatAssessment.java', 'SurvivalModule.java', 'RetreatPlanner.java', 'RouteRefusals.java')]
     production += [SOURCE/'healing'/name for name in ('HealingSettings.java', 'HumanHealingPort.java', 'HealingModule.java')]
     with tempfile.TemporaryDirectory(prefix='apocbr-squad-assist-') as folder:
         work=Path(folder);sources=list(production)

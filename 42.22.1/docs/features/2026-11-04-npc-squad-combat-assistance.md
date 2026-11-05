@@ -8,10 +8,14 @@ Related: [group patrol](2026-11-04-npc-group-patrol.md) and
 
 2026-11-05 follow-up: [separated fleeing member distress and retreat relief](../issues/2026-11-05-squad-distress-outside-assistance-radius.md).
 
-Latest runtime evidence: [helpers follow but never reach engagement](../reports/2026-11-05-squad-assistance-following-without-engagement.md).
-Distress delivery and physical pursuit are observed; successful combat assistance
-remains unverified. Coordinated rendezvous/interception and pursuit interruptions
-remain the next implementation target.
+Earlier runtime evidence: [helpers follow but never reach engagement](../reports/2026-11-05-squad-assistance-following-without-engagement.md).
+The [latest encounter](2026-11-05-npc-squad-fight-or-flight.md) now reaches ENGAGING
+before helpers flee under solo crowd thresholds. Successful native hits remain
+unverified; the new local squad-strength assessment addresses that survival cascade.
+
+Implemented follow-up: [safe retreat toward active squad assistance](2026-11-05-npc-retreat-squad-rendezvous.md)
+adds a fresh helper-position preference to each new escape leg. Explicit helper
+interception and the existing approach backoff remain separate work.
 
 ## Source behavior adopted
 
@@ -83,9 +87,11 @@ emergency scope. Ordinary guard combat retains its original patrol territory.
 ## Interruption and priorities
 
 Personal survival, retaliation and configured higher-priority healing remain
-ahead of assistance. An NPC in its own survival emergency still retreats;
-assistance does not make an overwhelmed squad hold position. In particular, this
-military squad's crowd tolerance is unchanged. The 2026-11-05 follow-up requires
+ahead of assistance. The [2026-11-05 squad fight-or-flight fix](2026-11-05-npc-squad-fight-or-flight.md)
+now scales crowd tolerance by fresh, capable nearby squadmates. The latest log
+shows helpers reaching ENGAGING, then independently fleeing the same six zombies
+because the old assessment still used solo crowd limits. Personal health/endurance
+emergencies and genuinely overwhelming crowds retain survival priority. The earlier follow-up requires
 **one continuous second of pressure relief** before cancelling escape for
 RECOVERING, preventing short seven-zero-seven samples from repeatedly restarting
 the current route. The original cause of the awareness count fluctuation remains

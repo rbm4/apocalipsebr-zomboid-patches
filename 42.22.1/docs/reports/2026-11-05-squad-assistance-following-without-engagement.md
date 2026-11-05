@@ -6,6 +6,11 @@ no runtime source changes in this investigation**.
 Feature: [squad combat assistance](../features/2026-11-04-npc-squad-combat-assistance.md).
 Previous fix: [long-range distress](../issues/2026-11-05-squad-distress-outside-assistance-radius.md).
 
+Source follow-up: [retreat toward active helpers](../features/2026-11-05-npc-retreat-squad-rendezvous.md)
+now biases new escape legs toward assisting squadmates through safe flanks.
+The findings below describe the earlier run; the new behavior still needs live
+validation, and helper approach pauses/interception are unchanged.
+
 ## Capture and findings
 
 Read `C:/Users/ricar/Zomboid/Logs/2026-11-05_00-10_DebugLog-server.txt`, last modified

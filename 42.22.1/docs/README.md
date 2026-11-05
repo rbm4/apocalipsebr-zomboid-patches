@@ -24,6 +24,8 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Squad-aware fight or flight: capable nearby allies, recovery and crowd pressure](features/2026-11-05-npc-squad-fight-or-flight.md) |
+| 2026-11-05 | [Retreat rendezvous: gradually flank toward squadmates actively providing assistance](features/2026-11-05-npc-retreat-squad-rendezvous.md) |
 | 2026-11-04 | [Squad combat assistance: A-life threat reports, last-known leads and bounded helper authority](features/2026-11-04-npc-squad-combat-assistance.md) |
 | 2026-11-04 | [Shared group patrol: Umbrella R.P.D. Alpha, health capacity and migrations](features/2026-11-04-npc-group-patrol.md) |
 | 2026-11-04 | [NPC self-treatment, bleeding and stock-client first-aid packets](features/2026-11-04-npc-healing.md) |
@@ -47,6 +49,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [NPC running replication: animation root motion, clipped prediction and publication cadence](reports/2026-11-05-npc-running-replication.md) |
 | 2026-11-05 | [Squad assistance run: helpers follow distress but never reach engagement](reports/2026-11-05-squad-assistance-following-without-engagement.md) |
 | 2026-11-05 | [Server-controlled sprinter speed: measured gait model and implementation proposal](reports/2026-11-05-server-zombie-sprinter-speed.md) |
 | 2026-11-04 | [Backend message inbox and batched zombie-kill delivery proposal](reports/2026-11-04-backend-message-inbox-and-zombie-kills.md) |

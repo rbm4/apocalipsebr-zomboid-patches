@@ -12,4 +12,5 @@ public interface SurvivalPort {
     default void failed(boolean timedOut,long now){ }
     default String routeProblem(long now){return null;}
     default void transition(String phase,String reason,int nearby){ }
+    default void transition(String phase,String reason,int nearby,int allies,int crowdLimit){transition(phase,reason,nearby);}
 }

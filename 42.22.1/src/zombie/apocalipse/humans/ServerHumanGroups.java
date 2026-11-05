@@ -7,6 +7,7 @@ import zombie.apocalipse.humans.walking.WalkingPatternSpec;
 
 /** Factory-owned composition/adapter. Main thread captures positions; worker policy sees detached values. */
 final class ServerHumanGroups {
+    private static final int COMBAT_SUPPORT_RADIUS=6;
     private record Entry(ServerHuman human,GroupPatrolModule module) { }
     private record Sample(long at,GroupPatrolCoordinator.Member member,boolean inside) { }
     private final Map<String,Entry> entries=new HashMap<>();
@@ -55,6 +56,38 @@ final class ServerHumanGroups {
         }
         samples=Map.copyOf(detached);
         captureCombat(now);
+        captureStrength(now);
+    }
+    /** Local combat capacity is independent of assist assignments and survival phase.
+     * Otherwise the first retreat erases support and cascades through the squad. */
+    private void captureStrength(long now){
+        for(var entry:entries.values()){
+            var h=entry.human;if(h.squadAssist==null)continue;
+            int allies=0;
+            if(combatReady(h))for(var other:entries.values()){
+                var ally=other.human;
+                if(ally==h||!ally.definition.group().groupId().equals(h.definition.group().groupId())
+                    ||ally.player.getZi()!=h.player.getZi()||!combatReady(ally))continue;
+                double dx=ally.player.getX()-h.player.getX(),dy=ally.player.getY()-h.player.getY();
+                if(dx*dx+dy*dy<=COMBAT_SUPPORT_RADIUS*COMBAT_SUPPORT_RADIUS&&h.perception.visible(ally.player))allies++;
+            }
+            h.squadAssist.publishStrength(now,allies);
+        }
+    }
+    private boolean combatReady(ServerHuman h){
+        var state=h.state.snapshot();var injuries=state.injuries();var vitals=state.vitals();
+        var runtime=(HumanModuleRuntime)h.activity.behavior();var selected=runtime.selectedModule();
+        var survival=runtime.module(zombie.apocalipse.humans.survival.SurvivalModule.class);
+        var limits=survival==null?zombie.apocalipse.humans.survival.SurvivalSettings.DEFAULT:survival.settings();
+        var retaliation=ServerHumanRetaliation.module(h);
+        return h.squadAssist!=null&&!state.dead()&&!h.player.isDead()
+            &&h.activity.mode()==HumanActivityController.Mode.AUTONOMOUS
+            &&(selected==null||selected.equals("group-patrol")||selected.equals("engage-zombies")||selected.equals("survival"))
+            &&(retaliation==null||retaliation.aggressor()==null)
+            &&!injuries.immobile()&&!injuries.downed()&&injuries.bleedingPerSecond()==0
+            &&vitals.health()>=limits.reengageHealth()
+            &&vitals.endurance()>=limits.reengageEndurance()
+            &&h.movement.available()&&!h.movement.traversing();
     }
     /** The board sees detached facts. Native target membership/identity is checked here on the world thread. */
     private void captureCombat(long now){

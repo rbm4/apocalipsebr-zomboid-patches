@@ -54,7 +54,8 @@ final class ServerHumanPerception {
         var visitors=frame.visible(Kind.PLAYER).stream().map(c->new HumanObservation.Visitor(
             new HumanObservation.Identity(c.identity().onlineId(),c.identity().instanceId()),c.x(),c.y(),c.z(),c.distanceSquared()))
             .sorted(Comparator.comparingDouble(HumanObservation.Visitor::distanceSquared)).toList();
-        return new HumanObservation(now,visitors,human.walking.available(),human.state.snapshot(),frame,territory,awareness);
+        return new HumanObservation(now,visitors,human.walking.available(),human.state.snapshot(),frame,territory,awareness,
+            human.squadAssist==null?HumanObservation.Support.NONE:human.squadAssist.strength());
     }
 
     void update(long suppliedNow){

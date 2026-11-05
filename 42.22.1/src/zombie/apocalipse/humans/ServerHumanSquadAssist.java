@@ -13,6 +13,9 @@ final class ServerHumanSquadAssist implements SquadAssistPort {
     private final int z;
     private Order order;
     private boolean closed;
+    private HumanObservation.Support strength=HumanObservation.Support.NONE;
+    void publishStrength(long now,int allies){strength=new HumanObservation.Support(now,allies);}
+    HumanObservation.Support strength(){return closed?HumanObservation.Support.NONE:strength;}
     private float routeX,routeY;
     private long nextRepath;
     private String problem="none";

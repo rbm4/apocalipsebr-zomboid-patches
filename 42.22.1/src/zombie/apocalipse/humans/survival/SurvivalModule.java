@@ -23,6 +23,7 @@ public final class SurvivalModule implements HumanModule {
     private HumanSenses.Identity defended;
     public SurvivalModule(SurvivalSettings settings){this.settings=java.util.Objects.requireNonNull(settings);}
     public Phase phase(){return phase;}
+    public SurvivalSettings settings(){return settings;}
     public boolean available(){return !stopped;}
     public boolean emergency(HumanObservation o){
         return !stopped&&!o.state().dead()&&(phase!=Phase.SAFE||ThreatAssessment.assess(o,settings).pressured());
@@ -31,7 +32,7 @@ public final class SurvivalModule implements HumanModule {
         return !suspended&&emergency(o);
     }
     private void transition(Phase value,String reason,ThreatAssessment facts,HumanActuator actuator){
-        if(phase==value)return;phase=value;actuator.survival().transition(value.name(),reason,facts.nearby());
+        if(phase==value)return;phase=value;actuator.survival().transition(value.name(),reason,facts.nearby(),facts.allies(),facts.crowdLimit());
     }
     private void cancelDefense(){if(defense!=null){defense.cancel(Reason.PREEMPTED);defense=null;defended=null;}}
     private HumanSenses.Contact target(HumanObservation o,HumanActuator actuator){
@@ -79,9 +80,11 @@ public final class SurvivalModule implements HumanModule {
         boolean clear=facts.reliable()&&facts.nearest()>settings.safeDistance()*settings.safeDistance()&&!facts.pressured();
         if(clear){if(clearSince==Long.MIN_VALUE)clearSince=now;}else clearSince=Long.MIN_VALUE;
         boolean imminent=facts.nearest()<=HumanCombatTactics.IMMEDIATE_RANGE*HumanCombatTactics.IMMEDIATE_RANGE;
-        boolean controlled=facts.reliable()&&!facts.pressured()&&!imminent;
-        if(controlled){if(controlledSince==Long.MIN_VALUE)controlledSince=now;}else controlledSince=Long.MIN_VALUE;
         var vitals=o.state().vitals();
+        boolean supported=facts.allies()>0&&!facts.pressured()&&vitals.health()>=settings.reengageHealth()
+            &&vitals.endurance()>=settings.reengageEndurance();
+        boolean controlled=facts.reliable()&&!facts.pressured()&&(!imminent||supported);
+        if(controlled){if(controlledSince==Long.MIN_VALUE)controlledSince=now;}else controlledSince=Long.MIN_VALUE;
         if((clearSince!=Long.MIN_VALUE&&now-clearSince>=settings.safeHoldMs()*1_000_000L
             ||controlledSince!=Long.MIN_VALUE&&now-controlledSince>=Math.max(settings.safeHoldMs(),settings.minimumRetreatMs())*1_000_000L)
             &&now-started>=settings.minimumRetreatMs()*1_000_000L&&vitals.health()>=settings.reengageHealth()&&vitals.endurance()>=settings.reengageEndurance()){
@@ -113,7 +116,7 @@ public final class SurvivalModule implements HumanModule {
             else failed(now,problem,facts,actuator);
         }
         if(phase==Phase.CREATE_OPENING&&now>=openingUntil)transition(Phase.CORNERED,"opening_window_ended",facts,actuator);
-        boolean nearby=imminent||facts.pressured()&&!facts.threats().isEmpty();
+        boolean nearby=imminent&&!supported||facts.pressured()&&!facts.threats().isEmpty();
         if(nearby&&now>=nextAttempt&&phase!=Phase.CREATE_OPENING){
             cancelDefense();actuator.stopMoving();publish(actuator,target);
             if(o.movementAvailable()&&!o.state().injuries().immobile()&&!o.state().injuries().downed()

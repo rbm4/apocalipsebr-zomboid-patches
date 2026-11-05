@@ -77,7 +77,10 @@ final class ServerHumanSurvival implements SurvivalPort {
         transition("CORNERED","movement_stalled",0);return "movement_stalled";
     }
     public void transition(String phase,String reason,int nearby){
+        transition(phase,reason,nearby,0,0);
+    }
+    public void transition(String phase,String reason,int nearby,int allies,int crowdLimit){
         HumanLog.log(HumanLog.Level.DEBUG,()->"survival key="+human.definition.key()+"; phase="+phase+"; reason="+reason
-            +"; nearby="+nearby+"; health="+human.state.snapshot().vitals().health()+"; endurance="+human.state.snapshot().vitals().endurance());
+            +"; nearby="+nearby+"; allies="+allies+"; crowdLimit="+crowdLimit+"; health="+human.state.snapshot().vitals().health()+"; endurance="+human.state.snapshot().vitals().endurance());
     }
 }

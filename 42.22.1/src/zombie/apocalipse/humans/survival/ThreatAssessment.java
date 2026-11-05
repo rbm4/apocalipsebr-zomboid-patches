@@ -5,7 +5,7 @@ import zombie.apocalipse.humans.brain.*;
 import static zombie.apocalipse.humans.brain.HumanSenses.*;
 
 /** Bounded sensor interpretation. Threats outside patrol territory still count toward personal danger. */
-public record ThreatAssessment(List<Contact> threats, boolean reliable, int nearby, double nearest, String pressure) {
+public record ThreatAssessment(List<Contact> threats, boolean reliable, int nearby, double nearest, String pressure,int allies,int crowdLimit) {
     public ThreatAssessment { threats=List.copyOf(threats); }
     public static ThreatAssessment assess(HumanObservation observation,SurvivalSettings settings){
         var frame=observation.awareness();long now=observation.nowNanos(),age=now-frame.sampledAtNanos();
@@ -15,9 +15,11 @@ public record ThreatAssessment(List<Contact> threats, boolean reliable, int near
         int nearby=(int)threats.stream().filter(c->c.distanceSquared()<=settings.crowdRadius()*settings.crowdRadius()).count();
         double nearest=threats.stream().mapToDouble(Contact::distanceSquared).min().orElse(Double.POSITIVE_INFINITY);
         var vitals=observation.state().vitals();
-        String reason=nearby>=settings.crowdCount()?"outnumbered":vitals.health()<=settings.retreatHealth()?"low_health"
-            :vitals.endurance()<=settings.retreatEndurance()?"exhausted":"none";
-        return new ThreatAssessment(threats,reliable,nearby,nearest,reason);
+        int allies=observation.support().freshAllies(now);
+        int crowdLimit=settings.crowdCount()*(1+allies);
+        String reason=vitals.health()<=settings.retreatHealth()?"low_health"
+            :vitals.endurance()<=settings.retreatEndurance()?"exhausted":nearby>=crowdLimit?"outnumbered":"none";
+        return new ThreatAssessment(threats,reliable,nearby,nearest,reason,allies,crowdLimit);
     }
     public boolean pressured(){return !pressure.equals("none");}
 }
