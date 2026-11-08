@@ -7,7 +7,7 @@ public final class HumanCombat {
     private HumanCombat() { }
     public static final long MAX_SAMPLE_AGE_NANOS=500_000_000L;
     public static final long MAX_EXECUTION_NANOS=60_000_000_000L;
-    public enum Template { GUARD_BASIC, SQUAD_ASSIST }
+    public enum Template { GUARD_BASIC, SQUAD_ASSIST, SURVIVAL_DEFENSE }
     public enum Status { RUNNING, COMPLETED, REJECTED, FAILED, CANCELLED, UNSUPPORTED }
     public enum Reason { NONE, NOT_IMPLEMENTED, INVALID_TARGET, STALE_OBSERVATION, OUTSIDE_TERRITORY,
         INCAPACITATED, BUSY, TARGET_LOST, TARGET_CHANGED, PREEMPTED, SUSPENDED, STOPPED, TIMEOUT, BACKEND_FAILURE,

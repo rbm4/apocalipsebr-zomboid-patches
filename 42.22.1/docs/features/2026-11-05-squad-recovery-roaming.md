@@ -44,3 +44,5 @@ All medical status changes, native geometry reads, module execution and packet d
 - `42.22.1/patchApocalipseBr.ps1 -BuildOnly`: 339 sources and 984 classes compiled against the installed 42.22.1 game JAR. Artifact: `artifacts/build_20261105_121756`. No deployment performed.
 
 Gameplay follow-up: replay a bandaged, low-health patient with two helpers; confirm the hurt walk and surrounding local walks, stationary medical work, clean interruption by a nearby zombie, and resumption of the original waypoint after recovery. Tight geometry may prevent a local leg; the engine does not teleport through blockers to maintain the ring.
+
+Combat follow-up: [survival covering fire and engagement capacity](2026-11-05-squad-engagement-capacity-and-cover.md) allow a cleared RECOVERING member to hold a validated stationary ranged target before choosing local recovery roaming. Actual bandaging and immediate personal danger retain priority.

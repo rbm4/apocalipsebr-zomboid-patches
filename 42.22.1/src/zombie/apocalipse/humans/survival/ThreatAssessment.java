@@ -14,11 +14,13 @@ public record ThreatAssessment(List<Contact> threats, boolean reliable, int near
             &&now>=c.lastSeenNanos()&&now-c.lastSeenNanos()<=2_000_000_000L).limit(48).toList();
         int nearby=(int)threats.stream().filter(c->c.distanceSquared()<=settings.crowdRadius()*settings.crowdRadius()).count();
         double nearest=threats.stream().mapToDouble(Contact::distanceSquared).min().orElse(Double.POSITIVE_INFINITY);
+        int immediate=(int)threats.stream().filter(c->c.distanceSquared()<=2.25).count();
         var vitals=observation.state().vitals();
         int allies=observation.support().freshAllies(now);
         int crowdLimit=settings.crowdCount()*(1+allies);
         String reason=vitals.health()<=settings.retreatHealth()?"low_health"
-            :vitals.endurance()<=settings.retreatEndurance()?"exhausted":nearby>=crowdLimit?"outnumbered":"none";
+            :vitals.endurance()<=settings.retreatEndurance()?"exhausted"
+            :immediate>settings.crowdCount()?"surrounded":nearby>crowdLimit?"outnumbered":"none";
         return new ThreatAssessment(threats,reliable,nearby,nearest,reason,allies,crowdLimit);
     }
     public boolean pressured(){return !pressure.equals("none");}

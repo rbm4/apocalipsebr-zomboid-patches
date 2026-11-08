@@ -24,6 +24,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Squad engagement capacity, stationary covering fire and physical escape](features/2026-11-05-squad-engagement-capacity-and-cover.md) |
 | 2026-11-05 | [Wounded recovery gait and squad roaming around the patient](features/2026-11-05-squad-recovery-roaming.md) |
 | 2026-11-05 | [Squad cohesion, moving passive recovery and immersive state-change speech](features/2026-11-05-squad-cohesion-healing-and-state-speech.md) |
 | 2026-11-05 | [Async NPC authority: detached planning, server-owned execution and deadlock prevention](features/2026-11-05-npc-async-authority.md) |
@@ -53,6 +54,7 @@ dates and historical results. Copying them does not repeat their tests on 42.22.
 
 | Date | Document |
 | --- | --- |
+| 2026-11-05 | [Umbrella final combat: covering fire, survival ownership and normal health migration](reports/2026-11-05-umbrella-combat-support-and-normal-health.md) |
 | 2026-11-05 | [Permanent async NPC deadlock fix draft: detached decisions and server-owned native execution](reports/2026-11-05-npc-async-deadlock-permanent-fix-draft.md) |
 | 2026-11-05 | [NPC running replication: animation root motion, clipped prediction and publication cadence](reports/2026-11-05-npc-running-replication.md) |
 | 2026-11-05 | [Squad assistance run: helpers follow distress but never reach engagement](reports/2026-11-05-squad-assistance-following-without-engagement.md) |

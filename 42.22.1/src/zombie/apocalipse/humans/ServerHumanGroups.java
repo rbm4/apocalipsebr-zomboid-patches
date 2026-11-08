@@ -81,7 +81,7 @@ final class ServerHumanGroups {
                 if(ally==h||!ally.definition.group().groupId().equals(h.definition.group().groupId())
                     ||ally.player.getZi()!=h.player.getZi()||!combatReady(ally))continue;
                 double dx=ally.player.getX()-h.player.getX(),dy=ally.player.getY()-h.player.getY();
-                if(dx*dx+dy*dy<=COMBAT_SUPPORT_RADIUS*COMBAT_SUPPORT_RADIUS&&h.perception.visible(ally.player))allies++;
+                if(dx*dx+dy*dy<=COMBAT_SUPPORT_RADIUS*COMBAT_SUPPORT_RADIUS&&h.perception.visibleAlly(ally.player))allies++;
             }
             h.squadAssist.publishStrength(now,allies);
         }

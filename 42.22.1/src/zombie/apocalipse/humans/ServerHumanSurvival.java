@@ -46,7 +46,9 @@ final class ServerHumanSurvival implements SurvivalPort {
             return false;
         }
         progressX=human.player.getX();progressY=human.player.getY();lastProgress=now;
-        boolean started=human.movement.start(route,planning,Pace.RUN,now);
+        // Occupancy and refused edges guide planning, not a whole-tile runtime leash.
+        // The motor revalidates geometry and continuous body clearance on every step.
+        boolean started=human.movement.start(route,scope,Pace.RUN,now);
         if(started)HumanLog.log(HumanLog.Level.DEBUG,()->"retreat route key="+human.definition.key()+"; from="+start
             +"; goal="+route.getLast()+"; steps="+(route.size()-1)+"; threats="+positions.size()+"; elevated="+elevated+"; support="+support);
         return started;

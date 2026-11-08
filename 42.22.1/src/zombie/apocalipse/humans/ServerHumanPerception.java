@@ -200,10 +200,20 @@ final class ServerHumanPerception {
     boolean visible(IsoGameCharacter body){
         if(!human.profile.requireLos())return true;
         if(body.getCurrentSquare()==null)return false;
+        return visibleCoordinates(body);
+    }
+    /** Detached squad actors have coordinates, not native square membership. Caller validates membership/range. */
+    boolean visibleAlly(IsoGameCharacter body){
+        if(body==null||body.getZi()!=human.player.getZi())return false;
+        if(!human.profile.requireLos())return true;
+        return visibleCoordinates(body);
+    }
+    private boolean visibleCoordinates(IsoGameCharacter body){
         var cell=human.player.getCell();int z=human.player.getZi();
         if(cell.getGridSquare(human.player.getXi(),human.player.getYi(),z)==null)return false;
         // Native lineClear skips absent squares. Fail closed before asking its vision rules.
         int dx=body.getXi()-human.player.getXi(),dy=body.getYi()-human.player.getYi(),steps=Math.max(Math.abs(dx),Math.abs(dy));
+        if(steps>32)return false;
         for(int n=0;n<=steps;n++){
             int x=human.player.getXi()+(steps==0?0:Math.round(dx*(float)n/steps));
             int y=human.player.getYi()+(steps==0?0:Math.round(dy*(float)n/steps));

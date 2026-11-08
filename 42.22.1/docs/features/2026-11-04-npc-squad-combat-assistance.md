@@ -159,3 +159,7 @@ member death and return to the paused waypoint. Verify `squad assist` diagnostic
 alongside survival transitions; if every member is in survival, there may be no
 available helper. Terrain/client drift and the cause of awareness fluctuations
 remain separate investigations.
+
+Follow-up: [12:43 encounter, suppressed covering fire and normal-health migration](../reports/2026-11-05-umbrella-combat-support-and-normal-health.md) identifies detached-ally LOS, spatial pressure classification and survival-owned ranged cover as the next policy changes.
+
+Implemented follow-up: [inclusive squad capacity, detached-ally LOS, stationary cover and physical escape](2026-11-05-squad-engagement-capacity-and-cover.md). Four threats per available member remain within capacity; a tightly surrounded member retains personal survival.

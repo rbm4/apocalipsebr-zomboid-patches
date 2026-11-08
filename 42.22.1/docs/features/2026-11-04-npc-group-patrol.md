@@ -231,3 +231,5 @@ Related: [healing](2026-11-04-npc-healing.md),
 [retaliation](../../../42.21.0/docs/features/2026-10-25-npc-player-retaliation.md).
 
 2026-11-05 follow-up: [wounded recovery gait and local squad roaming](2026-11-05-squad-recovery-roaming.md) replace whole-squad waiting during convalescence with short local walks around a retained patient anchor. Actual dressing remains stationary, and the shared patrol waypoint is preserved.
+
+Later balance change: [manager V45 normal-health migration and encounter review](../reports/2026-11-05-umbrella-combat-support-and-normal-health.md) restores the Umbrella patrol to 1x capacity through a fresh published revision. The original V43 2x revision remains historical; generic capacity remains available.

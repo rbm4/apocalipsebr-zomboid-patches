@@ -37,6 +37,22 @@ final class ServerHumanCombat implements Port {
         if(!frame.sampled()||now<frame.sampledAtNanos()||now-frame.sampledAtNanos()>HumanCombat.MAX_SAMPLE_AGE_NANOS)return Reason.STALE_OBSERVATION;
         var target=human.perception.resolveZombie(request.target());
         if(target==null)return Reason.INVALID_TARGET;
+        if(request.template()==Template.SURVIVAL_DEFENSE){
+            var runtime=human.activity.behavior() instanceof HumanModuleRuntime value?value:null;
+            var survival=runtime==null?null:runtime.module(zombie.apocalipse.humans.survival.SurvivalModule.class);
+            if(human.activity.mode()!=HumanActivityController.Mode.AUTONOMOUS||survival==null||!survival.available()||survival.phase()==zombie.apocalipse.humans.survival.SurvivalModule.Phase.SAFE||!request.externalMovement())return Reason.OUTSIDE_TERRITORY;
+            double dx=target.getX()-human.player.getX(),dy=target.getY()-human.player.getY(),distance=dx*dx+dy*dy;
+            if(target.getZi()!=human.player.getZi()||distance>49)return Reason.OUTSIDE_TERRITORY;
+            if(distance<=2.25)return Reason.NONE;
+            var limits=survival.settings();var awareness=human.perception.awareness();
+            if(survival.phase()!=zombie.apocalipse.humans.survival.SurvivalModule.Phase.RECOVERING
+                ||state.vitals().health()<limits.reengageHealth()||state.vitals().endurance()<limits.reengageEndurance()
+                ||!awareness.sampled()||now<awareness.sampledAtNanos()||now-awareness.sampledAtNanos()>500_000_000L||awareness.contactsTruncated()
+                ||awareness.zombies()==HumanSenses.Coverage.UNAVAILABLE
+                ||awareness.contacts().stream().anyMatch(c->c.identity().kind()==HumanSenses.Kind.ZOMBIE&&c.distanceSquared()<=2.25
+                    &&now>=c.lastSeenNanos()&&now-c.lastSeenNanos()<=2_000_000_000L))return Reason.BUSY;
+            return Reason.NONE;
+        }
         if(request.template()==Template.SQUAD_ASSIST)
             return human.squadAssist!=null&&human.squadAssist.permits(request.target(),now)?Reason.NONE:Reason.OUTSIDE_TERRITORY;
         if(!human.territory.contains(human.player.getX(),human.player.getY(),human.player.getZ())

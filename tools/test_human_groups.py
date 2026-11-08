@@ -57,6 +57,7 @@ class ServerHuman {
  static class Profile {double capacity=1;double healthMultiplier(){return capacity;}final List<WalkingPatternSpec> patterns;Profile(List<WalkingPatternSpec.Point> points){patterns=List.of(new WalkingPatternSpec("background","waypoint-circuit",64,points,new WalkingPatternSpec.Area(9788,2395,9894,2472)));}List<WalkingPatternSpec> walkingPatterns(){return patterns;}}
  static class Territory {boolean inside=true;boolean contains(float x,float y,float z){return inside;}}
  static class Perception {
+  boolean visibleAlly(zombie.characters.IsoGameCharacter body){return supportVisible;}
   boolean supportVisible=true;boolean visible(zombie.characters.IsoGameCharacter body){return supportVisible;}
   HumanSenses.Frame frame=HumanSenses.Frame.EMPTY;final Map<HumanSenses.Identity,zombie.characters.IsoZombie> known=new HashMap<>();int hints;
   HumanSenses.Frame awarenessFrame;HumanSenses.Frame snapshot(){return frame;}HumanSenses.Frame awareness(){return awarenessFrame==null?frame:awarenessFrame;}
@@ -65,20 +66,21 @@ class ServerHuman {
   void hintZombie(zombie.characters.IsoZombie z){hints++;}
  }
  static class Square {}
- static class Movement {
+ static class Movement implements zombie.apocalipse.humans.movement.MovementGrid {
   record Failure(zombie.apocalipse.humans.movement.MovementGrid.Tile from,zombie.apocalipse.humans.movement.MovementGrid.Tile to,String reason){}
   Failure lastFailure(){return null;}zombie.apocalipse.humans.movement.MovementGrid.Tile nextTile(){return null;}
   boolean bodyClear(float a,float b,float c,float d){return true;}
   zombie.apocalipse.humans.movement.MovementModifiers.Resolved resolved(){return zombie.apocalipse.humans.movement.MovementModifiers.resolve(zombie.apocalipse.humans.movement.MovementModifiers.Pace.RUN,zombie.apocalipse.humans.movement.MovementModifiers.Conditions.NORMAL,zombie.apocalipse.humans.movement.MovementModifiers.Settings.DEFAULT,0,0);}
+  zombie.apocalipse.humans.movement.MovementGrid lastPolicy;boolean freeBodies=true;
   List<zombie.apocalipse.humans.movement.MovementGrid.Tile> lastRoute=List.of();
   int starts,stops;boolean loaded=true;HumanActuator.MotionStatus result=HumanActuator.MotionStatus.RUNNING;
-  boolean available(){return loaded;}Square square(int x,int y){return loaded?new Square():null;}
+  public boolean available(){return loaded;}Square square(int x,int y){return loaded?new Square():null;}
   boolean traversing(){return false;}
-  boolean walkable(zombie.apocalipse.humans.movement.MovementGrid.Tile t){return loaded;}
-  boolean freeOfBlockingBodies(Square s){return true;}
-  boolean connected(zombie.apocalipse.humans.movement.MovementGrid.Tile a,zombie.apocalipse.humans.movement.MovementGrid.Tile b){return true;}
-  int traversalCost(zombie.apocalipse.humans.movement.MovementGrid.Tile a,zombie.apocalipse.humans.movement.MovementGrid.Tile b){return 1;}
-  boolean start(List<zombie.apocalipse.humans.movement.MovementGrid.Tile> r,zombie.apocalipse.humans.movement.MovementGrid g,zombie.apocalipse.humans.movement.MovementModifiers.Pace p,long n){starts++;lastRoute=List.copyOf(r);return !r.isEmpty();}
+  public boolean walkable(zombie.apocalipse.humans.movement.MovementGrid.Tile t){return loaded;}
+  boolean freeOfBlockingBodies(Square s){return freeBodies;}
+  public boolean connected(zombie.apocalipse.humans.movement.MovementGrid.Tile a,zombie.apocalipse.humans.movement.MovementGrid.Tile b){return true;}
+  public int traversalCost(zombie.apocalipse.humans.movement.MovementGrid.Tile a,zombie.apocalipse.humans.movement.MovementGrid.Tile b){return 1;}
+  boolean start(List<zombie.apocalipse.humans.movement.MovementGrid.Tile> r,zombie.apocalipse.humans.movement.MovementGrid g,zombie.apocalipse.humans.movement.MovementModifiers.Pace p,long n){starts++;lastPolicy=g;lastRoute=List.copyOf(r);return !r.isEmpty();}
   HumanActuator.MotionStatus update(long now){return result;}void stop(){stops++;}
  }
  static class Walking {int stops;boolean loaded=true;void stop(){stops++;}

@@ -42,30 +42,39 @@ public final class SurvivalModule implements HumanModule {
         if(phase==value)return;phase=value;actuator.survival().transition(value.name(),reason,facts.nearby(),facts.allies(),facts.crowdLimit());
     }
     private void cancelDefense(){if(defense!=null){defense.cancel(Reason.PREEMPTED);defense=null;defended=null;}}
+    private static final HumanEngagement.Policy PERSONAL_DEFENSE=(o,c,settings)->{
+        long age=o.nowNanos()-o.senses().sampledAtNanos();
+        return !o.state().dead()&&!o.state().injuries().immobile()&&!o.state().injuries().downed()
+            &&c.identity().kind()==HumanSenses.Kind.ZOMBIE&&c.visible()&&o.senses().sampled()
+            &&age>=0&&age<=settings.maxSampleAgeNanos()&&o.senses().zombies()!=HumanSenses.Coverage.UNAVAILABLE
+            ?HumanEngagement.Choice.ENGAGE:HumanEngagement.Choice.IGNORE;
+    };
     private HumanSenses.Contact target(HumanObservation o,HumanActuator actuator){
-        var selection=selector.preview(o,HumanEngagement.GUARD_ZOMBIES,HumanEngagement.Settings.DEFAULT);
+        var selection=selector.preview(o,PERSONAL_DEFENSE,HumanEngagement.Settings.DEFAULT);
         if(phase==Phase.CREATE_OPENING){
             var candidates=o.senses().contacts().stream().filter(c->c.distanceSquared()<=2.25
-                &&HumanEngagement.GUARD_ZOMBIES.evaluate(o,c,HumanEngagement.Settings.DEFAULT)==HumanEngagement.Choice.ENGAGE).toList();
+                &&PERSONAL_DEFENSE.evaluate(o,c,HumanEngagement.Settings.DEFAULT)==HumanEngagement.Choice.ENGAGE).toList();
             var blocker=actuator.survival().openingTarget(candidates);
             if(blocker!=null&&candidates.contains(blocker))selection=new HumanEngagement.Selection(blocker,HumanEngagement.Choice.ENGAGE);
         }
         selector.retain(selection);return selection.target();
     }
-    private void publish(HumanActuator actuator,HumanSenses.Contact target){
+    private void publish(HumanActuator actuator,HumanSenses.Contact target){publish(actuator,target,false);}
+    private void publish(HumanActuator actuator,HumanSenses.Contact target,boolean covering){
         var objective=phase==Phase.CREATE_OPENING?TacticalIntent.Objective.CREATE_OPENING
             :phase==Phase.RECOVERING?TacticalIntent.Objective.RECOVER:TacticalIntent.Objective.ESCAPE;
-        boolean close=target!=null&&target.visible()&&target.distanceSquared()<=2.25;
+        boolean close=target!=null&&target.visible()&&(target.distanceSquared()<=2.25||covering);
         actuator.tactical(new TacticalIntent(objective,close?TacticalIntent.Posture.GUARDED:
             phase==Phase.ESCAPING?TacticalIntent.Posture.FLEEING:TacticalIntent.Posture.RELAXED,
-            close?target.identity():null,failedAttempts>=2));
+            close?target.identity():null,failedAttempts>=2&&!covering));
     }
     private boolean defend(HumanObservation o,HumanActuator actuator,HumanSenses.Contact target,boolean external){
-        if(target==null||!target.visible()||target.distanceSquared()>2.25){cancelDefense();return false;}
+        if(target==null||!target.visible()||target.distanceSquared()>(phase==Phase.RECOVERING?49:2.25)){cancelDefense();return false;}
+        external=true; // Survival always owns movement; defense may fire but never pursue or cancel the route.
         if(defense!=null&&(!target.identity().equals(defended)||externalDefense!=external)){cancelDefense();nextDefense=o.nowNanos();}
         if(defense==null&&o.nowNanos()>=nextDefense){
             defended=target.identity();externalDefense=external;
-            defense=actuator.combat().begin(new Request(defended,Template.GUARD_BASIC,external),o.nowNanos());
+            defense=actuator.combat().begin(new Request(defended,Template.SURVIVAL_DEFENSE,external),o.nowNanos());
         }
         if(defense==null)return false;
         var result=defense.update(o.nowNanos());
@@ -109,12 +118,20 @@ public final class SurvivalModule implements HumanModule {
             cancelDefense();actuator.stopMoving();failedAttempts=0;nextAttempt=now;openingUntil=now;
             transition(Phase.RECOVERING,"pressure_relieved",facts,actuator);
         }
-        var target=target(o,actuator);publish(actuator,target);
+        var target=target(o,actuator);
+        boolean covering=phase==Phase.RECOVERING&&facts.reliable()&&!facts.pressured()&&(!imminent||supported)&&target!=null&&target.visible()
+            &&target.distanceSquared()<=49&&vitals.health()>=settings.reengageHealth()&&vitals.endurance()>=settings.reengageEndurance();
+        publish(actuator,target,covering);
         if(healing!=null){
             if(phase==Phase.RECOVERING&&healing.eligible(o)){
                 stopRecovery(now,actuator);cancelDefense();healing.update(o,actuator);return;
             }
             healing.interrupt(now,actuator);
+        }
+        // The recovery latch need not silence a healthy shooter with personal clearance.
+        if(covering){
+            stopRecovery(now,actuator);actuator.stopMoving();
+            defend(o,actuator,target,true);return;
         }
         if(phase==Phase.RECOVERING&&recoveryMovement!=null&&!imminent
             &&zombie.apocalipse.humans.healing.HealingModule.safe(o,settings.safeDistance())){
@@ -129,14 +146,15 @@ public final class SurvivalModule implements HumanModule {
             String problem=result==FAILED?"route_failed":result==SUCCEEDED?null:now>=routeDeadline?"route_timeout":actuator.survival().routeProblem(now);
             if(result==RUNNING&&problem==null){defend(o,actuator,target,true);publish(actuator,target);return;}
             if(result!=SUCCEEDED)actuator.survival().failed("route_timeout".equals(problem),now);
-            cancelDefense();actuator.stopMoving();
+            actuator.stopMoving();
             if(result==SUCCEEDED){failedAttempts=0;nextAttempt=now+settings.retryMs()*1_000_000L;transition(Phase.RECOVERING,"arrived",facts,actuator);}
             else failed(now,problem,facts,actuator);
         }
         if(phase==Phase.CREATE_OPENING&&now>=openingUntil)transition(Phase.CORNERED,"opening_window_ended",facts,actuator);
         boolean nearby=imminent&&!supported||facts.pressured()&&!facts.threats().isEmpty();
         if(nearby&&now>=nextAttempt&&phase!=Phase.CREATE_OPENING){
-            cancelDefense();actuator.stopMoving();publish(actuator,target);
+            // Defensive attacks own no movement; a route retry must not restart their windup.
+            actuator.stopMoving();publish(actuator,target);
             if(o.movementAvailable()&&!o.state().injuries().immobile()&&!o.state().injuries().downed()
                 &&actuator.survival().escape(facts.threats(),settings,now,failedAttempts>=2)){
                 routeDeadline=now+settings.routeTimeoutMs()*1_000_000L;

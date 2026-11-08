@@ -15,7 +15,8 @@ final class ServerHumanWeaponBackend implements ServerHumanCombat.Backend {
         var approach=new ServerHumanCombatApproach(human,target);
         if(request.template()==HumanCombat.Template.SQUAD_ASSIST)
             approach.assistanceScope(tile->human.squadAssist!=null&&human.squadAssist.contains(tile.x()+.5F,tile.y()+.5F,human.player.getZi()));
-        var mode=HumanWeaponCombat.Mode.valueOf(System.getProperty("apocbr.npc.combat.testWeapon","AUTO").trim().toUpperCase(Locale.ROOT));
+        var configuredMode=HumanWeaponCombat.Mode.valueOf(System.getProperty("apocbr.npc.combat.testWeapon","AUTO").trim().toUpperCase(Locale.ROOT));
+        var mode=request.template()==HumanCombat.Template.SURVIVAL_DEFENSE&&approach.distance()>1.5?HumanWeaponCombat.Mode.RANGED:configuredMode;
         return new HumanWeaponCombat(human.inventory,new HumanWeaponCombat.Operations(){
             public boolean canAttackMoving(){return human.actuator.intent().guarded()&&!human.movement.traversing();}
             public double distance(){return approach.distance();}

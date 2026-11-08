@@ -155,6 +155,8 @@ public class SquadTest {
   check(runtime.selectedModule().equals("engage-zombies")&&assistance.approaches==1,"existing engagement schedule adopts assistance without a database migration");
   var crowd=new ArrayList<Contact>();for(int i=0;i<4;i++)crowd.add(contact(id(i+10,1),4,100_000_000L,true));
   runtime.update(observation(100_000_000L,crowd),actuator);
+  check(runtime.selectedModule().equals("engage-zombies"),"four nearby zombies remain within one member capacity");
+  crowd.add(contact(id(19,1),4,100_000_000L,true));runtime.update(observation(200_000_000L,crowd),actuator);
   check(runtime.selectedModule().equals("survival")&&assistance.stops==1,"actual survival policy preempts and cancels squad approach");
   runtime.suspend(200_000_000L,actuator);int begins=actuator.begins;runtime.update(observation(300_000_000L,List.of()),actuator);
   check(actuator.begins==begins,"exclusive suspension cannot start support combat");
@@ -204,6 +206,8 @@ public class SquadTest {
   var nativeRetreat=new ServerHumanSurvival(fleeing);
   check(nativeRetreat.escape(contacts,SurvivalSettings.DEFAULT,100_000_000L),"native escape adapter consumes the support snapshot");
   var end=fleeing.movement.lastRoute.getLast();
+  check(fleeing.movement.lastPolicy==fleeing.movement,"escape executes against physical scope, not planning occupancy or squad territory");
+  fleeing.movement.freeBodies=false;check(fleeing.movement.lastPolicy.walkable(end),"a later whole-tile occupant does not manufacture scope rejection before physical step validation");fleeing.movement.freeBodies=true;
   double original=Math.hypot(fleeing.player.x-helper.player.x,fleeing.player.y-helper.player.y);
   check(Math.hypot(end.x()+.5-helper.player.x,end.y()+.5-helper.player.y)<original,"native retreat gradually closes with the pursuing helper behind the threats");
   check(fleeing.squadAssist.retreatSupport(S).isEmpty(),"stale support samples cannot steer retreat");
@@ -257,9 +261,58 @@ public class SquadTest {
   try{new RetreatPlanner.Rendezvous(Double.NaN,0);throw new AssertionError();}catch(IllegalArgumentException expected){checks++;}
  }
  static HumanObservation supported(long now,int count,HumanState state,HumanObservation.Support support){
-  var contacts=new ArrayList<Contact>();for(int n=0;n<count;n++)contacts.add(contact(id(100+n,1),1,now,true));
+  var contacts=new ArrayList<Contact>();for(int n=0;n<count;n++)contacts.add(contact(id(100+n,1),9,now,true));
   var frame=frame(now,contacts);
   return new HumanObservation(now,List.of(),true,state,frame,new HumanTerritory(true,true,contacts.stream().map(Contact::identity).collect(java.util.stream.Collectors.toSet())),frame,support);
+ }
+ static void retainedDefense(){
+  class Motor extends Flight {HumanActuator.MotionStatus motion=HumanActuator.MotionStatus.RUNNING;public HumanActuator.MotionStatus updateMovement(long now){return motion;}}
+  var module=new SurvivalModule(SurvivalSettings.DEFAULT);var a=new Motor();
+  var low=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Damage(.8f,0,0,0));
+  long[] times={0,100_000_000L,200_000_000L,2_200_000_000L,2_300_000_000L};
+  for(long now:times){
+   a.motion=now==200_000_000L?HumanActuator.MotionStatus.FAILED:HumanActuator.MotionStatus.RUNNING;
+   var sight=frame(now,List.of(contact(id(800,1),1,now,true)));
+   module.update(new HumanObservation(now,List.of(),true,low,sight,HumanTerritory.UNAVAILABLE),a);
+  }
+  check(a.begins==1&&a.cancels==0&&a.escapes==2,"route failure and retry preserve a valid close defensive windup, including outside patrol bounds");
+ }
+ static void engagementCapacity(){
+  var base=supported(0,12,HumanState.INITIAL,new HumanObservation.Support(0,2));
+  check(!ThreatAssessment.assess(base,SurvivalSettings.DEFAULT).pressured(),"three ready members hold combat against twelve nearby zombies");
+  check(!ThreatAssessment.assess(supported(0,4,HumanState.INITIAL,HumanObservation.Support.NONE),SurvivalSettings.DEFAULT).pressured(),"solo member handles four nearby zombies");
+  var tight=new ArrayList<Contact>();for(int n=0;n<5;n++)tight.add(contact(id(300+n,1),1,0,true));
+  var frame=frame(0,tight);var surrounded=new HumanObservation(0,List.of(),true,HumanState.INITIAL,frame,base.territory(),frame,base.support());
+  check(ThreatAssessment.assess(surrounded,SurvivalSettings.DEFAULT).pressure().equals("surrounded"),"five immediate contacts trigger personal emergency despite healthy squad capacity");
+  var helper=new SurvivalModule(SurvivalSettings.DEFAULT);var victim=new SurvivalModule(SurvivalSettings.DEFAULT);
+  helper.update(base,new Flight());victim.update(surrounded,new Flight());
+  check(helper.phase()==SurvivalModule.Phase.SAFE&&victim.phase()==SurvivalModule.Phase.ESCAPING,"one surrounded member escapes while capable helpers retain normal engagement");
+  var recovering=new SurvivalModule(SurvivalSettings.DEFAULT);var actuator=new Actuator();
+  recovering.update(supported(0,5,HumanState.INITIAL,HumanObservation.Support.NONE),actuator);
+  recovering.update(supported(S,1,HumanState.INITIAL,new HumanObservation.Support(S,1)),actuator);
+  recovering.update(supported(2*S,1,HumanState.INITIAL,new HumanObservation.Support(2*S,1)),actuator);
+  check(recovering.phase()==SurvivalModule.Phase.RECOVERING&&actuator.request!=null
+    &&actuator.request.template()==Template.SURVIVAL_DEFENSE&&actuator.request.externalMovement(),"safe recovery provides stationary ranged cover without releasing the survival latch");
+  var nativeActor=new ServerHuman("defense","solo",0,route());nativeActor.territory.inside=false;
+  var module=new SurvivalModule(SurvivalSettings.DEFAULT);nativeActor.activity.behavior=new HumanModuleRuntime(List.of(new HumanModuleRuntime.Entry("survival",10,100,module)));
+  var low=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Damage(.8f,0,0,0));
+  module.update(supported(0,0,low,HumanObservation.Support.NONE),new Flight());
+  var zid=id(600,1);var z=zombie(nativeActor.player.x+1,nativeActor.player.y);see(nativeActor,zid,z,0);
+  var nativeCombat=new ServerHumanCombat(nativeActor);
+  check(nativeCombat.begin(new Request(zid,Template.SURVIVAL_DEFENSE,true),0).update(0).status()==Status.COMPLETED,"immediate survival defense works outside patrol territory");
+  check(nativeCombat.begin(new Request(zid,Template.GUARD_BASIC),0).update(0).reason()==Reason.OUTSIDE_TERRITORY,"ordinary patrol authorization still rejects outside targets");
+  check(nativeCombat.begin(new Request(zid,Template.SURVIVAL_DEFENSE),0).update(0).reason()==Reason.OUTSIDE_TERRITORY,"survival cannot use defense permission to take over movement or pursue");
+  z.x=nativeActor.player.x+4;see(nativeActor,zid,z,0);
+  check(nativeCombat.begin(new Request(zid,Template.SURVIVAL_DEFENSE,true),0).update(0).status()==Status.COMPLETED,"fresh cleared recovery can fire outside assigned area without pursuit");
+  int[] updates={0},cancelled={0};
+  var sustained=new ServerHumanCombat(nativeActor,(a,t,id,r,n)->new Execution(){public Result update(long at){updates[0]++;return new Result(Status.RUNNING,Reason.NONE);}public void cancel(Reason why){cancelled[0]++;}});
+  var cover=sustained.begin(new Request(zid,Template.SURVIVAL_DEFENSE,true),0);check(cover.update(0).status()==Status.RUNNING,"stationary cover owns an ongoing validated backend lease");
+  nativeActor.perception.frame=frame(0,List.of(contact(zid,16,0,true),contact(id(601,1),1,0,true)));
+  check(cover.update(0).reason()==Reason.BUSY&&updates[0]==1&&cancelled[0]==1,"new personal contact cancels ranged cover before a later backend update");
+  see(nativeActor,zid,z,0);z.x=nativeActor.player.x+8;see(nativeActor,zid,z,0);
+  check(nativeCombat.begin(new Request(zid,Template.SURVIVAL_DEFENSE,true),0).update(0).reason()==Reason.OUTSIDE_TERRITORY,"survival cover cannot pursue or shoot beyond its seven-tile envelope");
+  nativeActor.activity.mode=HumanActivityController.Mode.DIALOGUE;
+  check(nativeCombat.begin(new Request(zid,Template.SURVIVAL_DEFENSE,true),0).update(0).reason()==Reason.OUTSIDE_TERRITORY,"exclusive dialogue forbids survival fire");
  }
  static void localStrength(){
   var groups=new ServerHumanGroups();var a=new ServerHuman("a","squad",0,route());var b=new ServerHuman("b","squad",1,route());var c=new ServerHuman("c","squad",2,route());
@@ -269,7 +322,7 @@ public class SquadTest {
    var facts=ThreatAssessment.assess(supported(0,6,HumanState.INITIAL,h.squadAssist.strength()),SurvivalSettings.DEFAULT);
    check(facts.allies()==2&&facts.crowdLimit()==12&&!facts.pressured(),"six zombies facing three capable nearby squadmates do not trigger solo retreat");
   }
-  check(ThreatAssessment.assess(supported(0,12,HumanState.INITIAL,a.squadAssist.strength()),SurvivalSettings.DEFAULT).pressured(),"a truly overwhelming crowd still forces a squad retreat");
+  check(ThreatAssessment.assess(supported(0,13,HumanState.INITIAL,a.squadAssist.strength()),SurvivalSettings.DEFAULT).pressured(),"a truly overwhelming crowd still forces a squad retreat");
   check(ThreatAssessment.assess(supported(500_000_001L,6,HumanState.INITIAL,a.squadAssist.strength()),SurvivalSettings.DEFAULT).allies()==0,"stale strength fails closed to solo capacity");
   check(ThreatAssessment.assess(supported(-1,6,HumanState.INITIAL,a.squadAssist.strength()),SurvivalSettings.DEFAULT).allies()==0,"future strength cannot increase capacity");
   var low=HumanStateReducer.reduce(HumanState.INITIAL,new HumanMutation.Damage(.8f,0,0,0));
@@ -311,7 +364,7 @@ public class SquadTest {
   runtime.update(supported(11*S,6,HumanState.INITIAL,b.squadAssist.strength()),new Flight());
   check(runtime.selectedModule().equals("survival"),"loss of local reinforcements restores normal retreat priority");
  }
- public static void main(String[] args){board();policy();adapters();arbitration();distress();relief();retreatPlanning();localStrength();System.out.println("Squad assistance: "+checks+" assertions passed (42.22.1 production policies/adapters; engine doubles)");}
+ public static void main(String[] args){board();policy();adapters();arbitration();distress();relief();retreatPlanning();retainedDefense();engagementCapacity();localStrength();System.out.println("Squad assistance: "+checks+" assertions passed (42.22.1 production policies/adapters; engine doubles)");}
 }
 '''
 
