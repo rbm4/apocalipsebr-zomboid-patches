@@ -54,7 +54,7 @@ Use the version explicitly requested by the user or implicitly identified by the
 task's paths, active files, logs or existing patch context. If no version is
 identified, select the latest available **server** version automatically: compare
 unsuffixed numeric version directories numerically, excluding `-client` and other
-suffixes. At this update that default is **42.22.1** (source carry-forward target;
+suffixes. At this update that default is **42.22.2** (source carry-forward target;
 runtime and deployment validation remain pending); discover directories again
 instead of treating this number as permanent. Do not ask the user to select a
 version merely because they omitted it. Explicit client work still targets its
@@ -64,8 +64,9 @@ separate client directory and exact baseline.
 
 All new version-specific documentation belongs under `<version>/docs/`, including
 feature architecture, configuration, investigations, telemetry explanations and
-issue resolutions. For current work start with the [42.22.1 documentation index](42.22.1/docs/README.md)
-and [42.22.0 to 42.22.1 compatibility audit](42.22.1/docs/reports/2026-11-04-port-42-22-0-to-42-22-1.md).
+issue resolutions. For current work start with the [42.22.2 documentation index](42.22.2/docs/README.md)
+and [42.22.1 to 42.22.2 compatibility audit](42.22.2/docs/reports/2026-11-08-port-42-22-1-to-42-22-2.md).
+The [42.22.1 index](42.22.1/docs/README.md) owns the carried implementation guides.
 The [42.21.0 index](42.21.0/docs/README.md) remains the previous build's feature reference;
 do not treat its implementations or measurements as verified on 42.22.0.
 Do not create new guide copies in the version root or a nested `docs/docs/`.
@@ -303,7 +304,23 @@ Do not deploy rendering or UI classes as server patches unless the same class is
 
 A patch is not automatically valid for a newer build even if the class name is unchanged.
 
-### Current 42.22.1 carry-forward checkpoint
+### Current 42.22.2 carry-forward checkpoint
+
+On 2026-11-08 the user authorized copying the current 42.22.1 patched sources and
+build scripts and applying the audited GameServer changes. The scripted copy
+verified 351 files: all 339 sources, two dependency JARs, eight tools and both
+build scripts. Target vanilla remains unchanged. GameServer differs only in two
+upstream revision literals; Windows/Linux script labels and the retirement
+manifest target now identify 42.22.2. The actual target Windows BuildOnly passed
+with javac25.0.4: 339 sources,984 classes, revision3d39148846/world251. Artifacts
+are retained under 42.22.2/artifacts/build-2026-11-08 (ignored). No deployment,
+launcher edit, database migration or commit was performed. Storage/event labels
+remain inherited42.22.0; cleanup/runtime and other inherited limitations remain
+open. See the target execution report and receipts in its documentation index.
+Current NPC architecture/authority contracts below continue to apply to the
+carried42.22.2 implementation; older checkpoint counts remain historical.
+
+### Historical 42.22.1 carry-forward checkpoint
 
 On 2026-11-04 the user authorized copying the complete 42.22.0 working tree into
 42.22.1, applying the audited GameServer merge and committing the progression.
