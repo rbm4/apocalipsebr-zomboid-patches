@@ -60,7 +60,12 @@ public final class ApocBRModEntities {
         var context=ApocBRPlayerRelationalMutations.entityContext(player);
         Map<String,Object> result=new LinkedHashMap<>();
         result.put("status",context==null?"IDENTITY_PENDING":"OK");
-        if(context!=null){result.put("characterId",context.character().toString());result.put("session",context.session().toString());}
+        if(context!=null){
+            result.put("characterId",context.character().toString());
+            result.put("session",context.session().toString());
+            result.put("sourceServerId",ApocBRPayloadProvenance.configuredServerId());
+            result.put("steamId",Long.toUnsignedString(player.getSteamID()));
+        }
         return (KahluaTable)lua(result);
     }
     private record Row(Map<String,Object> values,long revision) {}

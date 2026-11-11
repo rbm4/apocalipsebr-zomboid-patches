@@ -2719,6 +2719,8 @@ public final class LuaManager {
                 this.setExposed(zombie.network.ApocBRManagedGenerators.class);
                 this.setExposed(zombie.apocalipse.events.ApocBREventControl.class);
                 this.setExposed(zombie.network.ApocBRRadioBridge.class);
+                this.setExposed(zombie.apocbr.api.ApocBrApiBridge.class);
+                this.setExposed(zombie.apocbr.api.ApocBrApiBridge.Endpoint.class);
                 this.setExposed(zombie.savefile.ApocBRPlayerLogin.class);
             }
 

@@ -27,6 +27,13 @@ harness = harness.replace('static Thread owner=', '''
  }
  static Thread owner=''')
 harness = harness.replace('yield rows(sql.endsWith', 'if(sql.startsWith("SELECT p.active_character_id"))yield activeRows();if(sql.contains("WHERE character_id=? ORDER BY"))collectionReads++;yield rows(sql.endsWith')
+if os.environ.get('APOCBR_TEST_VERSION') == '42.22.2':
+    harness = harness.replace('ApocBRModEntities.install();', '''ApocBRModEntities.install();
+      KahluaTable identity=(KahluaTable)call("character",new zombie.characters.IsoPlayer());
+      check("76561198000000001".equals(identity.rawget("steamId")),"Steam identity retains all 17 digits");
+      check(Double.valueOf(1).equals(identity.rawget("sourceServerId")),"source server ID from Java configuration");
+      check("00000000-0000-0000-0000-000000000001".equals(identity.rawget("characterId")),"authoritative runtime character binding");
+    ''')
 harness = harness.replace('parameters=bound;yield changed;', 'parameters=bound;lastWriteParameters=new HashMap<>(bound);writes++;yield writes==failWriteAt?0:changed;')
 scoped_tests = r'''
   String session="00000000-0000-0000-0000-000000000010";
@@ -101,7 +108,7 @@ stubs = {
       public static class Platform {public se.krka.kahlua.vm.KahluaTable newTable(){return new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());}}
       public static Platform platform=new Platform();public static se.krka.kahlua.vm.KahluaTable env=platform.newTable();}''',
     'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static boolean server=true;}',
-    'zombie/characters/IsoPlayer.java': 'package zombie.characters; public class IsoPlayer {}',
+    'zombie/characters/IsoPlayer.java': 'package zombie.characters; public class IsoPlayer {public long getSteamID(){return 76561198000000001L;}}',
     'zombie/savefile/ApocBRPlayerRelationalMutations.java': '''package zombie.savefile;
       public class ApocBRPlayerRelationalMutations {
         static boolean current=true;

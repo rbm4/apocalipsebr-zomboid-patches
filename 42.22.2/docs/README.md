@@ -11,6 +11,8 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
+- 2026-11-11 — [Generic server Lua API bridge: character balance and bounded asynchronous callbacks](features/2026-11-11-generic-api-bridge.md)
+
 - 2026-11-11 — [NPC seating execution: modular mechanics and stock-client presentation](features/2026-11-11-npc-seating-execution.md)
 
 - 2026-11-11 ? [Managed native generators](features/2026-11-11-fixed-power-regions.md)
