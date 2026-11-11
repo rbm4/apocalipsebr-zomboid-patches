@@ -28,9 +28,11 @@ final class ServerHumanTransport {
         human.movement.announceTraversal(connection);
         human.actuator.announceCorpseDrag(connection);
         if(human.healing!=null)human.healing.requestAnnouncement(connection);
+        if(human.seating!=null)human.seating.transport.announce(connection);
     }
 
     static void idle(ServerHuman human, UdpConnection connection) {
+        if(human.seating!=null&&!human.seating.transport.movementAllowed(connection))return;
         var motion = human.movement.snapshot();
         movementPresentation(human, connection, motion.animation());
         movementPacket(human, motion).sendToClient(PacketTypes.PacketType.PlayerUpdateReliable, connection);
@@ -42,6 +44,7 @@ final class ServerHumanTransport {
         ServerHumanMovement.Snapshot motion = null;
         for (var viewer : human.viewers) {
             if (!human.isRelevant(viewer)) continue;
+            if(human.seating!=null&&!human.seating.transport.movementAllowed(viewer))continue;
             if (packet == null) {
                 motion = human.movement.snapshot();
                 packet = movementPacket(human, motion);
@@ -49,6 +52,14 @@ final class ServerHumanTransport {
             movementPresentation(human, viewer, motion.animation());
             packet.sendToClient(PacketTypes.PacketType.PlayerUpdateReliable, viewer);
         }
+    }
+
+    /** One native position publication at a seating boundary; never mutates the actor for a viewer. */
+    static void seatingPosition(ServerHuman human,UdpConnection viewer,zombie.apocalipse.humans.furniture.FurnitureAffordances.Position point){
+        var motion=human.movement.snapshot();
+        var snapshot=new ServerHumanMovement.Snapshot(point.x(),point.y(),point.z(),human.player.getDirectionAngleRadians(),
+            human.player.getDirectionAngleRadians(),ServerHumanMovement.Gait.IDLE,0,0,motion.animation());
+        movementPacket(human,snapshot).sendToClient(PacketTypes.PacketType.PlayerUpdateReliable,viewer);
     }
 
     private static PlayerPacketReliable movementPacket(ServerHuman human, ServerHumanMovement.Snapshot motion) {

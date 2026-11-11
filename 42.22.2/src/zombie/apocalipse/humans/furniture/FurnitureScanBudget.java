@@ -8,4 +8,6 @@ public final class FurnitureScanBudget {
     private void check(){if(Thread.currentThread()!=owner)throw new IllegalStateException("Furniture scan requires server owner");}
     public boolean square(){check();if(squares<=0)return false;squares--;return true;}
     public boolean object(){check();if(objects<=0)return false;objects--;return true;}
+    public int usedSquares(){check();return 256-squares;}
+    public int usedObjects(){check();return 512-objects;}
 }

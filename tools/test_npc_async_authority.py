@@ -1,4 +1,4 @@
-"""42.22.1 async authority split: production planner/bridge/module/navigation/worker.
+"""Exact-version async authority split: production planner/bridge/module/navigation/worker.
 
 Factory entry/worker binding/guard and native equip are extracted from production;
 world, Lua locks and native equipment are explicit doubles. No game deployment.
@@ -162,7 +162,7 @@ synchronized(factory){synchronized(FixtureLua.EVENT_MAP){failureWorker.start();w
 check(failureWorker.failed(),"failure publishes without entering factory/Lua monitors");}}
 failurePlanner.stop();failureWorker.shutdown();
 }
-public static void main(String[] args)throws Exception{valuesAndCapacity();bridgeAndExecution();locksAndFactory();System.out.println("42.22.1 async authority: "+checks+" checks passed; async="+ServerHumanFactory.ASYNC);}
+public static void main(String[] args)throws Exception{valuesAndCapacity();bridgeAndExecution();locksAndFactory();System.out.println("Async authority: "+checks+" checks passed; async="+ServerHumanFactory.ASYNC);}
 }
 class FixtureActuator implements HumanActuator {
 int begins,updates,cancels;public HumanCombat.Port combat(){return (request,now)->{begins++;return new HumanCombat.Execution(){public HumanCombat.Result update(long at){updates++;return new HumanCombat.Result(HumanCombat.Status.RUNNING,HumanCombat.Reason.NONE);}public void cancel(HumanCombat.Reason reason){cancels++;}};};}
@@ -244,6 +244,7 @@ static class NativePlayer {Object primary;Object getPrimaryHandItem(){return pri
         "state/HumanState.java", "state/HumanStateStore.java", "state/HumanMutation.java", "state/HumanStateReducer.java", "brain/HumanObservation.java", "brain/HumanSenses.java", "brain/HumanTerritory.java", "brain/HumanEngagement.java", "brain/HumanCombat.java",
         "brain/HumanBehavior.java", "brain/HumanModule.java", "brain/EngageZombiesModule.java", "brain/TacticalIntent.java", "traversal/TraversalEdge.java")]
     production += list((SRC / "movement").glob("*.java")) + list((SRC / "walking").glob("*.java"))
+    production += [p for p in (SRC / "furniture/FurnitureAffordances.java", SRC / "furniture/FurnitureDemand.java") if p.exists()]
     with tempfile.TemporaryDirectory(prefix="npc_async_authority_") as folder:
         tmp = Path(folder)
         sources = []
@@ -261,4 +262,8 @@ static class NativePlayer {Object primary;Object getPrimaryHandItem(){return pri
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", default="42.22.1", help="Exact repository target (default: 42.22.1)")
+    SRC = ROOT / parser.parse_args().version / "src/zombie/apocalipse/humans"
     main()

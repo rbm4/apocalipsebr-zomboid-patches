@@ -12,6 +12,7 @@ public final class HumanActionExecution {
     private java.util.List<HumanActionExecution> parallel;
     private int childIndex;
     private HumanActionExecution child;
+    private zombie.apocalipse.humans.seating.HumanSeating.Execution seating;
 
     public HumanActionExecution(HumanAction action) { this.action = Objects.requireNonNull(action); }
     public HumanAction action() { return action; }
@@ -26,6 +27,7 @@ public final class HumanActionExecution {
                 startedAt = now;
                 status = Status.RUNNING;
                 switch (action) {
+                    case HumanAction.Sit sit -> {seating=actuator.seating().begin(sit.request(),now);if(seating==null)settle(false);}
                     case HumanAction.Move move -> {
                         if (!actuator.startMovement(move.request(),now)) { actuator.stopMoving(); settle(false); }
                     }
@@ -46,6 +48,11 @@ public final class HumanActionExecution {
             }
             if (status != Status.RUNNING) return;
             switch (action) {
+                case HumanAction.Sit ignored -> {
+                    var result=seating.update(now);
+                    if(result==zombie.apocalipse.humans.seating.HumanSeating.Status.CANCELLED)status=Status.CANCELLED;
+                    else if(result!=zombie.apocalipse.humans.seating.HumanSeating.Status.RUNNING)settle(result==zombie.apocalipse.humans.seating.HumanSeating.Status.SUCCEEDED);
+                }
                 case HumanAction.Wait wait -> {
                     if (now - startedAt >= wait.durationNanos()) settle(true);
                 }
@@ -85,6 +92,7 @@ public final class HumanActionExecution {
             failure = exception.getClass().getSimpleName();
             if (action instanceof HumanAction.Emote) stopSafely(actuator);
             if (action instanceof HumanAction.Move) stopMovementSafely(actuator);
+            cancelSeating();
             if (child != null) child.cancel(actuator);
             cancelParallel(actuator);
             status = Status.FAILED;
@@ -95,6 +103,7 @@ public final class HumanActionExecution {
         if (terminal()) return;
         if (status == Status.RUNNING && action instanceof HumanAction.Emote) stopSafely(actuator);
         if (status == Status.RUNNING && action instanceof HumanAction.Move) stopMovementSafely(actuator);
+        cancelSeating();
         if (child != null) child.cancel(actuator);
         cancelParallel(actuator);
         status = Status.CANCELLED;
@@ -103,6 +112,7 @@ public final class HumanActionExecution {
     private void cancelParallel(HumanActuator actuator) {
         if (parallel != null) for (HumanActionExecution lane : parallel) lane.cancel(actuator);
     }
+    private void cancelSeating(){if(seating!=null)try{seating.cancel();}catch(RuntimeException ignored){/* Native owner still owns cleanup. */}}
 
     private void updateSequence(HumanAction.Sequence sequence, long now, HumanActuator actuator) {
         // Drain immediate commands; plan size/depth bounds cap work per update.

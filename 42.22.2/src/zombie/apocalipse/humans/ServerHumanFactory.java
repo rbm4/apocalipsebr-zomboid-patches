@@ -35,6 +35,7 @@ public final class ServerHumanFactory {
     private final Map<String, ServerHuman> humans = new LinkedHashMap<>();
     private final Map<Short, ServerHuman> byId = new HashMap<>();
     private final ServerHumanGroups groups=new ServerHumanGroups();
+    private ServerHumanFurniture furniture;
     private final ServerHumanZombieVictims zombieVictims = new ServerHumanZombieVictims();
     private final zombie.apocalipse.humans.traversal.TraversalWorld traversalWorld = new zombie.apocalipse.humans.traversal.TraversalWorld();
     private final Set<String> reservedNames = new HashSet<>();
@@ -230,6 +231,7 @@ public final class ServerHumanFactory {
         }
         boolean heartbeat = now >= nextUpdate;
         groups.update(now);
+        if(furniture!=null)furniture.capture(now,IsoWorld.instance.currentCell,GameServer.Players);
         if (heartbeat) nextUpdate = now + UPDATE_NANOS;
         java.util.List<String> dead = null;
         for (ServerHuman human : humans.values()) {
@@ -321,6 +323,10 @@ public final class ServerHumanFactory {
             try{groups.register(human);}catch(RuntimeException failure){human.dispose();throw failure;}
             var restored=checkpoints.get(key);
             if(restored!=null&&!respawn){human.player.setX(restored.x());human.player.setY(restored.y());human.player.setZ(restored.z());human.player.realx=restored.x();human.player.realy=restored.y();human.player.realz=(byte)restored.z();human.postX=restored.x();human.postY=restored.y();}
+            try{
+                if(furniture==null)furniture=new ServerHumanFurniture();
+                human.attachFurniture(furniture);
+            }catch(RuntimeException failure){groups.remove(human);human.dispose();throw failure;}
             humans.put(key,human); byId.put(id,human); instance.active(human.profile.revision());
             checkpoint(key,false);
             DebugLog.log("[ApocBR][ServerHumans] Spawned key=" + key + " profile=" + definition.profileId()
@@ -496,6 +502,10 @@ public final class ServerHumanFactory {
     /** Latest immutable sensor sample; reading does not scan or change contact memory. */
     public synchronized zombie.apocalipse.humans.brain.HumanSenses.Frame perception(String key){
         requireOwner();var human=humans.get(key);return human==null?null:human.perception.snapshot();
+    }
+    /** Latest detached furniture capture; never scans or exposes native bindings. */
+    public synchronized zombie.apocalipse.humans.furniture.FurnitureAffordances.Frame furniturePerception(String key){
+        requireOwner();var human=humans.get(key);return human==null?null:human.furnitureSnapshot();
     }
 
     static ServerHuman tradingHuman(short id) {

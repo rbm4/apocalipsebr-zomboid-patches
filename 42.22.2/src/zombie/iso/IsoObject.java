@@ -281,6 +281,9 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
     private boolean apocbrIdFloor;
     private long isoEntityNetId = -1L;
     private int lastObjectIndex = -1;
+    /** Runtime-only identity revision for server-owned cached world observations. Never serialized. */
+    private transient long apocbrLifetimeRevision;
+    public final long getApocbrLifetimeRevision() { return this.apocbrLifetimeRevision; }
     private final HashMap<Class<? extends ECSComponent>, ECSComponent> ecsComponentMap = new HashMap<>();
     private static IsoObject.IsoObjectFactory factoryIsoObject;
     private static IsoObject.IsoObjectFactory factoryVehicle;
@@ -1103,6 +1106,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
      * @param square the square to set
      */
     public void setSquare(IsoGridSquare square) {
+        if (this.square != square) this.apocbrLifetimeRevision++;
         this.square = square;
     }
 
@@ -2323,6 +2327,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
 
     @Override
     public void reset() {
+        this.apocbrLifetimeRevision++;
         super.reset();
         this.tintr = 1.0F;
         this.tintg = 1.0F;
@@ -4722,6 +4727,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
 
     @Override
     public void addToWorld() {
+        this.apocbrLifetimeRevision++;
         super.addToWorld();
         this.createContainersFromSpriteProperties();
 
@@ -4765,6 +4771,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
 
     @Override
     public void removeFromWorld() {
+        this.apocbrLifetimeRevision++;
         this.removeFromWorld(this.removeFromWorldToMeta);
         IsoCell cell = this.getCell();
         cell.addToProcessIsoObjectRemove(this);
@@ -4811,6 +4818,7 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
     }
 
     public void removeFromSquare() {
+        if (this.square != null) this.apocbrLifetimeRevision++;
         if (this.square != null) {
             this.square.getObjects().remove(this);
             this.square.getSpecialObjects().remove(this);

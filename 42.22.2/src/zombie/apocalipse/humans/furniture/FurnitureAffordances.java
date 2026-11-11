@@ -18,9 +18,18 @@ public final class FurnitureAffordances {
         public Approach {Objects.requireNonNull(position);
             if(!Set.of("Front","Left","Right").contains(side))throw new IllegalArgumentException("Invalid approach side");}
     }
-    public record Candidate(Token token,Kind kind,List<Approach> approaches,String facing,boolean occupied,long sampledAt) {
+    /** Native seating offsets and permitted entry sides; these do not establish reachable geometry. */
+    public record Seat(float offsetX,float offsetY,float height,Set<String> sides) {
+        public static final Seat UNKNOWN=new Seat(0,0,0,Set.of());
+        public Seat {sides=Set.copyOf(sides);
+            if(!Float.isFinite(offsetX)||!Float.isFinite(offsetY)||!Float.isFinite(height)||!Set.of("Front","Left","Right").containsAll(sides))
+                throw new IllegalArgumentException("Invalid native seating data");}
+    }
+    public record Candidate(Token token,Kind kind,List<Approach> approaches,String facing,boolean occupied,long sampledAt,Seat seat) {
+        public Candidate(Token token,Kind kind,List<Approach> approaches,String facing,boolean occupied,long sampledAt){this(token,kind,approaches,facing,occupied,sampledAt,Seat.UNKNOWN);}
         public Candidate {Objects.requireNonNull(token);Objects.requireNonNull(kind);approaches=List.copyOf(approaches);
-            if(approaches.isEmpty()||approaches.size()>3||!Set.of("N","S","W","E").contains(facing))throw new IllegalArgumentException("Invalid seating orientation");
+            Objects.requireNonNull(seat);
+            if(approaches.size()>3||!Set.of("N","S","W","E").contains(facing))throw new IllegalArgumentException("Invalid seating orientation");
             if(approaches.stream().anyMatch(a->a.position().z()!=token.z()))throw new IllegalArgumentException("Approach floor differs");}
         public boolean fresh(long now){return now>=sampledAt&&now-sampledAt<=2_000_000_000L;}
     }

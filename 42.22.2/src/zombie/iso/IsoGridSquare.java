@@ -9981,6 +9981,7 @@ public final class IsoGridSquare {
     }
 
     public boolean haveElectricity() {
+        if (zombie.network.ApocBRFixedPower.contains(this.x, this.y, this.z)) return true;
         return !SandboxOptions.getInstance().allowExteriorGenerator.getValue() && this.has(IsoFlagType.exterior)
             ? false
             : this.chunk != null && this.chunk.isGeneratorPoweringSquare(this.x, this.y, this.z);
@@ -12090,10 +12091,12 @@ public final class IsoGridSquare {
     }
 
     public boolean hasGridPower() {
+        if (zombie.network.ApocBRFixedPower.contains(this.x, this.y, this.z)) return true;
         return !this.isNoPower() && SandboxOptions.instance.doesPowerGridExist();
     }
 
     public boolean hasGridPower(int offset) {
+        if (zombie.network.ApocBRFixedPower.contains(this.x, this.y, this.z)) return true;
         return !this.isNoPower() && SandboxOptions.instance.doesPowerGridExist(offset);
     }
 

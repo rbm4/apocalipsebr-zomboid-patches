@@ -11,6 +11,9 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
+- 2026-11-11 ? [Server fixed-power regions](features/2026-11-11-fixed-power-regions.md)
+
+- 2026-11-11 — [NPC native furniture perception: current-room discovery and fair capture](features/2026-11-11-npc-furniture-native-perception.md)
 - 2026-11-11 — [NPC furniture foundation: observations and shared interaction leases](features/2026-11-11-npc-furniture-foundation.md)
 
 Consult the [42.22.1 index](../../42.22.1/docs/README.md) for inherited

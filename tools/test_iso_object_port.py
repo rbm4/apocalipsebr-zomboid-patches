@@ -1,4 +1,4 @@
-"""42.22.0 extracted ID getter/cache and final virtual-decode wrapper.
+"""Exact-version extracted ID getter/cache and final virtual-decode wrapper.
 
 Uses the production mutation-tracked list with counting subclasses; square,
 registry, native decoder and dictionary routing are explicit doubles.
@@ -22,6 +22,9 @@ def fixtures():
     native = extract_method(vanilla, "public long getEntityNetID()")
     assert helper[helper.index("{"):] == native[native.index("{"):]
     fields = source[source.index("    private static final boolean apocbrIdTelemetry"):source.index("    private long isoEntityNetId")]
+    # setSquare now also advances the target's runtime-only identity revision.
+    # Include its real declaration when exercising targets that implement it.
+    fields += "\n".join(line for line in source.splitlines() if "private transient long apocbrLifetimeRevision;" in line)
     cleanup = "\n".join(next(line for line in source.splitlines() if line.strip() == assignment) for assignment in (
         "this.isoEntityNetId = -1L;", "this.apocbrIdSquare = null;", "this.apocbrIdObjects = null;", "this.apocbrCachedEntityID = -1L;"))
     assert not any(api in source for api in ("PZArrayList", "apocbrElementsExposed", "apocbrMutationVersion"))
@@ -115,4 +118,8 @@ def main():
 
 
 if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", default="42.22.0", help="Exact repository target (default: 42.22.0)")
+    VERSION = ROOT / parser.parse_args().version
     main()

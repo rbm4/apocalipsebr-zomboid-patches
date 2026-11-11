@@ -32,6 +32,15 @@ final class ServerHuman {
     final ServerHumanInventory inventory;
     final ServerHumanSpeech speech;
     ServerHumanPlanning planning;
+    private ServerHumanFurniture furnitureOwner;
+    private ServerHumanFurniture.Observer furniture;
+    void attachFurniture(ServerHumanFurniture service){
+        requireAuthority();if(furnitureOwner!=null)throw new IllegalStateException("Furniture already bound");
+        furniture=service.register(this);furnitureOwner=service;
+    }
+    zombie.apocalipse.humans.furniture.FurnitureAffordances.Frame furnitureSnapshot(){
+        requireAuthority();return furniture==null?zombie.apocalipse.humans.furniture.FurnitureAffordances.Frame.EMPTY:furniture.snapshot();
+    }
     void attachPlanning(zombie.apocalipse.humans.planning.NpcDecisionPlanner planner) {
         if(planning!=null)throw new IllegalStateException("Planning already bound");
         planning=new ServerHumanPlanning(planner);
@@ -144,7 +153,10 @@ final class ServerHuman {
         ServerHumanTrading.close(this);
         movement.close();
         perception.clear();
-        } finally {if(planning!=null)planning.close();}
+        } finally {
+            try{if(furnitureOwner!=null){furnitureOwner.remove(this);furnitureOwner=null;furniture=null;}}
+            finally{if(planning!=null)planning.close();}
+        }
     }
     void dispose() {
         if (disposed) return;

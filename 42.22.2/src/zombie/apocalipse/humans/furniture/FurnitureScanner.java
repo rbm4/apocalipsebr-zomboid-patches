@@ -7,9 +7,10 @@ import static zombie.apocalipse.humans.furniture.FurnitureAffordances.*;
 public final class FurnitureScanner {
     private final Thread owner=Thread.currentThread();
     public interface World {
+        long UNTRACKED_REVISION=Long.MIN_VALUE;
         /** -1 for unavailable; count must not require an object-list scan. */
         int objectCount(int x,int y,int z);
-        /** Changes whenever square object membership/order changes, including same-size replacement. */
+        /** Changes on membership/order changes; UNTRACKED_REVISION if native lists cannot prove this. */
         long revision(int x,int y,int z);
         /** At most one candidate per inspected object for the initial seat capability. */
         Candidate inspect(int x,int y,int z,int index,Set<Kind> kinds,long now);
@@ -23,7 +24,7 @@ public final class FurnitureScanner {
     private boolean scanning,loaded,truncated;
     private int available;
     private long squareRevision;
-    private boolean stale;
+    private boolean stale,uncertain;
     private long next;
     public FurnitureScanner(FurnitureDemand demand) {
         this.demand=Objects.requireNonNull(demand);var cells=new ArrayList<Offset>();
@@ -39,7 +40,7 @@ public final class FurnitureScanner {
         if(offsets.isEmpty())return Frame.EMPTY;
         if(frame.sampled()&&(x!=originX||y!=originY||z!=originZ))clear();
         if(!scanning&&frame.sampled()&&now<next)return frame;
-        if(!scanning){scanning=true;cursor=object=0;originX=x;originY=y;originZ=z;loaded=true;truncated=stale=false;available=0;collected.clear();}
+        if(!scanning){scanning=true;cursor=object=0;originX=x;originY=y;originZ=z;loaded=true;truncated=stale=uncertain=false;available=0;collected.clear();}
         stale|=collected.values().removeIf(c->!c.fresh(now));
         int squares=0,objects=0;
         while(cursor<offsets.size()&&squares<64&&objects<128) {
@@ -49,7 +50,10 @@ public final class FurnitureScanner {
             if(count<0){loaded=false;cursor++;object=0;continue;}
             available++;
             long revision=world.revision(cx,cy,z);
-            if(object>0&&revision!=squareRevision)object=0;
+            if(object>0&&revision==World.UNTRACKED_REVISION)uncertain=true;
+            if(object>0&&revision!=squareRevision){
+                object=0;collected.keySet().removeIf(t->t.x()==cx&&t.y()==cy&&t.z()==z);
+            }
             squareRevision=revision;
             while(object<count&&objects<128) {
                 if(!budget.object())break;
@@ -64,7 +68,7 @@ public final class FurnitureScanner {
             if(object<count)break;cursor++;object=0;
         }
         boolean complete=cursor==offsets.size();
-        frame=new Frame(true,now,List.copyOf(collected.values()),available==0?Coverage.UNAVAILABLE:complete&&loaded&&!truncated&&!stale?Coverage.COMPLETE:Coverage.PARTIAL,truncated,new Work(squares,objects));
+        frame=new Frame(true,now,List.copyOf(collected.values()),available==0?Coverage.UNAVAILABLE:complete&&loaded&&!truncated&&!stale&&!uncertain?Coverage.COMPLETE:Coverage.PARTIAL,truncated,new Work(squares,objects));
         if(complete){scanning=false;next=now+demand.intervalMs()*1_000_000L;}
         return frame;
     }

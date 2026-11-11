@@ -2716,6 +2716,7 @@ public final class LuaManager {
             this.setExposed(TradingState.class);
             if (GameServer.server) {
                 this.setExposed(zombie.network.ApocBRLobbyStreaming.class);
+                this.setExposed(zombie.network.ApocBRFixedPower.class);
                 this.setExposed(zombie.apocalipse.events.ApocBREventControl.class);
                 this.setExposed(zombie.network.ApocBRRadioBridge.class);
                 this.setExposed(zombie.savefile.ApocBRPlayerLogin.class);

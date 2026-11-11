@@ -4,7 +4,7 @@ import java.util.Objects;
 
 /** Single owner of autonomous versus exclusive interaction control. */
 public final class HumanActivityController {
-    public enum Mode { AUTONOMOUS, DIALOGUE, TRADE, RECORDING_SALE, STOPPED }
+    public enum Mode { AUTONOMOUS, DIALOGUE, TRADE, RECORDING_SALE, STOPPED, ACTION }
     private final HumanBehavior behavior;
     private final boolean dialogue, trade;
     private String failure;
@@ -12,6 +12,19 @@ public final class HumanActivityController {
     public String failure() { return failure; }
     private Mode mode = Mode.AUTONOMOUS;
     private HumanObservation.Identity visitor;
+    private HumanActionExecution action;
+    /** Trusted commands use the same exclusive lifecycle as other activities. */
+    public boolean beginAction(HumanAction request,long now,HumanActuator actuator){
+        Objects.requireNonNull(request);
+        if(mode!=Mode.AUTONOMOUS||blocked||!behavior.available())return false;
+        var execution=new HumanActionExecution(request);
+        try{behavior.suspend(now,actuator);action=execution;mode=Mode.ACTION;return true;}
+        catch(RuntimeException problem){fail(problem,now,actuator);return false;}
+    }
+    public void cancelAction(long now,HumanActuator actuator){
+        if(mode!=Mode.ACTION)return;
+        action.cancel(actuator);action=null;finish(now,actuator);
+    }
     public HumanActivityController(HumanBehavior behavior, boolean dialogue, boolean trade) {
         this.behavior = Objects.requireNonNull(behavior); this.dialogue = dialogue; this.trade = trade;
     }
@@ -28,7 +41,7 @@ public final class HumanActivityController {
                        zombie.apocalipse.humans.state.HumanState state) {
         if (mode == Mode.STOPPED || blocked) return;
         try {
-            update(mode == Mode.AUTONOMOUS && behavior.needsPerception() ? perceive.apply(now)
+            update((mode == Mode.AUTONOMOUS||mode==Mode.ACTION) && behavior.needsPerception() ? perceive.apply(now)
                 : new HumanObservation(now,java.util.List.of(),false,state), actuator);
         } catch (RuntimeException problem) { fail(problem,now,actuator); }
     }
@@ -36,6 +49,11 @@ public final class HumanActivityController {
         if(blocked)return;
         try {
             if (mode == Mode.AUTONOMOUS) behavior.update(observation, actuator);
+            else if(mode==Mode.ACTION){
+                if(behavior.emergency(observation)){cancelAction(observation.nowNanos(),actuator);return;}
+                action.update(observation.nowNanos(),actuator);
+                if(action.terminal()){action=null;finish(observation.nowNanos(),actuator);}
+            }
             else if (mode == Mode.TRADE || mode == Mode.DIALOGUE) actuator.face(visitor);
         } catch (RuntimeException problem) { fail(problem,observation.nowNanos(),actuator); }
     }
@@ -75,6 +93,7 @@ public final class HumanActivityController {
     /** Generic external availability gate; callers close any exclusive lease before blocking. */
     public void setBlocked(boolean value,long now,HumanActuator actuator) {
         if(blocked==value||mode==Mode.STOPPED)return;
+        if(mode==Mode.ACTION)cancelAction(now,actuator);
         if(mode!=Mode.AUTONOMOUS)throw new IllegalStateException("Release exclusive activity before blocking");
         blocked=value;
         try {
@@ -85,6 +104,7 @@ public final class HumanActivityController {
     public void stop(long now, HumanActuator actuator) {
         if (mode == Mode.STOPPED) return;
         mode = Mode.STOPPED; visitor = null;
+        if(action!=null){action.cancel(actuator);action=null;}
         try { behavior.stop(now, actuator); } catch (RuntimeException problem) { if (failure == null) failure = problem.getClass().getSimpleName(); }
         try { actuator.stopMoving(); } catch (RuntimeException ignored) { }
         try { actuator.stopEmote(); } catch (RuntimeException ignored) { }

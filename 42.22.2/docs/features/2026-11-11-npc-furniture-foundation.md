@@ -2,8 +2,10 @@
 
 Target: **42.22.2 server**. Status: initial foundation implemented in source on
 2026-11-11. The production fixture and exact target-JAR compilation pass. Nothing
-was deployed. Native furniture classification, rest module policy, seating
-geometry, sit/stand packets and interaction handoff remain subsequent work in
+was deployed. Native classification and fair capture were subsequently connected
+in the [native perception step](2026-11-11-npc-furniture-native-perception.md).
+Rest module policy, seating geometry, sit/stand packets and interaction handoff
+remain subsequent work in
 the [implementation plan](../reports/2026-11-10-npc-furniture-rest-implementation-plan.md).
 Existing profiles do not acquire sitting behavior from this change.
 
@@ -31,7 +33,7 @@ does not itself move an actor, retry a policy or authorize sitting.
 | [FurnitureAffordances](../../src/zombie/apocalipse/humans/furniture/FurnitureAffordances.java) | Immutable observation DTOs: target token, kind, positions/approaches, orientation, observed occupancy, per-candidate time, frame coverage and work counts. Initial kind is `SIT`. No live object in a frame. |
 | [FurnitureDemand](../../src/zombie/apocalipse/humans/furniture/FurnitureDemand.java) | Module-declared immutable sensing needs. Aggregate kinds, maximum radius and minimum sampling interval. Empty demand requires no scans. |
 | [FurnitureScanner](../../src/zombie/apocalipse/humans/furniture/FurnitureScanner.java) | Construction-thread-owned resumable discovery over an injected world port. Budgets native square/object visits and publishes detached frames. No seat selection or hostility policy. |
-| [FurnitureScanBudget](../../src/zombie/apocalipse/humans/furniture/FurnitureScanBudget.java) | Authoritative-pass shared square/object counters, with construction-thread checks. Future factory orchestration resets and distributes it. |
+| [FurnitureScanBudget](../../src/zombie/apocalipse/humans/furniture/FurnitureScanBudget.java) | Authoritative-pass shared square/object counters, with construction-thread checks. The native capture scheduler resets and distributes it. |
 | [FurnitureSelector](../../src/zombie/apocalipse/humans/furniture/FurnitureSelector.java) | Pure bounded ranking of fresh observed candidates/approaches, excluding occupied/refused targets and different floors. A choice still requires live validation and reservation. |
 | [HumanModule](../../src/zombie/apocalipse/humans/brain/HumanModule.java), [HumanModuleRuntime](../../src/zombie/apocalipse/humans/brain/HumanModuleRuntime.java) | Generic sensing-demand declaration and aggregation. Defaults to none; no module ID or actor-name branching in the sensor. |
 | [HumanObservation](../../src/zombie/apocalipse/humans/brain/HumanObservation.java) | Adds a detached furniture frame while retaining previous constructors, including the eight-argument signature. Existing callers receive `Frame.EMPTY`; living-contact sensing remains independent. |
@@ -60,8 +62,8 @@ a resumed square, the scanner restarts that square's object cursor.
 The world port's count/revision queries must be constant-time and inspect must
 be bounded. The port must return a candidate for the requested square/kind with
 the actual observation timestamp. The current scanner checks this contract;
-native implementation of that port is pending. It must not hide another full
-object scan inside one budgeted `inspect` call.
+the native implementation now follows that contract as documented in the native
+perception guide. It does not hide another full object scan inside a budgeted call.
 
 Partial sweeps, missing squares, truncation and expired candidates prevent a
 complete-coverage claim. A completely unavailable area or denied initial budget
@@ -70,10 +72,10 @@ earlier in a long sweep. Candidates expire after two seconds for selection;
 frame freshness is checked separately. Origin changes invalidate the cached
 scan immediately, even before its routine sampling deadline.
 
-The shared budget enforces a global ceiling; fair allocation among actors still
-requires the future factory round-robin integration. The current fixture proves
-bounded work and per-observer scan progression, not global scheduling fairness
-or measured gameplay performance.
+The shared budget enforces a global ceiling. Fair allocation among actors is now
+implemented and tested in the native perception step; the original foundation
+fixture below covers per-observer progression and global work ceilings, not
+measured gameplay performance.
 
 ## Failure and cancellation contracts
 
@@ -89,7 +91,8 @@ or measured gameplay performance.
   Generation numbers are not recycled by clear, removal or object reuse.
 - Clearing a scanner releases retained observations/progress. Native port
   exceptions propagate to the caller; there is no swallowed failure or fabricated
-  empty success. Actor/lifecycle cleanup of the future native adapter is pending.
+  empty success. Native observer failure isolation and actor/lifecycle cleanup
+  are now wired in the native perception step.
 
 The async planner may receive immutable frames as part of a copied observation;
 it receives no scanner, binding registry, lease service or world port. All mutable
@@ -127,9 +130,9 @@ with code zero and performed no deployment.
 
 ## Next implementation boundary
 
-Implement the server-native world adapter and globally fair capture scheduling,
-then registered rest settings/policy, profile composition and the per-actor
-seating executor. Validate dedicated-server geometry from target native seating
+The [server-native adapter and fair capture scheduling](2026-11-11-npc-furniture-native-perception.md)
+are implemented. Continue with registered rest settings/policy, profile
+composition and the per-actor seating executor. Validate dedicated-server geometry from target native seating
 and animation data for all three sides. Extend native packet presentation,
 posture-aware movement/facing, session handoff, patrol opportunities and lifecycle
 cleanup as specified in the plan. No new `rest` profile/module is registered

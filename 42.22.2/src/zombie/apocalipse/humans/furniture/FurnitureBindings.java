@@ -30,6 +30,8 @@ public final class FurnitureBindings<T> {
         check();Objects.requireNonNull(token);var binding=generations.get(token.generation());
         return binding!=null&&binding.x==token.x()&&binding.y==token.y()&&binding.z==token.z()?binding.object:null;
     }
+    /** Private-adapter stamp, never an observation or a worker message. */
+    public Object revision(Token token){check();var binding=generations.get(token.generation());return resolve(token)==null?null:binding.revision;}
     public void remove(T object){check();var binding=objects.remove(object);if(binding!=null)generations.remove(binding.generation);}
     public void clear(){check();objects.clear();generations.clear();}
     public int size(){check();return objects.size();}

@@ -6,8 +6,12 @@ import java.util.List;
 
 /** Typed commands form the boundary between decisions and engine execution. */
 public sealed interface HumanAction {
-    enum Type { FACE_VISITOR, HOLD_ATTENTION, EMOTE, SAY, SEQUENCE, PARALLEL, WAIT, RETURN_HOME, MOVE }
+    enum Type { FACE_VISITOR, HOLD_ATTENTION, EMOTE, SAY, SEQUENCE, PARALLEL, WAIT, RETURN_HOME, MOVE, SIT }
     Type type();
+    record Sit(zombie.apocalipse.humans.seating.HumanSeating.Request request) implements HumanAction {
+        public Sit {Objects.requireNonNull(request);}
+        public Type type(){return Type.SIT;}
+    }
 
     record Move(zombie.apocalipse.humans.walking.MovementRequest request) implements HumanAction {
         public Move { Objects.requireNonNull(request); }
