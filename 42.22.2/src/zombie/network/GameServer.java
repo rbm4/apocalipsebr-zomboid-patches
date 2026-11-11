@@ -1236,6 +1236,7 @@ public class GameServer {
                             LoginQueue.update();
                             zombie.savefile.ApocBRCreatedPlayerHandoff.update();
                             zombie.apocalipse.events.ApocBREventControl.update();
+                            zombie.network.ApocBRManagedGenerators.update();
                             zombie.apocalipse.humans.ServerHumanFactory.update();
                             try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("backup.onPeriod")) {
                                 ZipBackup.onPeriod();
@@ -1511,6 +1512,7 @@ public class GameServer {
         ZomboidFileSystem.instance.loadMods(mods);
         LuaManager.init();
         zombie.savefile.ApocBRModEntities.install();
+        zombie.network.ApocBRManagedGenerators.initialize();
         PerkFactory.init();
         CustomPerks.instance.init();
         CustomPerks.instance.initLua();
@@ -3130,6 +3132,7 @@ public class GameServer {
     }
 
     public static int RemoveItemFromMap(IsoObject obj) {
+        if (zombie.network.ApocBRManagedGenerators.denyRemoval(obj)) return -1;
         int x = obj.getSquare().getX();
         int y = obj.getSquare().getY();
         int z = obj.getSquare().getZ();

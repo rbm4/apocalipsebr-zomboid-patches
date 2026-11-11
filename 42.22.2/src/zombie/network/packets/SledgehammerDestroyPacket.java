@@ -12,6 +12,9 @@ import zombie.network.ServerOptions;
 public class SledgehammerDestroyPacket extends RemoveItemFromSquarePacket implements INetworkPacket {
     @Override
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+        zombie.iso.IsoGridSquare square = zombie.network.ServerMap.instance.getGridSquare(this.x, this.y, this.z);
+        if (square != null && this.index >= 0 && this.index < square.getObjects().size()
+            && zombie.network.ApocBRManagedGenerators.denyRemoval(square.getObjects().get(this.index))) return;
         if (!ServerOptions.instance.allowDestructionBySledgehammer.getValue()) {
             DebugType.Multiplayer.error("destruction by sledgehammer is not allowed on the server");
         } else {

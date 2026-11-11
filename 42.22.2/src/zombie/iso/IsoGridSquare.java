@@ -5757,6 +5757,7 @@ public final class IsoGridSquare {
     }
 
     public int RemoveTileObject(IsoObject obj, boolean safelyRemove) {
+        if (zombie.network.ApocBRManagedGenerators.denyRemoval(obj)) return -1;
         if (safelyRemove) {
             return IsoObjectUtils.safelyRemoveTileObjectFromSquare(obj);
         } else {
@@ -5991,6 +5992,7 @@ public final class IsoGridSquare {
     }
 
     public int transmitRemoveItemFromSquare(IsoObject obj, boolean safelyRemove) {
+        if (zombie.network.ApocBRManagedGenerators.denyRemoval(obj)) return -1;
         if (obj == null || !this.objects.contains(obj)) {
             return -1;
         } else if (!GameServer.server) {
@@ -9981,7 +9983,6 @@ public final class IsoGridSquare {
     }
 
     public boolean haveElectricity() {
-        if (zombie.network.ApocBRFixedPower.contains(this.x, this.y, this.z)) return true;
         return !SandboxOptions.getInstance().allowExteriorGenerator.getValue() && this.has(IsoFlagType.exterior)
             ? false
             : this.chunk != null && this.chunk.isGeneratorPoweringSquare(this.x, this.y, this.z);
@@ -12091,12 +12092,10 @@ public final class IsoGridSquare {
     }
 
     public boolean hasGridPower() {
-        if (zombie.network.ApocBRFixedPower.contains(this.x, this.y, this.z)) return true;
         return !this.isNoPower() && SandboxOptions.instance.doesPowerGridExist();
     }
 
     public boolean hasGridPower(int offset) {
-        if (zombie.network.ApocBRFixedPower.contains(this.x, this.y, this.z)) return true;
         return !this.isNoPower() && SandboxOptions.instance.doesPowerGridExist(offset);
     }
 

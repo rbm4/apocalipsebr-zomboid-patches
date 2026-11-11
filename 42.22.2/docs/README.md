@@ -13,7 +13,7 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 - 2026-11-11 — [NPC seating execution: modular mechanics and stock-client presentation](features/2026-11-11-npc-seating-execution.md)
 
-- 2026-11-11 ? [Server fixed-power regions](features/2026-11-11-fixed-power-regions.md)
+- 2026-11-11 ? [Managed native generators](features/2026-11-11-fixed-power-regions.md)
 
 - 2026-11-11 — [NPC native furniture perception: current-room discovery and fair capture](features/2026-11-11-npc-furniture-native-perception.md)
 - 2026-11-11 — [NPC furniture foundation: observations and shared interaction leases](features/2026-11-11-npc-furniture-foundation.md)
@@ -22,6 +22,8 @@ Consult the [42.22.1 index](../../42.22.1/docs/README.md) for inherited
 implementation contracts and historical verification.
 
 ## Reports
+
+- 2026-11-11 - [Fixed power: stock-client chunk-streaming audit](reports/2026-11-11-fixed-power-stock-client-streaming-audit.md)
 
 - 2026-11-10 — [NPC furniture affordances, rest policy and seating implementation plan](reports/2026-11-10-npc-furniture-rest-implementation-plan.md)
 

@@ -160,6 +160,10 @@ public class IsoGenerator extends IsoObject {
 
     @Override
     public void update() {
+        if (GameServer.server && zombie.network.ApocBRManagedGenerators.isTagged(this)) {
+            zombie.network.ApocBRManagedGenerators.updateGenerator(this);
+            if (!zombie.network.ApocBRManagedGenerators.isManagedGenerator(this)) return;
+        }
         if (this.isActivated()) {
             if (!GameServer.server && (this.emitter == null || !this.emitter.isPlaying(this.getSoundPrefix() + "Loop"))) {
                 this.playGeneratorSound("Loop");
@@ -196,65 +200,68 @@ public class IsoGenerator extends IsoObject {
                     this.getSquare().getBuilding().setToxic(this.isActivated());
                 }
 
-                int elapsedHours = (int)GameTime.getInstance().getWorldAgeHours() - this.lastHour;
-                float subtractFuel = 0.0F;
-                int subtractCondition = 0;
-                int conditionLowerChance = item != null ? item.getConditionLowerChance() : 30;
+                if (!zombie.network.ApocBRManagedGenerators.isManagedGenerator(this)) {
+                    int elapsedHours = (int)GameTime.getInstance().getWorldAgeHours() - this.lastHour;
+                    float subtractFuel = 0.0F;
+                    int subtractCondition = 0;
+                    int conditionLowerChance = item != null ? item.getConditionLowerChance() : 30;
 
-                for (int i = 0; i < elapsedHours; i++) {
-                    float lowerFuel = this.totalPowerUsing;
-                    lowerFuel = (float)(lowerFuel * SandboxOptions.instance.generatorFuelConsumption.getValue());
-                    subtractFuel += lowerFuel;
-                    if (Rand.Next(conditionLowerChance) == 0) {
-                        subtractCondition += Rand.Next(2) + 1;
+                    for (int i = 0; i < elapsedHours; i++) {
+                        float lowerFuel = this.totalPowerUsing;
+                        lowerFuel = (float)(lowerFuel * SandboxOptions.instance.generatorFuelConsumption.getValue());
+                        subtractFuel += lowerFuel;
+                        if (Rand.Next(conditionLowerChance) == 0) {
+                            subtractCondition += Rand.Next(2) + 1;
+                        }
+
+                        if (this.fuel - subtractFuel <= 0.0F || this.condition - subtractCondition <= 0) {
+                            break;
+                        }
                     }
 
-                    if (this.fuel - subtractFuel <= 0.0F || this.condition - subtractCondition <= 0) {
-                        break;
-                    }
-                }
-
-                this.fuel -= subtractFuel;
-                if (this.fuel <= 0.0F) {
-                    this.setActivated(false);
-                    this.fuel = 0.0F;
-                }
-
-                this.condition -= subtractCondition;
-                if (this.condition <= 0) {
-                    this.setActivated(false);
-                    this.condition = 0;
-                }
-
-                boolean bBackfire = false;
-                if (this.condition <= 20) {
-                    bBackfire = Rand.Next(5) == 0;
-                } else if (this.condition <= 30) {
-                    bBackfire = Rand.Next(10) == 0;
-                } else if (this.condition <= 40) {
-                    bBackfire = Rand.Next(15) == 0;
-                }
-
-                if (bBackfire) {
-                    if (GameServer.server) {
-                        GameServer.PlayWorldSoundServer(this.getSoundPrefix() + "Backfire", this.getSquare(), 40.0F, -1);
-                    } else {
-                        this.playGeneratorSound("Backfire");
-                    }
-
-                    WorldSoundManager.instance.addSound(this, this.square.getX(), this.square.getY(), this.square.getZ(), 40, 60, false, 0.0F, 15.0F);
-                }
-
-                if (this.condition <= 20) {
-                    if (Rand.Next(10) == 0) {
-                        IsoFireManager.StartFire(this.getCell(), this.square, true, 1000);
-                        this.condition = 0;
+                    this.fuel -= subtractFuel;
+                    if (this.fuel <= 0.0F) {
                         this.setActivated(false);
-                    } else if (Rand.Next(20) == 0) {
-                        this.explode(this.square);
-                        this.condition = 0;
-                        this.setActivated(false);
+                        this.fuel = 0.0F;
                     }
+
+                    this.condition -= subtractCondition;
+                    if (this.condition <= 0) {
+                        this.setActivated(false);
+                        this.condition = 0;
+                    }
+
+                    boolean bBackfire = false;
+                    if (this.condition <= 20) {
+                        bBackfire = Rand.Next(5) == 0;
+                    } else if (this.condition <= 30) {
+                        bBackfire = Rand.Next(10) == 0;
+                    } else if (this.condition <= 40) {
+                        bBackfire = Rand.Next(15) == 0;
+                    }
+
+                    if (bBackfire) {
+                        if (GameServer.server) {
+                            GameServer.PlayWorldSoundServer(this.getSoundPrefix() + "Backfire", this.getSquare(), 40.0F, -1);
+                        } else {
+                            this.playGeneratorSound("Backfire");
+                        }
+
+                        WorldSoundManager.instance.addSound(this, this.square.getX(), this.square.getY(), this.square.getZ(), 40, 60, false, 0.0F, 15.0F);
+                    }
+
+                    if (this.condition <= 20) {
+                        if (Rand.Next(10) == 0) {
+                            IsoFireManager.StartFire(this.getCell(), this.square, true, 1000);
+                            this.condition = 0;
+                            this.setActivated(false);
+                        } else if (Rand.Next(20) == 0) {
+                            this.explode(this.square);
+                            this.condition = 0;
+                            this.setActivated(false);
+                        }
+                    }
+
                 }
 
                 this.lastHour = (int)GameTime.getInstance().getWorldAgeHours();
@@ -455,6 +462,7 @@ public class IsoGenerator extends IsoObject {
     }
 
     public void remove() {
+        if (zombie.network.ApocBRManagedGenerators.denyRemoval(this)) return;
         if (this.getSquare() != null) {
             this.getSquare().transmitRemoveItemFromSquare(this);
         }
@@ -462,6 +470,7 @@ public class IsoGenerator extends IsoObject {
 
     @Override
     public void addToWorld() {
+        zombie.network.ApocBRManagedGenerators.onAdded(this);
         this.getCell().addToProcessIsoObject(this);
         if (!AllGenerators.contains(this)) {
             AllGenerators.add(this);
@@ -470,6 +479,7 @@ public class IsoGenerator extends IsoObject {
 
     @Override
     public void removeFromWorld() {
+        zombie.network.ApocBRManagedGenerators.onRemoved(this);
         AllGenerators.remove(this);
         if (this.emitter != null) {
             this.emitter.stopAll();
@@ -511,6 +521,7 @@ public class IsoGenerator extends IsoObject {
     }
 
     public void setFuel(float fuel) {
+        if (fuel != 10.0F && zombie.network.ApocBRManagedGenerators.denyChange(this, "fuel")) return;
         this.fuel = Math.max(0.0F, Math.min(fuel, 10.0F));
         if (GameServer.server) {
             this.sync();
@@ -526,6 +537,7 @@ public class IsoGenerator extends IsoObject {
     }
 
     public void setActivated(boolean activated) {
+        if (!activated && zombie.network.ApocBRManagedGenerators.denyChange(this, "deactivate")) return;
         if (activated != this.activated) {
             if (!this.getSquare().getProperties().has(IsoFlagType.exterior) && this.getSquare().getBuilding() != null) {
                 this.getSquare().getBuilding().setToxic(activated);
@@ -569,6 +581,7 @@ public class IsoGenerator extends IsoObject {
     }
 
     public void setCondition(int condition) {
+        if (condition != 100 && zombie.network.ApocBRManagedGenerators.denyChange(this, "condition")) return;
         this.condition = Math.max(0, Math.min(condition, 100));
         if (GameServer.server) {
             this.sync();
@@ -584,6 +597,7 @@ public class IsoGenerator extends IsoObject {
     }
 
     public void setConnected(boolean connected) {
+        if (!connected && zombie.network.ApocBRManagedGenerators.denyChange(this, "disconnect")) return;
         this.connected = connected;
         if (GameClient.client) {
             this.sync();
@@ -614,6 +628,7 @@ public class IsoGenerator extends IsoObject {
         int condition = bb.getInt();
         boolean activated = bb.getBoolean();
         boolean connected = bb.getBoolean();
+        if (zombie.network.ApocBRManagedGenerators.denyChange(this, "remote_sync")) return;
         this.fuel = fuel;
         this.condition = condition;
         this.connected = connected;

@@ -10,7 +10,7 @@ from lupa import LuaRuntime
 
 ROOT = Path(__file__).resolve().parents[1]
 parser = argparse.ArgumentParser()
-parser.add_argument('--version', default='42.21.0', choices=['42.21.0', '42.22.0', '42.22.1'])
+parser.add_argument('--version', default='42.21.0', choices=['42.21.0', '42.22.0', '42.22.1', '42.22.2'])
 VERSION = parser.parse_args().version
 GAME = Path(os.environ.get('APOCBR_TEST_GAME_JAR', r'Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar'))
 PACK = Path(os.environ.get('APOCBR_TEST_PACK', r'C:\Users\ricar\Zomboid\Workshop\apocbr\Contents\mods\ApocalisebrPack\42.14'))
@@ -108,6 +108,27 @@ public class ModEntitiesTest {
 }
 '''
 
+if VERSION == '42.22.2':
+    HARNESS = HARNESS.replace('static int checks;', 'static boolean serverMapping; static int collectionCount=1; static int checks;')
+    HARNESS = HARNESS.replace('List.of("character_id",wrongPK?"wrong":"perk_id")', 'serverMapping?List.of("server_id","world"):List.of("character_id",wrongPK?"wrong":"perk_id")')
+    HARNESS = HARNESS.replace('case "character_id"->UUID', 'case "server_id"->1L;case "world"->"world-a";case "character_id"->UUID')
+    HARNESS = HARNESS.replace('case 1->Types.OTHER;', 'case 1->serverMapping?Types.BIGINT:Types.OTHER;')
+    HARNESS = HARNESS.replace('List.of("row"),false)', 'Collections.nCopies(serverMapping?collectionCount:1,"row"),false)')
+    extra = r'''
+  invalid(()->call("listForServer","BeyondTen.Mastery"));
+  serverMapping=true;
+  call("define","Test.Scoped",table("table","scoped","fields",table("server_id",table("type","integer","id",true),"world",table("type","string","id",true),"xp",table("type","number"))));
+  check(Boolean.TRUE.equals(((KahluaTable)call("listForServer","Test.Scoped")).rawget("accepted")),"server list queues");
+  zombie.iso.IsoWorld.world="changed-after-submit";
+  KahluaTable collection=finish();
+  check(collection.rawget("status").equals("OK")&&((KahluaTable)collection.rawget("rows")).rawget(1)!=null,"server list result");
+  check(lastSql.contains("WHERE server_id=? AND world=?")&&lastSql.endsWith("LIMIT 257")&&parameters.get(1).equals(1L)&&parameters.get(2).equals("world-a"),"engine scope captured before worker and bound");
+  collectionCount=0;call("listForServer","Test.Scoped");check(finish().rawget("status").equals("OK"),"empty scope success");
+  collectionCount=257;call("listForServer","Test.Scoped");KahluaTable overflow=finish();check(overflow.rawget("status").equals("LIMIT_EXCEEDED")&&overflow.rawget("rows")==null,"oversize never returns partial rows");
+  collectionCount=1;serverMapping=false;
+'''
+    HARNESS = HARNESS.replace('  for(int i=0;i<256;i++)check', extra+'  for(int i=0;i<256;i++)check')
+
 with tempfile.TemporaryDirectory(prefix='apocbr_mod_entities_') as folder:
     target = Path(folder)
     sources = []
@@ -119,6 +140,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_mod_entities_') as folder:
         'zombie/Lua/LuaManager.java': '''package zombie.Lua; public class LuaManager {
           public static class Platform {public se.krka.kahlua.vm.KahluaTable newTable(){return new se.krka.kahlua.j2se.KahluaTableImpl(new java.util.HashMap<>());}}
           public static Platform platform=new Platform();public static se.krka.kahlua.vm.KahluaTable env=platform.newTable();}''',
+        'zombie/iso/IsoWorld.java': 'package zombie.iso; public class IsoWorld { public static IsoWorld instance=new IsoWorld(); public static String world="world-a"; public String getWorld(){return world;} }',
         'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static boolean server=true;}',
         'zombie/characters/IsoPlayer.java': 'package zombie.characters; public class IsoPlayer {}',
         'zombie/savefile/ApocBRPlayerRelationalMutations.java': '''package zombie.savefile;
@@ -204,3 +226,24 @@ responses = {{id='5', status='OK'}}; tick()
 assert(not pcall(function() entity:set('xp', 99) end))
 ''')
 print('Lua entity lifecycle checks passed')
+
+if VERSION == '42.22.2':
+    lua.execute('''
+    ApocBRModEntities.listForServer = function(name)
+        nextId = nextId + 1
+        return { accepted = true, id = tostring(nextId) }
+    end
+    local repo = ApocBREntities.define('Test.Scoped', {table='scoped', fields={server_id={type='integer',id=true},world={type='string',id=true},xp={type='number'}}})
+    local called = false
+    repo:listForServer(function(result)
+        called=true
+        assert(result.status=='OK' and result.entities[1]:get('xp')==42)
+        assert(result.entities[1]:getRevision()=='9' and not result.entities[1]:isDirty())
+    end)
+    responses={{id=tostring(nextId),status='OK',rows={{values={server_id=1,world='world-a',xp=42},revision='9'}}}}
+    tick(); assert(called)
+    ApocBRModEntities.listForServer=function() return {accepted=false,status='UNAVAILABLE'} end
+    local failed=false
+    assert(repo:listForServer(function(r) failed=r.status=='UNAVAILABLE' end)==false and failed)
+    ''')
+    print('Lua scoped collection checks passed')

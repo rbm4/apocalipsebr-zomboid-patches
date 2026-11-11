@@ -97,6 +97,7 @@ public class RemoveItemFromSquarePacket implements INetworkPacket {
         IsoGridSquare sq = IsoWorld.instance.currentCell.getGridSquare(x, y, z);
         if (sq != null && index >= 0 && index < sq.getObjects().size()) {
             IsoObject o = sq.getObjects().get(index);
+            if (zombie.network.ApocBRManagedGenerators.denyRemoval(o)) return;
             if (!(o instanceof IsoWorldInventoryObject)) {
                 IsoRegions.setPreviousFlags(sq);
             }

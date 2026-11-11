@@ -35,6 +35,7 @@ public final class ApocBRModEntities {
         bind(api,"define",2,(f)->define(text(f.get(0)),table(f.get(1))));
         bind(api,"submit",5,(f)->submit(text(f.get(0)),text(f.get(1)),table(f.get(2)),table(f.get(3)),text(f.get(4))));
         bind(api,"poll",0,(f)->poll());
+        bind(api,"listForServer",1,(f)->listForServer(text(f.get(0))));
         bind(api,"character",1,(f)->character(player(f.get(0))));
         bind(api,"submitCharacter",5,(f)->submitCharacter(text(f.get(0)),text(f.get(1)),player(f.get(2)),text(f.get(3)),table(f.get(4))));
         bind(api,"messageContext",1,(f)->messageContext(player(f.get(0))));
@@ -266,6 +267,41 @@ public final class ApocBRModEntities {
         }
         return admission(true,id);
     }
+    /** Detached collection read scoped by engine configuration, never by client/Lua supplied IDs. */
+    private static Object listForServer(String name) {
+        Model model=models.get(name);
+        if(model==null||model.appendOnly())throw new IllegalArgumentException("Collection mapping required");
+        if(model.keys().stream().noneMatch(f->f.name().equals("server_id")&&f.type().equals("integer"))
+            ||model.keys().stream().noneMatch(f->f.name().equals("world")&&f.type().equals("string")))
+            throw new IllegalArgumentException("Server/world ID fields required");
+        long server=ApocBRPayloadProvenance.configuredServerId();
+        String world=zombie.iso.IsoWorld.instance.getWorld();
+        if(world==null||world.isBlank()||world.length()>4096)throw new IllegalArgumentException("World required");
+        Map<String,Object> scope=Map.of("server_id",server,"world",world);
+        if(outstanding.get()>=LIMIT)return admission(false,"BUSY");
+        String id=Long.toString(++sequence);outstanding.incrementAndGet();
+        if(!ApocBRPersistence.request(()->execute(id,model,"listForServer",scope,Map.of(),0))) {
+            outstanding.decrementAndGet();return admission(false,"UNAVAILABLE");
+        }
+        return admission(true,id);
+    }
+    private static List<Object> serverRows(Connection connection,Model model,Map<String,Object> scope)throws SQLException {
+        List<Object> result=new ArrayList<>();
+        String order=String.join(",",model.keys().stream().map(f->quote(f.name())).toList());
+        try(PreparedStatement statement=prepare(connection,"SELECT "+model.columns()+",revision FROM "+model.target()
+            +" WHERE server_id=? AND world=? ORDER BY "+order+" LIMIT 257")) {
+            statement.setObject(1,scope.get("server_id"));statement.setObject(2,scope.get("world"));
+            try(ResultSet rows=statement.executeQuery()) {
+                while(rows.next()) {
+                    if(result.size()>=256)throw new SQLException("Server row limit","54000");
+                    long revision=rows.getLong("revision");
+                    if(revision<=0||revision==Long.MAX_VALUE)throw new SQLException("Invalid revision","22003");
+                    result.add(Map.of("values",read(rows,model),"revision",Long.toString(revision)));
+                }
+            }
+        }
+        return List.copyOf(result);
+    }
     private static KahluaTable admission(boolean accepted,String value) {
         KahluaTable result=LuaManager.platform.newTable();result.rawset("accepted",accepted);result.rawset(accepted?"id":"status",value);return result;
     }
@@ -276,6 +312,9 @@ public final class ApocBRModEntities {
             try {
                 validate(connection,model);
                 if(action.equals("validate"))result.put("status","OK");
+                else if(action.equals("listForServer")) {
+                    result.put("rows",serverRows(connection,model,keys));result.put("status","OK");
+                }
                 else if(action.equals("find")) {
                     try(PreparedStatement statement=prepare(connection,"SELECT "+model.columns()+",revision FROM "+model.target()+" WHERE "+model.where())) {
                         bindKeys(statement,1,model,keys);
@@ -316,7 +355,7 @@ public final class ApocBRModEntities {
             }catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException ignored){}throw failure;}
         }catch(SQLException failure) {
             ApocBRPersistence.failed(failure);result.clear();result.put("id",id);
-            result.put("status",committing&&!action.equals("find")&&!action.equals("validate")?"OUTCOME_UNKNOWN":failure.getSQLState()!=null&&failure.getSQLState().startsWith("42")?"SCHEMA_ERROR":"DATABASE_ERROR");
+            result.put("status",committing&&!Set.of("find","validate","listForServer").contains(action)?"OUTCOME_UNKNOWN":"54000".equals(failure.getSQLState())?"LIMIT_EXCEEDED":failure.getSQLState()!=null&&failure.getSQLState().startsWith("42")?"SCHEMA_ERROR":"DATABASE_ERROR");
         }catch(RuntimeException failure){result.clear();result.put("id",id);result.put("status","INVALID_DATA");}
         completed.add(Collections.unmodifiableMap(result));
     }

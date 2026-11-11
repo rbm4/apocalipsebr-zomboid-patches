@@ -49,6 +49,8 @@ public class ObjectModDataPacket implements INetworkPacket {
         if (object == null) {
             DebugType.Multiplayer.warn("ObjectModDataPacket.parse: object is null (%s)", this.movingObject.getDescription());
         } else {
+            if (object instanceof zombie.iso.objects.IsoGenerator generator
+                && zombie.network.ApocBRManagedGenerators.denyChange(generator, "object_mod_data")) return;
             if (hasData) {
                 int waterAmount = (int)object.getFluidAmount();
 
