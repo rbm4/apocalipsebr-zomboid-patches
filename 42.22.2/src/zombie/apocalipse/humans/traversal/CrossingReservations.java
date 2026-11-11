@@ -1,6 +1,5 @@
 package zombie.apocalipse.humans.traversal;
 
-import java.util.HashMap;
 import java.util.Map;
 import zombie.apocalipse.humans.movement.MovementGrid.Tile;
 
@@ -15,26 +14,26 @@ public final class CrossingReservations {
         }
     }
     public record Lease(Object owner, long token, Key key, Place landing, long until) { }
-    private final Map<Key, Lease> crossings = new HashMap<>();
-    private final Map<Place, Lease> landings = new HashMap<>();
+    private final zombie.apocalipse.humans.interactions.InteractionReservations<Object> shared =
+        new zombie.apocalipse.humans.interactions.InteractionReservations<>(256);
+    private final Map<Lease, zombie.apocalipse.humans.interactions.InteractionReservations.Lease<Object>> leases = new java.util.IdentityHashMap<>();
     private long sequence;
 
     public Lease acquire(Object owner, TraversalEdge edge, long now) {
         Key key = Key.of(edge);
         Place landing = new Place(edge.to(), edge.z());
-        Lease crossing = crossings.get(key), arrival = landings.get(landing);
-        if (live(crossing, now) || live(arrival, now)) return null;
-        release(crossing); release(arrival);
+        leases.entrySet().removeIf(e -> !shared.owns(e.getValue(), now));
+        var claimed = shared.acquire(owner, java.util.List.of(key, landing), now, 9_000_000_000L);
+        if (claimed == null) return null;
         Lease lease = new Lease(owner, ++sequence, key, landing, now + 9_000_000_000L);
-        crossings.put(key, lease); landings.put(landing, lease);
+        leases.put(lease, claimed);
         return lease;
     }
     public boolean owns(Lease lease, long now) {
-        return live(lease, now) && crossings.get(lease.key()) == lease && landings.get(lease.landing()) == lease;
+        return lease != null && shared.owns(leases.get(lease), now);
     }
     public void release(Lease lease) {
         if (lease == null) return;
-        crossings.remove(lease.key(), lease); landings.remove(lease.landing(), lease);
+        shared.release(leases.remove(lease));
     }
-    private static boolean live(Lease lease, long now) { return lease != null && now < lease.until(); }
 }

@@ -11,10 +11,14 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
-No target feature guides yet. Consult the [42.22.1 index](../../42.22.1/docs/README.md)
-for current implementation contracts and historical verification.
+- 2026-11-11 — [NPC furniture foundation: observations and shared interaction leases](features/2026-11-11-npc-furniture-foundation.md)
+
+Consult the [42.22.1 index](../../42.22.1/docs/README.md) for inherited
+implementation contracts and historical verification.
 
 ## Reports
+
+- 2026-11-10 — [NPC furniture affordances, rest policy and seating implementation plan](reports/2026-11-10-npc-furniture-rest-implementation-plan.md)
 
 - 2026-11-08 — [42.22.1 to 42.22.2: initial compatibility and porting report](reports/2026-11-08-port-42-22-1-to-42-22-2.md)
 - 2026-11-08 — [Applied source port and target build](reports/2026-11-08-port-execution.md)

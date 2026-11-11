@@ -4,7 +4,9 @@ import java.util.List;
 
 /** Values only: never pass live engine objects into a brain. Time is monotonic. */
 public record HumanObservation(long nowNanos, List<Visitor> visitors, boolean movementAvailable,
-                               zombie.apocalipse.humans.state.HumanState state, HumanSenses.Frame senses,HumanTerritory territory,HumanSenses.Frame awareness,Support support) {
+                               zombie.apocalipse.humans.state.HumanState state, HumanSenses.Frame senses,HumanTerritory territory,HumanSenses.Frame awareness,Support support,
+                               zombie.apocalipse.humans.furniture.FurnitureAffordances.Frame furniture) {
+    public HumanObservation(long nowNanos,List<Visitor> visitors,boolean movementAvailable,zombie.apocalipse.humans.state.HumanState state,HumanSenses.Frame senses,HumanTerritory territory,HumanSenses.Frame awareness,Support support){this(nowNanos,visitors,movementAvailable,state,senses,territory,awareness,support,zombie.apocalipse.humans.furniture.FurnitureAffordances.Frame.EMPTY);}
     public HumanObservation(long nowNanos,List<Visitor> visitors,boolean movementAvailable,zombie.apocalipse.humans.state.HumanState state,HumanSenses.Frame senses,HumanTerritory territory,HumanSenses.Frame awareness){this(nowNanos,visitors,movementAvailable,state,senses,territory,awareness,Support.NONE);}
     public HumanObservation(long nowNanos,List<Visitor> visitors,boolean movementAvailable,zombie.apocalipse.humans.state.HumanState state,HumanSenses.Frame senses,HumanTerritory territory){this(nowNanos,visitors,movementAvailable,state,senses,territory,senses);}
     public HumanObservation(long nowNanos,List<Visitor> visitors,boolean movementAvailable,zombie.apocalipse.humans.state.HumanState state,HumanSenses.Frame senses){this(nowNanos,visitors,movementAvailable,state,senses,HumanTerritory.UNAVAILABLE);}
@@ -17,6 +19,7 @@ public record HumanObservation(long nowNanos, List<Visitor> visitors, boolean mo
         java.util.Objects.requireNonNull(territory);
         java.util.Objects.requireNonNull(awareness);
         java.util.Objects.requireNonNull(support);
+        java.util.Objects.requireNonNull(furniture);
         visitors = List.copyOf(visitors);
     }
 

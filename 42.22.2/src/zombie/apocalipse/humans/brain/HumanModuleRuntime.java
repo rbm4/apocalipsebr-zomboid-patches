@@ -18,6 +18,9 @@ public final class HumanModuleRuntime implements HumanBehavior {
         if(this.entries.stream().map(Entry::id).distinct().count()!=entries.size())throw new IllegalArgumentException("Duplicate modules");
     }
     public boolean needsPerception(){return !entries.isEmpty();}
+    public zombie.apocalipse.humans.furniture.FurnitureDemand furnitureDemand(){
+        return entries.stream().map(e->e.module().furnitureDemand()).reduce(zombie.apocalipse.humans.furniture.FurnitureDemand.NONE,zombie.apocalipse.humans.furniture.FurnitureDemand::merge);
+    }
     public boolean available(){return !stopped;}
     public boolean emergency(HumanObservation observation){
         return !stopped&&entries.stream().anyMatch(entry->entry.module().emergency(observation));
