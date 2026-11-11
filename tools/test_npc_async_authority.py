@@ -192,6 +192,7 @@ class ServerHumanProfiles {static WalkingPatternRegistry walkingPatterns(){retur
     human = files["zombie/apocalipse/humans/ServerHuman.java"]
     human = human.replace("class ServerHuman {", """class ServerHuman {
 final Thread authority=Thread.currentThread();ServerHumanPlanning planning;
+boolean motionAllowed(){return true;}
 final ServerHumanWalking walking=new ServerHumanWalking(this);
 final Profile profile=new Profile();static class Profile {java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> patterns=java.util.List.of();java.util.List<zombie.apocalipse.humans.walking.WalkingPatternSpec> walkingPatterns(){return patterns;}}
 """)

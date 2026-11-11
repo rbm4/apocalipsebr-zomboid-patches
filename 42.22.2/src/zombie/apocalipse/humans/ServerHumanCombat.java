@@ -17,6 +17,7 @@ final class ServerHumanCombat implements Port {
     ServerHumanCombat(ServerHuman human,Backend backend){this.human=human;this.backend=Objects.requireNonNull(backend);}
     public Execution begin(Request request,long now){
         Objects.requireNonNull(request);
+        if(!human.motionAllowed())return finished(new Result(Status.REJECTED,Reason.BUSY));
         if(active!=null)return finished(new Result(Status.REJECTED,Reason.BUSY));
         Reason refusal=validate(request,now);
         if(refusal!=Reason.NONE)return finished(new Result(Status.REJECTED,refusal));

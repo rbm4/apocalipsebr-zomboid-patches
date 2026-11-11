@@ -34,6 +34,12 @@ final class ServerHuman {
     ServerHumanPlanning planning;
     private ServerHumanFurniture furnitureOwner;
     private ServerHumanFurniture.Observer furniture;
+    ServerHumanSeating seating;
+    zombie.apocalipse.humans.seating.HumanSeating seatingPort(){
+        requireAuthority();if(furnitureOwner==null)return zombie.apocalipse.humans.seating.HumanSeating.UNSUPPORTED;
+        if(seating==null)seating=new ServerHumanSeating(this,furnitureOwner);return seating;
+    }
+    boolean motionAllowed(){requireAuthority();return seating==null||seating.readyForMotion();}
     void attachFurniture(ServerHumanFurniture service){
         requireAuthority();if(furnitureOwner!=null)throw new IllegalStateException("Furniture already bound");
         furniture=service.register(this);furnitureOwner=service;
@@ -144,6 +150,7 @@ final class ServerHuman {
         requireAuthority();
         if(activitiesStopped)return;activitiesStopped=true;
         try {
+        if(seating!=null)seating.close();
         speech.cancel();
         if(healing!=null)healing.close();
         activity.stop(System.nanoTime(), actuator);

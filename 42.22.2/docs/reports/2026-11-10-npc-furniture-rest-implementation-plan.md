@@ -16,7 +16,11 @@ remaining native integration. This report remains the overall proposal.
 Native room-scoped discovery and fair authoritative capture were connected on
 2026-11-11; see the [native perception guide](../features/2026-11-11-npc-furniture-native-perception.md)
 for implemented behavior, lifecycle identity, additional user decisions and
-validation. Rest policy, geometry and seating execution remain subsequent work.
+validation. The [seating execution guide](../features/2026-11-11-npc-seating-execution.md)
+now records the mechanical slice, manual server API, source verification and
+remaining multiplayer acceptance. Rest policy, profile composition and seated
+dialogue/trade handoff remain subsequent work. The original proposal below is
+historical scope, not a claim that all stages have shipped.
 
 ## Intended behavior and architecture
 

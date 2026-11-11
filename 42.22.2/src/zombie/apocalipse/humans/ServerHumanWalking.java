@@ -32,6 +32,7 @@ final class ServerHumanWalking implements WalkingPattern.World {
         var grid=scope("background");return grid==null?walkable(tile):grid.walkable(tile);
     }
     boolean start(MovementRequest request, long now) {
+        if(!human.motionAllowed())return false;
         stop();
         if (!available()) return false;
         sequence++;

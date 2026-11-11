@@ -8,6 +8,7 @@ import zombie.network.GameServer;
 
 /** All live-world reads and writes stay on the factory's simulation thread. */
 final class ServerHumanActuator implements HumanActuator {
+    @Override public zombie.apocalipse.humans.seating.HumanSeating seating(){return human.seatingPort();}
     static final double VISITOR_RADIUS_SQUARED = 8.0 * 8.0;
     private final ServerHuman human;
     private final ServerHumanCorpses corpses;
@@ -57,12 +58,14 @@ final class ServerHumanActuator implements HumanActuator {
         float dx = player.getX() - human.player.getX();
         float dy = player.getY() - human.player.getY();
         if ((double)dx * dx + (double)dy * dy > radiusSquared() || !visible(player)) return false;
+        if(human.seating!=null&&human.seating.ownsPose())return true;
         if (dx != 0 || dy != 0) human.player.setDirectionAngle((float)Math.toDegrees(Math.atan2(dy, dx)));
         return true;
     }
 
     @Override
     public boolean startEmote(String name) {
+        if(human.seating!=null&&human.seating.ownsPose())return false;
         human.emote = name;
         boolean sent = false;
         for (UdpConnection viewer : human.viewers) {
@@ -97,6 +100,7 @@ final class ServerHumanActuator implements HumanActuator {
 
     @Override
     public boolean returnHome() {
+        if(!human.motionAllowed())return false;
         stopEmote();
         // End the greeting at its last stopping point, without teleporting to spawn.
         human.player.setX(human.postX);

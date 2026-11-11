@@ -82,6 +82,7 @@ final class ServerHumanMovement implements MovementGrid {
     }
 
     boolean start(List<Tile> requested, MovementGrid policy, Pace pace, long now) {
+        if(!human.motionAllowed())return false;
         stop();
         Objects.requireNonNull(requested);
         Objects.requireNonNull(policy);

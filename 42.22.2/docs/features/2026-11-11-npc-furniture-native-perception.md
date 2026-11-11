@@ -5,7 +5,9 @@ the [furniture foundation](2026-11-11-npc-furniture-foundation.md), following th
 [overall implementation plan](../reports/2026-11-10-npc-furniture-rest-implementation-plan.md).
 Production fixtures and exact-JAR compilation pass; live game validation and
 deployment remain pending. This step implements native sensing and composition,
-not rest policy, reachable seating geometry or sit/stand presentation.
+not rest policy, reachable seating geometry or sit/stand presentation. The later
+[seating execution slice](2026-11-11-npc-seating-execution.md) adds geometry and
+mechanics in source, with live stock-client acceptance still pending.
 
 ## Confirmed behavior and scope
 
@@ -185,6 +187,7 @@ Remaining runtime checks: native seating metadata availability after actual
 server startup, current-room changes through doors/stairs, chunk unload/reload,
 player sit/stand observation, furniture pickup/replacement/reuse, representative
 mod seating overrides and scan fairness/work under a furnished lobby load. No
-NPC moves or furniture interactions are performed by this step. Next implement
-the registered rest policy and native geometry/execution/presentation boundary
-from the overall plan.
+NPC moves or furniture interactions are performed by this sensing step. The later
+[execution guide](2026-11-11-npc-seating-execution.md) records the implemented
+mechanical boundary. Next implement registered rest policy and profile/patrol
+composition from the overall plan.

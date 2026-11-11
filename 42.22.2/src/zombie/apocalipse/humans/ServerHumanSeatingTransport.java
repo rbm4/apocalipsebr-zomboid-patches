@@ -13,6 +13,7 @@ final class ServerHumanSeatingTransport {
     private final ServerHuman human;private final ServerHumanSeating seating;
     private final Map<UdpConnection,Receipt> receipts=new IdentityHashMap<>();
     private long clock;
+    void clock(long now){clock=Math.max(clock,now);}
     ServerHumanSeatingTransport(ServerHuman human,ServerHumanSeating seating){this.human=human;this.seating=seating;}
     private Receipt receipt(UdpConnection viewer){
         if(!receipts.containsKey(viewer)&&receipts.size()>=256)return null;
@@ -52,7 +53,7 @@ final class ServerHumanSeatingTransport {
         for(var viewer:human.viewers)if(human.isRelevant(viewer)){
             var r=receipts.get(viewer);
             if(r!=null&&r.entered){
-                new ServerHumanSeatingPacket(human,abort?null:seating.object(),plan,false,false).sendToClient(PacketTypes.PacketType.State,viewer);
+                if(abort)new ServerHumanSeatingPacket(human,null,plan,false,false).sendToClient(PacketTypes.PacketType.State,viewer);
                 if(abort&&!reaction)new ServerHumanSeatingPacket(human,null,plan,true,true).sendToClient(PacketTypes.PacketType.State,viewer);
                 else if(!abort)new ServerHumanSeatingPacket(human,seating.object(),plan,true,false).sendToClient(PacketTypes.PacketType.State,viewer);
             }

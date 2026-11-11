@@ -11,6 +11,8 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
+- 2026-11-11 — [NPC seating execution: modular mechanics and stock-client presentation](features/2026-11-11-npc-seating-execution.md)
+
 - 2026-11-11 ? [Server fixed-power regions](features/2026-11-11-fixed-power-regions.md)
 
 - 2026-11-11 — [NPC native furniture perception: current-room discovery and fair capture](features/2026-11-11-npc-furniture-native-perception.md)

@@ -75,7 +75,8 @@ public final class SeatingExecution {
     public Status abort(String why){return finish(Status.FAILED,true,why);}
     private Status finish(Status status,boolean abort,String why){
         if(closed)return result;closed=true;phase=Phase.FINISHED;result=status;reason=why;
-        try{port.end(abort);}finally{reservations.release(lease);}
+        try{port.end(abort);}catch(RuntimeException failure){result=Status.FAILED;reason="cleanup_exception";throw failure;}
+        finally{reservations.release(lease);}
         return result;
     }
 }

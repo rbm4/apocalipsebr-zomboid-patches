@@ -14,6 +14,7 @@ final class ServerHumanFurniture {
     private final Map<ServerHuman,Observer> actors=new IdentityHashMap<>();
     private final Set<ServerHuman> retained=Collections.newSetFromMap(new IdentityHashMap<>());
     final FurnitureReservations reservations=new FurnitureReservations();
+    boolean available(ServerHuman human){check();var observer=actors.get(human);return actors.containsKey(human)&&(observer==null||!observer.failed&&!observer.closed);}
     void retain(ServerHuman human){check();if(!actors.containsKey(human))throw new IllegalStateException("Unknown furniture actor");retained.add(human);}
     void release(ServerHuman human){check();retained.remove(human);if(scheduler.size()==0&&retained.isEmpty())world.clear();}
     List<IsoPlayer> bodies(){check();return actors.keySet().stream().map(h->h.player).toList();}
@@ -21,6 +22,7 @@ final class ServerHumanFurniture {
     zombie.apocalipse.humans.furniture.FurnitureAffordances.Candidate candidate(zombie.apocalipse.humans.furniture.FurnitureAffordances.Token token,long now){check();return world.candidate(token,now);}
     zombie.apocalipse.humans.furniture.FurnitureAffordances.Candidate candidateAt(ServerHuman human,int x,int y,int z,String side,long now){
         check();human.requireAuthority();
+        if(!available(human))return null;
         if(z!=human.definition.z()||Math.abs((long)x-human.player.getXi())>12||Math.abs((long)y-human.player.getYi())>12)return null;
         world.beginPass(human.player.getCell(),zombie.network.GameServer.Players,bodies());
         var area=human.profile.walkingPatterns().stream().filter(p->p.slot().equals("background")).map(p->p.area()).filter(Objects::nonNull).findFirst().orElse(null);

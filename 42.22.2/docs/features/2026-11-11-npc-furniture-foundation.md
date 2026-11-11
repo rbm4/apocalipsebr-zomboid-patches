@@ -130,10 +130,12 @@ with code zero and performed no deployment.
 
 ## Next implementation boundary
 
+The [seating execution slice](2026-11-11-npc-seating-execution.md) now implements
+the per-actor mechanics, native geometry and presentation in source, with target
+fixtures/build passing. Live multiplayer acceptance remains pending.
+
 The [server-native adapter and fair capture scheduling](2026-11-11-npc-furniture-native-perception.md)
 are implemented. Continue with registered rest settings/policy, profile
-composition and the per-actor seating executor. Validate dedicated-server geometry from target native seating
-and animation data for all three sides. Extend native packet presentation,
-posture-aware movement/facing, session handoff, patrol opportunities and lifecycle
-cleanup as specified in the plan. No new `rest` profile/module is registered
+composition, seated session handoff and patrol opportunities as specified in the
+plan. No new `rest` profile/module is registered
 until its native capability is available and validated.

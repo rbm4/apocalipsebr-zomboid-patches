@@ -24,6 +24,7 @@ def method(text, signature):
 
 
 FIXTURE = {
+    "zombie/network/GameServer.java": "package zombie.network;public class GameServer {public static final java.util.List<zombie.characters.IsoPlayer> Players=new java.util.ArrayList<>();}",
     "zombie/iso/IsoCell.java": r'''package zombie.iso;import java.util.*;
 public class IsoCell {public final Map<String,IsoGridSquare> tiles=new HashMap<>();public int reads;
  public IsoGridSquare getGridSquare(int x,int y,int z){reads++;return tiles.get(x+","+y+","+z);}

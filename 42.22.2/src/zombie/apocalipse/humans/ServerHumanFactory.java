@@ -156,6 +156,7 @@ public final class ServerHumanFactory {
         }
         requireOwner();
         ServerHumanDialogue.install();
+        ServerHumanSeatingCommands.install();
         if(planner.failure()!=null){planningFailed(planner.failure(),now);return;}
         if(configurationRejected)return;
         if(!configured) {
@@ -238,6 +239,7 @@ public final class ServerHumanFactory {
             ServerHumanMovement.Presentation previousMotion = human.movement.presentation();
             if(human.player.isDead())human.state.dispatch(new HumanMutation.Kill());
             human.physiology.update(now);
+            if(human.seating!=null)human.seating.tick(now);
             var inputs=human.movement.inputs();
             human.movement.derivedConditions(HumanConditionCalculator.movement(human.state.snapshot(),inputs.context(),inputs.effects(),human.healing!=null&&human.healing.recovering()));
             if (human.state.snapshot().dead()) {
@@ -391,6 +393,9 @@ public final class ServerHumanFactory {
         float x=human!=null?human.player.getX():old!=null?old.x():d.x();
         float y=human!=null?human.player.getY():old!=null?old.y():d.y();
         int z=human!=null?human.player.getZi():old!=null?old.z():d.z();
+        if(human!=null&&human.seating!=null&&!logical.physiology().snapshot().dead()){
+            var safe=human.seating.checkpoint();if(safe!=null){x=safe.x();y=safe.y();z=safe.z();}
+        }
         long revision=old==null?1:old.revision();
         var state=new zombie.savefile.ApocBRNpcStore.State(d,logical.state(),logical.activations(),logical.snapshot().profileRevision(),x,y,z,revision,retired,logical.physiology().snapshot(),logical.death());
         if(old!=null&&old.equals(state))return;
@@ -507,6 +512,16 @@ public final class ServerHumanFactory {
     public synchronized zombie.apocalipse.humans.furniture.FurnitureAffordances.Frame furniturePerception(String key){
         requireOwner();var human=humans.get(key);return human==null?null:human.furnitureSnapshot();
     }
+    /** Trusted server/Lua command. Accepted means queued under exclusive activity ownership. */
+    public synchronized boolean sitAt(String key,int x,int y,int z,String side,long durationMs){
+        requireOwner();var human=humans.get(key);
+        if(human==null||side==null||!java.util.Set.of("Front","Left","Right").contains(side)||durationMs<1||durationMs>86_400_000L)return false;
+        var candidate=furniture.candidateAt(human,x,y,z,side,System.nanoTime());if(candidate==null)return false;
+        var request=new zombie.apocalipse.humans.seating.HumanSeating.Request(candidate.token(),side,durationMs);
+        return human.activity.beginAction(new zombie.apocalipse.humans.brain.HumanAction.Sit(request),System.nanoTime(),human.actuator);
+    }
+    public synchronized boolean stand(String key){requireOwner();var human=humans.get(key);return human!=null&&human.seating!=null&&human.seating.finish();}
+    public synchronized String seatingStatus(String key){requireOwner();var human=humans.get(key);return human==null?null:human.seating==null?"NOT_STARTED":human.seating.status();}
 
     static ServerHuman tradingHuman(short id) {
         synchronized(INSTANCE){return INSTANCE.findTradingHuman(id);}
