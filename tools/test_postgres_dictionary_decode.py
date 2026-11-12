@@ -3,7 +3,7 @@ from pathlib import Path
 import argparse, os, subprocess, tempfile
 
 parser=argparse.ArgumentParser()
-parser.add_argument('--version', choices=['42.21.0','42.22.0'], default='42.21.0')
+parser.add_argument('--version', choices=['42.21.0','42.22.0','42.22.2'], default='42.21.0')
 VERSION=parser.parse_args().version
 
 ROOT=Path(__file__).resolve().parents[1]
@@ -120,7 +120,7 @@ public class DictionaryDecodeTest {
  public static void main(String[] args)throws Exception{routing();database();System.out.println("Dictionary decode checks="+checks);}
 }
 '''
-if VERSION=='42.22.0':
+if VERSION in ('42.22.0','42.22.2'):
     HARNESS=HARNESS.replace('  db.fail=true;try{repository.load(origin);', r'''  db.build="42.22.0";db.world=251;
   check(repository.load(origin).equals(db.snapshot),"current target dictionary remains readable");
   for(int scenario=0;scenario<4;scenario++) {
@@ -132,6 +132,11 @@ if VERSION=='42.22.0':
   db.fail=true;try{repository.load(origin);''')
     assert "OR (n.game_build='42.21.0' AND n.world_version=249)" in (SRC/'savefile/ApocBRWorldDictionaryDatabase.java').read_text()
 
+if VERSION=='42.22.2':
+    HARNESS=HARNESS.replace('      if(sql.startsWith("SELECT s.family"))', '''      if(sql.startsWith("SELECT count(*)"))return rows(List.<Object[]>of(new Object[]{sql.contains("mod_override")?0L:(long)snapshot.entries().size()}));
+      if(sql.startsWith("SELECT s.family"))''')
+    HARNESS=HARNESS.replace('error.getCause()==null', 'error.getCause() instanceof SQLException')
+
 with tempfile.TemporaryDirectory(prefix='apocbr_decode_') as folder:
     target=Path(folder)
     harness=target/'DictionaryDecodeTest.java';harness.write_text(HARNESS,encoding='utf-8')
@@ -142,10 +147,27 @@ public class ApocBRPostgresConnector { public static int dictionaryPublicationTi
  public static Factory factory=()->{throw new AssertionError("Unexpected dictionary SQL");};
  public static java.sql.Connection borrowDictionaryConnection()throws java.sql.SQLException{return factory.open();}
 }''',encoding='utf-8')
+    cp=str(GAME)
+    if VERSION=='42.22.2':
+        # Compile the production diagnostic methods, including redaction and PG fields.
+        production=(SRC/'savefile/ApocBRPostgresConnector.java').read_text(encoding='utf-8')
+        diagnostics=production[production.index('    static String sqlDiagnostic(Throwable failure)'):production.index('    void write(Snapshot s)')]
+        connector.write_text('''package zombie.savefile;
+import java.sql.*;import org.postgresql.util.PSQLException;import org.postgresql.util.ServerErrorMessage;
+public class ApocBRPostgresConnector {
+ public static int dictionaryPublicationTimeoutSeconds(){return 30;}
+ public interface Factory {Connection open()throws SQLException;}
+ public static Factory factory=()->{throw new AssertionError("Unexpected dictionary SQL");};
+ public static Connection borrowDictionaryConnection()throws SQLException{return factory.open();}
+'''+diagnostics+'}',encoding='utf-8')
+        cp+=os.pathsep+str(ROOT/VERSION/'lib/postgresql-42.7.14.jar')
     mirror=target/'ApocBRWorldDictionaryMirror.java';mirror.write_text('package zombie.world; public class ApocBRWorldDictionaryMirror {static void afterRebuild(DictionaryData data){}}',encoding='utf-8')
     sources=[SRC/p for p in ['savefile/ApocBRPayloadProvenance.java','savefile/ApocBRWorldDictionaryDatabase.java','world/ApocBRWorldDictionaryDecode.java','world/ApocBRWorldDictionarySnapshot.java','world/WorldDictionary.java','world/StringDictionary.java','world/ScriptsDictionary.java']]
-    subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',str(GAME),'-d',folder,*map(str,sources),str(connector),str(mirror),str(harness)],check=True)
-    subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+str(GAME),'zombie.world.DictionaryDecodeTest'],check=True)
+    fixtures=[str(ROOT/'tools/fixtures/DictionaryPaginationTest.java')] if VERSION=='42.22.2' else []
+    subprocess.run([str(JDK/'javac.exe'),'--release','25','-cp',cp,'-d',folder,*map(str,sources),str(connector),str(mirror),str(harness),*fixtures],check=True)
+    subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.world.DictionaryDecodeTest'],check=True)
+    if fixtures:
+        subprocess.run([str(JDK/'java.exe'),'-cp',folder+os.pathsep+cp,'zombie.savefile.DictionaryPaginationTest'],check=True)
 
 # Native dispatch hooks must encompass the virtual subclass decoder and propagate embedded origin.
 for path,signature in [('inventory/InventoryItem.java','public static InventoryItem loadItem(ByteBuffer input, int worldVersion, boolean doSaveTypeCheck, InventoryItem i)'),('iso/IsoObject.java','public final void load(ByteBuffer input, int worldVersion)')]:

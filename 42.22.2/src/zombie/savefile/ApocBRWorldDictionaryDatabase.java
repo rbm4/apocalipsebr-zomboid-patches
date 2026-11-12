@@ -244,48 +244,134 @@ public final class ApocBRWorldDictionaryDatabase {
         }
         if(!seen.containsAll(entries.keySet()))throw new HistoryChangedException("Vanilla dictionary lost historical identities");
     }
-    /** Read one exact immutable publication, never the server's latest view as a substitute. */
+    private static final int SOURCE_MAX_PAGES=10, SOURCE_MIN_PAGE_ROWS=1_000;
+    private static final class SourceReadFailure extends SQLException {
+        SourceReadFailure(String diagnostic,String state,Throwable cause){super(diagnostic,state,cause);}
+    }
+    /** Safe structured diagnostics, including nested/next PG errors, never raw wrapper messages. */
+    public static String sourceDiagnostic(Throwable failure) {
+        if(failure instanceof SourceReadFailure)return failure.getMessage();
+        StringBuilder result=new StringBuilder();
+        Set<Throwable> seen=Collections.newSetFromMap(new IdentityHashMap<>());
+        ArrayDeque<Throwable> pending=new ArrayDeque<>();if(failure!=null)pending.add(failure);
+        while(!pending.isEmpty()&&seen.size()<8) {
+            Throwable current=pending.removeFirst();if(!seen.add(current))continue;
+            if(!result.isEmpty())result.append("; nested={");
+            result.append(ApocBRPostgresConnector.sqlDiagnostic(current,false));
+            if(seen.size()>1)result.append('}');
+            if(current.getCause()!=null)pending.add(current.getCause());
+            if(current instanceof SQLException sql&&sql.getNextException()!=null)pending.add(sql.getNextException());
+        }
+        return result.toString();
+    }
+    private static String sourceReason(Throwable failure) {
+        String message=failure.getMessage()==null?"":failure.getMessage();
+        if(Set.of("Source dictionary view unavailable","Incomplete source dictionary view","Empty source dictionary view",
+            "Dictionary registry budget","Dictionary entry budget","Dictionary override budget","Source dictionary row count changed").contains(message))return message;
+        String state=failure instanceof SQLException sql?sql.getSQLState():null;
+        if(state==null)return "RUNTIME_FAILURE";
+        return switch(state) {
+            case "57014" -> "QUERY_CANCELED_OR_TIMED_OUT";
+            case "55P03" -> "LOCK_UNAVAILABLE_OR_TIMED_OUT";
+            case "23502","23503","23505","23514","23P01" -> "CONSTRAINT_VIOLATION";
+            case "42501" -> "INSUFFICIENT_PRIVILEGE";
+            case "42P01","42703" -> "SCHEMA_MISMATCH";
+            default -> state.startsWith("08")?"CONNECTION_FAILURE":"SQL_FAILURE";
+        };
+    }
+    private static final class SourceReadProgress {
+        final long started=System.nanoTime();long stageStarted=started,pageStarted=started;
+        String stage="ACQUIRE_CONNECTION";int page,pageSize,plannedPages,entryRows,overrideRows;long expectedEntries=-1,expectedOverrides=-1;
+        void stage(String value){stage=value;stageStarted=pageStarted=System.nanoTime();page=pageSize=plannedPages=0;}
+        void page(int number,int size,long total){page=number;pageSize=size;plannedPages=(int)((total+size-1)/size);pageStarted=System.nanoTime();}
+        String diagnostic(){return "stage="+stage+"; elapsedMs="+(System.nanoTime()-started)/1_000_000L
+            +"; stageMs="+(System.nanoTime()-stageStarted)/1_000_000L+"; pageMs="+(page==0?0:(System.nanoTime()-pageStarted)/1_000_000L)+"; page="+page+"; plannedPages="+plannedPages
+            +"; pageSize="+pageSize+"; entryRows="+entryRows+"; expectedEntries="+expectedEntries
+            +"; overrideRows="+overrideRows+"; expectedOverrides="+expectedOverrides+"; queryTimeoutSeconds=5";}
+    }
+    private static long sourceCount(Connection connection,String sql,Object... values)throws SQLException {
+        try(var query=prepare(connection,sql)){bind(query,values);try(var rows=query.executeQuery()) {
+            if(!rows.next())throw new SQLException("Source dictionary row count changed","55000");return rows.getLong(1);
+        }}
+    }
+    private static int sourcePageSize(long count){return (int)Math.max(SOURCE_MIN_PAGE_ROWS,(count+SOURCE_MAX_PAGES-1)/SOURCE_MAX_PAGES);}
+    /** Read one exact immutable publication with counted keyset pages, never a latest-view substitute. */
     public ApocBRWorldDictionarySnapshot load(ApocBRPayloadProvenance origin)throws SQLException {
-        String stage="ACQUIRE_CONNECTION";long started=System.nanoTime();
+        var progress=new SourceReadProgress();
         try(Connection connection=connections.open()) {
             try {
-                stage="FIND_READY_SOURCE_VIEW";
+                progress.stage("FIND_READY_SOURCE_VIEW");
                 long revision;
                 try(var query=prepare(connection,"SELECT v.identity_revision FROM player_rel.world_dictionary_runtime_view v JOIN player_rel.world_dictionary_namespace n ON n.id=v.namespace_id WHERE v.namespace_id=? AND v.id=? AND v.server_id=? AND v.status='ready' AND ((n.game_build='42.22.0' AND n.world_version=251) OR (n.game_build='42.21.0' AND n.world_version=249)) AND n.dictionary_format_version=1")) {
                     bind(query,origin.namespaceId(),origin.viewId(),origin.serverId());
                     try(var rows=query.executeQuery()){if(!rows.next())throw new SQLException("Source dictionary view unavailable","55000");revision=rows.getLong(1);}
                 }
-                stage="READ_SOURCE_REGISTRIES";List<ApocBRWorldDictionarySnapshot.Registry> registers=new ArrayList<>();
+                progress.stage("READ_SOURCE_REGISTRIES");List<ApocBRWorldDictionarySnapshot.Registry> registers=new ArrayList<>();
                 try(var query=prepare(connection,"SELECT s.family,s.register_name,s.next_id,r.string_max_length FROM player_rel.world_dictionary_registry_state s JOIN player_rel.world_dictionary_registry r USING(namespace_id,family,register_name) WHERE s.namespace_id=? AND s.view_id=?")) {
                     bind(query,origin.namespaceId(),origin.viewId());try(var rows=query.executeQuery()){while(rows.next()) {
                         if(registers.size()>=128)throw new SQLException("Dictionary registry budget","54000");
                         registers.add(new ApocBRWorldDictionarySnapshot.Registry(rows.getString(1),rows.getString(2),rows.getInt(3),(Integer)rows.getObject(4)));
                     }}
                 }
-                stage="READ_SOURCE_OVERRIDES";Map<String,List<String>> overrides=new HashMap<>();int count=0;
-                try(var query=prepare(connection,"SELECT family,register_name,native_id,mod_id FROM player_rel.world_dictionary_mod_override WHERE namespace_id=? AND view_id=? ORDER BY family,register_name,native_id,position")) {
-                    bind(query,origin.namespaceId(),origin.viewId());try(var rows=query.executeQuery()){while(rows.next()) {
-                        if(++count>1_000_000)throw new SQLException("Dictionary override budget","54000");
-                        overrides.computeIfAbsent(rows.getString(1)+":"+rows.getString(2)+":"+rows.getInt(3),key->new ArrayList<>()).add(rows.getString(4));
-                    }}
+                progress.stage("COUNT_SOURCE_ENTRIES");
+                progress.expectedEntries=sourceCount(connection,"SELECT count(*) FROM (SELECT 1 FROM player_rel.world_dictionary_entry WHERE namespace_id=? AND created_revision<=? LIMIT 200001) counted",origin.namespaceId(),revision);
+                if(progress.expectedEntries>200_000)throw new SQLException("Dictionary entry budget","54000");
+                progress.stage("COUNT_SOURCE_OVERRIDES");
+                progress.expectedOverrides=sourceCount(connection,"SELECT count(*) FROM (SELECT 1 FROM player_rel.world_dictionary_mod_override WHERE namespace_id=? AND view_id=? LIMIT 1000001) counted",origin.namespaceId(),origin.viewId());
+                if(progress.expectedOverrides>1_000_000)throw new SQLException("Dictionary override budget","54000");
+                int entryPageSize=sourcePageSize(progress.expectedEntries),overridePageSize=sourcePageSize(progress.expectedOverrides);
+                zombie.debug.DebugLog.log("[ApocBR][Dictionary] SOURCE_READ_PLAN; sourceServer="+origin.serverId()+"; namespace="+origin.namespaceId()+"; view="+origin.viewId()
+                    +"; entries="+progress.expectedEntries+"; entryPageSize="+entryPageSize+"; entryPages="+(progress.expectedEntries+entryPageSize-1)/entryPageSize
+                    +"; overrides="+progress.expectedOverrides+"; overridePageSize="+overridePageSize+"; overridePages="+(progress.expectedOverrides+overridePageSize-1)/overridePageSize+"; queryTimeoutSeconds=5");
+                progress.stage("READ_SOURCE_OVERRIDES");Map<String,List<String>> overrides=new HashMap<>();
+                String lastFamily=null,lastRegister=null;int lastId=0,lastPosition=0;
+                while(progress.overrideRows<progress.expectedOverrides) {
+                    progress.page(progress.page+1,overridePageSize,progress.expectedOverrides);
+                    boolean first=lastFamily==null;int before=progress.overrideRows;
+                    int limit=(int)Math.min(overridePageSize,progress.expectedOverrides-before);
+                    try(var query=prepare(connection,"SELECT family,register_name,native_id,mod_id,position FROM player_rel.world_dictionary_mod_override WHERE namespace_id=? AND view_id=?"
+                        +(first?"":" AND (family,register_name,native_id,position)>(?,?,?,?)")+" ORDER BY family,register_name,native_id,position LIMIT ?")) {
+                        if(first)bind(query,origin.namespaceId(),origin.viewId(),limit);
+                        else bind(query,origin.namespaceId(),origin.viewId(),lastFamily,lastRegister,lastId,lastPosition,limit);
+                        try(var rows=query.executeQuery()){while(rows.next()) {
+                            if(progress.overrideRows-before>=limit)throw new SQLException("Source dictionary row count changed","55000");
+                            lastFamily=rows.getString(1);lastRegister=rows.getString(2);lastId=rows.getInt(3);lastPosition=rows.getInt(5);
+                            overrides.computeIfAbsent(lastFamily+":"+lastRegister+":"+lastId,key->new ArrayList<>()).add(rows.getString(4));progress.overrideRows++;
+                        }}
+                    }
+                    if(progress.overrideRows-before!=limit)throw new SQLException("Source dictionary row count changed","55000");
                 }
-                stage="READ_SOURCE_ENTRIES";List<ApocBRWorldDictionarySnapshot.Entry> entries=new ArrayList<>();
-                try(var query=prepare(connection,"SELECT e.family,e.register_name,e.native_id,e.kind,e.stable_key,e.module_name,e.local_name,s.is_loaded,s.mod_id,s.exists_as_vanilla,s.is_modded,s.obsolete,s.removed,s.overrides_present,s.script_version FROM player_rel.world_dictionary_entry e LEFT JOIN player_rel.world_dictionary_entry_state s ON s.namespace_id=e.namespace_id AND s.family=e.family AND s.register_name=e.register_name AND s.native_id=e.native_id AND s.view_id=? WHERE e.namespace_id=? AND e.created_revision<=?")) {
-                    bind(query,origin.viewId(),origin.namespaceId(),revision);try(var rows=query.executeQuery()){while(rows.next()) {
-                        if(entries.size()>=200_000)throw new SQLException("Dictionary entry budget","54000");
-                        String family=rows.getString(1),register=rows.getString(2);int id=rows.getInt(3);
-                        Boolean loaded=(Boolean)rows.getObject(8);
-                        if(loaded==null&&!family.equals("object")&&!family.equals("sprite"))throw new SQLException("Incomplete source dictionary view","55000");
-                        entries.add(new ApocBRWorldDictionarySnapshot.Entry(family,register,id,rows.getString(4),rows.getString(5),rows.getString(6),rows.getString(7),Boolean.TRUE.equals(loaded),rows.getString(9),(Boolean)rows.getObject(10),(Boolean)rows.getObject(11),(Boolean)rows.getObject(12),(Boolean)rows.getObject(13),(Boolean)rows.getObject(14),(Long)rows.getObject(15),overrides.getOrDefault(family+":"+register+":"+id,List.of())));
-                    }}
+                progress.stage("READ_SOURCE_ENTRIES");List<ApocBRWorldDictionarySnapshot.Entry> entries=new ArrayList<>();
+                lastFamily=null;lastRegister=null;lastId=0;
+                while(progress.entryRows<progress.expectedEntries) {
+                    progress.page(progress.page+1,entryPageSize,progress.expectedEntries);
+                    boolean first=lastFamily==null;int before=progress.entryRows;
+                    int limit=(int)Math.min(entryPageSize,progress.expectedEntries-before);
+                    try(var query=prepare(connection,"SELECT e.family,e.register_name,e.native_id,e.kind,e.stable_key,e.module_name,e.local_name,s.is_loaded,s.mod_id,s.exists_as_vanilla,s.is_modded,s.obsolete,s.removed,s.overrides_present,s.script_version FROM player_rel.world_dictionary_entry e LEFT JOIN player_rel.world_dictionary_entry_state s ON s.namespace_id=e.namespace_id AND s.family=e.family AND s.register_name=e.register_name AND s.native_id=e.native_id AND s.view_id=? WHERE e.namespace_id=? AND e.created_revision<=?"
+                        +(first?"":" AND (e.family,e.register_name,e.native_id)>(?,?,?)")+" ORDER BY e.family,e.register_name,e.native_id LIMIT ?")) {
+                        if(first)bind(query,origin.viewId(),origin.namespaceId(),revision,limit);
+                        else bind(query,origin.viewId(),origin.namespaceId(),revision,lastFamily,lastRegister,lastId,limit);
+                        try(var rows=query.executeQuery()){while(rows.next()) {
+                            if(progress.entryRows-before>=limit)throw new SQLException("Source dictionary row count changed","55000");
+                            String family=rows.getString(1),register=rows.getString(2);int id=rows.getInt(3);
+                            Boolean loaded=(Boolean)rows.getObject(8);
+                            if(loaded==null&&!family.equals("object")&&!family.equals("sprite"))throw new SQLException("Incomplete source dictionary view","55000");
+                            entries.add(new ApocBRWorldDictionarySnapshot.Entry(family,register,id,rows.getString(4),rows.getString(5),rows.getString(6),rows.getString(7),Boolean.TRUE.equals(loaded),rows.getString(9),(Boolean)rows.getObject(10),(Boolean)rows.getObject(11),(Boolean)rows.getObject(12),(Boolean)rows.getObject(13),(Boolean)rows.getObject(14),(Long)rows.getObject(15),overrides.getOrDefault(family+":"+register+":"+id,List.of())));
+                            lastFamily=family;lastRegister=register;lastId=id;progress.entryRows++;
+                        }}
+                    }
+                    if(progress.entryRows-before!=limit)throw new SQLException("Source dictionary row count changed","55000");
                 }
                 if(registers.isEmpty())throw new SQLException("Empty source dictionary view","55000");
-                var result=new ApocBRWorldDictionarySnapshot(registers,entries);connection.commit();return result;
-            }catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException ignored){}
-                String reason=Set.of("Source dictionary view unavailable","Incomplete source dictionary view","Empty source dictionary view","Dictionary registry budget","Dictionary entry budget","Dictionary override budget").contains(failure.getMessage()==null?"":failure.getMessage())?failure.getMessage():"SQL_OR_RUNTIME_FAILURE";
-                zombie.debug.DebugLog.log("[ApocBR][Dictionary] SOURCE_READ_FAILED; stage="+stage+"; sourceServer="+origin.serverId()+"; namespace="+origin.namespaceId()+"; view="+origin.viewId()
-                    +"; elapsedMs="+(System.nanoTime()-started)/1_000_000L+"; reason="+reason+"; "+ApocBRPostgresConnector.sqlDiagnostic(failure,false));
-                throw new SQLException("Source dictionary read failed",failure instanceof SQLException sql?sql.getSQLState():"22000");}
+                progress.stage("VALIDATE_SOURCE_SNAPSHOT");var result=new ApocBRWorldDictionarySnapshot(registers,entries);
+                progress.stage("COMMIT_SOURCE_READ");connection.commit();progress.stage("RETURN_CONNECTION");return result;
+            }catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException rollback){failure.addSuppressed(rollback);}throw failure;}
+        }catch(SQLException|RuntimeException failure) {
+            String diagnostic=progress.diagnostic()+"; sourceServer="+origin.serverId()+"; namespace="+origin.namespaceId()+"; view="+origin.viewId()
+                +"; reason="+sourceReason(failure)+"; "+sourceDiagnostic(failure);
+            for(Throwable suppressed:failure.getSuppressed())diagnostic+="; cleanup={"+sourceDiagnostic(suppressed)+"}";
+            zombie.debug.DebugLog.log("[ApocBR][Dictionary] SOURCE_READ_FAILED; "+diagnostic);
+            throw new SourceReadFailure("Source dictionary read failed; "+diagnostic,failure instanceof SQLException sql?sql.getSQLState():"22000",failure);
         }
     }
     /** Bounded foreign head discovery; the listener prepares each exact view before publishing metadata. */

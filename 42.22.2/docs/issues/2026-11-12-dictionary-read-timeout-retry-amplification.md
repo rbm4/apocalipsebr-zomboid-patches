@@ -1,11 +1,18 @@
 # Dictionary source-read cancellation and retry amplification
 
-Status: open; source diagnosis only. No runtime fix or live database inspection.
+Status: source read-size mitigation implemented; production validation and retry
+amplification remain open. No live database inspection.
 Investigated 2026-11-12 against latest server target 42.22.2. The deployed build
 and class hashes were not provided. Relevant source is carried from 42.22.1.
 
 Related contract: [historical dictionary compatibility](../../../42.22.1/docs/features/2026-10-29-historical-dictionary-compatibility.md).
 Operational capture: [read-only diagnostic SQL](2026-11-12-dictionary-read-timeout-diagnostics.sql).
+
+Follow-up on 2026-11-12: [counted source pagination and diagnostics](../features/2026-11-12-dictionary-source-pagination.md)
+now splits entries/overrides into at most ten pages each, retaining five seconds
+per query. The analysis below records the original failure path. The one-second
+listener retry policy remains unchanged; source/prepare diagnostics now include
+page context and preserve SQLSTATE/causes. No live recovery is claimed.
 
 ## Observed failure and confidence
 

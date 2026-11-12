@@ -59,8 +59,8 @@ public final class ApocBRWorldDictionaryDecode {
             Throwable cause=failure.getCause();String state=cause instanceof SQLException sql?sql.getSQLState():"NONE";
             String reason=cause!=null&&Set.of("Dictionary cache entry budget exceeded","Dictionary cache view budget exceeded").contains(cause.getMessage()==null?"":cause.getMessage())?cause.getMessage():"SOURCE_PREPARATION_FAILURE";
             zombie.debug.DebugLog.log("[ApocBR][Dictionary] PREPARE_FAILED; sourceServer="+origin.serverId()+"; namespace="+origin.namespaceId()+"; view="+origin.viewId()
-                +"; exception="+(cause==null?"NONE":cause.getClass().getName())+"; SQLState="+(state!=null&&state.matches("[A-Z0-9]{5}")?state:"NONE")+"; reason="+reason);
-            throw new SQLException("Source dictionary preparation failed","55000");
+                +"; reason="+reason+"; "+ApocBRWorldDictionaryDatabase.sourceDiagnostic(cause));
+            throw new SQLException("Source dictionary preparation failed",state!=null&&state.matches("[A-Z0-9]{5}")?state:"55000",cause);
         }
     }
     public static CompletableFuture<Void> prepareAsync(Collection<ApocBRPayloadProvenance> origins,Executor io) {

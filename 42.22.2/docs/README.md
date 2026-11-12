@@ -11,6 +11,8 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
+- 2026-11-12: [Counted dictionary source pagination and failure diagnostics](features/2026-11-12-dictionary-source-pagination.md).
+
 - 2026-11-12: [Scoped record mutations for wallet persistence](features/2026-11-12-scoped-record-mutations.md).
 
 - 2026-11-12: [NPC autonomous rest and Sargento G seated routine](features/2026-11-12-npc-autonomous-rest.md).
