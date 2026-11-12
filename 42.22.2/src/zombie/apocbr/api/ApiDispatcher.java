@@ -11,11 +11,13 @@ final class ApiDispatcher implements AutoCloseable {
     static final int CAPACITY = 32;
     static final long MIN_INTERVAL_MS = 1500;
     static final long MAX_QUEUE_AGE_MS = 30_000;
-    record Request(String id, URI uri, long submittedNanos) {}
+    record Request(String id, URI uri, String method, String body, long submittedNanos) {}
     record Result(String id, int status, String body, String error) {}
     record Reply(int status, String body, String error, long cooldownMillis) {}
     interface Transport extends AutoCloseable {
         Reply send(URI uri) throws InterruptedException;
+        default Reply send(URI uri,String method) throws InterruptedException { return send(uri); }
+        default Reply send(URI uri,String method,String body) throws InterruptedException { return send(uri,method); }
         @Override void close();
     }
     private final ArrayBlockingQueue<Request> requests = new ArrayBlockingQueue<>(CAPACITY);
@@ -45,12 +47,22 @@ final class ApiDispatcher implements AutoCloseable {
 
     /** Non-waiting admission. Outstanding includes callbacks not yet drained. */
     synchronized String submit(String id, URI uri) {
+        return submit(id,uri,"GET");
+    }
+
+    synchronized String submit(String id,URI uri,String method) {
+        return submit(id,uri,method,null);
+    }
+
+    synchronized String submit(String id,URI uri,String method,String body) {
+        if (!"GET".equals(method) && !"POST".equals(method)) return "INVALID_METHOD";
+        if (body!=null && (!"POST".equals(method) || body.length()>1024)) return "INVALID_BODY";
         long now = clock.getAsLong();
         if (closed) return "STOPPED";
         if (cooldownUntil != 0 && now - cooldownUntil < 0) return "BACKEND_COOLDOWN";
         if (admitted && now - nextAdmission < 0) return "THROTTLED";
         if (outstanding >= CAPACITY) return "QUEUE_FULL";
-        if (!requests.offer(new Request(id, uri, now))) return "QUEUE_FULL";
+        if (!requests.offer(new Request(id, uri, method, body, now))) return "QUEUE_FULL";
         outstanding++;
         admitted = true;
         nextAdmission = now + intervalNanos;
@@ -87,7 +99,7 @@ final class ApiDispatcher implements AutoCloseable {
                 nextSend = clock.getAsLong() + intervalNanos;
                 sent = true;
                 Reply reply;
-                try { reply = transport.send(request.uri()); }
+                try { reply = transport.send(request.uri(),request.method(),request.body()); }
                 catch (RuntimeException failure) { reply = new Reply(0, null, "TRANSPORT_ERROR", 0); }
                 if (reply.cooldownMillis() > 0)
                     cooldownUntil = clock.getAsLong() + TimeUnit.MILLISECONDS.toNanos(

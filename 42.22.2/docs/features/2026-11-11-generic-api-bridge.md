@@ -70,7 +70,27 @@ without invoking Lua during teardown; it is not a flush or hot restart.
 
 ## Endpoint contract
 
-The initial allowlisted enum entry is `CHARACTER_BALANCE`:
+### Login registration update (2026-11-11)
+
+`CHARACTER_LOGIN` issues an authenticated empty-body POST to
+`/api/v1/game/characters/{runtimeUuid}/bind`, with the same validated
+`sourceServerId`/`steamId` query parameters. It returns the same decoded numeric
+`balance` field. `CHARACTER_BALANCE` remains GET `/balance`. Both aliases and the
+nested enum are available to server Lua. Method and route remain Java-owned;
+the detached worker queue carries the method alongside the URI.
+
+The backend ensures an exact-life/server binding through its shared login/reward
+service, then returns account balance. It does not award credits or overwrite
+conflicts. Replays/reconnects reuse the binding; a new life UUID gets a new binding.
+The wallet uses POST for the first read of each native player session and GET
+for later display refreshes. Bounded Lua registration retries are separate from
+the transport, which still has no application-level automatic retry.
+
+Deploy the backend POST first, then the full updated 42.22.2 bridge class families
+and wallet mod. Lua reports an old bridge as `API_BRIDGE_OUTDATED`. There is no
+SQL migration or new vanilla baseline. Credential/radio bridge behavior is unchanged.
+
+The read-only enum entry is `CHARACTER_BALANCE`:
 
 ```text
 GET https://plataforma.apocalipse.cloud/api/v1/game/characters/{runtimeUuid}/balance
@@ -91,8 +111,8 @@ become `HTTP_<status>`; their bodies are discarded. Transport errors use fixed
 `TIMEOUT`, `RESPONSE_TOO_LARGE`, or `TRANSPORT_ERROR` codes.
 
 Future endpoints require a Java enum entry with Java-owned validation, routing
-and response decoding. There is no arbitrary URL escape hatch. The current
-transport implements GET only; additional methods require a Java change.
+and response decoding. There is no arbitrary URL escape hatch. The transport
+supports GET and empty-body POST; additional methods/bodies require a Java change.
 
 ## Resource limits and abuse boundary
 
@@ -175,3 +195,11 @@ The target `-BuildOnly` compilation passed with 370 sources / 1061 class files,
 retained under `artifacts/build_20261111_181025/` (ignored). Documentation links,
 index coverage, server-only exposure and lifecycle wiring checks passed. No
 deployment or live backend request was performed.
+
+Login-registration validation on 2026-11-11: all 89 assertions passed, including
+`CHARACTER_LOGIN` exposure through real Kahlua, POST dispatch, empty request body,
+dummy API-key header, and rejection of unsupported methods. The updated target
+`-BuildOnly` compilation passed with 370 sources / 1061 class files, retained in
+`artifacts/build_20261111_201218/` (ignored). Deploy the backend registration
+endpoint first, then this Java patch and the wallet Lua update, and restart the
+game server. No deployment or live request was performed during validation.

@@ -50,6 +50,8 @@ public final class ApiBridgeLifecycle {
         return bridge != null && bridge.dispatcher.isRunning();
     }
 
+    static boolean isOwnerThread() { return current()!=null; }
+
     static String lastRejection() {
         ApiBridgeLifecycle bridge = current();
         return bridge == null ? "UNAVAILABLE" : bridge.rejection;
@@ -64,7 +66,7 @@ public final class ApiBridgeLifecycle {
         try { uri = endpoint.resolve(parameters); }
         catch (RuntimeException invalid) { bridge.rejection = "INVALID_PARAMETERS"; return null; }
         String id = UUID.randomUUID().toString();
-        bridge.rejection = bridge.dispatcher.submit(id, uri);
+        bridge.rejection = bridge.dispatcher.submit(id, uri, endpoint.method(),endpoint.body(parameters));
         if (bridge.rejection != null) return null;
         bridge.callbacks.put(id, new Pending(endpoint, callback));
         return id;

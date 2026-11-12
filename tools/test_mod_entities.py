@@ -128,6 +128,19 @@ if VERSION == '42.22.2':
   collectionCount=1;serverMapping=false;
 '''
     HARNESS = HARNESS.replace('  for(int i=0;i<256;i++)check', extra+'  for(int i=0;i<256;i++)check')
+    HARNESS = HARNESS.replace('  for(int i=0;i<256;i++)check', r'''
+  KahluaTable document=table("text","PTBR\u00e7", "items",table(1.0,table("count",2.0,"active",true)));
+  String encoded=(String)call("encode",document);
+  KahluaTable decoded=(KahluaTable)call("decode",encoded);
+  check(decoded.rawget("text").equals(document.rawget("text")),"bounded JSON Unicode roundtrip");
+  check(((KahluaTable)((KahluaTable)decoded.rawget("items")).rawget(1.0)).rawget("count").equals(2.0),"JSON preserves numeric array keys and nested values");
+  invalid(()->call("decode","{} trailing"));
+  KahluaTable cyclic=table();cyclic.rawset("self",cyclic);invalid(()->call("encode",cyclic));
+  KahluaTable bigFields=table("record_id",table("type","string","id",true),"payload",table("type","text"));
+  check(Boolean.TRUE.equals(call("define","Wallet.Payload",table("table","wallet_test","fields",bigFields))),"bounded text mapping supported");
+  check(Boolean.TRUE.equals(((KahluaTable)call("submit","Wallet.Payload","save",table("record_id","one"),table("record_id","one","payload","x".repeat(5000)),"0")).rawget("accepted")),"payload over old 4096 string limit admitted as text");
+  finish();
+'''+ '  for(int i=0;i<256;i++)check')
 
 with tempfile.TemporaryDirectory(prefix='apocbr_mod_entities_') as folder:
     target = Path(folder)
@@ -142,7 +155,7 @@ with tempfile.TemporaryDirectory(prefix='apocbr_mod_entities_') as folder:
           public static Platform platform=new Platform();public static se.krka.kahlua.vm.KahluaTable env=platform.newTable();}''',
         'zombie/iso/IsoWorld.java': 'package zombie.iso; public class IsoWorld { public static IsoWorld instance=new IsoWorld(); public static String world="world-a"; public String getWorld(){return world;} }',
         'zombie/network/GameServer.java': 'package zombie.network; public class GameServer {public static boolean server=true;}',
-        'zombie/characters/IsoPlayer.java': 'package zombie.characters; public class IsoPlayer {}',
+        'zombie/characters/IsoPlayer.java': 'package zombie.characters; public class IsoPlayer { public long getSteamID(){return 76561198000000001L;}}',
         'zombie/savefile/ApocBRPlayerRelationalMutations.java': '''package zombie.savefile;
           public class ApocBRPlayerRelationalMutations {
             record Candidate(String world,String identity,int slot,boolean coop) {}

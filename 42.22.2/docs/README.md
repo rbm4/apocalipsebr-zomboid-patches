@@ -11,7 +11,12 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
-- 2026-11-11 — [Generic server Lua API bridge: character balance and bounded asynchronous callbacks](features/2026-11-11-generic-api-bridge.md)
+- 2026-11-11: [Wallet entity checkpoints](features/2026-11-11-wallet-entity-persistence.md).
+
+
+- 2026-11-11: [Wallet courier debit and item custody bridge](features/2026-11-11-wallet-courier-debit.md).
+
+- 2026-11-11 — [Generic server Lua API bridge: login binding, balance and bounded asynchronous callbacks](features/2026-11-11-generic-api-bridge.md)
 
 - 2026-11-11 — [NPC seating execution: modular mechanics and stock-client presentation](features/2026-11-11-npc-seating-execution.md)
 
@@ -34,5 +39,7 @@ implementation contracts and historical verification.
 - 2026-11-08 — [Copy receipt](reports/2026-11-08-port-copy-receipt.json) and [final verification/build receipt](reports/2026-11-08-port-build-receipt.json)
 
 ## Issues
+
+- 2026-11-11: [Wallet Lua save failure (resolution superseded by entities)](issues/2026-11-11-wallet-moddata-save-facade.md).
 
 No target issue documents yet. Inherited limitations are identified in the report.

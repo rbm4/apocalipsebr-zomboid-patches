@@ -36,6 +36,10 @@ public final class ApocBRModEntities {
         bind(api,"submit",5,(f)->submit(text(f.get(0)),text(f.get(1)),table(f.get(2)),table(f.get(3)),text(f.get(4))));
         bind(api,"poll",0,(f)->poll());
         bind(api,"listForServer",1,(f)->listForServer(text(f.get(0))));
+        bind(api,"serverScope",0,(f)->lua(Map.of("server_id",ApocBRPayloadProvenance.configuredServerId(),
+            "world",zombie.iso.IsoWorld.instance.getWorld())));
+        bind(api,"encode",1,(f)->encode(table(f.get(0))));
+        bind(api,"decode",1,(f)->decode(text(f.get(0))));
         bind(api,"character",1,(f)->character(player(f.get(0))));
         bind(api,"submitCharacter",5,(f)->submitCharacter(text(f.get(0)),text(f.get(1)),player(f.get(2)),text(f.get(3)),table(f.get(4))));
         bind(api,"messageContext",1,(f)->messageContext(player(f.get(0))));
@@ -215,7 +219,7 @@ public final class ApocBRModEntities {
             if(fields.size()>=32)throw new IllegalArgumentException("Too many fields");
             String field=identifier(text(iterator.getKey()));
             KahluaTable spec=table(iterator.getValue());String type=text(spec.rawget("type"));
-            if(!Set.of("string","uuid","number","integer","boolean").contains(type))throw new IllegalArgumentException("Unsupported field type");
+            if(!Set.of("string","text","uuid","number","integer","boolean").contains(type))throw new IllegalArgumentException("Unsupported field type");
             fields.add(new Field(field,type,Boolean.TRUE.equals(spec.rawget("id"))));
         }
         fields.sort(Comparator.comparing(Field::name));
@@ -232,6 +236,7 @@ public final class ApocBRModEntities {
         if(value==null)throw new IllegalArgumentException("Missing field: "+field.name());
         return switch(field.type()) {
             case "string" -> {String s=text(value);if(s.length()>4096)throw new IllegalArgumentException("String too long");yield s;}
+            case "text" -> {String s=text(value);if(s.length()>33_554_432)throw new IllegalArgumentException("Text too long");yield s;}
             case "uuid" -> UUID.fromString(text(value));
             case "boolean" -> {if(!(value instanceof Boolean))throw new IllegalArgumentException("Boolean required");yield value;}
             case "number","integer" -> {
@@ -382,7 +387,7 @@ public final class ApocBRModEntities {
                 int actual=metadata.getColumnType(index++);
                 boolean valid=switch(field.type()) {
                     case "uuid" -> metadata.getColumnTypeName(index-1).equals("uuid");
-                    case "string" -> actual==Types.VARCHAR||actual==Types.LONGVARCHAR;
+                    case "string","text" -> actual==Types.VARCHAR||actual==Types.LONGVARCHAR;
                     case "number" -> actual==Types.DOUBLE;
                     case "integer" -> actual==Types.BIGINT;
                     case "boolean" -> actual==Types.BOOLEAN||actual==Types.BIT;
@@ -413,6 +418,62 @@ public final class ApocBRModEntities {
         KahluaTable batch=LuaManager.platform.newTable();
         for(int i=1;i<=32;i++) {Map<String,Object> result=completed.poll();if(result==null)break;outstanding.decrementAndGet();batch.rawset((double)i,lua(result));}
         return batch;
+    }
+    private static String encode(KahluaTable value) {
+        String json=jsonValue(value,new IdentityHashMap<>(),0).toString();
+        if(json.length()>33_554_432)throw new IllegalArgumentException("JSON too long");
+        return json;
+    }
+    private static Object jsonValue(Object value,IdentityHashMap<Object,Boolean> seen,int depth) {
+        if(depth>64)throw new IllegalArgumentException("JSON nesting limit");
+        if(value instanceof KahluaTable t) {
+            if(seen.put(t,true)!=null)throw new IllegalArgumentException("Cyclic JSON");
+            Map<String,Object> fields=new TreeMap<>();SortedMap<Integer,Object> array=new TreeMap<>();boolean numeric=true;
+            var it=t.iterator();int size=0;
+            while(it.advance()) {
+                if(++size>100000)throw new IllegalArgumentException("JSON collection too large");
+                Object key=it.getKey(),v=jsonValue(it.getValue(),seen,depth+1);
+                if(key instanceof Number n&&n.doubleValue()==Math.rint(n.doubleValue())&&n.doubleValue()>=1&&n.doubleValue()<=100000)
+                    array.put(n.intValue(),v);
+                else if(key instanceof String s){numeric=false;fields.put(s,v);}
+                else throw new IllegalArgumentException("JSON key type");
+            }
+            seen.remove(t);
+            if(numeric&&!array.isEmpty()&&array.lastKey()==array.size()) {
+                org.json.JSONArray result=new org.json.JSONArray();array.values().forEach(result::put);return result;
+            }
+            if(!array.isEmpty())throw new IllegalArgumentException("Sparse/mixed JSON array");
+            return new org.json.JSONObject(fields);
+        }
+        if(value==null)return org.json.JSONObject.NULL;
+        if(value instanceof String||value instanceof Boolean)return value;
+        if(value instanceof Number n&&Double.isFinite(n.doubleValue())&&Math.abs(n.doubleValue())<=9007199254740991d)return value;
+        throw new IllegalArgumentException("JSON value type");
+    }
+    private static Object decode(String text) {
+        if(text.length()>33_554_432)throw new IllegalArgumentException("JSON too long");
+        org.json.JSONTokener parser=new org.json.JSONTokener(text);Object value=parser.nextValue();
+        if(!(value instanceof org.json.JSONObject)&&!(value instanceof org.json.JSONArray)||parser.nextClean()!=0)
+            throw new IllegalArgumentException("JSON document required");
+        return fromJson(value,0);
+    }
+    private static Object fromJson(Object value,int depth) {
+        if(depth>64)throw new IllegalArgumentException("JSON nesting limit");
+        if(value instanceof org.json.JSONObject object) {
+            if(object.length()>100000)throw new IllegalArgumentException("JSON collection too large");
+            KahluaTable result=LuaManager.platform.newTable();
+            for(String key:object.keySet())result.rawset(key,fromJson(object.get(key),depth+1));
+            return result;
+        }
+        if(value instanceof org.json.JSONArray array) {
+            if(array.length()>100000)throw new IllegalArgumentException("JSON collection too large");
+            KahluaTable result=LuaManager.platform.newTable();
+            for(int i=0;i<array.length();i++)result.rawset((double)i+1,fromJson(array.get(i),depth+1));
+            return result;
+        }
+        if(value instanceof Number n&&(!Double.isFinite(n.doubleValue())||Math.abs(n.doubleValue())>9007199254740991d))
+            throw new IllegalArgumentException("JSON numeric range");
+        return value==org.json.JSONObject.NULL?null:lua(value);
     }
     private static Object lua(Object value) {
         if(value instanceof UUID id)return id.toString();

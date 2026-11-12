@@ -9,7 +9,9 @@ ROOT = Path(__file__).resolve().parents[1]
 JAR = Path('Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar')
 STUBS = {
     'zombie/core/Core.java': '''package zombie.core;
-public class Core { public static boolean debug = false; public static boolean IS_DEV = false; }''',
+public class Core { public static boolean debug = false; public static boolean IS_DEV = false; public static boolean noSave; private static final Core instance=new Core(); public static Core getInstance(){return instance;} public boolean isNoSave(){return noSave;} }''',
+    'zombie/world/moddata/GlobalModData.java': '''package zombie.world.moddata;
+public final class GlobalModData { public static final GlobalModData instance=new GlobalModData(); public static int saves; public static boolean fail; public void save() throws java.io.IOException { saves++; if(fail) throw new java.io.IOException("fixture"); } }''',
     'zombie/network/GameServer.java': '''package zombie.network;
 public class GameServer { public static boolean server = true; }''',
     'zombie/debug/DebugLog.java': '''package zombie.debug;
@@ -60,6 +62,8 @@ public class ApiBridgeTest {
  static void parameters(){
   URI uri=ApocBrApiBridge.Endpoint.CHARACTER_BALANCE.resolve(PARAMS);
   check(uri.toString().equals("https://plataforma.apocalipse.cloud/api/v1/game/characters/"+UUID_VALUE+"/balance?sourceServerId=2&steamId=76561198000000001"),"exact route");
+  check(ApocBrApiBridge.CHARACTER_LOGIN.resolve(PARAMS).toString().equals("https://plataforma.apocalipse.cloud/api/v1/game/characters/"+UUID_VALUE+"/bind?sourceServerId=2&steamId=76561198000000001"),"exact login registration route");
+  check("POST".equals(ApocBrApiBridge.CHARACTER_LOGIN.method())&&"GET".equals(ApocBrApiBridge.CHARACTER_BALANCE.method()),"Java enum owns HTTP method");
   for(String input:List.of("{}","[]",PARAMS+" {}",PARAMS.replace(UUID_VALUE,"../../admin"),
     PARAMS.replace("76561198000000001","76561198000000001&admin=true"),PARAMS.replace(":2,",":0,"),
     PARAMS.replace(":2,",":2.5,"),PARAMS.replace(":2,",":9007199254740991.1,"),
@@ -71,10 +75,30 @@ public class ApiBridgeTest {
    catch(RuntimeException expected){checks++;}
   }
  }
+
+ static void debit(){
+  String params=PARAMS.substring(0,PARAMS.length()-1)+",\"amount\":25,\"reason\":\"market.purchase\",\"idempotencyKey\":\"order:1\"}";
+  check(ApocBrApiBridge.CHARACTER_DEBIT.resolve(params).toString().contains("/debit?sourceServerId=2&steamId=76561198000000001"),"debit fixed route and server identity");
+  check("POST".equals(ApocBrApiBridge.CHARACTER_DEBIT.method()),"debit POST");
+  check(ApocBrApiBridge.CHARACTER_CREDIT.resolve(params).toString().contains("/credit?sourceServerId=2&steamId=76561198000000001"),"credit fixed route");
+  check(ApocBrApiBridge.CHARACTER_CREDIT.body(params).equals(ApocBrApiBridge.CHARACTER_DEBIT.body(params)),"seller credit uses same bounded idempotent mutation body");
+  check("POST".equals(ApocBrApiBridge.CHARACTER_CREDIT.method()),"seller credit POST");
+  org.json.JSONObject body=new org.json.JSONObject(ApocBrApiBridge.CHARACTER_DEBIT.body(params));
+  check(body.length()==3&&body.getLong("amount")==25&&body.getString("reason").equals("market.purchase")&&body.getString("idempotencyKey").equals("order:1"),"debit body contains amount, reason, stable key without item reference");
+  for(String invalid:List.of(params.replace("\"amount\":25","\"amount\":0"),params.replace("\"amount\":25","\"amount\":1.5"),params.replace("\"amount\":25","\"amount\":1000000001"),params.replace("market.purchase","bad\\nreason"),params.replace("order:1","bad/key"),PARAMS)){
+   try{ApocBrApiBridge.CHARACTER_DEBIT.resolve(invalid);throw new AssertionError("invalid debit accepted");}catch(RuntimeException expected){checks++;}
+  }
+  Map<String,Object> result=ApocBrApiBridge.CHARACTER_DEBIT.decode("{\"balance\":75,\"transactionId\":\"tx:1\",\"idempotencyKey\":\"order:1\"}");
+  check(result.get("transactionId").equals("tx:1")&&result.get("idempotencyKey").equals("order:1"),"debit transaction receipt decoded");
+  try{ApocBrApiBridge.CHARACTER_DEBIT.decode("{\"balance\":75}");throw new AssertionError("missing receipt accepted");}catch(RuntimeException expected){checks++;}
+  check(CourierItemCodec.encode(null)==null&&CourierItemCodec.decode("invalid")==null&&CourierItemCodec.decode("A".repeat(1400000))==null,"codec rejects missing, malformed and oversized blobs");
+ }
  static class Fake implements ApiDispatcher.Transport {
+  final List<String> methods=new CopyOnWriteArrayList<>();
   final List<Long> sent=new CopyOnWriteArrayList<>();
   final AtomicBoolean closed=new AtomicBoolean();
   public ApiDispatcher.Reply send(URI uri){sent.add(System.nanoTime());return new ApiDispatcher.Reply(200,"{\"balance\":15000}",null,0);}
+  public ApiDispatcher.Reply send(URI uri,String method){methods.add(method);return send(uri);}
   public void close(){closed.set(true);}
  }
  static void bounded()throws Exception{
@@ -82,6 +106,7 @@ public class ApiBridgeTest {
   Fake fake=new Fake();
   try(ApiDispatcher dispatcher=new ApiDispatcher(fake,1500,clock::get)){
    check(dispatcher.submit("first",URI_VALUE)==null,"first admission");
+   check("INVALID_METHOD".equals(dispatcher.submit("bad",URI_VALUE,"DELETE")),"unsupported methods never enter queue");
    check("THROTTLED".equals(dispatcher.submit("spam",URI_VALUE)),"immediate spam rejected");
    for(int i=1;i<32;i++){clock.addAndGet(1_500_000_000L);check(dispatcher.submit("r"+i,URI_VALUE)==null,"bounded admission");}
    clock.addAndGet(1_500_000_000L);
@@ -141,7 +166,7 @@ public class ApiBridgeTest {
    };
    exposer.exposeLikeJavaRecursively(ApocBrApiBridge.class,LuaManager.env);
    exposer.exposeLikeJavaRecursively(ApocBrApiBridge.Endpoint.class,LuaManager.env);
-   LuaClosure call=LuaCompiler.loadstring("return ApocBrApiBridge.request(ApocBrApiBridge.CHARACTER_BALANCE, '"+PARAMS+"', function(r) result = r end)","request-fixture",LuaManager.env);
+   LuaClosure call=LuaCompiler.loadstring("return ApocBrApiBridge.request(ApocBrApiBridge.CHARACTER_LOGIN, '"+PARAMS+"', function(r) result = r end)","request-fixture",LuaManager.env);
    Object[] returned=LuaManager.caller.pcall(LuaManager.thread,call,new Object[]{});
    check(Boolean.TRUE.equals(returned[0])&&returned[1] instanceof String,"real Kahlua invokes facade and enum constant");
    check(LuaManager.env.rawget("result")==null,"callback is asynchronous");
@@ -149,6 +174,7 @@ public class ApiBridgeTest {
    KahluaTable result=(KahluaTable)LuaManager.env.rawget("result");
    check(Boolean.TRUE.equals(result.rawget("ok"))&&Double.valueOf(15000).equals(result.rawget("balance")),"Lua receives decoded balance");
    check(returned[1].equals(result.rawget("requestId")),"callback correlation");
+   check(fake.methods.equals(List.of("POST")),"Lua registration preserves POST through detached queue");
    LuaManager.env.rawset("result",null);ApiBridgeLifecycle.update();
    check(LuaManager.env.rawget("result")==null,"completion delivered exactly once");
    check(result.rawget("body")==null,"only decoded response exposed");
@@ -171,6 +197,8 @@ public class ApiBridgeTest {
   HttpServer server=HttpServer.create(new InetSocketAddress("127.0.0.1",0),0);
   ExecutorService executor=Executors.newVirtualThreadPerTaskExecutor();server.setExecutor(executor);
   AtomicReference<String> key=new AtomicReference<>();AtomicInteger redirected=new AtomicInteger();
+  AtomicReference<String> method=new AtomicReference<>();AtomicInteger requestBytes=new AtomicInteger(-1);
+  server.createContext("/bind",exchange->{method.set(exchange.getRequestMethod());requestBytes.set(exchange.getRequestBody().readAllBytes().length);key.set(exchange.getRequestHeaders().getFirst("X-API-Key"));byte[] body="{\"balance\":15000}".getBytes();exchange.sendResponseHeaders(200,body.length);exchange.getResponseBody().write(body);exchange.close();});
   server.createContext("/ok",exchange->{key.set(exchange.getRequestHeaders().getFirst("X-API-Key"));byte[] body="{\"balance\":15000}".getBytes();exchange.sendResponseHeaders(200,body.length);exchange.getResponseBody().write(body);exchange.close();});
   server.createContext("/redirect",exchange->{exchange.getResponseHeaders().set("Location","/target");exchange.sendResponseHeaders(302,-1);exchange.close();});
   server.createContext("/target",exchange->{redirected.incrementAndGet();exchange.sendResponseHeaders(200,-1);exchange.close();});
@@ -183,6 +211,9 @@ public class ApiBridgeTest {
   try(ApiHttpTransport transport=new ApiHttpTransport("dummy-fixture-key")){
    check(transport.send(URI.create(base+"/ok")).status()==200,"loopback HTTP");
    check("dummy-fixture-key".equals(key.get()),"X-API-Key");
+   check(transport.send(URI.create(base+"/bind?sourceServerId=2"),"POST").status()==200,"registration POST reaches loopback backend");
+   check("POST".equals(method.get())&&requestBytes.get()==0&&"dummy-fixture-key".equals(key.get()),"registration sends authenticated POST without a caller-controlled body");
+   check(transport.send(URI.create(base+"/bind"),"POST","{\"amount\":25}").status()==200&&requestBytes.get()>0,"debit JSON body crosses HTTP transport");
    check("HTTP_302".equals(transport.send(URI.create(base+"/redirect")).error())&&redirected.get()==0,"no redirects");
    check("RESPONSE_TOO_LARGE".equals(transport.send(URI.create(base+"/huge")).error()),"bounded response");
    check(transport.send(URI.create(base+"/limited")).cooldownMillis()==120000,"Retry-After seconds");
@@ -197,7 +228,7 @@ public class ApiBridgeTest {
   }finally{release.countDown();server.stop(0);executor.shutdownNow();}
  }
  public static void main(String[] args)throws Exception{
-  parameters();bounded();cooldown();concurrentAdmission();callbacks();startup();http();
+  parameters();debit();bounded();cooldown();concurrentAdmission();callbacks();startup();http();
   System.out.println("Passed "+checks+" API bridge assertions (42.22.2, real Kahlua + loopback HTTP).");
  }
 }

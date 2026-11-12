@@ -32,8 +32,20 @@ final class ApiHttpTransport implements ApiDispatcher.Transport {
     }
 
     @Override public ApiDispatcher.Reply send(URI uri) throws InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10))
-                .header("X-API-Key", apiKey).header("Accept", "application/json").GET().build();
+        return send(uri,"GET");
+    }
+
+    @Override public ApiDispatcher.Reply send(URI uri,String method) throws InterruptedException {
+        return send(uri,method,null);
+    }
+
+    @Override public ApiDispatcher.Reply send(URI uri,String method,String body) throws InterruptedException {
+        if (!"GET".equals(method) && !"POST".equals(method)) throw new IllegalArgumentException("INVALID_METHOD");
+        HttpRequest.Builder builder = HttpRequest.newBuilder(uri).timeout(Duration.ofSeconds(10))
+                .header("X-API-Key", apiKey).header("Accept", "application/json");
+        if (body!=null) builder.header("Content-Type","application/json");
+        HttpRequest request=builder.method(method,body==null?HttpRequest.BodyPublishers.noBody()
+                :HttpRequest.BodyPublishers.ofString(body,StandardCharsets.UTF_8)).build();
         CompletableFuture<HttpResponse<byte[]>> future = client.sendAsync(request, ignored -> new BoundedBody());
         try {
             HttpResponse<byte[]> response = future.get(10, TimeUnit.SECONDS);
