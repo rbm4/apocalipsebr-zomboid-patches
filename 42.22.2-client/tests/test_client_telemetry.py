@@ -32,7 +32,13 @@ class ClientTelemetryTest(unittest.TestCase):
             self.assertEqual(len(first['worstFrames']), 16)
             self.assertEqual(first['context'], {'loadedZombies': 224, 'movingObjects': 324,
                                                'screenWidth': 1920, 'screenHeight': 1080, 'playerZoom': 1.5})
-            self.assertEqual(first['schemaVersion'], 2)
+            self.assertEqual(first['schemaVersion'], 3)
+            self.assertEqual(first['textures']['limitCalls'], 25)
+            self.assertEqual(first['textures']['scaled'], 25)
+            self.assertEqual(first['textures']['inputPixels'], 25 * 4096 * 2048)
+            self.assertEqual(first['textures']['outputPixels'], 25 * 1024 * 512)
+            self.assertEqual(first['textures']['largestLimit']['maxSize'], 1024)
+            self.assertTrue(all(f['largestTextureLimit']['scaled'] for f in first['worstFrames']))
             self.assertLessEqual(first['frameCpu']['count'], 25)
             files = first['fileSystem']
             self.assertEqual(files['resultCallbacks'], 95)
@@ -54,6 +60,8 @@ class ClientTelemetryTest(unittest.TestCase):
             self.assertEqual(second['fileSystem']['resultCallbacks'], 0)
             self.assertEqual(sum(t['handleResult']['count'] for t in second['fileSystem']['tasks'].values()), 0)
             self.assertEqual(second['fileSystem']['backlogMax'], 0)
+            self.assertEqual(second['textures']['limitCalls'], 0)
+            self.assertIsNone(second['textures']['largestLimit'])
             self.assertEqual(second['seq'], 2)
             self.assertEqual(second['droppedWindows'], 0)
             self.assertEqual(second['writeErrors'], 0)

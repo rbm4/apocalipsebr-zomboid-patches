@@ -6,6 +6,8 @@
 
 ## Reports
 
+- 2026-11-12: [Schema 3 probes and image worker-offload assessment](reports/2026-11-12-client-probe-schema-3-texture-offload.md).
+
 - 2026-11-12: [Schema 2 capture: scene rendering and image-result bursts](reports/2026-11-12-schema-2-capture-analysis.md).
 
 - 2026-11-12: [Schema 2 probe implementation and validation](reports/2026-11-12-client-probe-schema-2.md).

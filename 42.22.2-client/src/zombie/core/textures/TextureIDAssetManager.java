@@ -57,7 +57,12 @@ public final class TextureIDAssetManager extends AssetManager {
         TextureID textureID = (TextureID)asset;
         if (result instanceof ImageData imageData) {
             textureID.setImageData(imageData);
-            this.onLoadingSucceeded(asset);
+            long apocProbe328 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                this.onLoadingSucceeded(asset);
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_ASSET_SUCCESS, apocProbe328);
+            }
         } else {
             this.onLoadingFailed(asset);
         }

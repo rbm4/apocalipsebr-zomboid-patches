@@ -28,7 +28,17 @@ public final class ApocBRClientTelemetryLite {
         UPDATE_MANAGERS, WORLD_PHYSICS, WORLD_CLIMATE, WORLD_CELL, WORLD_CONTACTS,
         WORLD_REMAINDER, MOVING_UPDATE, MOVING_POSTUPDATE,
         FILE_HANDLE_RESULT, FILE_DONE, FILE_ADMISSION_LOCK, FILE_ADMISSION, FILE_SUBMIT,
-        RENDER_INLINE_LIGHTING, WORLD_WORKER_WAIT, UPDATE_LUA_EVEN_PAUSED
+        RENDER_INLINE_LIGHTING, WORLD_WORKER_WAIT, UPDATE_LUA_EVEN_PAUSED,
+        SCENE_WORLD_RENDER, SCENE_OUTLINE_START, SCENE_OUTLINE_END, SCENE_LEGACY_POST,
+        SCENE_LUA_POST_RENDER, SCENE_END_FRAME, WORLD_RENDER_CULL, WORLD_RENDER_MASK,
+        WORLD_RENDER_BODY_ATLAS, WORLD_RENDER_ITEM_ATLAS, WORLD_RENDER_CELL,
+        WORLD_RENDER_WEATHER, WORLD_RENDER_SKYBOX, WORLD_HUTCH, WORLD_FOG,
+        WORLD_HELICOPTER, WORLD_EMITTERS, WORLD_SOUND_INIT, WORLD_GROUP_PREUPDATE,
+        WORLD_ONCE_EVERY, WORLD_COLLISION_INIT, WORLD_REGIONS, WORLD_HALO,
+        WORLD_RECORDER, WORLD_DESIGNATION, RENDER_CONTEXT_INVOKE, RENDER_CONTEXT_WAIT,
+        TEXTURE_SET_IMAGE, TEXTURE_LIMIT_SIZE, TEXTURE_MIP_SELECT, TEXTURE_BUFFER_ALLOC,
+        TEXTURE_BUFFER_COPY, TEXTURE_SOURCE_DISPOSE, TEXTURE_QUEUE_UPLOAD,
+        TEXTURE_ASSET_SUCCESS, IMAGE_GENERATE_MIPMAPS, IMAGE_PREMULTIPLY
     }
 
     public static final boolean ENABLED = Boolean.getBoolean("apocbr.clientTelemetry.enabled");
@@ -65,6 +75,8 @@ public final class ApocBRClientTelemetryLite {
     private static long frameCpuStarted;
     private static int screenWidth, screenHeight;
     private static float zoom;
+    private static long textureLimitCalls, texturesScaled, textureInputPixels, textureOutputPixels;
+    private static TextureSample frameLargestTexture, largestTexture;
 
     static {
         for (int i = 0; i < PHASES; i++) phases[i] = new Stats();
@@ -101,6 +113,7 @@ public final class ApocBRClientTelemetryLite {
         Arrays.fill(framePhases, 0L);
         frameFileMaxNanos = 0L;
         frameFileMaxType = null;
+        frameLargestTexture = null;
         capturing = true;
     }
 
@@ -150,6 +163,21 @@ public final class ApocBRClientTelemetryLite {
 
     public static void fileSubmitted() { if (isCapturing()) fileSubmissions++; }
 
+    /** Detached dimensions only. scaled is true only after vanilla successfully disposes/replaces the source. */
+    public static void textureLimit(long started, int inWidth, int inHeight, int outWidth, int outHeight,
+                                    int maxSize, int flags, boolean scaled) {
+        if (started == 0L || !isCapturing()) return;
+        long elapsed = Math.max(0L, System.nanoTime() - started);
+        textureLimitCalls++;
+        if (scaled) texturesScaled++;
+        textureInputPixels += Math.max(0L, (long)inWidth * inHeight);
+        textureOutputPixels += Math.max(0L, (long)outWidth * outHeight);
+        if (frameLargestTexture == null || elapsed > frameLargestTexture.nanos) {
+            frameLargestTexture = new TextureSample(elapsed, inWidth, inHeight, outWidth, outHeight, maxSize, flags, scaled);
+            if (largestTexture == null || elapsed > largestTexture.nanos) largestTexture = frameLargestTexture;
+        }
+    }
+
     public static void renderContext(int width, int height, float playerZoom) {
         if (!isCapturing()) return;
         screenWidth = width; screenHeight = height; zoom = playerZoom;
@@ -182,7 +210,7 @@ public final class ApocBRClientTelemetryLite {
             }
             if (slowSize < SLOW_LIMIT || elapsed > slow[slot].nanos) {
                 slow[slot] = new SlowFrame(frameNumber, System.currentTimeMillis(), elapsed,
-                    frameCadence, zombies, movingObjects, framePhases.clone(), frameFileMaxType, frameFileMaxNanos, cpuNanos);
+                    frameCadence, zombies, movingObjects, framePhases.clone(), frameFileMaxType, frameFileMaxNanos, cpuNanos, frameLargestTexture);
                 if (slowSize < SLOW_LIMIT) slowSize++;
             }
         }
@@ -199,7 +227,10 @@ public final class ApocBRClientTelemetryLite {
         Snapshot snapshot = new Snapshot(++sequence, System.currentTimeMillis(), now - windowStarted,
             frames.take(), cadence.take(), phaseData, slowCount, Arrays.copyOf(slow, slowSize),
             zombies, movingObjects, owner.getName(), tasks, fileCompletions, fileSubmissions,
-            filesInProgress, filesPending, filesAdded, filesBacklogMax, fileTaskOverflow, frameCpu.take(), screenWidth, screenHeight, zoom);
+            filesInProgress, filesPending, filesAdded, filesBacklogMax, fileTaskOverflow, frameCpu.take(), screenWidth, screenHeight, zoom,
+            textureLimitCalls, texturesScaled, textureInputPixels, textureOutputPixels, largestTexture);
+        textureLimitCalls = texturesScaled = textureInputPixels = textureOutputPixels = 0L;
+        largestTexture = null;
         fileCompletions = fileSubmissions = fileTaskOverflow = 0L;
         filesInProgress = filesPending = filesAdded = filesBacklogMax = 0;
         Arrays.fill(slow, null);
@@ -266,7 +297,7 @@ public final class ApocBRClientTelemetryLite {
 
     private static String toJson(Snapshot s, long gcCount, long gcMs, String collectors) {
         StringBuilder json = new StringBuilder(8192);
-        json.append("{\"schemaVersion\":2,\"kind\":\"client-main-thread\",\"targetBuild\":\"42.22.2\",\"seq\":")
+        json.append("{\"schemaVersion\":3,\"kind\":\"client-main-thread\",\"targetBuild\":\"42.22.2\",\"seq\":")
             .append(s.seq).append(",\"ts\":").append(s.ts).append(",\"intervalMs\":").append(ms(s.interval))
             .append(",\"thread\":\"").append(escape(s.thread)).append("\",\"frameWork\":");
         appendStats(json, s.frames);
@@ -300,6 +331,7 @@ public final class ApocBRClientTelemetryLite {
             json.append("},\"largestFileCallback\":");
             if (f.fileType == null) json.append("null");
             else json.append("{\"type\":\"").append(escape(f.fileType)).append("\",\"ms\":").append(ms(f.fileNanos)).append('}');
+            json.append(",\"largestTextureLimit\":"); appendTexture(json, f.texture);
             json.append('}');
         }
         json.append("],\"fileSystem\":{\"resultCallbacks\":").append(s.fileCompletions)
@@ -315,7 +347,11 @@ public final class ApocBRClientTelemetryLite {
             json.append(",\"done\":"); appendStats(json, task.done); json.append('}');
         }
         Runtime rt = Runtime.getRuntime();
-        json.append("}},\"writerJvm\":{\"sampleTs\":").append(System.currentTimeMillis())
+        json.append("}},\"textures\":{\"limitCalls\":").append(s.textureCalls)
+            .append(",\"scaled\":").append(s.scaled).append(",\"inputPixels\":").append(s.inputPixels)
+            .append(",\"outputPixels\":").append(s.outputPixels).append(",\"largestLimit\":");
+        appendTexture(json, s.texture);
+        json.append("},\"writerJvm\":{\"sampleTs\":").append(System.currentTimeMillis())
             .append(",\"heapUsedBytes\":").append(rt.totalMemory() - rt.freeMemory())
             .append(",\"heapMaxBytes\":").append(rt.maxMemory())
             .append(",\"gcCountDelta\":").append(gcCount).append(",\"gcMsDelta\":").append(gcMs)
@@ -335,6 +371,14 @@ public final class ApocBRClientTelemetryLite {
             json.append(data[i]);
         }
         json.append("]}");
+    }
+
+    private static void appendTexture(StringBuilder json, TextureSample t) {
+        if (t == null) { json.append("null"); return; }
+        json.append("{\"ms\":").append(ms(t.nanos)).append(",\"inputWidth\":").append(t.inWidth)
+            .append(",\"inputHeight\":").append(t.inHeight).append(",\"outputWidth\":").append(t.outWidth)
+            .append(",\"outputHeight\":").append(t.outHeight).append(",\"maxSize\":").append(t.maxSize)
+            .append(",\"flags\":").append(t.flags).append(",\"scaled\":").append(t.scaled).append('}');
     }
 
     private static String percentile(long[] data, int percent) {
@@ -380,10 +424,13 @@ public final class ApocBRClientTelemetryLite {
 
     private static final class TaskTiming { final Stats result = new Stats(), done = new Stats(); }
     private record TaskSnapshot(String type, long[] result, long[] done) { }
+    private record TextureSample(long nanos, int inWidth, int inHeight, int outWidth, int outHeight,
+                                 int maxSize, int flags, boolean scaled) { }
     private record SlowFrame(long frame, long ts, long nanos, long cadence, int zombies, int movingObjects, long[] phases,
-        String fileType, long fileNanos, long cpuNanos) { }
+        String fileType, long fileNanos, long cpuNanos, TextureSample texture) { }
     private record Snapshot(long seq, long ts, long interval, long[] frames, long[] cadence,
         long[][] phases, long slowCount, SlowFrame[] slow, int zombies, int movingObjects, String thread,
         TaskSnapshot[] tasks, long fileCompletions, long fileSubmissions, int inProgress, int pending, int added,
-        int backlogMax, long taskOverflow, long[] cpu, int width, int height, float zoom) { }
+        int backlogMax, long taskOverflow, long[] cpu, int width, int height, float zoom,
+        long textureCalls, long scaled, long inputPixels, long outputPixels, TextureSample texture) { }
 }

@@ -55,7 +55,9 @@ updates the keyboard. Do not interpret its name as a GPU presentation fence.
 the server scaffold's NDJSON + bounded asynchronous writer model, with independent
 client properties/schema and no server database, ServerMap or Lua dependencies.
 Schema 2 adds replacements for IngameState, IsoWorld, MovingObjectUpdateScheduler,
-SpriteRenderer and FileSystemImpl alongside GameWindow. No simulation algorithm
+SpriteRenderer and FileSystemImpl alongside GameWindow. Schema 3 additionally
+instruments TextureID, TextureIDAssetManager, ImageData and RenderThread.
+No simulation or texture-processing algorithm
 is changed. The decompiled FileSystemImpl admission counter and IsoWorld reused
 boolean/coordinate local slots require minimal Java type corrections to compile.
 
@@ -158,7 +160,7 @@ Optional properties:
 No rotation is implemented in this scaffold. Use a fresh path for separate runs
 or archive the output between runs; seq restarts with the JVM.
 
-## Schema 2 interpretation
+## Schema 3 interpretation
 
 Each NDJSON line has kind=client-main-thread, targetBuild=42.22.2, seq, ts and
 monotonic elapsed intervalMs. Wall-clock ts is for correlation, not duration.
@@ -239,10 +241,39 @@ not GPU execution duration. Sprite/draw counts and per-chunk dirty/rebake counte
 remain future probes. Use profiler/JFR for off-CPU causes and remaining large
 phase remainders.
 
-The previous capture is schema 1. Old files remain readable as schema 1, and
-append output can contain both versions. Use a fresh output path for the next
+Previous captures are schema 1 and schema 2. Old files retain their schema, and
+append output can contain multiple versions. Use a fresh output path for the next
 comparison. Rebuild/reinstall through instalador.bat with the client stopped;
-the installer now discovers seven Java sources (31 generated classes).
+the installer now discovers eleven Java sources (40 generated classes).
+
+### Schema 3: scene, world remainder and texture processing
+
+| Boundary | New phases |
+| --- | --- |
+| RENDER_SCENE | SCENE_WORLD_RENDER, SCENE_OUTLINE_START, SCENE_OUTLINE_END, SCENE_LEGACY_POST, SCENE_LUA_POST_RENDER, SCENE_END_FRAME |
+| SCENE_WORLD_RENDER | WORLD_RENDER_CULL (one call each for zombies/animals), WORLD_RENDER_MASK, WORLD_RENDER_BODY_ATLAS, WORLD_RENDER_ITEM_ATLAS, WORLD_RENDER_CELL, WORLD_RENDER_WEATHER, WORLD_RENDER_SKYBOX |
+| UPDATE_WORLD remainder | WORLD_HUTCH, WORLD_FOG, WORLD_HELICOPTER, WORLD_EMITTERS (whole emitter loop), WORLD_SOUND_INIT, WORLD_GROUP_PREUPDATE, WORLD_ONCE_EVERY, WORLD_COLLISION_INIT, WORLD_REGIONS, WORLD_HALO, WORLD_RECORDER, WORLD_DESIGNATION |
+| Main-thread synchronous render-context RPC | RENDER_CONTEXT_INVOKE (whole Runnable overload) and nested RENDER_CONTEXT_WAIT (waitUntilFinished). These differ from the sprite ready-slot wait. |
+| Texture image application | TEXTURE_SET_IMAGE; nested TEXTURE_LIMIT_SIZE and TEXTURE_QUEUE_UPLOAD; TEXTURE_ASSET_SUCCESS wraps asset notification after setImageData returns. |
+| TEXTURE_LIMIT_SIZE scaling branch | TEXTURE_MIP_SELECT, TEXTURE_BUFFER_ALLOC, TEXTURE_BUFFER_COPY, TEXTURE_SOURCE_DISPOSE |
+| Image CPU preprocessing | IMAGE_GENERATE_MIPMAPS; IMAGE_PREMULTIPLY wraps each complete mip-level premultiplication, never individual pixels. These can nest. |
+
+All new timings still require the capturing main-thread owner. Decode workers
+and render-thread GPU uploads are not timed by these phase arrays. QUEUE_UPLOAD
+measures the enqueue operation, not subsequent GPU texture creation. No work was
+moved between threads. Whole-loop phases avoid per-emitter/pixel instrumentation.
+
+The new `textures` object reports limitCalls (measured limitMaxSize attempts),
+scaled (successful source replacement/disposal), inputPixels/outputPixels totals
+and largestLimit. Pixel totals are logical dimensions, not hardware-padded memory
+bytes. Non-scaling calls contribute unchanged dimensions; an exceptional attempt
+can retain its initial output dimensions. They are workload context, not memory
+accounting. largestLimit contains elapsed ms, input/output width/height, maxSize,
+flags and scaled. maxSize=-1 means vanilla did not consult the size-limit setting
+on that path. Each retained worst frame has its own largestTextureLimit or null.
+Only detached numeric data are retained, with no texture object/path collection.
+
+See the [schema 3 implementation and worker-offload assessment](../reports/2026-11-12-client-probe-schema-3-texture-offload.md).
 
 The [first sprite-heavy multiplayer capture](../reports/2026-11-12-sprite-heavy-client-capture.md)
 records measured costs and the next instrumentation boundaries, including render

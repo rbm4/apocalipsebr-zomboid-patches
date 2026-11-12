@@ -114,7 +114,7 @@ public final class ImageData implements Serializable {
 
     /**
      * creates a new empty imageData
-     * 
+     *
      * @param this the width of imageData
      * @param width the height of imageData
      */
@@ -206,7 +206,7 @@ public final class ImageData implements Serializable {
 
     /**
      * make the image transparent
-     * 
+     *
      * @param red the red value (0-255)
      * @param green the green value (0-255)
      * @param blue the blue value (0-255)
@@ -217,7 +217,7 @@ public final class ImageData implements Serializable {
 
     /**
      * make the image transparent
-     * 
+     *
      * @param red the red value (0-255)
      * @param green the green value (0-255)
      * @param blue the blue value (0-255)
@@ -363,32 +363,38 @@ public final class ImageData implements Serializable {
     }
 
     private void generateMipMaps() {
-        this.mipMapCount = calculateNumMips(this.widthHw, this.heightHw);
-        int subLevels = this.mipMapCount - 1;
-        this.mipMaps = new MipMapLevel[subLevels];
-        MipMapLevel baseLevel = this.getData();
-        int baseLevelW = this.widthHw;
-        int baseLevelH = this.heightHw;
-        MipMapLevel parentLevel = baseLevel;
-        int subLevelW = getNextMipDimension(baseLevelW);
-        int subLevelH = getNextMipDimension(baseLevelH);
+        long apocIMAGE_GENERATE_MIPMAPS = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            this.mipMapCount = calculateNumMips(this.widthHw, this.heightHw);
+            int subLevels = this.mipMapCount - 1;
+            this.mipMaps = new MipMapLevel[subLevels];
+            MipMapLevel baseLevel = this.getData();
+            int baseLevelW = this.widthHw;
+            int baseLevelH = this.heightHw;
+            MipMapLevel parentLevel = baseLevel;
+            int subLevelW = getNextMipDimension(baseLevelW);
+            int subLevelH = getNextMipDimension(baseLevelH);
 
-        for (int i = 0; i < subLevels; i++) {
-            MipMapLevel subLevel = new MipMapLevel(subLevelW, subLevelH);
-            if (i < 2) {
-                this.scaleMipLevelMaxAlpha(parentLevel, subLevel, i);
-            } else {
-                this.scaleMipLevelAverage(parentLevel, subLevel, i);
+            for (int i = 0; i < subLevels; i++) {
+                MipMapLevel subLevel = new MipMapLevel(subLevelW, subLevelH);
+                if (i < 2) {
+                    this.scaleMipLevelMaxAlpha(parentLevel, subLevel, i);
+                } else {
+                    this.scaleMipLevelAverage(parentLevel, subLevel, i);
+                }
+
+                this.mipMaps[i] = subLevel;
+                parentLevel = subLevel;
+                subLevelW = getNextMipDimension(subLevelW);
+                subLevelH = getNextMipDimension(subLevelH);
             }
 
-            this.mipMaps[i] = subLevel;
-            parentLevel = subLevel;
-            subLevelW = getNextMipDimension(subLevelW);
-            subLevelH = getNextMipDimension(subLevelH);
-        }
+            for (int i = 0; i < subLevels; i++) {
+                this.performPreMultipliedAlpha(this.mipMaps[i]);
+            }
 
-        for (int i = 0; i < subLevels; i++) {
-            this.performPreMultipliedAlpha(this.mipMaps[i]);
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.IMAGE_GENERATE_MIPMAPS, apocIMAGE_GENERATE_MIPMAPS);
         }
     }
 
@@ -491,20 +497,26 @@ public final class ImageData implements Serializable {
     }
 
     private void performPreMultipliedAlpha(MipMapLevel data) {
-        ImageData.L_performAlphaPadding performAlphaPadding = TL_performAlphaPadding.get();
-        ByteBuffer dataBuff = data.getBuffer();
-        int width = data.width;
-        int height = data.height;
+        long apocIMAGE_PREMULTIPLY = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            ImageData.L_performAlphaPadding performAlphaPadding = TL_performAlphaPadding.get();
+            ByteBuffer dataBuff = data.getBuffer();
+            int width = data.width;
+            int height = data.height;
 
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                int pixelIdx = (y * width + x) * 4;
-                int[] pixelRGBA = getPixelClamped(dataBuff, width, height, x, y, performAlphaPadding.pixelRgba);
-                pixelRGBA[0] = (int)(pixelRGBA[0] * pixelRGBA[3] / 255.0F);
-                pixelRGBA[1] = (int)(pixelRGBA[1] * pixelRGBA[3] / 255.0F);
-                pixelRGBA[2] = (int)(pixelRGBA[2] * pixelRGBA[3] / 255.0F);
-                setPixel(dataBuff, width, height, x, y, pixelRGBA);
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int pixelIdx = (y * width + x) * 4;
+                    int[] pixelRGBA = getPixelClamped(dataBuff, width, height, x, y, performAlphaPadding.pixelRgba);
+                    pixelRGBA[0] = (int)(pixelRGBA[0] * pixelRGBA[3] / 255.0F);
+                    pixelRGBA[1] = (int)(pixelRGBA[1] * pixelRGBA[3] / 255.0F);
+                    pixelRGBA[2] = (int)(pixelRGBA[2] * pixelRGBA[3] / 255.0F);
+                    setPixel(dataBuff, width, height, x, y, pixelRGBA);
+                }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.IMAGE_PREMULTIPLY, apocIMAGE_PREMULTIPLY);
         }
     }
 

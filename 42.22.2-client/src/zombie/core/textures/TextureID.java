@@ -344,51 +344,102 @@ public final class TextureID extends Asset implements IDestroyable, Serializable
     }
 
     public void setImageData(ImageData data) {
-        data = this.limitMaxSize(data);
-        this.data = data;
-        this.width = data.getWidth();
-        this.height = data.getHeight();
-        this.widthHw = data.getWidthHW();
-        this.heightHw = data.getHeightHW();
-        if (data.mask != null) {
-            this.mask = data.mask;
-            data.mask = null;
-        }
+        long apocTEXTURE_SET_IMAGE = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            data = this.limitMaxSize(data);
+            this.data = data;
+            this.width = data.getWidth();
+            this.height = data.getHeight();
+            this.widthHw = data.getWidthHW();
+            this.heightHw = data.getHeightHW();
+            if (data.mask != null) {
+                this.mask = data.mask;
+                data.mask = null;
+            }
 
-        RenderThread.queueInvokeOnRenderContext(this::createTexture);
+            long apocProbe329 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                RenderThread.queueInvokeOnRenderContext(this::createTexture);
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_QUEUE_UPLOAD, apocProbe329);
+            }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_SET_IMAGE, apocTEXTURE_SET_IMAGE);
+        }
     }
 
     private ImageData limitMaxSize(ImageData data) {
-        if (this.assetParams == null) {
-            return data;
-        } else {
-            int flags = this.assetParams.flags;
-            int allFlags = 384;
-            if ((flags & 384) == 0) {
+        long apocStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+        int apocInWidth = apocStarted != 0L && data != null ? data.getWidth() : 0;
+        int apocInHeight = apocStarted != 0L && data != null ? data.getHeight() : 0;
+        int apocOutWidth = apocInWidth, apocOutHeight = apocInHeight;
+        int apocMaxSize = -1;
+        int apocFlags = this.assetParams == null ? 0 : this.assetParams.flags;
+        boolean apocScaled = false;
+        try {
+            if (this.assetParams == null) {
                 return data;
             } else {
-                int maxSize = Core.getInstance().getMaxTextureSizeFromFlags(flags);
-                if (data.getWidth() <= maxSize && data.getHeight() <= maxSize) {
+                int flags = this.assetParams.flags;
+                int allFlags = 384;
+                if ((flags & 384) == 0) {
                     return data;
                 } else {
-                    data.preserveTransparentColor = true;
-                    MipMapLevel mml = data.getData();
-                    int level = 0;
+                    int maxSize = Core.getInstance().getMaxTextureSizeFromFlags(flags);
+                    apocMaxSize = maxSize;
+                    if (data.getWidth() <= maxSize && data.getHeight() <= maxSize) {
+                        return data;
+                    } else {
+                        data.preserveTransparentColor = true;
+                        MipMapLevel mml = data.getData();
+                        int level = 0;
 
-                    while (mml.width > maxSize || mml.height > maxSize) {
-                        mml = data.getMipMapData(++level);
+                        long apocMipStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            while (mml.width > maxSize || mml.height > maxSize) {
+                                mml = data.getMipMapData(++level);
+                            }
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_MIP_SELECT, apocMipStarted);
+                        }
+
+                        WrappedBuffer wrappedBuffer;
+                        long apocAllocStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            wrappedBuffer = DirectBufferAllocator.allocate(mml.getBuffer().capacity());
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_BUFFER_ALLOC, apocAllocStarted);
+                        }
+                        long apocCopyStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            mml.getBuffer().rewind();
+                            wrappedBuffer.getBuffer().put(mml.getBuffer());
+                            wrappedBuffer.getBuffer().rewind();
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_BUFFER_COPY, apocCopyStarted);
+                        }
+                        ImageData newData = new ImageData(data.getWidth() >> level, data.getHeight() >> level, wrappedBuffer);
+                        newData.alphaPaddingDone = true;
+                        long apocDisposeStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            data.dispose();
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_SOURCE_DISPOSE, apocDisposeStarted);
+                        }
+                        apocScaled = true;
+                        if (apocStarted != 0L) {
+                            apocOutWidth = newData.getWidth();
+                            apocOutHeight = newData.getHeight();
+                        }
+                        return newData;
                     }
-
-                    WrappedBuffer wrappedBuffer = DirectBufferAllocator.allocate(mml.getBuffer().capacity());
-                    mml.getBuffer().rewind();
-                    wrappedBuffer.getBuffer().put(mml.getBuffer());
-                    wrappedBuffer.getBuffer().rewind();
-                    ImageData newData = new ImageData(data.getWidth() >> level, data.getHeight() >> level, wrappedBuffer);
-                    newData.alphaPaddingDone = true;
-                    data.dispose();
-                    return newData;
                 }
             }
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_LIMIT_SIZE, apocStarted);
+            zombie.ApocBRClientTelemetryLite.textureLimit(apocStarted, apocInWidth, apocInHeight,
+                apocOutWidth, apocOutHeight, apocMaxSize, apocFlags, apocScaled);
         }
     }
 

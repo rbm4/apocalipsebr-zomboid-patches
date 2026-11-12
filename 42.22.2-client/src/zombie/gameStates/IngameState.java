@@ -1196,11 +1196,36 @@ public final class IngameState extends GameState {
         IndieGL.disableAlphaTest();
         IndieGL.disableDepthTest();
         if (IsoPlayer.getInstance() != null && !IsoPlayer.getInstance().isAsleep() || UIManager.getFadeAlpha(nPlayer) < 1.0F) {
-            ModelOutlines.instance.startFrameMain(nPlayer);
-            IsoWorld.instance.render();
-            ModelOutlines.instance.endFrameMain(nPlayer);
-            RenderSettings.getInstance().legacyPostRender(nPlayer);
-            LuaEventManager.triggerEvent("OnPostRender");
+            long apocProbe302 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                ModelOutlines.instance.startFrameMain(nPlayer);
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.SCENE_OUTLINE_START, apocProbe302);
+            }
+            long apocProbe301 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                IsoWorld.instance.render();
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.SCENE_WORLD_RENDER, apocProbe301);
+            }
+            long apocProbe303 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                ModelOutlines.instance.endFrameMain(nPlayer);
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.SCENE_OUTLINE_END, apocProbe303);
+            }
+            long apocProbe304 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                RenderSettings.getInstance().legacyPostRender(nPlayer);
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.SCENE_LEGACY_POST, apocProbe304);
+            }
+            long apocProbe305 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                LuaEventManager.triggerEvent("OnPostRender");
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.SCENE_LUA_POST_RENDER, apocProbe305);
+            }
         }
 
         LineDrawer.clear();
@@ -1209,7 +1234,12 @@ public final class IngameState extends GameState {
         }
 
         try {
-            Core.getInstance().EndFrame(nPlayer);
+            long apocProbe306 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                Core.getInstance().EndFrame(nPlayer);
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.SCENE_END_FRAME, apocProbe306);
+            }
         } catch (Exception var4) {
         }
     }

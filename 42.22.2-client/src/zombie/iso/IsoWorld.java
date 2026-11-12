@@ -2761,17 +2761,47 @@ public final class IsoWorld {
                 GameProfiler profiler = GameProfiler.getInstance();
 
                 try (GameProfiler.ProfileArea t = profiler.profile("Cull")) {
-                    this.sceneCullZombies();
-                    this.sceneCullAnimals();
+                    long apocProbe307 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        this.sceneCullZombies();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RENDER_CULL, apocProbe307);
+                    }
+                    long apocProbe308 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        this.sceneCullAnimals();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RENDER_CULL, apocProbe308);
+                    }
                 } catch (Throwable var17) {
                     ExceptionLogger.logException(var17);
                 }
 
                 try {
-                    WeatherFxMask.initMask();
-                    DeadBodyAtlas.instance.render();
-                    WorldItemAtlas.instance.render();
-                    this.currentCell.render();
+                    long apocProbe309 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        WeatherFxMask.initMask();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RENDER_MASK, apocProbe309);
+                    }
+                    long apocProbe310 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        DeadBodyAtlas.instance.render();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RENDER_BODY_ATLAS, apocProbe310);
+                    }
+                    long apocProbe311 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        WorldItemAtlas.instance.render();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RENDER_ITEM_ATLAS, apocProbe311);
+                    }
+                    long apocProbe312 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        this.currentCell.render();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RENDER_CELL, apocProbe312);
+                    }
                     Gizmos.getInstance().render(IsoCamera.frameState.playerIndex);
                     this.DrawIsoCursorHelper();
                     DeadBodyAtlas.instance.renderDebug();
@@ -2790,7 +2820,12 @@ public final class IsoWorld {
                     }
 
                     try (GameProfiler.ProfileArea var20 = profiler.profile("renderWeatherFX")) {
-                        this.renderWeatherFX();
+                        long apocProbe313 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            this.renderWeatherFX();
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RENDER_WEATHER, apocProbe313);
+                        }
                     }
 
                     if (PerformanceSettings.fboRenderChunk) {
@@ -2806,7 +2841,12 @@ public final class IsoWorld {
                     }
 
                     try (GameProfiler.ProfileArea var21 = profiler.profile("Skybox")) {
-                        SkyBox.getInstance().render();
+                        long apocProbe314 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            SkyBox.getInstance().render();
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RENDER_SKYBOX, apocProbe314);
+                        }
                     }
                 } catch (Throwable var15) {
                     ExceptionLogger.logException(var15);
@@ -2990,8 +3030,18 @@ public final class IsoWorld {
         } finally {
             zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_CELL, apocProbe114);
         }
-        IsoRegions.update();
-        HaloTextHelper.update();
+        long apocProbe324 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            IsoRegions.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_REGIONS, apocProbe324);
+        }
+        long apocProbe325 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            HaloTextHelper.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_HALO, apocProbe325);
+        }
         long apocProbe115 = zombie.ApocBRClientTelemetryLite.beginPhase();
         try {
             CollisionManager.instance.ResolveContacts();
@@ -3023,7 +3073,12 @@ public final class IsoWorld {
         }
 
         try (GameProfiler.ProfileArea var8 = GameProfiler.getInstance().profile("Update DZ")) {
-            DesignationZone.update();
+            long apocProbe326 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                DesignationZone.update();
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_DESIGNATION, apocProbe326);
+            }
         }
     }
 
@@ -3043,9 +3098,24 @@ public final class IsoWorld {
         } finally {
             zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_PHYSICS, apocProbe116);
         }
-        HutchManager.getInstance().updateAll();
-        ImprovedFog.update();
-        this.helicopter.update();
+        long apocProbe315 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            HutchManager.getInstance().updateAll();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_HUTCH, apocProbe315);
+        }
+        long apocProbe316 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            ImprovedFog.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_FOG, apocProbe316);
+        }
+        long apocProbe317 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            this.helicopter.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_HELICOPTER, apocProbe317);
+        }
         long currentMS = System.currentTimeMillis();
         if (currentMS - this.emitterUpdateMs >= 30L) {
             this.emitterUpdateMs = currentMS;
@@ -3054,26 +3124,31 @@ public final class IsoWorld {
             this.emitterUpdate = false;
         }
 
-        for (int n = 0; n < this.currentEmitters.size(); n++) {
-            BaseSoundEmitter e = this.currentEmitters.get(n);
-            if (this.emitterUpdate || e.hasSoundsToStart()) {
-                e.tick();
-            }
-
-            if (e.isEmpty()) {
-                if (e instanceof FMODSoundEmitter fmodSoundEmitter) {
-                    fmodSoundEmitter.clearParameters();
+        long apocProbe323 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            for (int n = 0; n < this.currentEmitters.size(); n++) {
+                BaseSoundEmitter e = this.currentEmitters.get(n);
+                if (this.emitterUpdate || e.hasSoundsToStart()) {
+                    e.tick();
                 }
 
-                this.currentEmitters.remove(n);
-                this.freeEmitters.push(e);
-                IsoObject owner = this.emitterOwners.remove(e);
-                if (owner != null && owner.emitter == e) {
-                    owner.emitter = null;
-                }
+                if (e.isEmpty()) {
+                    if (e instanceof FMODSoundEmitter fmodSoundEmitter) {
+                        fmodSoundEmitter.clearParameters();
+                    }
 
-                n--;
+                    this.currentEmitters.remove(n);
+                    this.freeEmitters.push(e);
+                    IsoObject owner = this.emitterOwners.remove(e);
+                    if (owner != null && owner.emitter == e) {
+                        owner.emitter = null;
+                    }
+
+                    n--;
+                }
             }
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_EMITTERS, apocProbe323);
         }
 
         if (!GameClient.client && !GameServer.server) {
@@ -3083,10 +3158,30 @@ public final class IsoWorld {
             }
         }
 
-        WorldSoundManager.instance.initFrame();
-        ZombieGroupManager.instance.preupdate();
-        OnceEvery.update();
-        CollisionManager.instance.initUpdate();
+        long apocProbe318 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            WorldSoundManager.instance.initFrame();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_SOUND_INIT, apocProbe318);
+        }
+        long apocProbe319 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            ZombieGroupManager.instance.preupdate();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_GROUP_PREUPDATE, apocProbe319);
+        }
+        long apocProbe320 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            OnceEvery.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_ONCE_EVERY, apocProbe320);
+        }
+        long apocProbe321 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            CollisionManager.instance.initUpdate();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_COLLISION_INIT, apocProbe321);
+        }
         CompletableFuture<Void> thread = null;
         if (DebugOptions.instance.threadWorld.getValue()) {
             thread = CompletableFuture.runAsync(this::updateThread, PZForkJoinPool.commonPool());
@@ -3122,7 +3217,12 @@ public final class IsoWorld {
             }
         }
 
-        AnimationPlayerRecorder.onPostUpdateWorld();
+        long apocProbe322 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            AnimationPlayerRecorder.onPostUpdateWorld();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_RECORDER, apocProbe322);
+        }
     }
 
     private void updateThread() {

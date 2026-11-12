@@ -412,23 +412,34 @@ public class RenderThread {
     }
 
     public static void invokeOnRenderContext(Runnable toInvoke) throws RenderContextQueueException {
-        RenderContextQueueItem queueItem = RenderContextQueueItem.alloc(toInvoke);
-        queueItem.setWaiting();
-        queueInvokeOnRenderContext(queueItem);
-
+        long apocRENDER_CONTEXT_INVOKE = zombie.ApocBRClientTelemetryLite.beginPhase();
         try {
-            queueItem.waitUntilFinished(() -> {
-                notifyRenderStateQueue();
-                return !isCloseRequested && !GameWindow.gameThreadExited;
-            });
-        } catch (InterruptedException var3) {
-            DebugType.General.error("Thread Interrupted while waiting for queued item to finish:" + queueItem);
-            notifyRenderStateQueue();
-        }
+            RenderContextQueueItem queueItem = RenderContextQueueItem.alloc(toInvoke);
+            queueItem.setWaiting();
+            queueInvokeOnRenderContext(queueItem);
 
-        Throwable t = queueItem.getThrown();
-        if (t != null) {
-            throw new RenderContextQueueException(t);
+            try {
+                long apocProbe327 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    queueItem.waitUntilFinished(() -> {
+                        notifyRenderStateQueue();
+                        return !isCloseRequested && !GameWindow.gameThreadExited;
+                    });
+                } finally {
+                    zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_CONTEXT_WAIT, apocProbe327);
+                }
+            } catch (InterruptedException var3) {
+                DebugType.General.error("Thread Interrupted while waiting for queued item to finish:" + queueItem);
+                notifyRenderStateQueue();
+            }
+
+            Throwable t = queueItem.getThrown();
+            if (t != null) {
+                throw new RenderContextQueueException(t);
+            }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_CONTEXT_INVOKE, apocRENDER_CONTEXT_INVOKE);
         }
     }
 

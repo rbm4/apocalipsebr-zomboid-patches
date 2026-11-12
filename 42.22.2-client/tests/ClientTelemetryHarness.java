@@ -10,6 +10,8 @@ public final class ClientTelemetryHarness {
             ApocBRClientTelemetryLite.beginFrame(true);
             long start = ApocBRClientTelemetryLite.beginPhase();
             ApocBRClientTelemetryLite.renderContext(1920, 1080, 1.5f);
+            ApocBRClientTelemetryLite.textureLimit(ApocBRClientTelemetryLite.beginPhase(),
+                4096, 2048, 1024, 512, 1024, 128, true);
             ApocBRClientTelemetryLite.fileQueues(3, 4, 5);
             ApocBRClientTelemetryLite.fileSubmitted();
             ApocBRClientTelemetryLite.fileTask("result", ApocBRClientTelemetryLite.beginPhase(), false);
@@ -26,6 +28,7 @@ public final class ClientTelemetryHarness {
                 ApocBRClientTelemetryLite.endPhase(Phase.NETWORK, System.nanoTime() - 1000000000L);
                 ApocBRClientTelemetryLite.endFrame(999, 999);
                 ApocBRClientTelemetryLite.fileTask(new Object(), 1L, false);
+                ApocBRClientTelemetryLite.textureLimit(1L, 999, 999, 999, 999, 999, 0, false);
             });
             other.start(); other.join();
             Thread.sleep(2L);
