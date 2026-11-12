@@ -428,18 +428,38 @@ public final class GameWindow {
 
     protected static void renderInternal() {
         SpriteRenderer.instance.NewFrame();
-        if (!PerformanceSettings.lightingThread && LightingJNI.init && !LightingJNI.WaitingForMain()) {
-            LightingJNI.DoLightingUpdateNew(System.nanoTime(), Core.dirtyGlobalLightsCount > 0);
-            if (Core.dirtyGlobalLightsCount > 0) {
-                Core.dirtyGlobalLightsCount--;
+        long apocRENDER_INLINE_LIGHTING = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (!PerformanceSettings.lightingThread && LightingJNI.init && !LightingJNI.WaitingForMain()) {
+                LightingJNI.DoLightingUpdateNew(System.nanoTime(), Core.dirtyGlobalLightsCount > 0);
+                if (Core.dirtyGlobalLightsCount > 0) {
+                    Core.dirtyGlobalLightsCount--;
+                }
             }
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_INLINE_LIGHTING, apocRENDER_INLINE_LIGHTING);
         }
 
-        IsoObjectPicker.Instance.StartRender();
-        LightingJNI.preUpdate();
+        long apocProbe2 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            IsoObjectPicker.Instance.StartRender();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_PICKER, apocProbe2);
+        }
+        long apocProbe1 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            LightingJNI.preUpdate();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_LIGHTING_PREUPDATE, apocProbe1);
+        }
 
         try (AbstractPerformanceProfileProbe abstractPerformanceProfileProbe = GameWindow.s_performance.statesRender.profile()) {
-            states.render();
+            long apocProbe3 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                states.render();
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_STATES, apocProbe3);
+            }
         }
     }
 

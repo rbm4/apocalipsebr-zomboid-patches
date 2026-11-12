@@ -39,3 +39,17 @@ thread callback/connection gating was traced in the exact source; live launch,
 remote dedicated-server connection, large hordes, render contention, disconnect,
 save/exit, slow/unwritable storage and telemetry overhead remain runtime checks.
 No stutter cause or performance improvement has been established.
+
+## Installer follow-up, 2026-11-12
+
+Root launchers now invoke the client patchApocalipseBr.ps1 deployment entry point,
+matching the server target's unsigned-JAR plus loose-class model. BuildOnly is
+the explicit artifact-retention path; normal deployment uses temporary output.
+The client copies the existing server Set-UnsignedGameJar.ps1 helper unchanged,
+and configures client launcher JSON without the server PostgreSQL runtime layer.
+
+tests/test_client_deployment.py exercises real scripts against copied exact-build
+JARs in disposable root and java/ layouts with spaces: dry run, class deployment,
+signature stripping, preserved original bytes/timestamp, unrelated JSON settings,
+repeat deployment/JAR reuse and repeat revert restoring a previous loose class.
+The live game installation is not modified by this fixture.

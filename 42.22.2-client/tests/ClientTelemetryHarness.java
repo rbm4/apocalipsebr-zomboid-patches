@@ -9,11 +9,23 @@ public final class ClientTelemetryHarness {
         for (int i = 0; i < 25; i++) {
             ApocBRClientTelemetryLite.beginFrame(true);
             long start = ApocBRClientTelemetryLite.beginPhase();
+            ApocBRClientTelemetryLite.renderContext(1920, 1080, 1.5f);
+            ApocBRClientTelemetryLite.fileQueues(3, 4, 5);
+            ApocBRClientTelemetryLite.fileSubmitted();
+            ApocBRClientTelemetryLite.fileTask("result", ApocBRClientTelemetryLite.beginPhase(), false);
+            ApocBRClientTelemetryLite.fileTask("cleanup", ApocBRClientTelemetryLite.beginPhase(), true);
+            if (i == 0) {
+                for (int dimensions = 1; dimensions <= 70; dimensions++) {
+                    Object task = java.lang.reflect.Array.newInstance(int.class, new int[dimensions]);
+                    ApocBRClientTelemetryLite.fileTask(task, ApocBRClientTelemetryLite.beginPhase(), false);
+                }
+            }
             if (ApocBRClientTelemetryLite.ENABLED && start == 0L) throw new AssertionError("capture missing");
             Thread other = new Thread(() -> {
                 ApocBRClientTelemetryLite.beginFrame(false);
                 ApocBRClientTelemetryLite.endPhase(Phase.NETWORK, System.nanoTime() - 1000000000L);
                 ApocBRClientTelemetryLite.endFrame(999, 999);
+                ApocBRClientTelemetryLite.fileTask(new Object(), 1L, false);
             });
             other.start(); other.join();
             Thread.sleep(2L);
@@ -23,6 +35,7 @@ public final class ClientTelemetryHarness {
         ApocBRClientTelemetryLite.beginFrame(false);
         ApocBRClientTelemetryLite.endPhase(Phase.NETWORK, System.nanoTime() - 1000000000L);
         ApocBRClientTelemetryLite.beginFrame(true);
+        ApocBRClientTelemetryLite.renderContext(1280, 720, 2.0f);
         ApocBRClientTelemetryLite.endFrame(7, 8);
         ApocBRClientTelemetryLite.shutdown();
     }

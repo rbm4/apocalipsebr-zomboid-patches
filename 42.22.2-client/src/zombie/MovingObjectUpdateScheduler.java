@@ -146,18 +146,30 @@ public final class MovingObjectUpdateScheduler {
     }
 
     public void update() {
-        for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
-            simulation.update((int)this.frameCounter);
+        long apocMOVING_UPDATE = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
+                simulation.update((int)this.frameCounter);
+            }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.MOVING_UPDATE, apocMOVING_UPDATE);
         }
     }
 
     public void postupdate() {
-        if (GameServer.server) {
-            ZombieCountOptimiser.deleteZombies();
-        }
+        long apocMOVING_POSTUPDATE = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (GameServer.server) {
+                ZombieCountOptimiser.deleteZombies();
+            }
 
-        for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
-            simulation.postupdate((int)this.frameCounter);
+            for (MovingObjectUpdateSchedulerUpdateBucket simulation : this.simulationLevels) {
+                simulation.postupdate((int)this.frameCounter);
+            }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.MOVING_POSTUPDATE, apocMOVING_POSTUPDATE);
         }
     }
 

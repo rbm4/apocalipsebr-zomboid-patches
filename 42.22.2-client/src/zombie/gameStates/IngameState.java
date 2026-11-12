@@ -1298,9 +1298,18 @@ public final class IngameState extends GameState {
                 IsoCamera.setCameraCharacter(IsoPlayer.players[n]);
                 Core.getInstance().StartFrame(n, clear);
                 IsoCamera.frameState.set(n);
+                if (n == 0 && zombie.ApocBRClientTelemetryLite.isCapturing()) {
+                    zombie.ApocBRClientTelemetryLite.renderContext(Core.getInstance().getScreenWidth(),
+                        Core.getInstance().getScreenHeight(), Core.getInstance().getZoom(n));
+                }
                 clear = false;
                 IsoSprite.globalOffsetX = -1.0F;
-                this.renderframe(n);
+                long apocProbe110 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    this.renderframe(n);
+                } finally {
+                    zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_SCENE, apocProbe110);
+                }
             }
         }
 
@@ -1309,7 +1318,12 @@ public final class IngameState extends GameState {
         }
 
         if (DebugOptions.instance.offscreenBuffer.render.getValue()) {
-            Core.getInstance().RenderOffScreenBuffer();
+            long apocProbe111 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                Core.getInstance().RenderOffScreenBuffer();
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_COMPOSITE, apocProbe111);
+            }
         }
 
         for (int nx = 0; nx < IsoPlayer.numPlayers; nx++) {
@@ -1318,12 +1332,22 @@ public final class IngameState extends GameState {
                 IsoCamera.setCameraCharacter(IsoPlayer.players[nx]);
                 IsoCamera.frameState.set(nx);
                 Core.getInstance().StartFrameText(nx);
-                this.renderframetext(nx);
+                long apocProbe112 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    this.renderframetext(nx);
+                } finally {
+                    zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_TEXT, apocProbe112);
+                }
             }
         }
 
         UIManager.resize();
-        this.renderframeui();
+        long apocProbe113 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            this.renderframeui();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_UI, apocProbe113);
+        }
     }
 
     @Override
@@ -1346,7 +1370,12 @@ public final class IngameState extends GameState {
             }
         }
 
-        LuaEventManager.triggerEvent("OnTickEvenPaused", BoxedStaticValues.toDouble(this.numberTicks));
+        long apocUPDATE_LUA_EVEN_PAUSED = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            LuaEventManager.triggerEvent("OnTickEvenPaused", BoxedStaticValues.toDouble(this.numberTicks));
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_LUA_EVEN_PAUSED, apocUPDATE_LUA_EVEN_PAUSED);
+        }
         DebugFileWatcher.instance.update();
         AdvancedAnimator.checkModifiedFiles();
         if (Core.debug) {
@@ -1523,13 +1552,51 @@ public final class IngameState extends GameState {
 
                 if (!this.paused || GameClient.client) {
                     try {
-                        if (IsoCamera.getCameraCharacter() != null && IsoWorld.instance.doChunkMapUpdate) {
-                            for (int n = 0; n < IsoPlayer.numPlayers; n++) {
-                                if (IsoPlayer.players[n] != null && !IsoWorld.instance.currentCell.chunkMap[n].ignore && !GameServer.server) {
-                                    IsoCamera.setCameraCharacter(IsoPlayer.players[n]);
-                                    IsoPlayer.setInstance(IsoPlayer.players[n]);
-                                    IsoWorld.instance.currentCell.chunkMap[n].ProcessChunkPos(IsoCamera.getCameraCharacter());
+                        long apocProbe101 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            if (IsoCamera.getCameraCharacter() != null && IsoWorld.instance.doChunkMapUpdate) {
+                                for (int n = 0; n < IsoPlayer.numPlayers; n++) {
+                                    if (IsoPlayer.players[n] != null && !IsoWorld.instance.currentCell.chunkMap[n].ignore && !GameServer.server) {
+                                        IsoCamera.setCameraCharacter(IsoPlayer.players[n]);
+                                        IsoPlayer.setInstance(IsoPlayer.players[n]);
+                                        IsoWorld.instance.currentCell.chunkMap[n].ProcessChunkPos(IsoCamera.getCameraCharacter());
+                                    }
                                 }
+                            }
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_CHUNK_POSITION, apocProbe101);
+                        }
+
+                        if (Core.debug) {
+                            this.debugTimes.add(System.nanoTime());
+                        }
+
+                        long apocProbe102 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            IsoWorld.instance.update();
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_WORLD, apocProbe102);
+                        }
+                        CompletableFuture<Void> objAmbEmit = null;
+                        if (DebugOptions.instance.threadAmbient.getValue() && !GameServer.server) {
+                            objAmbEmit = CompletableFuture.runAsync(ObjectAmbientEmitters.getInstance()::update, PZForkJoinPool.commonPool());
+                        }
+
+                        try (GameProfiler.ProfileArea var36 = profiler.profile("GEM Update")) {
+                            long apocProbe103 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                            try {
+                                GameEntityManager.Update();
+                            } finally {
+                                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_ENTITIES, apocProbe103);
+                            }
+                        }
+
+                        try (GameProfiler.ProfileArea var37 = profiler.profile("Animal")) {
+                            long apocProbe104 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                            try {
+                                AnimalController.getInstance().update();
+                            } finally {
+                                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_ANIMALS, apocProbe104);
                             }
                         }
 
@@ -1537,34 +1604,31 @@ public final class IngameState extends GameState {
                             this.debugTimes.add(System.nanoTime());
                         }
 
-                        IsoWorld.instance.update();
-                        CompletableFuture<Void> objAmbEmit = null;
-                        if (DebugOptions.instance.threadAmbient.getValue() && !GameServer.server) {
-                            objAmbEmit = CompletableFuture.runAsync(ObjectAmbientEmitters.getInstance()::update, PZForkJoinPool.commonPool());
-                        }
-
-                        try (GameProfiler.ProfileArea var36 = profiler.profile("GEM Update")) {
-                            GameEntityManager.Update();
-                        }
-
-                        try (GameProfiler.ProfileArea var37 = profiler.profile("Animal")) {
-                            AnimalController.getInstance().update();
-                        }
-
-                        if (Core.debug) {
-                            this.debugTimes.add(System.nanoTime());
-                        }
-
                         try (GameProfiler.ProfileArea var38 = profiler.profile("Radio")) {
-                            ZomboidRadio.getInstance().update();
+                            long apocProbe105 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                            try {
+                                ZomboidRadio.getInstance().update();
+                            } finally {
+                                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_RADIO, apocProbe105);
+                            }
                         }
 
                         try (GameProfiler.ProfileArea var39 = profiler.profile("Stuff")) {
-                            this.UpdateStuff();
+                            long apocProbe106 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                            try {
+                                this.UpdateStuff();
+                            } finally {
+                                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_STUFF, apocProbe106);
+                            }
                         }
 
                         try (GameProfiler.ProfileArea var40 = profiler.profile("On Tick")) {
-                            this.onTick();
+                            long apocProbe107 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                            try {
+                                this.onTick();
+                            } finally {
+                                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_LUA_TICK, apocProbe107);
+                            }
                         }
 
                         try {
@@ -1635,7 +1699,12 @@ public final class IngameState extends GameState {
 
             if (!GameServer.server || ServerGUI.isCreated()) {
                 try (GameProfiler.ProfileArea var34 = profiler.profile("Update Model")) {
-                    ModelManager.instance.update();
+                    long apocProbe108 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        ModelManager.instance.update();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_MODELS, apocProbe108);
+                    }
                 }
             }
 
@@ -1646,7 +1715,12 @@ public final class IngameState extends GameState {
 
             if (GameClient.client || GameServer.server) {
                 try (GameProfiler.ProfileArea var35 = profiler.profile("Update Managers")) {
-                    updateManagers();
+                    long apocProbe109 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        updateManagers();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.UPDATE_MANAGERS, apocProbe109);
+                    }
                 }
             }
 

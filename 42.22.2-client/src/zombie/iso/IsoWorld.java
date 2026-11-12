@@ -2104,10 +2104,10 @@ public final class IsoWorld {
             DebugType.General.println("ItemConfigurator.Preprocess() start");
             ItemConfigurator.Preprocess();
             DebugType.General.println("ItemConfigurator.Preprocess() end");
-            boolean isPlayerAlive = (boolean)0;
+            boolean isPlayerAlive = false;
             if (GameClient.client) {
                 if (ClientPlayerDB.getInstance().clientLoadNetworkPlayer() && ClientPlayerDB.getInstance().isAliveMainNetworkPlayer()) {
-                    isPlayerAlive = (boolean)1;
+                    isPlayerAlive = true;
                 }
             } else {
                 isPlayerAlive = PlayerDBHelper.isPlayerAlive(ZomboidFileSystem.instance.getCurrentSaveDir(), 1);
@@ -2123,7 +2123,7 @@ public final class IsoWorld {
 
             boolean bLoadCharacter;
             if (isPlayerAlive) {
-                bLoadCharacter = (boolean)1;
+                bLoadCharacter = true;
                 if (!this.LoadPlayerForInfo()) {
                     return;
                 }
@@ -2131,7 +2131,7 @@ public final class IsoWorld {
                 worldX = IsoChunkMap.SWorldX[IsoPlayer.getPlayerIndex()];
                 worldY = IsoChunkMap.SWorldY[IsoPlayer.getPlayerIndex()];
             } else {
-                bLoadCharacter = (boolean)0;
+                bLoadCharacter = false;
                 if (GameClient.client && !ServerOptions.instance.spawnPoint.getValue().isEmpty()) {
                     String[] spawnPoint = ServerOptions.instance.spawnPoint.getValue().split(",");
                     if (spawnPoint.length == 3) {
@@ -2439,12 +2439,12 @@ public final class IsoWorld {
                 ReanimatedPlayers.instance.loadReanimatedPlayers();
                 if (IsoPlayer.getInstance() != null) {
                     if (GameClient.client) {
-                        isPlayerAlive = (boolean)PZMath.fastfloor(IsoPlayer.getInstance().getX());
-                        bLoadCharacter = (boolean)PZMath.fastfloor(IsoPlayer.getInstance().getY());
+                        int apocPlayerTileX = PZMath.fastfloor(IsoPlayer.getInstance().getX());
+                        int apocPlayerTileY = PZMath.fastfloor(IsoPlayer.getInstance().getY());
                         int z = PZMath.fastfloor(IsoPlayer.getInstance().getZ());
 
                         while (z > 0) {
-                            IsoGridSquare sqx = this.currentCell.getGridSquare(isPlayerAlive, bLoadCharacter, PZMath.fastfloor((float)z));
+                            IsoGridSquare sqx = this.currentCell.getGridSquare(apocPlayerTileX, apocPlayerTileY, PZMath.fastfloor((float)z));
                             if (sqx != null && sqx.TreatAsSolidFloor()) {
                                 break;
                             }
@@ -2984,10 +2984,20 @@ public final class IsoWorld {
     }
 
     private void updateWorld() {
-        this.currentCell.update();
+        long apocProbe114 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            this.currentCell.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_CELL, apocProbe114);
+        }
         IsoRegions.update();
         HaloTextHelper.update();
-        CollisionManager.instance.ResolveContacts();
+        long apocProbe115 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            CollisionManager.instance.ResolveContacts();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_CONTACTS, apocProbe115);
+        }
         if (DebugOptions.instance.threadAnimation.getValue()) {
             animationThread = CompletableFuture.runAsync(MovingObjectUpdateScheduler.instance::postupdate);
         } else {
@@ -3027,7 +3037,12 @@ public final class IsoWorld {
             }
         }
 
-        WorldSimulation.instance.update();
+        long apocProbe116 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            WorldSimulation.instance.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_PHYSICS, apocProbe116);
+        }
         HutchManager.getInstance().updateAll();
         ImprovedFog.update();
         this.helicopter.update();
@@ -3080,16 +3095,31 @@ public final class IsoWorld {
         GameProfiler profiler = GameProfiler.getInstance();
 
         try (GameProfiler.ProfileArea var17 = profiler.profile("Update Climate")) {
-            ClimateManager.getInstance().update();
+            long apocProbe117 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                ClimateManager.getInstance().update();
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_CLIMATE, apocProbe117);
+            }
         }
 
         this.updateWorld();
         if (thread != null) {
-            try (GameProfiler.ProfileArea var18 = profiler.profile("Wait Thread")) {
-                thread.join();
+            long apocWORLD_WORKER_WAIT = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                try (GameProfiler.ProfileArea var18 = profiler.profile("Wait Thread")) {
+                    thread.join();
+                }
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_WORKER_WAIT, apocWORLD_WORKER_WAIT);
             }
         } else {
-            this.updateThread();
+            long apocProbe118 = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                this.updateThread();
+            } finally {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.WORLD_REMAINDER, apocProbe118);
+            }
         }
 
         AnimationPlayerRecorder.onPostUpdateWorld();

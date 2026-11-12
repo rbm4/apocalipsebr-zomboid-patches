@@ -184,21 +184,36 @@ public final class FileSystemImpl extends FileSystem {
                         ExceptionLogger.logException(var8, item.task.getErrorMessage());
                     }
 
-                    item.task.handleResult(result);
+                    long apocResultStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        item.task.handleResult(result);
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.fileTask(item.task, apocResultStarted, false);
+                    }
                 }
 
-                item.task.done();
+                long apocDoneStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    item.task.done();
+                } finally {
+                    zombie.ApocBRClientTelemetryLite.fileTask(item.task, apocDoneStarted, true);
+                }
                 item.task = null;
                 item.future = null;
             }
         }
 
+        long apocLockStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
         while (!this.lock.compareAndSet(false, true)) {
             Thread.onSpinWait();
         }
+        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.FILE_ADMISSION_LOCK, apocLockStarted);
+        zombie.ApocBRClientTelemetryLite.fileQueues(this.inProgress.size(), this.pending.size(), this.added.size());
+        long apocAdmissionStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
 
-        boolean priority = (boolean)1;
+        int priority = 1;
 
+        try {
         for (int ix = 0; ix < this.added.size(); ix++) {
             FileSystemImpl.AsyncItem item = this.added.get(ix);
             int insertAt = this.pending.size();
@@ -215,18 +230,32 @@ public final class FileSystemImpl extends FileSystem {
         }
 
         this.added.clear();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.FILE_ADMISSION, apocAdmissionStarted);
+        }
         this.lock.set(false);
-        priority = (boolean)(16 - this.inProgress.size());
+        priority = 16 - this.inProgress.size();
 
+        long apocSubmitStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
         while (priority > 0 && !this.pending.isEmpty()) {
             FileSystemImpl.AsyncItem item = this.pending.remove(0);
             if (item.future.isCancelled()) {
-                item.task.done();
+                long apocCancelledStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    item.task.done();
+                } finally {
+                    zombie.ApocBRClientTelemetryLite.fileTask(item.task, apocCancelledStarted, true);
+                }
             } else {
                 this.inProgress.add(item);
                 this.executor.submit(item.future);
+                zombie.ApocBRClientTelemetryLite.fileSubmitted();
                 priority--;
             }
+        }
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.FILE_SUBMIT, apocSubmitStarted);
         }
     }
 

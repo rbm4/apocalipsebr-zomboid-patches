@@ -1,7 +1,7 @@
 # Client main-thread telemetry scaffold
 
 Created 2026-11-12 for **42.22.2-client**. Compiled against the exact original game
-JAR; not deployed or tested in a live multiplayer session. See
+JAR; deployment tested in disposable installations, not in a live multiplayer session. See
 [validation and provenance](../reports/2026-11-12-client-telemetry-validation.md).
 
 ## Main-thread entry point in multiplayer
@@ -54,7 +54,10 @@ updates the keyboard. Do not interpret its name as a GPU presentation fence.
 [ApocBRClientTelemetryLite](../../src/zombie/ApocBRClientTelemetryLite.java) adapts
 the server scaffold's NDJSON + bounded asynchronous writer model, with independent
 client properties/schema and no server database, ServerMap or Lua dependencies.
-The only vanilla replacement is GameWindow. No simulation algorithm is changed.
+Schema 2 adds replacements for IngameState, IsoWorld, MovingObjectUpdateScheduler,
+SpriteRenderer and FileSystemImpl alongside GameWindow. No simulation algorithm
+is changed. The decompiled FileSystemImpl admission counter and IsoWorld reused
+boolean/coordinate local slots require minimal Java type corrections to compile.
 
 Enablement requires the startup property AND a frame starting with all of:
 
@@ -96,7 +99,38 @@ From the repository root:
 py -3.12 .\42.22.2-client\tests\test_client_telemetry.py
 ```
 
-The build script compiles **all src Java files** with the repository JDK 25 and
+The root `instalador.bat` and `patch-client.ps1` route to the version's
+`patchApocalipseBr.ps1`, whose default is **compile and deploy**.
+The PowerShell wrapper discovers the Steam game directory or accepts `-PZDir`,
+forwards `-ArtifactDir` with `-BuildOnly`, and accepts `-NoPause` for automated use.
+`-DryRun` validates launchers and compiles without game changes. `-Revert`
+restores backed-up loose classes (or removes newly introduced ones) and points
+JSON back to the original JAR. Example:
+
+```powershell
+.\patch-client.ps1 -NoPause -DryRun -PZDir 'Z:\SteamLibrary\steamapps\common\ProjectZomboid'
+```
+
+Normal deployment compiles into a unique system temporary directory and cleans
+it afterward. The client includes the same Set-UnsignedGameJar helper as the
+server target: it prepares/reuses `projectzomboid-apocbr.jar` from the read-only
+original, stripping only top-level signature metadata, with a hash receipt.
+Both existing native launcher JSON files are validated before writes; classpath
+starts with `.` (or `java/.`), then the derived JAR. Other classpath entries,
+mainClass, VM arguments and platform settings survive. This client path does not
+install PostgreSQL dependencies or modify the dedicated-server batch launcher.
+
+Loose compiled class families go under the game JAR directory's `zombie/` tree.
+Original loose overrides are backed up under `apocbr-client-telemetry-backup/`;
+`apocbr-client-telemetry.install.json` tracks classes for reversion. Launcher
+backups use `.apocbr-client.bak`; revert edits current JSON rather than restoring
+an old descriptor over independent settings. The disposable derived JAR remains
+after revert. Deploy/revert with the game stopped. Publication is per file, not
+a transaction across the entire installation. Runtime arguments are preserved,
+so capture still requires the enable property below.
+
+The separate Build-ClientTelemetry script (`-BuildOnly` from the installer)
+compiles **all src Java files** with the repository JDK 25 and
 the exact pinned original game JAR. It retains classes, compiler.log and
 receipt.json under a new ignored artifacts/build-* directory. It never installs
 classes or changes launchers. Whole-class overrides need a fresh baseline review
@@ -124,7 +158,7 @@ Optional properties:
 No rotation is implemented in this scaffold. Use a fresh path for separate runs
 or archive the output between runs; seq restarts with the JVM.
 
-## Schema 1 interpretation
+## Schema 2 interpretation
 
 Each NDJSON line has kind=client-main-thread, targetBuild=42.22.2, seq, ts and
 monotonic elapsed intervalMs. Wall-clock ts is for correlation, not duration.
@@ -155,13 +189,65 @@ monotonic elapsed intervalMs. Wall-clock ts is for correlation, not duration.
   with a separate sampleTs. First GC deltas are -1 (no prior writer sample).
   Values cover the JVM, not this thread; GC collection time is not exact STW pause
   attribution. Queuing can shift the sample relative to captured frames.
+- **writerJvm.collectors:** individual collector names, countDelta and
+  collectionTimeMsDelta. First/unsupported deltas are -1. Concurrent-cycle and
+  pause collectors remain separate; their collection times must not be summed
+  and described as application pause time. These are writer-time MXBean samples,
+  not per-frame pause events.
+- **frameCpu:** current-thread CPU duration inside each captured frame when JVM
+  thread CPU timing is already available/enabled; the probe does not enable it
+  globally. No samples means unavailable. Worst frames include cpuMs (null when
+  unavailable). Wall time minus CPU time suggests off-CPU time, but does not
+  distinguish GPU/backpressure, locks, GC or OS descheduling. CPU on background
+  workers is not counted. CPU and wall endpoints are sampled consecutively.
+- **context.screenWidth/screenHeight/playerZoom:** last captured primary-player
+  render context. Not a visible-sprite count, draw-call count or GPU workload.
+- **fileSystem:** resultCallbacks counts attempted main-thread handleResult calls,
+  including callbacks that throw; submitted counts successful executor.submit
+  calls. tasks maps class names to separate handleResult/done timing summaries.
+  The map retains at most 64 named types plus an <other> overflow bucket for the
+  session; taskTypeOverflow counts measurements routed to it during the window.
+  No task objects or file paths are retained. Types already seen can have zero
+  calls in later windows. inProgressLast/pendingLast/addedLast are queue sizes at
+  the last admission point (added read under the original lock), and backlogMax
+  is the maximum sum at those points, not a continuously observed high-water mark.
+  Worst frames also include largestFileCallback (type/ms, or null), covering
+  either handleResult or done. The phase totals disambiguate result vs cleanup.
 - **droppedWindows/writeErrors:** cumulative process counters. Sequence gaps can
   indicate dropped windows or failed writes. Error logging is rate-limited.
 
-STATE_UPDATE is intentionally coarse. This scaffold does not yet split individual
-zombie AI, collision/separation, animation, Lua callbacks, chunk integration,
-render-thread waits or GPU submissions. First capture comparable quiet/horde
-sessions and inspect frameWork versus cadence and phase maxima/worstFrames. Add
-the next measurement boundary in the dominant phase, rather than assuming hordes
-mean the zombie update is the cause. Use profiler/JFR stacks for waits or
-unattributed time; this scaffold alone cannot explain every stutter.
+Schema 2 adds these inclusive child boundaries. They also appear in worstFrames:
+
+| Parent | Child phases |
+| --- | --- |
+| RENDER_PREPARE | RENDER_INLINE_LIGHTING, RENDER_LIGHTING_PREUPDATE, RENDER_PICKER, RENDER_STATES |
+| RENDER_STATES | RENDER_SCENE (per-player renderframe), RENDER_COMPOSITE (offscreen buffer), RENDER_TEXT, RENDER_UI |
+| RENDER_UI, normally | RENDER_HANDOFF wraps SpriteRenderer.pushFrameDown; RENDER_HANDOFF_MONITOR measures acquiring its states monitor; RENDER_READY_SLOT_WAIT measures the subsequent ready-slot wait. HANDOFF includes both waits and queue publication. |
+| STATE_UPDATE | UPDATE_CHUNK_POSITION, UPDATE_WORLD, UPDATE_ENTITIES, UPDATE_ANIMALS, UPDATE_RADIO, UPDATE_STUFF, UPDATE_LUA_TICK, UPDATE_LUA_EVEN_PAUSED, UPDATE_MODELS, UPDATE_MANAGERS |
+| UPDATE_WORLD | WORLD_PHYSICS, WORLD_CLIMATE, WORLD_CELL, WORLD_CONTACTS, WORLD_REMAINDER (synchronous updateThread), WORLD_WORKER_WAIT (join when world threading enabled) |
+| WORLD_CELL | MOVING_UPDATE wraps the scheduler update; MOVING_POSTUPDATE normally occurs after the cell update under UPDATE_WORLD, or remains unmeasured on an animation worker. |
+| FILE_TRANSACTIONS | FILE_HANDLE_RESULT, FILE_DONE, FILE_ADMISSION_LOCK, FILE_ADMISSION, FILE_SUBMIT |
+
+Phases run only on the capturing owner thread. No worker instrumentation or
+simulation scheduling options are enabled. Nested phase counts can differ from
+frame counts and must not be added to their parents. RENDER_SCENE still includes
+multiple rendering systems. UPDATE_CHUNK_POSITION measures ProcessChunkPos, not
+all chunk ingestion. WORLD_CELL still includes unseparated cell systems.
+UPDATE_STUFF wraps the existing UpdateStuff method; Lua timings are event-level,
+not individual mod callbacks. Frame handoff waits measure main-thread latency,
+not GPU execution duration. Sprite/draw counts and per-chunk dirty/rebake counters
+remain future probes. Use profiler/JFR for off-CPU causes and remaining large
+phase remainders.
+
+The previous capture is schema 1. Old files remain readable as schema 1, and
+append output can contain both versions. Use a fresh output path for the next
+comparison. Rebuild/reinstall through instalador.bat with the client stopped;
+the installer now discovers seven Java sources (31 generated classes).
+
+The [first sprite-heavy multiplayer capture](../reports/2026-11-12-sprite-heavy-client-capture.md)
+records measured costs and the next instrumentation boundaries, including render
+handoff waits and main-thread asset-result handling.
+
+The [schema 2 capture analysis](../reports/2026-11-12-schema-2-capture-analysis.md)
+narrows measured cost to scene rendering and image-data result callbacks, rules
+down the measured ready-slot wait, and identifies a remaining world-update gap.

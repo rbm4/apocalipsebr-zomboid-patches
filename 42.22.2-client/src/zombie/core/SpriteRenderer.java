@@ -704,16 +704,29 @@ public final class SpriteRenderer {
     }
 
     public void pushFrameDown() {
-        synchronized (this.states) {
-            long startTime = System.nanoTime();
+        long apocRENDER_HANDOFF = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            long apocMonitorStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+            synchronized (this.states) {
+                zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_HANDOFF_MONITOR, apocMonitorStarted);
+                long startTime = System.nanoTime();
 
-            try (AbstractPerformanceProfileProbe var4 = this.waitForReadySlotToOpen.profile()) {
-                this.waitForReadySlotToOpen();
+                long apocProbe119 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    try (AbstractPerformanceProfileProbe var4 = this.waitForReadySlotToOpen.profile()) {
+                        this.waitForReadySlotToOpen();
+                    }
+                } finally {
+                    zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_READY_SLOT_WAIT, apocProbe119);
+                }
+
+                waitTime = System.nanoTime() - startTime;
+                this.states.movePopulatingToReady();
+                this.notifyRenderStateQueue();
             }
 
-            waitTime = System.nanoTime() - startTime;
-            this.states.movePopulatingToReady();
-            this.notifyRenderStateQueue();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.RENDER_HANDOFF, apocRENDER_HANDOFF);
         }
     }
 
