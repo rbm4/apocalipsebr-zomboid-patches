@@ -40,6 +40,8 @@ implementation contracts and historical verification.
 
 ## Issues
 
+- 2026-11-12: [NPC ghost mode and ordinary-player visibility](issues/2026-11-12-npc-ghost-mode-player-visibility.md).
+
 - 2026-11-11: [Wallet Lua save failure (resolution superseded by entities)](issues/2026-11-11-wallet-moddata-save-facade.md).
 
-No target issue documents yet. Inherited limitations are identified in the report.
+Inherited limitations are identified in the port report.

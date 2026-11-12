@@ -107,8 +107,10 @@ final class ServerHuman {
         this.player.setUsername(definition.displayName());
         this.player.setDisplayName(definition.displayName());
         this.player.setGodMod(profile.cheats().godMode(), true);
+        // Native ghost mode aliases invisibility in 42.22.2 and would hide the
+        // actor from ordinary clients. Zombie immunity is owned independently
+        // by ServerHumanZombieVictims using the profile's ghostMode flag.
         this.player.setInvisible(profile.cheats().invisible(), true);
-        this.player.setGhostMode(profile.cheats().ghostMode(), true);
         this.player.setX(definition.x());
         this.player.setY(definition.y());
         this.player.setZ(definition.z());

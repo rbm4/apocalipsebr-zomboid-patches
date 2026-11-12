@@ -30,6 +30,11 @@ There is no player aggression, encounter challenge, trading, survival retreat or
 operation announcement binding. Existing exclusive dialogue control remains
 above autonomous module arbitration.
 
+2026-11-12 correction for the carried 42.22.2 implementation: native ghost mode
+also enables visual invisibility. The [NPC visibility fix](../../../42.22.2/docs/issues/2026-11-12-npc-ghost-mode-player-visibility.md)
+keeps zombie immunity in the victim policy and applies only explicit invisibility
+to the native actor. Compiled and isolated-tested; multiplayer validation pending.
+
 The sole dialogue choice is **Que lugar é este?**. Its short PTBR response
 introduces the lobby, her defection from Umbrella, experiments and territory
 control in Ashford County, and rewards for zombie kills and territorial conquest.
