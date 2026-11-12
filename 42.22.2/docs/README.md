@@ -36,6 +36,8 @@ implementation contracts and historical verification.
 
 ## Reports
 
+- 2026-11-12 - [PZO-Launcher optimization and threading source audit](reports/2026-11-12-pzo-launcher-optimization-audit.md)
+
 - 2026-11-11 - [Fixed power: stock-client chunk-streaming audit](reports/2026-11-11-fixed-power-stock-client-streaming-audit.md)
 
 - 2026-11-10 — [NPC furniture affordances, rest policy and seating implementation plan](reports/2026-11-10-npc-furniture-rest-implementation-plan.md)

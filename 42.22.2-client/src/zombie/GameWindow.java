@@ -283,10 +283,13 @@ public final class GameWindow {
         }
 
         if (GameClient.client) {
+            long apocNetworkStarted = ApocBRClientTelemetryLite.beginPhase();
             try {
                 GameClient.instance.update();
             } catch (Exception var16) {
                 ExceptionLogger.logException(var16);
+            } finally {
+                ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.NETWORK, apocNetworkStarted);
             }
         }
 
@@ -321,8 +324,11 @@ public final class GameWindow {
             IsoCamera.setCameraCharacter(IsoPlayer.players[0]);
         }
 
+        long apocUiStarted = ApocBRClientTelemetryLite.beginPhase();
         try (GameProfiler.ProfileArea var28 = profiler.profile("UI")) {
             UIManager.update();
+        } finally {
+            ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.UI_UPDATE, apocUiStarted);
         }
 
         CompletableFuture<Void> uiVoice = null;
@@ -361,7 +367,12 @@ public final class GameWindow {
         CombatManager.getInstance().update(doUpdate);
         Mouse.setCursorVisible(Core.getInstance().displayCursor);
         if (doUpdate) {
-            states.update();
+            long apocStateStarted = ApocBRClientTelemetryLite.beginPhase();
+            try {
+                states.update();
+            } finally {
+                ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.STATE_UPDATE, apocStateStarted);
+            }
         } else {
             IsoCamera.updateAll();
             if (isIngameState()) {
@@ -386,7 +397,12 @@ public final class GameWindow {
         }
 
         WorldMapImages.checkLoadingQueue();
-        fileSystem.updateAsyncTransactions();
+        long apocFilesStarted = ApocBRClientTelemetryLite.beginPhase();
+        try {
+            fileSystem.updateAsyncTransactions();
+        } finally {
+            ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.FILE_TRANSACTIONS, apocFilesStarted);
+        }
         if (GameKeyboard.isKeyPressed(KeybindId.TAKE_SCREENSHOT)) {
             Core.getInstance().TakeFullScreenshot(null);
         }
@@ -513,7 +529,11 @@ public final class GameWindow {
     }
 
     private static void mainThreadExit() {
-        exit();
+        try {
+            exit();
+        } finally {
+            ApocBRClientTelemetryLite.shutdown();
+        }
     }
 
     private static void mainThreadInit() {
@@ -669,47 +689,83 @@ public final class GameWindow {
 
     private static void frameStep() {
         long startTime = System.nanoTime();
+        if (ApocBRClientTelemetryLite.ENABLED) {
+            ApocBRClientTelemetryLite.beginFrame(!GameServer.server && GameClient.client && GameClient.ingame
+                && GameClient.instance.connected && states.current instanceof IngameState);
+        }
         IsoCamera.frameState.frameCount++;
         IsoCamera.frameState.updateUnPausedAccumulator();
 
         try (AbstractPerformanceProfileProbe ex = GameWindow.s_performance.frameStep.profile()) {
             s_fpsTracking.frameStep();
 
+            long apocLogicStarted = ApocBRClientTelemetryLite.beginPhase();
             try (AbstractPerformanceProfileProbe profiler = GameWindow.s_performance.logic.profile()) {
                 logic();
+            } finally {
+                ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.LOGIC, apocLogicStarted);
             }
 
             if (!Core.isUseGameViewport()) {
                 Core.getInstance().setScreenSize(RenderThread.getDisplayWidth(), RenderThread.getDisplayHeight());
             }
 
-            IsoWorld.instance.FinishAnimation();
+            long apocAnimationStarted = ApocBRClientTelemetryLite.beginPhase();
+            try {
+                IsoWorld.instance.FinishAnimation();
+            } finally {
+                ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.FINISH_ANIMATION, apocAnimationStarted);
+            }
             GameProfiler profiler = GameProfiler.getInstance();
             if (!GameServer.server) {
+                long apocObjectsStarted = ApocBRClientTelemetryLite.beginPhase();
                 try (GameProfiler.ProfileArea console = profiler.profile("IsoObjectAnimations.update")) {
                     IsoObjectAnimations.getInstance().update();
+                } finally {
+                    ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.OBJECT_ANIMATIONS, apocObjectsStarted);
                 }
             }
 
-            renderInternal();
+            long apocRenderStarted = ApocBRClientTelemetryLite.beginPhase();
+            try {
+                renderInternal();
+            } finally {
+                ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.RENDER_PREPARE, apocRenderStarted);
+            }
             if (doRenderEvent) {
+                long apocOnRenderStarted = ApocBRClientTelemetryLite.beginPhase();
                 try (GameProfiler.ProfileArea var35 = profiler.profile("On Render")) {
                     onRender();
+                } finally {
+                    ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.ON_RENDER, apocOnRenderStarted);
                 }
             }
 
-            Core.getInstance().DoFrameReady();
+            long apocReadyStarted = ApocBRClientTelemetryLite.beginPhase();
+            try {
+                Core.getInstance().DoFrameReady();
+            } finally {
+                ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.FRAME_READY, apocReadyStarted);
+            }
 
+            long apocLightingStarted = ApocBRClientTelemetryLite.beginPhase();
             try (GameProfiler.ProfileArea var36 = profiler.profile("Lighting")) {
                 LightingThread.instance.update();
+            } finally {
+                ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.LIGHTING, apocLightingStarted);
             }
 
-            if (states.current instanceof GameLoadingState) {
-                if (GameLoadingState.loader == null || !GameLoadingState.loader.isAlive()) {
+            long apocLuaStarted = ApocBRClientTelemetryLite.beginPhase();
+            try {
+                if (states.current instanceof GameLoadingState) {
+                    if (GameLoadingState.loader == null || !GameLoadingState.loader.isAlive()) {
+                        LuaEventManager.RunQueuedEvents();
+                    }
+                } else {
                     LuaEventManager.RunQueuedEvents();
                 }
-            } else {
-                LuaEventManager.RunQueuedEvents();
+            } finally {
+                ApocBRClientTelemetryLite.endPhase(ApocBRClientTelemetryLite.Phase.QUEUED_LUA, apocLuaStarted);
             }
 
             if (Core.debug) {
@@ -743,6 +799,11 @@ public final class GameWindow {
             }
         } finally {
             updateTime = System.nanoTime() - startTime;
+            if (ApocBRClientTelemetryLite.isCapturing()) {
+                zombie.iso.IsoCell apocCell = IsoWorld.instance.currentCell;
+                ApocBRClientTelemetryLite.endFrame(apocCell == null ? 0 : apocCell.getZombieList().size(),
+                    apocCell == null ? 0 : apocCell.getObjectList().size());
+            }
         }
     }
 
