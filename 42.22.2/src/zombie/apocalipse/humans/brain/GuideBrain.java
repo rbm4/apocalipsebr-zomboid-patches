@@ -105,8 +105,13 @@ public final class GuideBrain extends HumanStateMachine<GuideBrain.State> implem
         HumanAction plan;
         try {
             String text = greeting.get();
-            HumanAction wave = new HumanAction.Emote("wavehi", policy.salutation());
-            plan = text == null ? wave : new HumanAction.Parallel(List.of(wave, new HumanAction.Say(text)));
+            if(actuator.seated()){
+                HumanAction pause=new HumanAction.Wait(policy.salutation());
+                plan=text==null?pause:new HumanAction.Sequence(List.of(new HumanAction.Say(text),pause));
+            }else{
+                HumanAction wave = new HumanAction.Emote("wavehi", policy.salutation());
+                plan = text == null ? wave : new HumanAction.Parallel(List.of(wave, new HumanAction.Say(text)));
+            }
         } catch (RuntimeException failure) {
             transition(State.RETURNING_HOME, new HumanAction.ReturnHome(), "greeting_unavailable", now, actuator);
             return;

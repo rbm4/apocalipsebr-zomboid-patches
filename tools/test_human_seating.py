@@ -121,7 +121,7 @@ def main():
         "SeatingTest.java": HARNESS.replace("NATIVE_MATH", math),
         "zombie/apocalipse/humans/profiles/HumanProfile.java": "package zombie.apocalipse.humans.profiles;public class HumanProfile {public static void identifier(String id){if(id==null||id.isBlank())throw new IllegalArgumentException();}}",
         "zombie/apocalipse/humans/brain/HumanActuator.java": r'''package zombie.apocalipse.humans.brain;
-public interface HumanActuator {
+public interface HumanActuator {default boolean seated(){return false;}default void stopSeating(){}
  enum MotionStatus{RUNNING,SUCCEEDED,FAILED}
  default zombie.apocalipse.humans.seating.HumanSeating seating(){return zombie.apocalipse.humans.seating.HumanSeating.UNSUPPORTED;}
  default boolean startMovement(zombie.apocalipse.humans.walking.MovementRequest request,long now){return false;}

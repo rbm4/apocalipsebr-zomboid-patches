@@ -1,5 +1,9 @@
 # Wallet entity checkpoints
 
+Superseded on 2026-11-12 by [scoped record mutations](2026-11-12-scoped-record-mutations.md).
+The checkpoint/projection description below is historical. Deploy V54 and the
+mutation bridge/pack/wallet together; V50 tables become archives after conversion.
+
 Status: implemented; isolated PostgreSQL and actual Kahlua tests passed; live
 deployment pending. Target: server 42.22.2. Created 2026-11-11.
 

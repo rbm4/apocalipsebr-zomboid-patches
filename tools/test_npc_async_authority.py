@@ -180,7 +180,7 @@ def main():
 class ServerHumanTransport {static void idle(ServerHuman h,zombie.core.raknet.UdpConnection c){}static void movement(ServerHuman h){}
 static void aim(ServerHuman h,boolean v){}static void equipment(ServerHuman h){h.requireAuthority();}}"""
     files["zombie/apocalipse/humans/brain/HumanActuator.java"] = """package zombie.apocalipse.humans.brain;
-public interface HumanActuator {enum MotionStatus {RUNNING,SUCCEEDED,FAILED}
+public interface HumanActuator {default boolean seated(){return false;}default void stopSeating(){}enum MotionStatus {RUNNING,SUCCEEDED,FAILED}
 default HumanCombat.Port combat(){return HumanCombat.UNSUPPORTED;}default void stopMoving(){}default void tactical(TacticalIntent intent){}}"""
     files["zombie/apocalipse/humans/brain/HumanCombatTactics.java"] = "package zombie.apocalipse.humans.brain;public class HumanCombatTactics {public static final double IMMEDIATE_RANGE=1.5;}"
     files["zombie/apocalipse/humans/groups/SquadAssistPort.java"] = "package zombie.apocalipse.humans.groups;public interface SquadAssistPort {}"

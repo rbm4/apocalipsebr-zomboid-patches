@@ -142,6 +142,44 @@ if VERSION == '42.22.2':
   finish();
 '''+ '  for(int i=0;i<256;i++)check')
 
+if VERSION == '42.22.2':
+    HARNESS = HARNESS.replace('static boolean serverMapping;', 'static int documentQueries; static boolean documentMissing; static boolean serverMapping;')
+    HARNESS = HARNESS.replace('case "setObject","setLong"', 'case "setObject","setLong","setString"')
+    HARNESS = HARNESS.replace('yield rows(sql.endsWith', 'if(sql.contains("entity_document")){documentQueries++;yield documentRows(sql);}yield rows(sql.endsWith')
+    HARNESS = HARNESS.replace(' static KahluaTable submit(', r''' static ResultSet documentRows(String sql){int[] cursor={0};return proxy(ResultSet.class,(p,m,a)->switch(m.getName()) {
+      case "next" -> ++cursor[0]<=(documentMissing?0:1);
+      case "getLong" -> 8L;
+      case "getString" -> sql.contains("mutate_entity_document")?"OK":switch((int)a[0]){case 2->"purchases";case 3->"one";default->"{\"value\":{\"amount\":1}}";};
+      default -> zero(m.getReturnType());
+    });}
+ static KahluaTable submit(''')
+    HARNESS = HARNESS.replace('  for(int i=0;i<256;i++)check', r'''
+  zombie.iso.IsoWorld.world="document-world";
+  KahluaTable docOps=table(1.0,table("collection","purchases","key","one","payload","{\"value\":1}"));
+  String token="00000000-0000-0000-0000-000000000099";
+  int docBefore=documentQueries;
+  KahluaTable admission=(KahluaTable)call("documentRequest","Wallet.Test","7",token,docOps);
+  check(Boolean.TRUE.equals(admission.rawget("accepted"))&&documentQueries==docBefore,"mutation admission never queries on Lua thread");
+  ((KahluaTable)docOps.rawget(1.0)).rawset("payload","changed-after-submit");
+  zombie.iso.IsoWorld.world="changed-after-submit";
+  KahluaTable docResult=finish();
+  check(docResult.rawget("status").equals("OK")&&docResult.rawget("revision").equals("8"),"mutation result follows transaction commit");
+  check(parameters.get(1).equals(1L)&&parameters.get(2).equals("document-world")&&parameters.get(3).equals("Wallet.Test"),"mutation scope captured from engine");
+  check(((String)parameters.get(6)).contains("value")&&!((String)parameters.get(6)).contains("changed-after-submit"),"mutation batch detached before worker");
+  check(documentQueries==docBefore+1,"one mutation SQL statement without repeated catalog validation");
+  call("documentRequest","Wallet.Test",null,null,null);docResult=finish();
+  check(docResult.rawget("status").equals("OK")&&((KahluaTable)docResult.rawget("records")).rawget(1)!=null,"document startup reconstructs records with revision");
+  documentMissing=true;call("documentRequest","Wallet.Test",null,null,null);check(finish().rawget("status").equals("NOT_FOUND"),"missing document explicit");documentMissing=false;
+  loseCommit=true;call("documentRequest","Wallet.Test","7",token,table());check(finish().rawget("status").equals("OUTCOME_UNKNOWN"),"lost document commit remains ambiguous");loseCommit=false;
+  invalid(()->call("documentRequest","bad name","0",token,table()));
+  invalid(()->call("documentRequest","Wallet.Test","-1",token,table()));
+  invalid(()->call("documentRequest","Wallet.Test","0","invalid-token",table()));
+  invalid(()->call("documentRequest","Wallet.Test","0",token,table(2.0,table("key","sparse"))));
+  KahluaTable tooMany=table();for(int i=1;i<=257;i++)tooMany.rawset((double)i,table());
+  invalid(()->call("documentRequest","Wallet.Test","7",token,tooMany));
+  ApocBRPersistence.accept=false;check(((KahluaTable)call("documentRequest","Wallet.Test",null,null,null)).rawget("status").equals("UNAVAILABLE"),"document admission reports unavailable");ApocBRPersistence.accept=true;
+'''+'  for(int i=0;i<256;i++)check')
+
 with tempfile.TemporaryDirectory(prefix='apocbr_mod_entities_') as folder:
     target = Path(folder)
     sources = []

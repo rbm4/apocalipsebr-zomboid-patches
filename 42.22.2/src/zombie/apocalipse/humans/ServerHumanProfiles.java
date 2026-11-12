@@ -1,6 +1,7 @@
 package zombie.apocalipse.humans;
 
 import java.util.Map;
+import java.util.Set;
 import zombie.apocalipse.humans.brain.*;
 import zombie.apocalipse.humans.profiles.*;
 
@@ -26,6 +27,15 @@ public final class ServerHumanProfiles {
     private static HumanProfileRegistry builtins() {
         var registry = new HumanProfileRegistry(WALKING);
         var modules=new zombie.apocalipse.humans.profiles.HumanModuleRegistry();
+        modules.register("rest",(p,b)->{
+            var settings=zombie.apocalipse.humans.rest.RestSettings.from(b.parameters());
+            if(settings.clearTiles()>p.perceptionRadius())throw new IllegalArgumentException("Rest clearance must fit perception radius");
+            if(p.walkingPatterns().stream().noneMatch(s->s.slot().equals("background")))throw new IllegalArgumentException("Rest requires background walking scope");
+            if(p.modules().stream().anyMatch(other->other.moduleId().equals("group-patrol")
+                ||other.moduleId().equals("walk")&&other.priority()<=b.priority()
+                ||Set.of("survival","retaliate-player","healing","engage-zombies","assigned-task","player-encounter","greet").contains(other.moduleId())&&other.priority()>=b.priority()))
+                throw new IllegalArgumentException("Rest follows defense/interactions and precedes walking; shared patrol rest is unsupported");
+        },(p,b)->new zombie.apocalipse.humans.rest.RestModule(zombie.apocalipse.humans.rest.RestSettings.from(b.parameters())));
         modules.register("group-patrol",(p,b)->{
             if(!b.parameters().isEmpty()||p.modules().stream().anyMatch(other->other.moduleId().equals("walk")))throw new IllegalArgumentException("Group patrol replaces background walk scheduling");
             var pattern=p.walkingPatterns().stream().filter(s->s.slot().equals("background")).findFirst().orElseThrow();

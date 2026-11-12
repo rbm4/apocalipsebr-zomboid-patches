@@ -18,8 +18,10 @@ Native room-scoped discovery and fair authoritative capture were connected on
 for implemented behavior, lifecycle identity, additional user decisions and
 validation. The [seating execution guide](../features/2026-11-11-npc-seating-execution.md)
 now records the mechanical slice, manual server API, source verification and
-remaining multiplayer acceptance. Rest policy, profile composition and seated
-dialogue/trade handoff remain subsequent work. The original proposal below is
+remaining multiplayer acceptance. The [autonomous rest integration](../features/2026-11-12-npc-autonomous-rest.md)
+added 2026-11-12 implements the long seated routine, Sargento G profile migration
+and stable seated greeting/dialogue/trade handling. Shared patrol opportunities
+and low-endurance-specific rest policy remain subsequent work. The original proposal below is
 historical scope, not a claim that all stages have shipped.
 
 ## Intended behavior and architecture

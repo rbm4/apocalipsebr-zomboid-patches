@@ -9,7 +9,9 @@ This stage adds reserve/approach/sit/dwell/stand mechanics to the
 [native furniture perception](2026-11-11-npc-furniture-native-perception.md).
 The [overall plan](../reports/2026-11-10-npc-furniture-rest-implementation-plan.md)
 still owns the subsequent rest module, vendor station and patrol integration.
-No autonomous rest module or production rest profile is registered yet.
+The [autonomous rest integration](2026-11-12-npc-autonomous-rest.md), added
+2026-11-12, now registers an optional rest module and provides the manager
+migration for Sargento G. Shared patrol rest remains subsequent work.
 
 ## Ownership and composition
 
@@ -59,9 +61,8 @@ binding registry until execution/recovery ends, even without a perception module
 A sensor disabled by failure remains unavailable to this capability.
 
 Manual ACTION ownership suspends autonomous behavior. Dialogue/trade cannot
-steal that activity, and those existing activities reject seating. Compatible
-dialogue/trade while a vendor remains seated is a subsequent posture-handoff
-stage. Requests also reject traversal, an existing seat/recovery, dead actors,
+steal that activity, and those existing activities reject seating. Autonomous rest now retains stable seating through compatible dialogue/trade;
+see the [rest integration](2026-11-12-npc-autonomous-rest.md). Requests also reject traversal, an existing seat/recovery, dead actors,
 unsupported assets, invalid geometry and live occupancy.
 
 ## Geometry and execution
@@ -160,6 +161,6 @@ Before treating this as runtime-ready, test stock chairs/sofas in all orientatio
 and allowed sides; player/NPC contention; damage/death during each phase; blocked
 approach/exit; pickup/destruction; shutdown/restart; multiple/late/re-relevant
 viewers; and delayed object/chunk loading. Check alignment, flags, residual
-furniture references and lease cleanup. Next implementation is the optional rest
-module/profile composition, patrol pause/endurance policy and seated interaction
-handoff, using this shared capability.
+furniture references and lease cleanup. The optional rest module/profile and stable seated interaction integration are
+now implemented in the [rest guide](2026-11-12-npc-autonomous-rest.md). Patrol
+pause/endurance-specific policy remains subsequent work.

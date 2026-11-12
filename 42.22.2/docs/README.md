@@ -11,6 +11,10 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
+- 2026-11-12: [Scoped record mutations for wallet persistence](features/2026-11-12-scoped-record-mutations.md).
+
+- 2026-11-12: [NPC autonomous rest and Sargento G seated routine](features/2026-11-12-npc-autonomous-rest.md).
+
 - 2026-11-11: [Wallet entity checkpoints](features/2026-11-11-wallet-entity-persistence.md).
 
 
@@ -39,6 +43,8 @@ implementation contracts and historical verification.
 - 2026-11-08 — [Copy receipt](reports/2026-11-08-port-copy-receipt.json) and [final verification/build receipt](reports/2026-11-08-port-build-receipt.json)
 
 ## Issues
+
+- 2026-11-12: [Dictionary source-read timeout and retry amplification](issues/2026-11-12-dictionary-read-timeout-retry-amplification.md), with [read-only diagnostic SQL](issues/2026-11-12-dictionary-read-timeout-diagnostics.sql).
 
 - 2026-11-12: [NPC ghost mode and ordinary-player visibility](issues/2026-11-12-npc-ghost-mode-player-visibility.md).
 

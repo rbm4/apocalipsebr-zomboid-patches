@@ -40,6 +40,8 @@ public final class ApocBRModEntities {
             "world",zombie.iso.IsoWorld.instance.getWorld())));
         bind(api,"encode",1,(f)->encode(table(f.get(0))));
         bind(api,"decode",1,(f)->decode(text(f.get(0))));
+        bind(api,"documentLoad",1,(f)->documentRequest(text(f.get(0)),null,null,null));
+        bind(api,"documentMutate",4,(f)->documentRequest(text(f.get(0)),text(f.get(1)),text(f.get(2)),table(f.get(3))));
         bind(api,"character",1,(f)->character(player(f.get(0))));
         bind(api,"submitCharacter",5,(f)->submitCharacter(text(f.get(0)),text(f.get(1)),player(f.get(2)),text(f.get(3)),table(f.get(4))));
         bind(api,"messageContext",1,(f)->messageContext(player(f.get(0))));
@@ -418,6 +420,76 @@ public final class ApocBRModEntities {
         KahluaTable batch=LuaManager.platform.newTable();
         for(int i=1;i<=32;i++) {Map<String,Object> result=completed.poll();if(result==null)break;outstanding.decrementAndGet();batch.rawset((double)i,lua(result));}
         return batch;
+    }
+    // Document mutations use the same bounded replay lane and completion reservations.
+    // Only immutable strings/scalars cross from the owning Lua thread to JDBC.
+    private static KahluaTable documentRequest(String document,String revision,String mutation,KahluaTable operations) {
+        if(!document.matches("[A-Za-z0-9_.:-]{1,128}"))throw new IllegalArgumentException("Invalid document ID");
+        long server=ApocBRPayloadProvenance.configuredServerId();
+        String world=zombie.iso.IsoWorld.instance.getWorld();
+        if(server<=0||world==null||world.isEmpty()||world.length()>128)throw new IllegalArgumentException("Invalid document scope");
+        String payload=null;
+        if(operations!=null) {
+            long expected=Long.parseLong(revision);
+            if(expected<0||expected>=Long.MAX_VALUE-1)throw new IllegalArgumentException("Invalid document revision");
+            UUID.fromString(mutation);
+            int maximum=expected==0?100000:256;
+            int count=0;var iterator=operations.iterator();
+            while(iterator.advance()) {
+                if(++count>maximum)throw new IllegalArgumentException("Too many document mutations");
+                if(!(iterator.getKey() instanceof Number n)||n.doubleValue()!=Math.rint(n.doubleValue())||n.doubleValue()<1||n.doubleValue()>maximum)
+                    throw new IllegalArgumentException("Mutation array required");
+            }
+            // Empty Lua tables encode as {}; the SQL contract expects an array.
+            payload=count==0?"[]":encode(operations);
+            if(!payload.startsWith("["))throw new IllegalArgumentException("Contiguous mutation array required");
+        }
+        if(outstanding.incrementAndGet()>LIMIT){outstanding.decrementAndGet();return admission(false,"BUSY");}
+        String id=Long.toString(++sequence),captured=payload;
+        if(!ApocBRPersistence.request(()->executeDocument(id,server,world,document,revision,mutation,captured))) {
+            outstanding.decrementAndGet();return admission(false,"UNAVAILABLE");
+        }
+        return admission(true,id);
+    }
+    private static void executeDocument(String id,long server,String world,String document,String revision,String mutation,String payload) {
+        Map<String,Object> result=new LinkedHashMap<>();result.put("id",id);boolean committing=false;
+        try(Connection connection=ApocBRPostgresConnector.borrowPlayerConnection()) {
+            try {
+                if(payload==null) {
+                    // One statement gives a consistent revision and record set at startup.
+                    try(PreparedStatement s=prepare(connection,"SELECT h.revision,r.collection,r.record_id,r.payload::text FROM mod_data.entity_document_state h LEFT JOIN mod_data.entity_document_record r USING(server_id,world,document_id) WHERE h.server_id=? AND h.world=? AND h.document_id=? ORDER BY r.collection,r.record_id LIMIT 100002")) {
+                        s.setLong(1,server);s.setString(2,world);s.setString(3,document);
+                        List<Object> records=new ArrayList<>();int characters=0;
+                        try(ResultSet rows=s.executeQuery()) {
+                            result.put("status","NOT_FOUND");
+                            while(rows.next()) {
+                                result.put("status","OK");result.put("revision",Long.toString(rows.getLong(1)));
+                                String collection=rows.getString(2);if(collection==null)continue;
+                                String key=rows.getString(3),value=rows.getString(4);
+                                characters+=collection.length()+key.length()+value.length();
+                                if(records.size()>=100000||characters>33_554_432)throw new SQLException("Document limit","54000");
+                                records.add(Map.of("collection",collection,"key",key,"payload",value));
+                            }
+                        }
+                        if(result.get("status").equals("OK"))result.put("records",List.copyOf(records));
+                    }
+                } else {
+                    try(PreparedStatement s=prepare(connection,"SELECT status,new_revision FROM mod_data.mutate_entity_document(?,?,?,?,?,?::jsonb)")) {
+                        s.setLong(1,server);s.setString(2,world);s.setString(3,document);
+                        s.setLong(4,Long.parseLong(revision));s.setObject(5,UUID.fromString(mutation));s.setString(6,payload);
+                        try(ResultSet rows=s.executeQuery()) {
+                            if(!rows.next())throw new SQLException("Missing mutation result","22000");
+                            result.put("status",rows.getString(1));result.put("revision",Long.toString(rows.getLong(2)));
+                        }
+                    }
+                }
+                committing=true;connection.commit();
+            }catch(SQLException|RuntimeException failure){try{connection.rollback();}catch(SQLException ignored){}throw failure;}
+        }catch(SQLException failure) {
+            ApocBRPersistence.failed(failure);result.clear();result.put("id",id);
+            result.put("status",committing&&payload!=null?"OUTCOME_UNKNOWN":"54000".equals(failure.getSQLState())?"LIMIT_EXCEEDED":failure.getSQLState()!=null&&failure.getSQLState().startsWith("42")?"SCHEMA_ERROR":"DATABASE_ERROR");
+        }catch(RuntimeException failure){result.clear();result.put("id",id);result.put("status","INVALID_DATA");}
+        completed.add(Collections.unmodifiableMap(result));
     }
     private static String encode(KahluaTable value) {
         String json=jsonValue(value,new IdentityHashMap<>(),0).toString();

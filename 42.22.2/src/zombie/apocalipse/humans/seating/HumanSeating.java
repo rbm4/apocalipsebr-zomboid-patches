@@ -11,7 +11,7 @@ public interface HumanSeating {
         public Request {Objects.requireNonNull(target);
             if(!Set.of("Front","Left","Right").contains(side)||durationMs<1||durationMs>86_400_000L)throw new IllegalArgumentException("Invalid seating request");}
     }
-    interface Execution { Status update(long now); void cancel(); }
+    interface Execution { Status update(long now); void cancel(); default boolean seated(){return false;} }
     Execution begin(Request request,long now);
     HumanSeating UNSUPPORTED=(request,now)->null;
 }

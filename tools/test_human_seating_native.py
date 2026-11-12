@@ -44,7 +44,7 @@ public class NativeSeatingTest {
    "sitting uses native main-state enter");
   check(enter.params.get("sit_object")==s.chair&&enter.params.get("dir")==IsoDirections.S&&enter.params.get("before_sit_dir").equals("Front")&&enter.events.containsKey("EventSitOnFurniture"),"native sit parameter types/names and event");
   var safe=s.human.seating.checkpoint();check(safe.y()>11,"checkpoint stays outside solid seat");
-  handle.update(1_250_000_000L);check(s.human.seating.phase()==Phase.SEATED&&Math.abs(s.human.player.x-10.6)<.0001&&Math.abs(s.human.player.y-10.58)<.0001,"seated authority reaches native anchor");
+  handle.update(1_250_000_000L);check(handle.seated()&&s.human.seating.phase()==Phase.SEATED&&Math.abs(s.human.player.x-10.6)<.0001&&Math.abs(s.human.player.y-10.58)<.0001,"seated authority reaches native anchor");
   check(s.human.player.getVariableString("SitOnFurnitureAnim").equals("Idle"),"native seated idle variables");
   var other=new ServerHuman(s.cell);other.player.x=12.5f;other.player.y=12.5f;s.furniture.register(other);other.seating=new ServerHumanSeating(other,s.furniture,true);
   // A second actor cannot claim a currently seated object, even without square membership.
@@ -135,7 +135,7 @@ public void setSitOnFurnitureDirection(IsoDirections d){}public void setSittingO
 public void setForwardIsoDirection(IsoDirections d){direction=d;}public void setVariable(String k,String v){vars.put(k,v);}public void setVariable(String k,boolean v){vars.put(k,""+v);}
 public String getVariableString(String k){return vars.getOrDefault(k,"");}public void clearVariable(String k){vars.remove(k);}}
 '''
-    f["zombie/apocalipse/humans/brain/HumanActuator.java"] = r'''package zombie.apocalipse.humans.brain;public interface HumanActuator {
+    f["zombie/apocalipse/humans/brain/HumanActuator.java"] = r'''package zombie.apocalipse.humans.brain;public interface HumanActuator {default boolean seated(){return false;}default void stopSeating(){}
 enum MotionStatus{RUNNING,SUCCEEDED,FAILED}default void stopEmote(){}default void stopMoving(){}default void tactical(TacticalIntent i){}default boolean face(HumanObservation.Identity i){return true;}
 default boolean startMovement(zombie.apocalipse.humans.walking.MovementRequest r,long n){return false;}default MotionStatus updateMovement(long n){return MotionStatus.FAILED;}
 default boolean say(String s){return true;}default boolean startEmote(String s){return true;}default boolean returnHome(){return true;}

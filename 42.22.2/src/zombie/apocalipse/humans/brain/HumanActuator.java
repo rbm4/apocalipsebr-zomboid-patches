@@ -2,6 +2,8 @@ package zombie.apocalipse.humans.brain;
 
 /** Engine port. Its production implementation may only run on the simulation thread. */
 public interface HumanActuator {
+    default boolean seated(){return false;}
+    default void stopSeating(){ }
     default zombie.apocalipse.humans.seating.HumanSeating seating(){return zombie.apocalipse.humans.seating.HumanSeating.UNSUPPORTED;}
     default zombie.apocalipse.humans.tasks.HumanCorpsePort corpses(){return zombie.apocalipse.humans.tasks.HumanCorpsePort.UNSUPPORTED;}
     default zombie.apocalipse.humans.tasks.HumanTaskWorld taskWorld(){return zombie.apocalipse.humans.tasks.HumanTaskWorld.UNSUPPORTED;}

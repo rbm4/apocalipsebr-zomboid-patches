@@ -40,6 +40,7 @@ final class ServerHumanSeating implements HumanSeating {
             if(execution.status()!=Status.RUNNING){furniture.release(human);return null;}
             session=next;active=execution;epoch++;lastTick=Long.MIN_VALUE;lastReason="running";
             return new Execution(){
+                public boolean seated(){human.requireAuthority();return active==execution&&execution.phase()==Phase.SEATED;}
                 public Status update(long at){human.requireAuthority();if(active==execution)tick(at);return execution.status();}
                 public void cancel(){human.requireAuthority();if(active==execution)execution.cancel();}
             };

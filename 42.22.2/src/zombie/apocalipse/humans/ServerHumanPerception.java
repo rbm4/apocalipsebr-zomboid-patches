@@ -55,7 +55,8 @@ final class ServerHumanPerception {
             new HumanObservation.Identity(c.identity().onlineId(),c.identity().instanceId()),c.x(),c.y(),c.z(),c.distanceSquared()))
             .sorted(Comparator.comparingDouble(HumanObservation.Visitor::distanceSquared)).toList();
         return new HumanObservation(now,visitors,human.walking.available(),human.state.snapshot(),frame,territory,awareness,
-            human.squadAssist==null?HumanObservation.Support.NONE:human.squadAssist.strength(),human.furnitureSnapshot());
+            human.squadAssist==null?HumanObservation.Support.NONE:human.squadAssist.strength(),human.furnitureSnapshot(),
+            new zombie.apocalipse.humans.furniture.FurnitureAffordances.Position(human.player.getX(),human.player.getY(),human.player.getZi()));
     }
 
     void update(long suppliedNow){

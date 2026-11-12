@@ -97,7 +97,7 @@ public final class HumanActivityController {
         if(mode!=Mode.AUTONOMOUS)throw new IllegalStateException("Release exclusive activity before blocking");
         blocked=value;
         try {
-            if(value){behavior.suspend(now,actuator);actuator.stopMoving();actuator.stopEmote();}
+            if(value){behavior.suspend(now,actuator);actuator.stopSeating();actuator.stopMoving();actuator.stopEmote();}
             else behavior.resume(null,now,actuator);
         }catch(RuntimeException problem){fail(problem,now,actuator);}
     }

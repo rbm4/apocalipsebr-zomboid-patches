@@ -38,6 +38,9 @@ sources = {
     'ApocWallet/EntityStore': lua / 'server/ApocWallet/EntityStore.lua',
     'ApocWallet/CourierService': lua / 'server/ApocWallet/CourierService.lua',
     'ApocWallet/CourierRoute': lua / 'shared/ApocWallet/CourierRoute.lua',
+    'ApocWallet/MarketProtocol': lua / 'shared/ApocWallet/MarketProtocol.lua',
+    'ApocWallet/MarketService': lua / 'server/ApocWallet/MarketService.lua',
+    'ApocWallet/PurchaseService': lua / 'server/ApocWallet/PurchaseService.lua',
     'ApocBR/Entities': pack / 'ApocBR/Entities.lua',
 }
 cases = '\n'.join('case ' + json.dumps(name) + ': source=' + json.dumps(path.read_text(encoding='utf-8')) + '; break;'
