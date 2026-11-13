@@ -1,0 +1,27 @@
+{
+  "scope": "Temporary copy of current 42.22.1 working-tree sources; only two GameServer revision literals changed. No deployment or persistent target src tree.",
+  "compiler": "javac 25.0.4",
+  "options": [
+    "--release 25",
+    "-Xlint:none",
+    "-implicit:none",
+    "-encoding UTF-8"
+  ],
+  "source_count": 339,
+  "output_class_count": 984,
+  "exit_code": 0,
+  "jar": "Z:\\SteamLibrary\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+  "jar_sha256": "3c4a7c5f149d784758c6fb5f8fa85f3a21d572e38bc081400e89035f8120d287",
+  "dependencies": [
+    {
+      "path": "42.22.1\\lib\\HikariCP-7.1.0.jar",
+      "sha256": "2be45c641b841e81df87292e181f2c203500c5f0e9a1676f135927387f3cf40b"
+    },
+    {
+      "path": "42.22.1\\lib\\postgresql-42.7.14.jar",
+      "sha256": "73914527305a40cce504b0d3d90b23caf565136912d607ae8ae7c5895512332c"
+    }
+  ],
+  "candidate_gameserver_sha256": "755e1aa1def518b091f4e86b3f192857badaac37d4ece4917f5e830aae93954c",
+  "git_head": "b6cceb29f59ed98f13d64607a7ca2e205036bc00"
+}

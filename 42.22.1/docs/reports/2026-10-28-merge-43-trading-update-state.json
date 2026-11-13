@@ -1,0 +1,57 @@
+{
+  "review": 43,
+  "state": "approved-applied",
+  "path": "zombie/network/packets/TradingUIUpdateStatePacket.java",
+  "recommendation": "Restore only the NPC destination fallback and existing state-adapter hook; preserve native pending-request cleanup on WindowWasClosed and exact ordinary trade-pair/state handling.",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "target_vanilla_sha256": "b9531aeaa52a519a97444a061990a9e917c24c5e1db4e53eca1b7950ed5b7fd8",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-43-trading-update-state.diff",
+  "candidate_diff_sha256": "3bee88a81c3f520084d5c831e0e6b675e2c08087e08cca8eb252a5d47c39d36f",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-43-trading-update-state.md",
+  "dependencies": [
+    "Applied review40 handshake/session adapter, review41 add-item and review42 remove-item."
+  ],
+  "candidate_fixture": {
+    "script": "tools/test_trading_update_state_port.py",
+    "passed": true,
+    "assertions": 195,
+    "scope": "Full candidate state packet, native identity/reader/enum and extracted manager state methods; applied handshake and actual NPC adapter/offer, with engine/inventory/Lua/transport/recording persistence doubles.",
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "applied_candidate_equivalence": true
+  },
+  "native_retained": [
+    "PlayerRequestPacket ConnectionPlayer sender and OnlinePlayer destination",
+    "Native five-byte body: two shorts and TradingState enum byte",
+    "Ordinary WindowWasClosed clears TradingRequests pending pair before manager checks",
+    "Exact ordinary TradingManager participant pair and state transitions",
+    "Writer/client event/capability/reliability unchanged"
+  ],
+  "sale_policy_unchanged": [
+    "Consent and live owned inventory required; edits/unseal invalidate consent.",
+    "Money/bundle IDs recorded; non-money offered items disposed without money receipt.",
+    "Existing sale enqueue before inventory removal/player snapshot is retained.",
+    "Failure before handoff leaves items and closes offer; failure after handoff logs CONSUMPTION_REQUIRES_REVIEW and closes, with no automatic retry.",
+    "Duplicate finalization after session close cannot enqueue a second sale."
+  ],
+  "removed_target_resolution_on_approval": {
+    "path": "zombie/network/fields/Trading.java",
+    "reason": "All old NPC trading target-resolution uses migrate into request/accept/reject and UI add/remove/state packet overrides; shared native fields remain unpatched.",
+    "cleanup_manifest_update_pending_approval": false,
+    "state": "approved-intent-migrated-cleanup-pending"
+  },
+  "scope_limits": [
+    "Existing adapter sales/journal/credit policy is unchanged.",
+    "Recording persistence tests are not real durability, receipt processing or credit-delivery validation.",
+    "Review43 source applied; removed Trading intent migrated, with stale class-family cleanup tracked but unimplemented."
+  ],
+  "target_source_sha256": "af27b59b76f43533d69564c76ba5a61f154784f3ad48d9799155df7c27919f19",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "yes",
+    "date": "2026-10-28",
+    "baseline_commit": "d26bfff5017a6f0573821a2d6d95e6fa193c41a4",
+    "installed_files_modified": false
+  }
+}

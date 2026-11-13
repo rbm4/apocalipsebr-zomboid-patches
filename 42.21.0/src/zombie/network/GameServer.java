@@ -726,14 +726,19 @@ public class GameServer {
             ZipBackup.onStartup();
             ZipBackup.onVersion();
             int updateDBCount = 0;
+            zombie.savefile.ApocBRPostgresConnector.prepareStartup();
 
             try {
                 ServerWorldDatabase.instance.create();
             } catch (ClassNotFoundException | SQLException var44) {
+                if (zombie.savefile.ApocBRServerDatabase.enabled()) {
+                    throw new IllegalStateException("PostgreSQL server database startup failed; complete backend migrations before starting the server");
+                }
                 DebugType.General.printException(var44, "", LogSeverity.Error);
             }
 
             Roles.init();
+            zombie.savefile.ApocBRPostgresConnector.finishStartup();
             if (ServerOptions.instance.uPnp.getValue()) {
                 DebugLog.log("Router detection/configuration starting.");
                 DebugLog.log("If the server hangs here, set UPnP=false.");
@@ -868,6 +873,10 @@ public class GameServer {
                         NetworkZombiePacker.getInstance().awaitWorkers();
                     }
                     long telemetryPacketsStart = System.nanoTime();
+                    try(ApocBRServerTelemetryLite.Scope login=ApocBRServerTelemetryLite.phase("database.login.continuations")) {
+                        zombie.savefile.ApocBRAsyncLogin.update();
+                        zombie.savefile.ApocBRPlayerMigration.update();
+                    }
                     PoolCaps.updateServerCaps();
                     MainLoopNetData2.clear();
 
@@ -1185,6 +1194,9 @@ public class GameServer {
                             }
 
                             LoginQueue.update();
+                            zombie.savefile.ApocBRCreatedPlayerHandoff.update();
+                            zombie.apocalipse.events.ApocBREventControl.update();
+                            zombie.apocalipse.humans.ServerHumanFactory.update();
                             try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("backup.onPeriod")) {
                                 ZipBackup.onPeriod();
                             }
@@ -1201,6 +1213,7 @@ public class GameServer {
                                 GameWindow.fileSystem.updateAsyncTransactions();
                                 WorldMapVisitedServer.getInstance().update();
                             }
+                            ApocBRBackendBridgeHooks.onTick();
                             ApocBRServerTelemetryLite.recordTick(System.nanoTime() - startServerCycle);
                         } catch (Exception var59) {
                             if (mainCycleExceptionLogCount-- > 0) {
@@ -1454,6 +1467,7 @@ public class GameServer {
         ArrayList<String> mods = new ArrayList<>(ServerMods);
         ZomboidFileSystem.instance.loadMods(mods);
         LuaManager.init();
+        zombie.savefile.ApocBRModEntities.install();
         PerkFactory.init();
         CustomPerks.instance.init();
         CustomPerks.instance.initLua();
@@ -1569,6 +1583,8 @@ public class GameServer {
             }
         }
 
+        zombie.apocalipse.events.ApocBREventControl.start();
+        ApocBRBackendBridgeHooks.initialize();
         LuaEventManager.triggerEvent("OnServerStarted");
         if (SteamUtils.isSteamModeEnabled()) {
             CoopSlave.status("UI_ServerStatus_Started");
@@ -1832,6 +1848,7 @@ public class GameServer {
     }
 
     public static void sendHelicopter(float x, float y, boolean active) {
+        ApocBRBackendBridgeHooks.onHelicopter(active);
         HelicopterPacket packet = new HelicopterPacket();
         packet.set(x, y, active);
 
@@ -2657,6 +2674,7 @@ public class GameServer {
 
     public static void disconnectPlayer(IsoPlayer player, IConnection connection) {
         if (player != null) {
+            ApocBRBackendBridgeHooks.onConnection(player, false);
             SafetySystemManager.storeSafety(player);
             ChatServer.getInstance().disconnectPlayer(player.getOnlineID());
             if (player.getVehicle() != null) {
@@ -2719,6 +2737,7 @@ public class GameServer {
     }
 
     public static void receiveClientConnect(UdpConnection connection, ServerWorldDatabase.LogonResult r) {
+        if(!zombie.savefile.ApocBRLoginGuard.continueRequest(connection))return;
         ConnectionManager.log("receive-packet", "client-connect", connection);
         int slot = getFreeSlot();
         if (slot == -1) {
@@ -2835,6 +2854,45 @@ public class GameServer {
     }
 
     public static void receivePlayerConnect(ByteBufferReader bb, IConnection connection, String username) {
+        receivePlayerConnect(bb,connection,username,()->{});
+    }
+
+    public static void receivePlayerConnect(ByteBufferReader bb,IConnection connection,String username,Runnable connected) {
+        if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
+        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
+            receivePlayerConnectDatabase(bb,connection,username,connected);
+        }catch(RuntimeException failure) {
+            if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
+            zombie.savefile.ApocBRLoginGuard.deny(connection);
+        }
+    }
+
+    private static void receivePlayerConnectDatabase(ByteBufferReader bb,IConnection connection,String username,Runnable connected) {
+        if(zombie.savefile.ApocBRPlayerDatabase.enabled()&&connection instanceof UdpConnection udp) {
+            java.nio.ByteBuffer copy=java.nio.ByteBuffer.allocate(bb.remaining());copy.put(bb.bb.duplicate());copy.flip();
+            if(copy.remaining()<3){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+            int slot=copy.get(0);
+            if(slot<0||slot>=4||connection.getPlayerAt(slot)!=null){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+            // A newly created character is already durable and held in simulation-thread memory.
+            IsoPlayer created=zombie.savefile.ApocBRCreatedPlayerHandoff.take(udp,slot);
+            if(created!=null){receivePlayerConnectReady(new ByteBufferReader(copy),connection,username,created,connected);return;}
+            String world=Core.gameSaveWorld;
+            boolean steamCoop=coop&&SteamUtils.isSteamModeEnabled();
+            String identity=steamCoop?connection.getIDStr():connection.getUserName();
+            zombie.savefile.ApocBRAsyncLogin.submit(udp,"player-connect:"+slot,
+                ()->ServerPlayerDB.getInstance().readPostgresProfile(world,identity,slot,steamCoop),
+                profile->{
+                    if(connection.getPlayerAt(slot)!=null)return;
+                    if(!java.util.Objects.equals(connection.getUserName(slot),username)){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+                    IsoPlayer player=ServerPlayerDB.getInstance().finishPostgresPlayer(profile,slot,identity,steamCoop);
+                    receivePlayerConnectReady(new ByteBufferReader(copy),connection,username,player,connected);
+                });
+            return;
+        }
+        receivePlayerConnectReady(bb,connection,username,null,connected);
+    }
+
+    private static void receivePlayerConnectReady(ByteBufferReader bb,IConnection connection,String username,IsoPlayer loaded,Runnable connected) {
         ConnectionManager.log("receive-packet", "player-connect", connection);
         if (SteamUtils.isSteamModeEnabled() && !coop && connection.getSteamId() <= 0L) {
             LoggerManager.getLogger("user")
@@ -2853,11 +2911,13 @@ public class GameServer {
             if (playerIndex >= 0 && playerIndex < 4 && connection.getPlayerAt(playerIndex) == null) {
                 byte range = (byte)Math.max(12, Math.min(20, bb.getByte()));
                 connection.setRelevantRange((byte)(range / 2 + 2));
-                IsoPlayer player;
-                if (coop && SteamUtils.isSteamModeEnabled()) {
-                    player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getIDStr());
-                } else {
-                    player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getUserName());
+                IsoPlayer player=loaded;
+                if (player==null&&!zombie.savefile.ApocBRPlayerDatabase.enabled()) {
+                    if (coop && SteamUtils.isSteamModeEnabled()) {
+                        player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getIDStr());
+                    } else {
+                        player = ServerPlayerDB.getInstance().serverLoadNetworkCharacter(playerIndex, connection.getUserName());
+                    }
                 }
 
                 if (player == null) {
@@ -2896,6 +2956,7 @@ public class GameServer {
                     player.username = username;
                     ChatServer.getInstance().initPlayer(player.onlineId);
                     connection.setFullyConnected();
+                    ApocBRBackendBridgeHooks.onConnection(player, true);
                     sendWeather(connection);
                     SafetySystemManager.restoreSafety(player);
                     if (!connection.getRole().hasCapability(Capability.HideFromSteamUserList)) {
@@ -2945,6 +3006,11 @@ public class GameServer {
 
                     LoggerManager.getLogger("user")
                         .write(connection.getIDStr() + " \"" + player.username + "\" fully connected " + LoggerManager.getPlayerCoords(player));
+                    zombie.savefile.ApocBRPlayerLogin.successfulLogin(player,Core.gameSaveWorld,
+                        coop&&SteamUtils.isSteamModeEnabled()?connection.getIDStr():connection.getUserName(),
+                        coop&&SteamUtils.isSteamModeEnabled(),playerIndex,username,
+                        connection.getSteamId()>0?Long.toUnsignedString(connection.getSteamId()):null);
+                    connected.run();
                 }
             }
         }

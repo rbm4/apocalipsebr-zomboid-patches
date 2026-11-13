@@ -1,0 +1,29 @@
+{
+  "target": "42.22.1",
+  "world_version": 251,
+  "source_commit": "41ef8ee674876e064b6184931bb93e82738f4ae6",
+  "javac_version": "25.0.4",
+  "release": 25,
+  "java_sources": 305,
+  "class_files": 902,
+  "game_jar_sha256": "531daad77c92dcb93534e66ff37becf86dc119f55c62345c622c52021170723e",
+  "storage_registration_label": "42.22.0 (unchanged carry-forward; exact-build metadata migration pending)",
+  "build_mode": "actual javac via patchApocalipseBr.ps1 -BuildOnly; not DryRun",
+  "exit_code": 0,
+  "artifact": "42.22.1/artifacts/ApocBR-server-42.22.1.zip",
+  "artifact_bytes": 4356973,
+  "artifact_sha256": "134a93c2c1c54fb1f3c489cf755eba0b3366bdea329896832e6fe345c3a25683",
+  "classes_directory": "42.22.1/artifacts/build-2026-11-04/classes",
+  "archive_crc_verified": true,
+  "archive_class_hashes_verified": 902,
+  "gameserver_integrity_startup_bytecode_verified": true,
+  "installation_modified": false,
+  "new_or_inherited_broken_document_links": 0,
+  "copied_java_sources_identical_to_previous": 304,
+  "commits": {
+    "gameserver_baseline": "9c2ef2d",
+    "gameserver_merge": "886f0e5",
+    "working_tree_copy": "e863606",
+    "target_build_configuration": "41ef8ee"
+  }
+}

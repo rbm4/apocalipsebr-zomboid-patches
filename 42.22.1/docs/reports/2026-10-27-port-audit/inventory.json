@@ -1,0 +1,4408 @@
+{
+  "old": "42.21.0",
+  "new": "42.22.0",
+  "counts": {
+    "support_no_baseline": 200,
+    "identical_baseline": 50,
+    "clean_text_merge": 25,
+    "manual_rebase": 23,
+    "missing_target": 3
+  },
+  "baseline": {
+    "old_total": 3093,
+    "new_total": 3106,
+    "added": [
+      "zombie/ai/states/ClimbDownState.java",
+      "zombie/ai/states/ClimbState.java",
+      "zombie/ai/states/ClimbSystem.java",
+      "zombie/ai/states/ForceOpenState.java",
+      "zombie/audio/SoundDistance.java",
+      "zombie/characters/MedicalRequests.java",
+      "zombie/characters/Requests.java",
+      "zombie/characters/TradingRequests.java",
+      "zombie/core/DevValidation.java",
+      "zombie/iso/objects/IForceableDoor.java",
+      "zombie/iso/objects/IForceablePortal.java",
+      "zombie/network/ThrownItemManager.java",
+      "zombie/network/anticheats/AntiCheatVehicleEnter.java",
+      "zombie/network/fields/character/ConnectionPlayer.java",
+      "zombie/network/fields/character/OnlinePlayer.java",
+      "zombie/network/fields/character/Player.java",
+      "zombie/network/fields/hit/AnimalDamage.java",
+      "zombie/network/fields/hit/VehicleDamage.java",
+      "zombie/network/packets/AcceptMedicalCheckPacket.java",
+      "zombie/network/packets/AcceptTradingPacket.java",
+      "zombie/network/packets/PlayerRequestPacket.java",
+      "zombie/network/packets/RejectMedicalCheckPacket.java",
+      "zombie/network/packets/RejectTradingPacket.java",
+      "zombie/network/packets/hit/HitStatisticPacket.java",
+      "zombie/network/packets/hit/PlayerHitPacket.java",
+      "zombie/scripting/objects/HeldItemMaskKey.java",
+      "zombie/util/flags/ByteFlag.java",
+      "zombie/util/flags/ByteFlags.java",
+      "zombie/util/flags/EnumByteFlags.java",
+      "zombie/util/flags/OrdinalByteFlag.java",
+      "zombie/util/flags/WritableEnumByteFlags.java"
+    ],
+    "removed": [
+      "zombie/UnitTests.java",
+      "zombie/ai/states/ClimbDownSheetRopeState.java",
+      "zombie/ai/states/ClimbSheetRopeState.java",
+      "zombie/entity/util/ComparableTimSort.java",
+      "zombie/entity/util/Sort.java",
+      "zombie/entity/util/TimSort.java",
+      "zombie/gameStates/DevMainScreenState.java",
+      "zombie/network/DevGameServer.java",
+      "zombie/network/anticheats/AntiCheatHitDamage.java",
+      "zombie/network/anticheats/AntiCheatPlayer.java",
+      "zombie/network/fields/Trading.java",
+      "zombie/network/fields/hit/Damage.java",
+      "zombie/network/fields/hit/VehicleHitField.java",
+      "zombie/network/fields/hit/WeaponHit.java",
+      "zombie/network/packets/hit/AnimalHit.java",
+      "zombie/network/packets/hit/PlayerHitCharacter.java",
+      "zombie/network/packets/hit/ZombieHit.java",
+      "zombie/util/list/PZArrayList.java"
+    ],
+    "changed": [
+      "zombie/AmbientSoundManager.java",
+      "zombie/AmbientStreamManager.java",
+      "zombie/CombatManager.java",
+      "zombie/FliesSound.java",
+      "zombie/GameTime.java",
+      "zombie/GameWindow.java",
+      "zombie/GitVersion.java",
+      "zombie/LoadGridsquarePerformanceWorkaround.java",
+      "zombie/LootRespawn.java",
+      "zombie/Lua/LuaEventManager.java",
+      "zombie/Lua/LuaManager.java",
+      "zombie/MapCollisionData.java",
+      "zombie/MovingObjectUpdateScheduler.java",
+      "zombie/ReanimatedPlayers.java",
+      "zombie/SandboxOptions.java",
+      "zombie/VirtualZombieManager.java",
+      "zombie/ZomboidFileSystem.java",
+      "zombie/ai/MapKnowledge.java",
+      "zombie/ai/StateMachine.java",
+      "zombie/ai/astar/AStarPathFinderResult.java",
+      "zombie/ai/states/AttackState.java",
+      "zombie/ai/states/ClimbOverWallState.java",
+      "zombie/ai/states/ClimbThroughWindowState.java",
+      "zombie/ai/states/FakeDeadZombieState.java",
+      "zombie/ai/states/GrappledThrownOutWindowState.java",
+      "zombie/ai/states/OpenWindowState.java",
+      "zombie/ai/states/PathFindState.java",
+      "zombie/ai/states/PlayerOnBedState.java",
+      "zombie/ai/states/PlayerSitOnFurnitureState.java",
+      "zombie/ai/states/SmashWindowState.java",
+      "zombie/ai/states/SwipeStatePlayer.java",
+      "zombie/ai/states/ThumpState.java",
+      "zombie/ai/states/WalkTowardNetworkState.java",
+      "zombie/ai/states/ZombieIdleState.java",
+      "zombie/ai/states/ZombieOnGroundState.java",
+      "zombie/ai/states/ZombieRagdollOnGroundState.java",
+      "zombie/audio/ObjectAmbientEmitters.java",
+      "zombie/audio/parameters/ParameterDragMaterial.java",
+      "zombie/audio/parameters/ParameterFootstepMaterial.java",
+      "zombie/basements/Basements.java",
+      "zombie/buildingRooms/BuildingRoomsDrawer.java",
+      "zombie/characters/AttachedItems/AttachedWeaponDefinitions.java",
+      "zombie/characters/BodyDamage/BodyDamage.java",
+      "zombie/characters/CharacterInputComponentEntity.java",
+      "zombie/characters/CharacterTimedActions/LuaTimedActionNew.java",
+      "zombie/characters/ContextualAction.java",
+      "zombie/characters/ILuaGameCharacter.java",
+      "zombie/characters/IsoGameCharacter.java",
+      "zombie/characters/IsoLivingCharacter.java",
+      "zombie/characters/IsoPlayer.java",
+      "zombie/characters/IsoZombie.java",
+      "zombie/characters/Moodles/Moodle.java",
+      "zombie/characters/NetworkPlayerAI.java",
+      "zombie/characters/NetworkPlayerVariables.java",
+      "zombie/characters/NetworkZombieAI.java",
+      "zombie/characters/NetworkZombieMind.java",
+      "zombie/characters/PlayerCraftHistory.java",
+      "zombie/characters/ThumpDamageRender.java",
+      "zombie/characters/action/ActionContext.java",
+      "zombie/characters/animals/AnimalCell.java",
+      "zombie/characters/animals/AnimalManagerMain.java",
+      "zombie/characters/animals/IsoAnimal.java",
+      "zombie/characters/animals/datas/AnimalData.java",
+      "zombie/characters/component/CharacterInputComponent.java",
+      "zombie/characters/component/StateMachineComponent.java",
+      "zombie/chat/ChatBase.java",
+      "zombie/chat/ChatManager.java",
+      "zombie/chat/defaultChats/GeneralChat.java",
+      "zombie/chat/defaultChats/RangeBasedChat.java",
+      "zombie/chat/defaultChats/ServerChat.java",
+      "zombie/chat/defaultChats/WhisperChat.java",
+      "zombie/commands/serverCommands/CreateHorde2Command.java",
+      "zombie/config/ConfigFile.java",
+      "zombie/core/Action.java",
+      "zombie/core/ActionManager.java",
+      "zombie/core/BuildAction.java",
+      "zombie/core/Core.java",
+      "zombie/core/CreditsRole.java",
+      "zombie/core/CreditsRoleGroup.java",
+      "zombie/core/FishingAction.java",
+      "zombie/core/GameMode.java",
+      "zombie/core/ImportantAreaManager.java",
+      "zombie/core/SurvivalGuideEntry.java",
+      "zombie/core/TradingManager.java",
+      "zombie/core/Transaction.java",
+      "zombie/core/TransactionManager.java",
+      "zombie/core/backup/ZipBackup.java",
+      "zombie/core/logger/ZLogger.java",
+      "zombie/core/logger/ZipLogs.java",
+      "zombie/core/opengl/RenderSettings.java",
+      "zombie/core/physics/CarController.java",
+      "zombie/core/physics/PhysicsDebugRenderer.java",
+      "zombie/core/properties/IsoPropertyType.java",
+      "zombie/core/properties/PropertyContainer.java",
+      "zombie/core/raknet/UdpConnection.java",
+      "zombie/core/raknet/UdpEngine.java",
+      "zombie/core/skinnedmodel/DeadBodyAtlas.java",
+      "zombie/core/skinnedmodel/ModelCamera.java",
+      "zombie/core/skinnedmodel/advancedanimation/AdvancedAnimator.java",
+      "zombie/core/skinnedmodel/advancedanimation/AnimatedModel.java",
+      "zombie/core/skinnedmodel/model/IsoObjectModelDrawer.java",
+      "zombie/core/skinnedmodel/model/WorldItemAtlas.java",
+      "zombie/core/skinnedmodel/model/WorldItemModelDrawer.java",
+      "zombie/core/skinnedmodel/visual/HumanVisual.java",
+      "zombie/core/skinnedmodel/visual/ItemVisual.java",
+      "zombie/core/textures/MultiTextureFBO2.java",
+      "zombie/core/textures/PNGDecoder.java",
+      "zombie/core/textures/Texture.java",
+      "zombie/core/textures/VideoTexture.java",
+      "zombie/core/utils/NativeImage.java",
+      "zombie/debug/DebugType.java",
+      "zombie/debug/LineDrawer.java",
+      "zombie/debug/debugWindows/FirearmPanel.java",
+      "zombie/debug/debugWindows/TargetHitInfoPanel.java",
+      "zombie/debug/options/Cheat.java",
+      "zombie/entity/ComponentContainer.java",
+      "zombie/entity/EngineEntityManager.java",
+      "zombie/entity/EntityDebugger.java",
+      "zombie/entity/GameEntity.java",
+      "zombie/entity/GameEntityManager.java",
+      "zombie/entity/components/attributes/AttributeContainer.java",
+      "zombie/entity/components/combat/Durability.java",
+      "zombie/entity/components/contextmenuconfig/ContextMenuConfig.java",
+      "zombie/entity/components/crafting/CraftBench.java",
+      "zombie/entity/components/crafting/CraftLogic.java",
+      "zombie/entity/components/crafting/CraftLogicSystem.java",
+      "zombie/entity/components/crafting/CraftRecipeComponent.java",
+      "zombie/entity/components/crafting/DryingLogic.java",
+      "zombie/entity/components/crafting/FurnaceLogic.java",
+      "zombie/entity/components/crafting/MashingLogic.java",
+      "zombie/entity/components/crafting/WallCoveringConfig.java",
+      "zombie/entity/components/fluids/FluidContainer.java",
+      "zombie/entity/components/lua/LuaComponent.java",
+      "zombie/entity/components/parts/Parts.java",
+      "zombie/entity/components/resources/Resources.java",
+      "zombie/entity/components/script/EntityScriptInfo.java",
+      "zombie/entity/components/signals/Signals.java",
+      "zombie/entity/components/spriteconfig/SpriteConfig.java",
+      "zombie/entity/components/spriteconfig/SpriteOverlayConfig.java",
+      "zombie/entity/components/test/TestComponent.java",
+      "zombie/entity/components/ui/UiConfig.java",
+      "zombie/entity/meta/MetaTagComponent.java",
+      "zombie/entity/util/Array.java",
+      "zombie/erosion/obj/ErosionObj.java",
+      "zombie/gameStates/ChooseGameInfo.java",
+      "zombie/gameStates/ConnectToServerState.java",
+      "zombie/gameStates/DebugChunkState.java",
+      "zombie/gameStates/GameLoadingState.java",
+      "zombie/gameStates/IngameState.java",
+      "zombie/gameStates/MainScreenState.java",
+      "zombie/gizmo/Scene.java",
+      "zombie/globalObjects/SGlobalObjectSystem.java",
+      "zombie/inventory/CompressIdenticalItems.java",
+      "zombie/inventory/InventoryItem.java",
+      "zombie/inventory/ItemContainer.java",
+      "zombie/inventory/ItemPickerJava.java",
+      "zombie/inventory/types/AlarmClock.java",
+      "zombie/inventory/types/AlarmClockClothing.java",
+      "zombie/inventory/types/DrainableComboItem.java",
+      "zombie/inventory/types/Food.java",
+      "zombie/inventory/types/MapItem.java",
+      "zombie/inventory/types/Moveable.java",
+      "zombie/iso/BuildingDef.java",
+      "zombie/iso/CellLoader.java",
+      "zombie/iso/ILockableDoor.java",
+      "zombie/iso/ISWorldObjectContextMenuLogic.java",
+      "zombie/iso/InstanceTracker.java",
+      "zombie/iso/IsoButcherHook.java",
+      "zombie/iso/IsoCamera.java",
+      "zombie/iso/IsoCell.java",
+      "zombie/iso/IsoChunk.java",
+      "zombie/iso/IsoDirections.java",
+      "zombie/iso/IsoGridSquare.java",
+      "zombie/iso/IsoMetaCell.java",
+      "zombie/iso/IsoMetaChunk.java",
+      "zombie/iso/IsoMetaGrid.java",
+      "zombie/iso/IsoMovingObject.java",
+      "zombie/iso/IsoObject.java",
+      "zombie/iso/IsoPhysicsObject.java",
+      "zombie/iso/IsoPuddles.java",
+      "zombie/iso/IsoPuddlesCompute.java",
+      "zombie/iso/IsoPushableObject.java",
+      "zombie/iso/IsoUtils.java",
+      "zombie/iso/IsoWallBloodSplat.java",
+      "zombie/iso/IsoWaterGeometry.java",
+      "zombie/iso/IsoWorld.java",
+      "zombie/iso/LightingJNI.java",
+      "zombie/iso/MetaTracker.java",
+      "zombie/iso/NearestWalls.java",
+      "zombie/iso/NewMapBinaryFile.java",
+      "zombie/iso/PlayerCamera.java",
+      "zombie/iso/WorldConverter.java",
+      "zombie/iso/WorldMarkers.java",
+      "zombie/iso/WorldObjectContextMenuConstant.java",
+      "zombie/iso/areas/DesignationZoneAnimal.java",
+      "zombie/iso/areas/IsoRoom.java",
+      "zombie/iso/areas/isoregion/IsoRegionWorker.java",
+      "zombie/iso/areas/isoregion/jobs/JobChunkUpdate.java",
+      "zombie/iso/fboRenderChunk/FBORenderAreaHighlights.java",
+      "zombie/iso/fboRenderChunk/FBORenderCell.java",
+      "zombie/iso/fboRenderChunk/FBORenderChunk.java",
+      "zombie/iso/fboRenderChunk/FBORenderChunkCamera.java",
+      "zombie/iso/fboRenderChunk/FBORenderChunkManager.java",
+      "zombie/iso/fboRenderChunk/FBORenderCorpses.java",
+      "zombie/iso/fboRenderChunk/FBORenderCutaways.java",
+      "zombie/iso/fboRenderChunk/FBORenderLevels.java",
+      "zombie/iso/fboRenderChunk/FBORenderObjectHighlight.java",
+      "zombie/iso/fboRenderChunk/FBORenderObjectOutline.java",
+      "zombie/iso/fboRenderChunk/FBORenderObjectPicker.java",
+      "zombie/iso/fboRenderChunk/FBORenderOcclusion.java",
+      "zombie/iso/fboRenderChunk/FBORenderShadows.java",
+      "zombie/iso/fboRenderChunk/FBORenderSnow.java",
+      "zombie/iso/fboRenderChunk/FBORenderTracerEffects.java",
+      "zombie/iso/fboRenderChunk/FBORenderTrees.java",
+      "zombie/iso/fboRenderChunk/FBORenderWorldMarkers.java",
+      "zombie/iso/objects/IsoBall.java",
+      "zombie/iso/objects/IsoBarbecue.java",
+      "zombie/iso/objects/IsoBarricade.java",
+      "zombie/iso/objects/IsoBulletTracerEffects.java",
+      "zombie/iso/objects/IsoCarBatteryCharger.java",
+      "zombie/iso/objects/IsoCurtain.java",
+      "zombie/iso/objects/IsoDeadBody.java",
+      "zombie/iso/objects/IsoDoor.java",
+      "zombie/iso/objects/IsoFallingClothing.java",
+      "zombie/iso/objects/IsoFire.java",
+      "zombie/iso/objects/IsoFireplace.java",
+      "zombie/iso/objects/IsoGenerator.java",
+      "zombie/iso/objects/IsoHutch.java",
+      "zombie/iso/objects/IsoLightSwitch.java",
+      "zombie/iso/objects/IsoMannequin.java",
+      "zombie/iso/objects/IsoMolotovCocktail.java",
+      "zombie/iso/objects/IsoRainSplash.java",
+      "zombie/iso/objects/IsoRaindrop.java",
+      "zombie/iso/objects/IsoThumpable.java",
+      "zombie/iso/objects/IsoTrap.java",
+      "zombie/iso/objects/IsoTree.java",
+      "zombie/iso/objects/IsoWaveSignal.java",
+      "zombie/iso/objects/IsoWindow.java",
+      "zombie/iso/objects/IsoWindowFrame.java",
+      "zombie/iso/objects/IsoWorldInventoryObject.java",
+      "zombie/iso/objects/IsoZombieGiblets.java",
+      "zombie/iso/objects/interfaces/GridSquareEdgeElement.java",
+      "zombie/iso/sprite/CorpseFlies.java",
+      "zombie/iso/sprite/IsoCursor.java",
+      "zombie/iso/sprite/IsoSprite.java",
+      "zombie/iso/weather/ClimateManager.java",
+      "zombie/iso/weather/WeatherPeriod.java",
+      "zombie/iso/weather/WeatherShader.java",
+      "zombie/iso/weather/dbg/ClimMngrDebug.java",
+      "zombie/iso/weather/fog/ImprovedFog.java",
+      "zombie/iso/weather/fx/WeatherFxMask.java",
+      "zombie/iso/worldgen/WorldGenChunk.java",
+      "zombie/iso/worldgen/WorldGenParams.java",
+      "zombie/iso/worldgen/WorldGenTile.java",
+      "zombie/iso/worldgen/blending/Blending.java",
+      "zombie/network/BodyDamageSync.java",
+      "zombie/network/ClientServerMap.java",
+      "zombie/network/ConnectionManager.java",
+      "zombie/network/FakeClientManager.java",
+      "zombie/network/GameClient.java",
+      "zombie/network/GameServer.java",
+      "zombie/network/IConnection.java",
+      "zombie/network/NetworkAIParams.java",
+      "zombie/network/PVPLogTool.java",
+      "zombie/network/PZNetKahluaTableImpl.java",
+      "zombie/network/PacketSetting.java",
+      "zombie/network/PacketTypes.java",
+      "zombie/network/PacketsCache.java",
+      "zombie/network/PassengerMap.java",
+      "zombie/network/ServerChunkLoader.java",
+      "zombie/network/ServerMap.java",
+      "zombie/network/TableNetworkUtils.java",
+      "zombie/network/ZomboidNetData.java",
+      "zombie/network/anticheats/AntiCheat.java",
+      "zombie/network/anticheats/AntiCheatHitWeapon.java",
+      "zombie/network/anticheats/AntiCheatSafety.java",
+      "zombie/network/chat/ChatServer.java",
+      "zombie/network/constants/PredictionTypes.java",
+      "zombie/network/fields/ContainerID.java",
+      "zombie/network/fields/MovingObject.java",
+      "zombie/network/fields/PlayerItem.java",
+      "zombie/network/fields/SafeHouseTitle.java",
+      "zombie/network/fields/character/AnimalID.java",
+      "zombie/network/fields/character/CharacterID.java",
+      "zombie/network/fields/character/PFBData.java",
+      "zombie/network/fields/character/PlayerID.java",
+      "zombie/network/fields/character/Prediction.java",
+      "zombie/network/fields/hit/AttackVars.java",
+      "zombie/network/fields/hit/Character.java",
+      "zombie/network/fields/hit/Hit.java",
+      "zombie/network/fields/hit/Player.java",
+      "zombie/network/fields/hit/Thumpable.java",
+      "zombie/network/fields/hit/TracerInfo.java",
+      "zombie/network/fields/hit/Zombie.java",
+      "zombie/network/fields/vehicle/VehiclePartDoor.java",
+      "zombie/network/fields/vehicle/VehiclePartItem.java",
+      "zombie/network/fields/vehicle/VehiclePartModData.java",
+      "zombie/network/fields/vehicle/VehiclePartWindow.java",
+      "zombie/network/fields/vehicle/VehicleProperties.java",
+      "zombie/network/packets/AddExplosiveTrapPacket.java",
+      "zombie/network/packets/AddInventoryItemToContainerPacket.java",
+      "zombie/network/packets/AddItemInInventoryPacket.java",
+      "zombie/network/packets/AddXPMultiplierPacket.java",
+      "zombie/network/packets/BodyDamageUpdatePacket.java",
+      "zombie/network/packets/BodyPartSyncPacket.java",
+      "zombie/network/packets/BuildActionPacket.java",
+      "zombie/network/packets/EquipPacket.java",
+      "zombie/network/packets/ExtraInfoPacket.java",
+      "zombie/network/packets/FishingActionPacket.java",
+      "zombie/network/packets/GameCharacterAttachedItemPacket.java",
+      "zombie/network/packets/GeneralActionPacket.java",
+      "zombie/network/packets/HaloTextPacket.java",
+      "zombie/network/packets/HumanVisualPacket.java",
+      "zombie/network/packets/INetworkPacket.java",
+      "zombie/network/packets/ItemStatsPacket.java",
+      "zombie/network/packets/ItemTransactionPacket.java",
+      "zombie/network/packets/NetTimedActionPacket.java",
+      "zombie/network/packets/ObjectChangePacket.java",
+      "zombie/network/packets/ObjectModDataPacket.java",
+      "zombie/network/packets/PlayerXpPacket.java",
+      "zombie/network/packets/RemoveInventoryItemFromContainerPacket.java",
+      "zombie/network/packets/RequestDataPacket.java",
+      "zombie/network/packets/RequestItemsForContainerPacket.java",
+      "zombie/network/packets/RequestMedicalCheckPacket.java",
+      "zombie/network/packets/RequestTradingPacket.java",
+      "zombie/network/packets/ServerMapPacket.java",
+      "zombie/network/packets/SlowFactorPacket.java",
+      "zombie/network/packets/StartFirePacket.java",
+      "zombie/network/packets/StopFirePacket.java",
+      "zombie/network/packets/SyncClothingPacket.java",
+      "zombie/network/packets/SyncEntityResourcePacket.java",
+      "zombie/network/packets/SyncHandWeaponFieldsPacket.java",
+      "zombie/network/packets/SyncItemActivatedPacket.java",
+      "zombie/network/packets/SyncItemFieldsPacket.java",
+      "zombie/network/packets/SyncItemModDataPacket.java",
+      "zombie/network/packets/SyncPlayerAlarmClockPacket.java",
+      "zombie/network/packets/SyncPlayerFieldsPacket.java",
+      "zombie/network/packets/SyncPlayerStatsPacket.java",
+      "zombie/network/packets/SyncVisualsPacket.java",
+      "zombie/network/packets/TeleportPacket.java",
+      "zombie/network/packets/TradingUIAddItemPacket.java",
+      "zombie/network/packets/TradingUIRemoveItemPacket.java",
+      "zombie/network/packets/TradingUIUpdateStatePacket.java",
+      "zombie/network/packets/VariableSyncPacket.java",
+      "zombie/network/packets/ZombieHelmetFallingPacket.java",
+      "zombie/network/packets/actions/BurnCorpsePacket.java",
+      "zombie/network/packets/actions/EatFoodPacket.java",
+      "zombie/network/packets/actions/SneezeCoughPacket.java",
+      "zombie/network/packets/actions/StatePacket.java",
+      "zombie/network/packets/actions/WakeUpPlayerPacket.java",
+      "zombie/network/packets/character/AnimalCommandPacket.java",
+      "zombie/network/packets/character/AnimalPacket.java",
+      "zombie/network/packets/character/AnimalTracksPacket.java",
+      "zombie/network/packets/character/AnimalUpdatePacket.java",
+      "zombie/network/packets/character/ClothingWetnessPacket.java",
+      "zombie/network/packets/character/DeadAnimalPacket.java",
+      "zombie/network/packets/character/DeadCharacterPacket.java",
+      "zombie/network/packets/character/DeadPlayerPacket.java",
+      "zombie/network/packets/character/DeadZombiePacket.java",
+      "zombie/network/packets/character/ForageItemFoundPacket.java",
+      "zombie/network/packets/character/PlayerDamagePacket.java",
+      "zombie/network/packets/character/PlayerDropHeldItemsPacket.java",
+      "zombie/network/packets/character/PlayerEffectsPacket.java",
+      "zombie/network/packets/character/PlayerEmptyShotPacket.java",
+      "zombie/network/packets/character/PlayerHealthPacket.java",
+      "zombie/network/packets/character/PlayerInjuriesPacket.java",
+      "zombie/network/packets/character/PlayerPacket.java",
+      "zombie/network/packets/character/PlayerPacketReliable.java",
+      "zombie/network/packets/character/PlayerStatsPacket.java",
+      "zombie/network/packets/character/PlayerSteppedOnGlassPacket.java",
+      "zombie/network/packets/character/RemoveCorpseFromMapPacket.java",
+      "zombie/network/packets/character/ZombieControlPacket.java",
+      "zombie/network/packets/character/ZombiePacket.java",
+      "zombie/network/packets/connection/ConnectedPacket.java",
+      "zombie/network/packets/connection/MetaDataPacket.java",
+      "zombie/network/packets/faction/FactionStatsPacket.java",
+      "zombie/network/packets/foraging/ForagePoolPacket.java",
+      "zombie/network/packets/foraging/ForageRequestZonePacket.java",
+      "zombie/network/packets/foraging/ForageSpotPacket.java",
+      "zombie/network/packets/hit/AnimalHitAnimalPacket.java",
+      "zombie/network/packets/hit/AnimalHitPlayerPacket.java",
+      "zombie/network/packets/hit/AnimalHitThumpablePacket.java",
+      "zombie/network/packets/hit/AttackCollisionCheckPacket.java",
+      "zombie/network/packets/hit/HitCharacter.java",
+      "zombie/network/packets/hit/PlayerHit.java",
+      "zombie/network/packets/hit/PlayerHitAnimalPacket.java",
+      "zombie/network/packets/hit/PlayerHitObjectPacket.java",
+      "zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+      "zombie/network/packets/hit/PlayerHitSquarePacket.java",
+      "zombie/network/packets/hit/PlayerHitVehiclePacket.java",
+      "zombie/network/packets/hit/PlayerHitZombiePacket.java",
+      "zombie/network/packets/hit/VehicleHit.java",
+      "zombie/network/packets/hit/VehicleHitAnimalPacket.java",
+      "zombie/network/packets/hit/VehicleHitPlayerPacket.java",
+      "zombie/network/packets/hit/VehicleHitZombiePacket.java",
+      "zombie/network/packets/hit/ZombieHitPlayerPacket.java",
+      "zombie/network/packets/hit/ZombieHitThumpablePacket.java",
+      "zombie/network/packets/safehouse/SafehouseClaimPacket.java",
+      "zombie/network/packets/safehouse/SafezoneClaimPacket.java",
+      "zombie/network/packets/service/GlobalModDataPacket.java",
+      "zombie/network/packets/service/ReceiveContainerModDataPacket.java",
+      "zombie/network/packets/service/ReceiveModDataPacket.java",
+      "zombie/network/packets/sound/WorldSoundPacket.java",
+      "zombie/network/packets/vehicle/VehicleCollidePacket.java",
+      "zombie/network/packets/vehicle/VehicleEnterPacket.java",
+      "zombie/network/packets/vehicle/VehicleExitPacket.java",
+      "zombie/network/packets/vehicle/VehicleFullUpdatePacket.java",
+      "zombie/network/packets/vehicle/VehiclePhysicsPacket.java",
+      "zombie/network/packets/vehicle/VehiclePhysicsReliablePacket.java",
+      "zombie/network/packets/vehicle/VehiclePhysicsUnreliablePacket.java",
+      "zombie/network/packets/vehicle/VehicleSwitchSeatPacket.java",
+      "zombie/network/server/AnimEventEmulator.java",
+      "zombie/network/statistics/data/NetworkStatistic.java",
+      "zombie/pathfind/PathFindBehavior2.java",
+      "zombie/pathfind/nativeCode/PathFindRequest.java",
+      "zombie/pathfind/nativeCode/PathfindNative.java",
+      "zombie/popman/NetworkZombieSimulator.java",
+      "zombie/popman/ZombieCountOptimiser.java",
+      "zombie/popman/ZombiePopulationManager.java",
+      "zombie/popman/ZombiePopulationRenderer.java",
+      "zombie/radio/ZomboidRadio.java",
+      "zombie/randomizedWorld/randomizedBuilding/RandomizedBuildingBase.java",
+      "zombie/randomizedWorld/randomizedVehicleStory/RVSPoliceBlockade.java",
+      "zombie/randomizedWorld/randomizedVehicleStory/RVSPoliceBlockadeShooting.java",
+      "zombie/savefile/ClientPlayerDB.java",
+      "zombie/scripting/logic/RecipeCodeOnCreate.java",
+      "zombie/scripting/logic/RecipeCodeOnTest.java",
+      "zombie/scripting/objects/Book.java",
+      "zombie/scripting/objects/Brochure.java",
+      "zombie/scripting/objects/Business.java",
+      "zombie/scripting/objects/Catalogue.java",
+      "zombie/scripting/objects/ComicBook.java",
+      "zombie/scripting/objects/ContainerType.java",
+      "zombie/scripting/objects/CraftRecipeKey.java",
+      "zombie/scripting/objects/CraftRecipeTag.java",
+      "zombie/scripting/objects/Doodle.java",
+      "zombie/scripting/objects/DoodleKids.java",
+      "zombie/scripting/objects/Flier.java",
+      "zombie/scripting/objects/Item.java",
+      "zombie/scripting/objects/ItemTag.java",
+      "zombie/scripting/objects/Job.java",
+      "zombie/scripting/objects/Letter.java",
+      "zombie/scripting/objects/Locket.java",
+      "zombie/scripting/objects/Magazine.java",
+      "zombie/scripting/objects/MetaRecipe.java",
+      "zombie/scripting/objects/ModelKey.java",
+      "zombie/scripting/objects/Newspaper.java",
+      "zombie/scripting/objects/OldNewspaper.java",
+      "zombie/scripting/objects/PetName.java",
+      "zombie/scripting/objects/Photo.java",
+      "zombie/scripting/objects/Postcard.java",
+      "zombie/scripting/objects/Registries.java",
+      "zombie/scripting/objects/RpgManual.java",
+      "zombie/scripting/objects/SoundKey.java",
+      "zombie/scripting/objects/XuiSkinScript.java",
+      "zombie/spnetwork/SinglePlayerClient.java",
+      "zombie/spnetwork/SinglePlayerServer.java",
+      "zombie/spnetwork/UdpConnection.java",
+      "zombie/spriteModel/TilesetImageCreator.java",
+      "zombie/tileDepth/TileDepthTextureAssignments.java",
+      "zombie/tileDepth/TileGeometryUtils.java",
+      "zombie/tileDepth/TileSeamManager.java",
+      "zombie/ui/ActionProgressBar.java",
+      "zombie/ui/AtomUI.java",
+      "zombie/ui/ISUIWrapper/ISContextMenuWrapper.java",
+      "zombie/ui/MoodlesUI.java",
+      "zombie/ui/RadarPanel.java",
+      "zombie/ui/SpeedControls.java",
+      "zombie/ui/UIManager.java",
+      "zombie/util/flags/OrdinalShortFlag.java",
+      "zombie/util/lambda/PZOptional.java",
+      "zombie/util/list/PZArrayUtil.java",
+      "zombie/vehicles/BaseVehicle.java",
+      "zombie/vehicles/UI3DScene.java",
+      "zombie/vehicles/VehicleInterpolation.java",
+      "zombie/vehicles/VehicleManager.java",
+      "zombie/vehicles/VehicleParts.java",
+      "zombie/vehicles/VehiclesDB2.java",
+      "zombie/vehicles/VirtualVehicle.java",
+      "zombie/world/WorldDictionary.java",
+      "zombie/world/moddata/GlobalModData.java",
+      "zombie/worldMap/WorldMapVisited.java",
+      "zombie/worldMap/network/WorldMapClient.java",
+      "zombie/worldMap/network/WorldMapServer.java",
+      "zombie/worldMap/symbols/SymbolSaveData.java",
+      "zombie/worldMap/symbols/WorldMapSymbols.java"
+    ]
+  },
+  "classes": [
+    {
+      "path": "zombie/apocalipse/diagnostics/ClientZombieSampler.java",
+      "sha256": {
+        "patched": "eb694fabcd23b71f2dc71d4e304f4d49594385e01d86e7e1fd36a0136400f8f3",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/diagnostics/ZombieCaptureWriter.java",
+      "sha256": {
+        "patched": "10794044f1a83d93958d4493249465f9e98edf1109beed63d759aee418796e48",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/events/ApocBREventControl.java",
+      "sha256": {
+        "patched": "9b5daef02167c7a9b315094c128d2d545a912e7aeac8d4163242520fb57e9996",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/EngageZombiesModule.java",
+      "sha256": {
+        "patched": "81429c2fc53c1a96d24422115d594805f5a8a82bcceb931a11f554fefda0fe23",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/GuideBrain.java",
+      "sha256": {
+        "patched": "7d7e249a393721ec53ed34da2b31e297bae78f5b9e751e25b3e5eaaaeb463553",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanAction.java",
+      "sha256": {
+        "patched": "0e8ac8785f9f8ce6f36500815000be3aa7ee379f7a4cf99c59adaa2ffc3aa426",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "sha256": {
+        "patched": "7fcf4d6c66c3a16e900344a0eba83c92f952e60e4d8782c0de967d8632610a8a",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanActivityController.java",
+      "sha256": {
+        "patched": "3f4a6e59832a00020c7130a8f286500f6c4c62d9223a4fd78bea69806c82a8c2",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "sha256": {
+        "patched": "f4fb31636de6f755cb2e8b93dc9c14439d60908283d39c597c0e18ddd7497136",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java",
+      "sha256": {
+        "patched": "9d7bd4403bb1d941b6d2f4897e209bac92feed9ac0a6971ccc1853dace384840",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanBehavior.java",
+      "sha256": {
+        "patched": "36007a576fd14b0a06741464c1b90b8fa2ade79677c35851ff2b60cbb0db5768",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "sha256": {
+        "patched": "7bfff99dca08d104277542e6678a70091e641503221954c6ee570de226ec221c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanCombatDamage.java",
+      "sha256": {
+        "patched": "2ee80fc1d5da7eb80f277db4d71b6ed45662e479b7c36c450488edd4b9d9ebaf",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanCombatInventory.java",
+      "sha256": {
+        "patched": "a93576a9e9d649eb40c98f07fdbd6e92ca6fd0f61b907a7413e291bdfa547454",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanCombatTactics.java",
+      "sha256": {
+        "patched": "95b8abc7fb197b1af94b93dac6dc21f3a831b754df895b31d16f666bd9c9dd2b",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanContactMemory.java",
+      "sha256": {
+        "patched": "4e3811dada9d4349ba7d40c93a5d4aa3648be0ff4fce2a4b53ce6a548a6e7c6f",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanEngagement.java",
+      "sha256": {
+        "patched": "978b15719d4642f89c0f081505365d8fbea250dcf0cde8018004fd4665174fb3",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanModule.java",
+      "sha256": {
+        "patched": "8a0c64716aacc98f597ab5ef7f691ecdf8ede351e379a9c11abe87f9e2785eec",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "sha256": {
+        "patched": "affd05a036d067c01c400dbf55d213567adcadc77ea235d17285ac09b5fbab55",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "sha256": {
+        "patched": "1a2d304b42aa917ccad397a977dec81f9acbd19d34bdb6fd2e9e5d0d00b6e48d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "sha256": {
+        "patched": "e6137140c0c0c808ed51d5b96aadcdf3497bd1e9e0be584a4ac584778d71f68a",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanStateMachine.java",
+      "sha256": {
+        "patched": "9226d757681fbd331057a7f80e9046eeae91e361d4a600cbb932a86c3627ce23",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanTerritory.java",
+      "sha256": {
+        "patched": "259c53356e5598d90ea839b45e465d57843e03e21750ef0f8afca7cb1522812e",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/HumanWeaponCombat.java",
+      "sha256": {
+        "patched": "cd9e8c2507730aa97e9ef36799dc0309fe5374cf9ab61feda4b1c90e0c808c11",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/IdleBehavior.java",
+      "sha256": {
+        "patched": "7ec8bf9a9decc3a31687d4577c451ecfaa2e790c0cf10aca8b663407403deaad",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "sha256": {
+        "patched": "dab3d2998cb6db416ba159ce625c59f619d44dd807e24b4e07dadeae7e4dc581",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/brain/WalkingModule.java",
+      "sha256": {
+        "patched": "df5760a53fe99e7fb82c68c17f4c68ab8c7a14f228d98bcc982ad5d54ce55681",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/death/HumanDeathPolicy.java",
+      "sha256": {
+        "patched": "e05d6b066fb1935088e7ce4407c35251bbbd892062f19e1172e4e3155ac0fe7b",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/death/HumanDeathState.java",
+      "sha256": {
+        "patched": "827703e7a2b9a7ba1babd6d4c7c896a5a63a5f3671f9926f235a97c8d48a2aff",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/death/HumanReputationPort.java",
+      "sha256": {
+        "patched": "45d71544baf2d9b83b47b63b78a4b8d0f0de85427c64cd93c6f7929ec72597ae",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java",
+      "sha256": {
+        "patched": "4be0d29cc5eae23d37f6689193af0d183366376f31a9f419e77d44b2d0636b32",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/dialogue/HumanDialogueSession.java",
+      "sha256": {
+        "patched": "84ab9faef073e1c0e176e255013d73267f90d67ddd6861074419cbafa004cb97",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/dialogue/HumanLanguage.java",
+      "sha256": {
+        "patched": "e3c7d34cab9da17689234922337dae40cb28b1bc12e47d477c91d6d00ce19369",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+      "sha256": {
+        "patched": "1ed737d97ac8715bc37a0892e4bc5e9081968808ea5c9ccf370d3172aea09196",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/encounters/EncounterPort.java",
+      "sha256": {
+        "patched": "7b41b9f852a5d3475068041eb700af27a5a7c0d258273836ed2e2af38546398c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/encounters/HumanRelationships.java",
+      "sha256": {
+        "patched": "dd1683505ef39a637733e3195cab86f017825b24e10951991ea059f0e8fbd8bf",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/encounters/PlayerEncounterModule.java",
+      "sha256": {
+        "patched": "55d71b5f93da14dbc1652d4f99167bf5fc91972c0fcba56be7befab154367bd7",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/encounters/RetaliatePlayerModule.java",
+      "sha256": {
+        "patched": "322384eae6d9e44b1f2c07cac0ef13a701eb9e2504a68db3ec37e755c2953f8a",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/encounters/RetaliationPort.java",
+      "sha256": {
+        "patched": "dd1f05eb930c1e4c18d966ceaab45065ff5bd030de3c5421b3fe4977936e6da9",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/HumanLifecycle.java",
+      "sha256": {
+        "patched": "e77882631836cf13c0d5739ae96f1d15d569dc2561e6746ad1fe4565aa35781d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/HumanLog.java",
+      "sha256": {
+        "patched": "f8c2e35c78fb554dfd9eb0f68f1e3912ddee328a0cfb2b064c3f1c41fa694e43",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/movement/AreaReturnPlanner.java",
+      "sha256": {
+        "patched": "fdc80bb615cae19cbce858a7cb161eab8b96099346e556fbcb63d7466c1fe528",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/movement/CombatRoutePlanner.java",
+      "sha256": {
+        "patched": "b88d4bc2588e10b2c6724f8dd1634fdcddad6a7da9d14867286703c4fc3cfdfe",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/movement/DestinationRoutePlanner.java",
+      "sha256": {
+        "patched": "e6211c17fb71b72f5b8403ec68dcfa3d832c0658df860ccc1700cb1a1f89fc54",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/movement/IndoorRoutePlanner.java",
+      "sha256": {
+        "patched": "8fedd9e8ea5efb9293910cb74499273a291f11eb984dd599ecce103ff9c54ec5",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "sha256": {
+        "patched": "67e8aa13cb4bd83bc890ef28c08b3ad941741330968786b3134640a849a78c56",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/movement/MovementModifiers.java",
+      "sha256": {
+        "patched": "a608f117eafb68ebabd7c2b6bf2067041b507c687110edb47f3dfd23adba328d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/OperationAnnouncementProvider.java",
+      "sha256": {
+        "patched": "ffcc4d786c99df61bbd1a1795c234dd4abdb235e57a146b92327e3fc3f1f2598",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/profiles/GuidePolicy.java",
+      "sha256": {
+        "patched": "9d16eb0ee6c9946cc2e506e360523069d19a96b99d8b7e27c244e7ffdb982b21",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/profiles/HumanCheats.java",
+      "sha256": {
+        "patched": "eb3e035369b7123bf4c802b3ee060e824dc645046b3d88f3eed869d3f9392a9e",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+      "sha256": {
+        "patched": "e4910bb7ac16e911bd4a751a41313d28440de2887c94d3b24a3893485751e049",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/profiles/HumanModuleRegistry.java",
+      "sha256": {
+        "patched": "1033fb8b1bfa7ba6de17e0b58a0dac02aeb068614817ea2c6dacdd9fc31b5692",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/profiles/HumanProfile.java",
+      "sha256": {
+        "patched": "384f9c22f98ade424fb35c70949951861e7230d957f7f691f3e6834129041189",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/profiles/HumanProfileRegistry.java",
+      "sha256": {
+        "patched": "27491412f8bb69bce2674982c4301508ad717dc8f6cfe1e293d87cdeb18c280d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHuman.java",
+      "sha256": {
+        "patched": "649dc5a665ed5b2ba13f9e0406e9d012907714fd7ac39553f76ea1cb7a8b56ec",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanActuator.java",
+      "sha256": {
+        "patched": "7d6f2d4997ca4a14b7ad36cddc379390d04e972b5420a55b2d9bb511254272df",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanAimPacket.java",
+      "sha256": {
+        "patched": "4c21d604ab2f54c0729bf520076f7c4dd4609a9b89f612a1e98879688b640fdb",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanAttackLine.java",
+      "sha256": {
+        "patched": "4a7645437e443c037c9122499829dc8f4d1aec0fd5b92623144480022e0f3131",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanCombat.java",
+      "sha256": {
+        "patched": "512ff829a69f189fc690a2a5459f7077f9eb98717c09bd59299dfbef1cb58e08",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanCombatApproach.java",
+      "sha256": {
+        "patched": "aa1325b31e163acadcdd3632eadadb58b75c181cc2d3d49af8d8ac4b87c40d97",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanCombatAudio.java",
+      "sha256": {
+        "patched": "a5688c81d0b9c97247d2c3f34b8fd5b724b8aa47893749fa1caaf5652d9eaa88",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanCombatNetwork.java",
+      "sha256": {
+        "patched": "74f3879dc90361f3818d6cc1e7b0efe909ae706cc05bf1eae8e8ab142de467e7",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": [
+        "zombie/network/fields/hit/WeaponHit.java"
+      ]
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanCorpseDrag.java",
+      "sha256": {
+        "patched": "a90e04a2be0cddfb86b02ae9eca09d3cd1e44646ffdfd49a35cc3b0adf19cfd4",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanCorpses.java",
+      "sha256": {
+        "patched": "b8afc986af132fbc12ee684cda88a7a75964b28a39d6a141b729336e4e0720c2",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanDeaths.java",
+      "sha256": {
+        "patched": "24f5b12606530c0e169706a2498aa42faec49e887ba44fd074475a39eaaa524a",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanDefinition.java",
+      "sha256": {
+        "patched": "229c18e3c67ea5ea99137cf1bedc93acb21aa5ea90243b4fd16c71a79d9cfb17",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanDialogue.java",
+      "sha256": {
+        "patched": "528671e0e8ccdbf64de021924f7cb01409c8aa474784deb4019ecd75a9beca48",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanDragPacket.java",
+      "sha256": {
+        "patched": "360540e316bc88ee3072bb1ebb45c86801e52a5d84dd216147155a30c85dae87",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanEmotePacket.java",
+      "sha256": {
+        "patched": "c275c0e650c5d25fbcbd9ce8156fe5287a497cac2c44afa4e61f9cd04bc246f5",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "sha256": {
+        "patched": "9fd0eb2f557026fe0834d27074b86ab4208fe7593bd0e048e0f9737fcf6a13e6",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanFactory.java",
+      "sha256": {
+        "patched": "5231b35a10dc280ad1edfe7a263e4ede07e6013fd08b3d7b1c6f04206a98ce79",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanHitPacket.java",
+      "sha256": {
+        "patched": "fae3434a6327751830cfa333bedf8d44468fc8f7628c32790e6d66876b28d88c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": [
+        "zombie/network/fields/hit/WeaponHit.java"
+      ]
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanInventory.java",
+      "sha256": {
+        "patched": "413f5a0cbb1e939dd50bac26425d00254956152bea01e76d0bd9e21345104350",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanMissPacket.java",
+      "sha256": {
+        "patched": "ddbe44872d2c2cb5c056647ee5cb65db1cea8052e3d6389ee621803aa41ceb78",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanMovement.java",
+      "sha256": {
+        "patched": "eb38e106c74509c659a796f95726a056702a797b0fa3da843c59515601950bc3",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanPerception.java",
+      "sha256": {
+        "patched": "882eba275bd554178cafa694e4d94a49e07f71d5d40c3cd2d3ea3bbaf4fe59fc",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanPhysiology.java",
+      "sha256": {
+        "patched": "5813edb54aeb4f0aedc1c0adde6adb60fe966ca82587a5bcc93fd322ccfe6d3f",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+      "sha256": {
+        "patched": "00a587cb928d3f9e1eb9c2a2528511bfc31dd5f8533ad3c14aa826e038d0a72c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanPlayerDamage.java",
+      "sha256": {
+        "patched": "d444a40cc2b14dc1f7a87b61d543ff6ce45212481fa2ff95321b4e65e490126c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": [
+        "zombie/network/fields/hit/WeaponHit.java"
+      ]
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java",
+      "sha256": {
+        "patched": "b63e1fac6836b9d07151f04c22b6922231468b7dee6b9737a3390d136eb6d80d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": [
+        "zombie/network/fields/hit/WeaponHit.java"
+      ]
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanProfiles.java",
+      "sha256": {
+        "patched": "9a8f31a8d00494e68f82b6f9ae0212ce8aea2c2d63e8a8f3dacc018ef1c52b49",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+      "sha256": {
+        "patched": "085861bc710c14598b3b1426d6f6eb8afd07a4ea189e6a33e6504cf2bf0f0395",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanSimulationWorker.java",
+      "sha256": {
+        "patched": "456f0a4d5324109d9c4aa6011ddcd3808e77401bae0df04a76cd73c907e1d188",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanSpeech.java",
+      "sha256": {
+        "patched": "674ec5e884e5786d393de304aba744419e5cb7c87d1ef04cbec160326d0d6e3f",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanSurvival.java",
+      "sha256": {
+        "patched": "17ab667d4e1e1e9e7ccdc271c799ec25c234011c00923f5c5fb3fce333c71dc7",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanTasks.java",
+      "sha256": {
+        "patched": "6c407c1b57c128b6b026ce66b5cb36e8994d6b8f0eb95b986294b207cfd9263c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanTerritory.java",
+      "sha256": {
+        "patched": "4520b33b351bd66e69a0e85a67212db50fbb1ed4d3d64886147dc7cecb6801aa",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanTrading.java",
+      "sha256": {
+        "patched": "138cfeb43fbb067d9a089ecd9f79ef00feafc812a7acc43b0c3de52dc5ff47b2",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "sha256": {
+        "patched": "f5cd1e3af6e6a38d3986cf201d9206ed19ab625e40cf0199ca00273e7696e999",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanWalking.java",
+      "sha256": {
+        "patched": "c6d3ea63de796fc18d8331900c3fe888fa5833025c101da4baba43ca63a6dd0e",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanWeaponBackend.java",
+      "sha256": {
+        "patched": "74e3869f9839e4d64bab1087395b0ff5dd60a9fe56904eb372276cce2038a74b",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/ServerHumanZombieVictims.java",
+      "sha256": {
+        "patched": "8ae3089731c9bad5ee4b9ff5810ad4c7fbdb460080c9bfdfbf75b02c3ac67b68",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+      "sha256": {
+        "patched": "ba50ad70ed2bb4575b62214bf5f3f8b296fa3dd3985c6705a72c7d2cf950d8ab",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/speech/HumanSpeechDefaults.java",
+      "sha256": {
+        "patched": "a9b6d4d6bed16cfe9975966882529eab837d763fb96e6fc69252235277a3f9d6",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/speech/HumanSpeechEngine.java",
+      "sha256": {
+        "patched": "a7f65adb8119031c63fddac4f31061823d73cec94faa1d47d1be3cceb0a6c02f",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/speech/HumanSpeechMemory.java",
+      "sha256": {
+        "patched": "7c09424ff274749bd5bb80865530b508fe4e602be1f42461df05c21aef237e0b",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/speech/SpeechContext.java",
+      "sha256": {
+        "patched": "8cf6160051e24431d141024c25121363d3c06a64d817ca55f974e9d9552405c1",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/speech/SpeechEvent.java",
+      "sha256": {
+        "patched": "699f61d9d265a901bff560f977a1da481a57effe304a0ae454aaef1ae385cc7c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/state/HumanConditionCalculator.java",
+      "sha256": {
+        "patched": "1aa083e7e86a2fda9f5b4c89232b395f2d41d68315337c0031d771f5094160e1",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/state/HumanMutation.java",
+      "sha256": {
+        "patched": "b883ccf3ffde4678d0ecf6548a04f219c4b6b45cc76f401d3d50620017bf1cd5",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/state/HumanState.java",
+      "sha256": {
+        "patched": "dd0323b06bcc8e3819c1ef3ce761f3e7b43ce9136ce64e4b08412565d37375e9",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/state/HumanStateReducer.java",
+      "sha256": {
+        "patched": "d864144d3d2c9d6b5c995514e8116b5bcab18443ee9f3a1b9d01841c650948a8",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/state/HumanStateStore.java",
+      "sha256": {
+        "patched": "92bf8778c958877d29e908dcd12dd11fe85fad00713c6c8bb24486b2419dcdff",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/survival/RetreatPlanner.java",
+      "sha256": {
+        "patched": "80acf064c8bea01438232a1f333d59d2a00bb6a003fe0f24033d62ea6e7dafd9",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/survival/RouteRefusals.java",
+      "sha256": {
+        "patched": "5aa3c5928a75bb1ab3db8a076b3c5bb2815d4e09c3f219acc2dcc6572f5c72cc",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/survival/SurvivalModule.java",
+      "sha256": {
+        "patched": "a8359452a6aa410b453dfdf0ab3b5017a0f4039ebf0c1da7814c073a66850ecd",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/survival/SurvivalPort.java",
+      "sha256": {
+        "patched": "1dc57a10aef7b369e497249c31256ee6c48ab8d7dfe94b4c2467b4a74f10114d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/survival/SurvivalSettings.java",
+      "sha256": {
+        "patched": "38b5185e2a3efdfda8790192b5a922b14c7e5993789c1ec729bff0f1ab96ff82",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/survival/ThreatAssessment.java",
+      "sha256": {
+        "patched": "c63a72c7c495a08bbd6330759e9ed89e54cb83d96044a3f8f808259c8ff6fee1",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/tasks/AssignedTaskModule.java",
+      "sha256": {
+        "patched": "dcfa5d469aba91a5a388c6f0b93a4fd8959f1f7efc2941c1aba1fff54be0793d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/tasks/CorpseCleanupExecution.java",
+      "sha256": {
+        "patched": "59f07662dffd90b9d6926e3db451c5c6a846fe2db1ccb8a72e37d615727e42e2",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+      "sha256": {
+        "patched": "2ae2378c64850f84b29f2994d77203a3147b9c94af49758d3eaf257bc9a7a2dc",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/tasks/HumanTaskCommand.java",
+      "sha256": {
+        "patched": "94c5c89f0d7d497f576fcecd87f9dd5ec13fff1f0ce6f708ca5ce3eb02aeccf4",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/tasks/HumanTaskWorld.java",
+      "sha256": {
+        "patched": "a3e8786a37fde64b56426ef7f074f869f18ef70ac096de6ee988cbc129937224",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/trading/HumanTradeOffer.java",
+      "sha256": {
+        "patched": "25a44faf15650e3005799a8ad31d8d98cbeae8a6782a906a86848b9d438c8911",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/traversal/BodyOccupancy.java",
+      "sha256": {
+        "patched": "39d4accef9489923eab3e540a98c54085b24c06df42b332182ce1d2a7a26d98e",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/traversal/CrossingReservations.java",
+      "sha256": {
+        "patched": "56aaffcc49eef09a2b6fcc69586d20755052e8da2fa9ff3039d3e7e199507997",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/traversal/HumanTraversal.java",
+      "sha256": {
+        "patched": "137078ed28e6376c17e3500901159b918e53b61834d4bf1efe46ac4394837f90",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/traversal/TraversalEdge.java",
+      "sha256": {
+        "patched": "5473ebd8f571c432d8e83d998e98486b904a8cdc72a054920e72f1e97c0efcec",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/traversal/TraversalExecution.java",
+      "sha256": {
+        "patched": "8b14cede240bdd929ef9bcb5252470f6dfd952dfd2f301c36dcc416a6b0c29a5",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/traversal/TraversalStatePacket.java",
+      "sha256": {
+        "patched": "72d95df64a972c67a8390d304530340e66c94dc8cdab4221db266ea492e067c7",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/traversal/TraversalWorld.java",
+      "sha256": {
+        "patched": "11b2b8389e5ad42158cb561089dd07b4c92c2765f7ff65e9ef252e5b3e2b41d6",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/walking/MovementRequest.java",
+      "sha256": {
+        "patched": "cd2a252054e7dda312f31c1f9b0dc7a68f03669f2ed7dd06d3e2ed781cfff945",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/walking/WalkingPattern.java",
+      "sha256": {
+        "patched": "74404e7b8aee5c85b418f0a889d6e596a2c39c522350665fc0f0a84852d60c12",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/walking/WalkingPatternRegistry.java",
+      "sha256": {
+        "patched": "843f59de9cec022c720bf38290aa6f2df149a6072f2bfd9eba6e19c65a78bffd",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/humans/walking/WalkingPatternSpec.java",
+      "sha256": {
+        "patched": "842e3a5a1b14baf77306c62d06aaf04af0786fb5dac5612e94307957292e3adb",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/zombies/ServerCorpseDragAuthority.java",
+      "sha256": {
+        "patched": "d48eb3e0fee7a15bd3eed1b0e302a29a0601b09c362d1808570a1211ae54f34c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/zombies/ServerZombieController.java",
+      "sha256": {
+        "patched": "500b4c1683bc92501c7230377edf89c016d507d04ea0a47ff99cb491e04aef83",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/zombies/ServerZombieNativeAdapter.java",
+      "sha256": {
+        "patched": "e0f99bc33008c9dae11980e6a31f811c8df87d6ef7071eebc029dce9c067281a",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/zombies/ServerZombiePace.java",
+      "sha256": {
+        "patched": "4b1a39bbb79e5df053dcdea40614175ce9b386bec1b3ccae846960569f704d50",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/zombies/ServerZombiePath.java",
+      "sha256": {
+        "patched": "11f16f48aefd6eba73771b84e37c590cb681f2e59afb16b93684388233415849",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/zombies/ServerZombieSession.java",
+      "sha256": {
+        "patched": "dbb047887990a44133d0cfd8d3d58ad10595c7f129bbeb6b66bcfdf6d46d1b97",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/apocalipse/zombies/ZombieVictimPort.java",
+      "sha256": {
+        "patched": "284d283ee97b1fe42c5be035ba36c317b521814b7cdf77f8c06da3e92d42017b",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/ApocBRServerTelemetryLite.java",
+      "sha256": {
+        "patched": "4f74b55b1435412afa1ee20997a8349def0d37491ca56ccb12a94752101d76e1",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/characters/animals/behavior/BaseAnimalBehavior.java",
+      "sha256": {
+        "patched": "c9d68421dceb65ec63dc46a4b7a79c407b8f4045649630efd5bc9253a18890aa",
+        "old_vanilla": "9d40f35f94bc958a3ee47ebf5ac9b3c1740dba3cdac58933c6f6c3e7e61cd27f",
+        "new_vanilla": "9d40f35f94bc958a3ee47ebf5ac9b3c1740dba3cdac58933c6f6c3e7e61cd27f"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 12
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/characters/animals/IsoAnimal.java",
+      "sha256": {
+        "patched": "d65e093b8ac22e3abe71e4b04fea14857822f8573de2620d606163db03f38a91",
+        "old_vanilla": "4c527280b938ffdc9c3974c39e7cd4777414844972019ff4299107300922fec7",
+        "new_vanilla": "e2102334c178ec5f5193332b42e79b448e14ad4d6a36314d65b5194133226851"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 35,
+        "added": 68
+      },
+      "upstream_delta": {
+        "hunks": 4,
+        "removed": 8,
+        "added": 4
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/characters/BodyDamage/Thermoregulator.java",
+      "sha256": {
+        "patched": "d8b94d21eb80d506ad7ecf564b82019e2690b8943ad8773421fe6a8d3e3f461a",
+        "old_vanilla": "96a94cf6b099c4777757bf890e4b67291441cc1e3f5727cd5fdd446d3b705a69",
+        "new_vanilla": "96a94cf6b099c4777757bf890e4b67291441cc1e3f5727cd5fdd446d3b705a69"
+      },
+      "patch_delta": {
+        "hunks": 6,
+        "removed": 4,
+        "added": 8
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/characters/IsoGameCharacter.java",
+      "sha256": {
+        "patched": "bf1e814043b52879ae4c8c781e6f9febe9ef488ded3dc0a6e7c57c955a9aafa6",
+        "old_vanilla": "25ef343e7b436f78cc855ca479d8ac75b9febed4dd27a4488eb30037971ac2ab",
+        "new_vanilla": "3321951975f54130f5945a575801e1c9a2cafda349f436c426163d2ff2ef7f09"
+      },
+      "patch_delta": {
+        "hunks": 12,
+        "removed": 4,
+        "added": 33
+      },
+      "upstream_delta": {
+        "hunks": 141,
+        "removed": 476,
+        "added": 801
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": [
+        "zombie/ai/states/ClimbDownSheetRopeState.java",
+        "zombie/ai/states/ClimbSheetRopeState.java",
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/characters/IsoPlayer.java",
+      "sha256": {
+        "patched": "cced274c5a1bc54912939879be35527bbbc2b8bbecb3f7b8bdcc5626185f173d",
+        "old_vanilla": "a11986f223b9dfac72c2fce788ce9133fa7d404ce3a1d556af53f5d7ef976ec6",
+        "new_vanilla": "1d6de2bc003c7fbec62f8da4c73c51c44963d0f52aeb8729fde79a4576af11b7"
+      },
+      "patch_delta": {
+        "hunks": 36,
+        "removed": 31,
+        "added": 180
+      },
+      "upstream_delta": {
+        "hunks": 48,
+        "removed": 87,
+        "added": 186
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": [
+        "zombie/ai/states/ClimbDownSheetRopeState.java",
+        "zombie/ai/states/ClimbSheetRopeState.java",
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/characters/NetworkZombieAI.java",
+      "sha256": {
+        "patched": "dff35d8cf14f672f8839ad3d0ed4605a7d23aac95c99f48c00a854c9c9d89b5f",
+        "old_vanilla": "8a16f86b0def3486fc7464444bf5312bbf4acce675856004b88473001e8ad110",
+        "new_vanilla": "1dd8967bee0cbeff7923eec5c535d1d334c38a44ddd2d587b81d1d44e3ef600d"
+      },
+      "patch_delta": {
+        "hunks": 9,
+        "removed": 10,
+        "added": 36
+      },
+      "upstream_delta": {
+        "hunks": 1,
+        "removed": 1,
+        "added": 8
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/characters/NetworkZombieVariables.java",
+      "sha256": {
+        "patched": "bad695355f5352f18270546ad6e2df5373d84c0ab7363c8eaace7219d356425b",
+        "old_vanilla": "c9912cd7abb9dd6f32db0459bd9e40837fec929b82d57e12e0a52a58778b400e",
+        "new_vanilla": "c9912cd7abb9dd6f32db0459bd9e40837fec929b82d57e12e0a52a58778b400e"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 15,
+        "added": 19
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/core/physics/WorldSimulation.java",
+      "sha256": {
+        "patched": "9c14f7c18cc453ccd561c15482d20f56bdcd4e1de5c8a99185d86e7f317ad5d1",
+        "old_vanilla": "dd1e9261b2a2e554bb93b333b8513b9a77a78f947f63371464d93a68285aaec4",
+        "new_vanilla": "dd1e9261b2a2e554bb93b333b8513b9a77a78f947f63371464d93a68285aaec4"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 2,
+        "added": 7
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/core/skinnedmodel/advancedanimation/AdvancedAnimator.java",
+      "sha256": {
+        "patched": "fc2de4fa153d98def47e912957d931d4b6b686526444d50143ae3e12c3aa8492",
+        "old_vanilla": "545ebb6e7c9f4005eb5758307f36b00460b652e1016c915466db75529f4b2318",
+        "new_vanilla": "31d635a210e85cca6a2260a47c963d3e207ee5112a301f6b2828cf61c470965e"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 5
+      },
+      "upstream_delta": {
+        "hunks": 3,
+        "removed": 2,
+        "added": 2
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": [
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/entity/components/crafting/CraftLogicSystem.java",
+      "sha256": {
+        "patched": "0cee38fc477c007017accf2354993f60de4e23fffd404ddb956a8238d4efd281",
+        "old_vanilla": "c547688f2142d977fd0448ab1b02daa14e5814d860b4d6f8345bcddd257fcdf2",
+        "new_vanilla": "02ac4b5a503c00077d52cf99258ec93612f4fb1f65b4ea07fec1492d3eea1520"
+      },
+      "patch_delta": {
+        "hunks": 4,
+        "removed": 3,
+        "added": 4
+      },
+      "upstream_delta": {
+        "hunks": 1,
+        "removed": 2,
+        "added": 0
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/components/crafting/DryingCraftLogic.java",
+      "sha256": {
+        "patched": "e8fdfebdecf43d6a96ea6829c7f4629ccd2815ab21af7e4e00040b2b46c0059e",
+        "old_vanilla": "e4543df95fb9cb666b15f0e2b34e7ae5ff933f0744b57ea88b2e2cf939fcc743",
+        "new_vanilla": "e4543df95fb9cb666b15f0e2b34e7ae5ff933f0744b57ea88b2e2cf939fcc743"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 3,
+        "added": 3
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/components/crafting/FurnaceLogicSystem.java",
+      "sha256": {
+        "patched": "bb5345c96978f22202ee65dcbe1e6493190770fbc2c5a65df6a88453dd3d9ef6",
+        "old_vanilla": "16ebf174bbe9ffcf9914f3d7135fe6dac0b2180106821bb9dc638944c1d8b6ef",
+        "new_vanilla": "16ebf174bbe9ffcf9914f3d7135fe6dac0b2180106821bb9dc638944c1d8b6ef"
+      },
+      "patch_delta": {
+        "hunks": 11,
+        "removed": 10,
+        "added": 13
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/components/crafting/MashingLogicSystem.java",
+      "sha256": {
+        "patched": "2b22a5b734a865d0ef4a114253dce4fbfff781e785045ef09df66860a8a3e24d",
+        "old_vanilla": "654c99e349236b0609bf482783001240a4ae35b005dbfdceeb6dac64177e4af8",
+        "new_vanilla": "654c99e349236b0609bf482783001240a4ae35b005dbfdceeb6dac64177e4af8"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 4,
+        "added": 5
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/components/fluids/FluidContainerUpdateSystem.java",
+      "sha256": {
+        "patched": "176e3371c233855ecf170a75e07eaac792fc5dd2fbbe59c1823b311206d1ebea",
+        "old_vanilla": "e946726d61c799759f1b138abf88b7ad368ef69a39d461d466183aa0102ca71f",
+        "new_vanilla": "e946726d61c799759f1b138abf88b7ad368ef69a39d461d466183aa0102ca71f"
+      },
+      "patch_delta": {
+        "hunks": 6,
+        "removed": 5,
+        "added": 9
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/components/resources/LogisticsSystem.java",
+      "sha256": {
+        "patched": "c54f52853aa49fff239be0316e50be429d9f85e0ce748c42fc49ce64aac98c9e",
+        "old_vanilla": "6e094e91a34f4cce170f2f9a785bc3a29e0f0dd5f58bd05d967074ebddb3d7d5",
+        "new_vanilla": "6e094e91a34f4cce170f2f9a785bc3a29e0f0dd5f58bd05d967074ebddb3d7d5"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 1,
+        "added": 1
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/components/resources/ResourceUpdateSystem.java",
+      "sha256": {
+        "patched": "bb003b8b4ffe002852c242b719bb959324d71157dfae9d84684809cd1d99b7a8",
+        "old_vanilla": "7e158126ebd2b83627cfb06279e68728363b4278dd45c7bdfa18f8939d758516",
+        "new_vanilla": "7e158126ebd2b83627cfb06279e68728363b4278dd45c7bdfa18f8939d758516"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 3,
+        "added": 5
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/components/spriteconfig/SpriteConfig.java",
+      "sha256": {
+        "patched": "5666215141567a9cbe1863c1828e3fb7c40c5e0a36fa754429eb9f8db8fde26c",
+        "old_vanilla": "a39081fbdd2be6744c2025a8237f99e14226f42e95bf159ce1578407be5dbb56",
+        "new_vanilla": "942240c7afc5ce0744ba71e017d4ba523dc96f0179e31e80a35347b60eaa6fa4"
+      },
+      "patch_delta": {
+        "hunks": 4,
+        "removed": 4,
+        "added": 0
+      },
+      "upstream_delta": {
+        "hunks": 1,
+        "removed": 1,
+        "added": 1
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/Engine.java",
+      "sha256": {
+        "patched": "00aa1a92ce66485d22e534a48a6bc4bcd5ab369a81877a1144501c630f25496c",
+        "old_vanilla": "7db70a55affd23427506374fb4cbc4c0656ac842a4270fa138ae75bf03202893",
+        "new_vanilla": "7db70a55affd23427506374fb4cbc4c0656ac842a4270fa138ae75bf03202893"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 8,
+        "added": 27
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/EngineEntityManager.java",
+      "sha256": {
+        "patched": "172f83fc1e5843a65893847214eb22fb2ffe85c060ebcb702f2854dd8d8c7d87",
+        "old_vanilla": "e7feb7ceaff317667c43f124d522607b727e7a9350f75e711df38f35d23e34c3",
+        "new_vanilla": "963c670a7f9e450dbf530a063cb8a370cdde8ba40ab98c4dd11405163910e4bd"
+      },
+      "patch_delta": {
+        "hunks": 6,
+        "removed": 1,
+        "added": 27
+      },
+      "upstream_delta": {
+        "hunks": 5,
+        "removed": 15,
+        "added": 28
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/EntityBucket.java",
+      "sha256": {
+        "patched": "56daea26f0fddf6c19159b83500dc6f718039deb4282793f33298ed372f93a99",
+        "old_vanilla": "7b6f80ee1885621fa82ab5461eca27a21b9a481b46954730f2928dacdf540167",
+        "new_vanilla": "7b6f80ee1885621fa82ab5461eca27a21b9a481b46954730f2928dacdf540167"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 1,
+        "added": 31
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/EntitySimulation.java",
+      "sha256": {
+        "patched": "bb117b0e317f141a280401856175a1ca6842a4647096867f58323e0ee44ea774",
+        "old_vanilla": "bce207899ab43d44c04d63f2e79fd487cf8a2ee797be5e0b4cca3f8748b65575",
+        "new_vanilla": "bce207899ab43d44c04d63f2e79fd487cf8a2ee797be5e0b4cca3f8748b65575"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 0,
+        "added": 23
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/GameEntity.java",
+      "sha256": {
+        "patched": "e2809228cd1b9e95514aabc0a0a6cf6089728028e674bd66cee4208093b872fe",
+        "old_vanilla": "ac65a76c009274bfc72ef5a40ec80bf904bd17ca8c9190d725ee399c386f6df1",
+        "new_vanilla": "ca333ea07cbf0ec5cc9981ce47e279c26a16a6588346174607bd4dfb7f7d7430"
+      },
+      "patch_delta": {
+        "hunks": 10,
+        "removed": 0,
+        "added": 12
+      },
+      "upstream_delta": {
+        "hunks": 3,
+        "removed": 3,
+        "added": 5
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/GameEntityManager.java",
+      "sha256": {
+        "patched": "6c3cad5f3380f509a89af482077bbdbbea229ac910c0e9fff8f3020276325213",
+        "old_vanilla": "8fc10da83f81e3314fc1181e94663eebeae94142a26a190d57a5c952424e6eba",
+        "new_vanilla": "63973aa1810a534854c16fa98afe6116f8779b10d5f3f03e7e80e8f7b299b2a4"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 2,
+        "added": 7
+      },
+      "upstream_delta": {
+        "hunks": 6,
+        "removed": 79,
+        "added": 82
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/MetaEntity.java",
+      "sha256": {
+        "patched": "b824a19b48ca0d9f155ac981347edf29cc9f7f4f105ae41dfa12d4997561bb41",
+        "old_vanilla": "f2f7bda62463e3781c7f2418ffb36b12f2cc4e9ee7c8c251e408f5bc56bae72d",
+        "new_vanilla": "f2f7bda62463e3781c7f2418ffb36b12f2cc4e9ee7c8c251e408f5bc56bae72d"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 2
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/MetaSimulationThrottle.java",
+      "sha256": {
+        "patched": "ec5408b18924a5065e131034ad7c37ee369a23e22bf0da91286f706567bf127c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/ServerEntitySimulationIndex.java",
+      "sha256": {
+        "patched": "a51b8afba152e7678b4f9f01ad673fb918cff5caa824b5b1642944f8f198a714",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/ServerUsingPlayerIndex.java",
+      "sha256": {
+        "patched": "7201c881d3135f113570a82d8c2322c63dcc81fba79342bfac1637ad335c042c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/entity/UsingPlayerUpdateSystem.java",
+      "sha256": {
+        "patched": "73621cc6bc3ae4ac1eed90b85ca5a165fd4ce6a5987138c5ab3be27817efdbac",
+        "old_vanilla": "ef89010e6c2d07cc20be341a3092ba134b633fe0c659382a17f81ab23d201ec7",
+        "new_vanilla": "ef89010e6c2d07cc20be341a3092ba134b633fe0c659382a17f81ab23d201ec7"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 16,
+        "added": 38
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/gameStates/IngameState.java",
+      "sha256": {
+        "patched": "7515a0b5194d11c3e0be78bfbdcaea2fb99ce4fb130d74a412390d3ee1d83f62",
+        "old_vanilla": "420013b6a8638278016bdf7f731232260287686e7e0e3df91f48ab5cd38b441d",
+        "new_vanilla": "4b0364db7e8b03a4d7f27b0c32496148521b9bbc631f168b1ec9b239de01fa76"
+      },
+      "patch_delta": {
+        "hunks": 19,
+        "removed": 19,
+        "added": 25
+      },
+      "upstream_delta": {
+        "hunks": 2,
+        "removed": 2,
+        "added": 1
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/inventory/InventoryItem.java",
+      "sha256": {
+        "patched": "6ed7b96e3551ec234baa0f5d7c339d15ce328303e8030e35bb4ed01e7cde8d37",
+        "old_vanilla": "1d576a4c0a85784630c50433715eb464520f018c4578c5928934d18f5f86a97d",
+        "new_vanilla": "e2f901363ed90f7171de7424bc882c697fa52e62bbafa933302059c9c3dbcf2e"
+      },
+      "patch_delta": {
+        "hunks": 10,
+        "removed": 0,
+        "added": 12
+      },
+      "upstream_delta": {
+        "hunks": 16,
+        "removed": 30,
+        "added": 132
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/inventory/ItemContainer.java",
+      "sha256": {
+        "patched": "c95664a7afe3d4e284b7f4d0f6132bdfc14139ff58de1c55a4c381e62d2f7c8c",
+        "old_vanilla": "f134e25594d4c4c48893c78b9a8082cfec96a7a322b617d48ada3ab7b574f088",
+        "new_vanilla": "69a784972f3a4be0dd95e77e5d7bed1806326905f0e87af667e59b9ec7a6defd"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 9,
+        "added": 17
+      },
+      "upstream_delta": {
+        "hunks": 28,
+        "removed": 98,
+        "added": 192
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": [
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/inventory/ServerInventoryUpdateIndex.java",
+      "sha256": {
+        "patched": "f2b6944b7b12a43c03d0404f49ddf34432aa6016483cdd6db340e141f7270e80",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/areas/DesignationZoneAnimal.java",
+      "sha256": {
+        "patched": "46a9c524c30e649e32c48f0a0718b1a3de7e2e72616e47fa9a8bdc2288dbe4de",
+        "old_vanilla": "e816ff680b78741520abf134bf25a5750d52ba1989c4856a518d1f4a8e2d1c67",
+        "new_vanilla": "6d20764c8e4545bf64fc3874974b87174a5e9ee30d269cce8484ae841582dc92"
+      },
+      "patch_delta": {
+        "hunks": 19,
+        "removed": 54,
+        "added": 64
+      },
+      "upstream_delta": {
+        "hunks": 11,
+        "removed": 35,
+        "added": 34
+      },
+      "merge_conflicts": 2,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/areas/IsoBuilding.java",
+      "sha256": {
+        "patched": "900c5a2501d53dfb157ed4074da2864c0181250d608e6b6742bb895c67ba95fd",
+        "old_vanilla": "4a139feb928f8074a460b7263fe7268379951a60162e515cff7c9508adb866c1",
+        "new_vanilla": "4a139feb928f8074a460b7263fe7268379951a60162e515cff7c9508adb866c1"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 4,
+        "added": 1
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/areas/SafeHouse.java",
+      "sha256": {
+        "patched": "5876ba86f01e80578e4c10c0a2e49c27fdf8654ed24c3b686a062c7d157cd171",
+        "old_vanilla": "7e92d3de6802dfe09b507065e3643d416900a0b3fdb37b6a1903e9bfbfff45a4",
+        "new_vanilla": "7e92d3de6802dfe09b507065e3643d416900a0b3fdb37b6a1903e9bfbfff45a4"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 17
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/areas/ServerAnimalZoneTopology.java",
+      "sha256": {
+        "patched": "412c8891f2fd5e8932d09c1e2a177fe3d7132590983109bf80a65fe5f6287535",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/IsoCell.java",
+      "sha256": {
+        "patched": "3d20767b4189c2ca3f3d1f99e50d58cfce09eba892c602f67a7d3096844b3c05",
+        "old_vanilla": "ea9db2b434c5af7136c5d0aafa49502873d1355959285609e8862d9031605ea1",
+        "new_vanilla": "2a6beb263cdf04c160246f25f850a380c15844a2b30c60ba934bb811866a22b5"
+      },
+      "patch_delta": {
+        "hunks": 16,
+        "removed": 23,
+        "added": 96
+      },
+      "upstream_delta": {
+        "hunks": 7,
+        "removed": 17,
+        "added": 14
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/IsoChunk.java",
+      "sha256": {
+        "patched": "19ab15fb25fc8f909bdfee8c236dbb39fa0f351123c8dc73bb214bf8357fc8a7",
+        "old_vanilla": "4898dad81a6eb9a88681c51e05f9aabab56fc1915e8030aa799f72a3ead7871c",
+        "new_vanilla": "5d13655d3e911c1367fa403cb3d284ef9df48826276720f10d5b459435f4b060"
+      },
+      "patch_delta": {
+        "hunks": 16,
+        "removed": 4,
+        "added": 37
+      },
+      "upstream_delta": {
+        "hunks": 9,
+        "removed": 10,
+        "added": 24
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/IsoGridSquare.java",
+      "sha256": {
+        "patched": "6321e425991ea9dee2291c08d17fb59e4ef5783f4326e8bfe63091a4c5514368",
+        "old_vanilla": "01cea01312b6b302620134d47d82560a52e97722e3b9bb8210185f7339011594",
+        "new_vanilla": "b448cbe53c163955568b2dc18306a45c01d4d81b4289a66f1ccb2e2112fdd3f1"
+      },
+      "patch_delta": {
+        "hunks": 16,
+        "removed": 33,
+        "added": 34
+      },
+      "upstream_delta": {
+        "hunks": 73,
+        "removed": 119,
+        "added": 158
+      },
+      "merge_conflicts": 9,
+      "status": "manual_rebase",
+      "removed_type_references": [
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/iso/IsoObject.java",
+      "sha256": {
+        "patched": "0926b51ec52d54b5b656d8cc5a2c465111a32c7325197025737e457b503e53ed",
+        "old_vanilla": "cf77ec289c6a533207958d8084582ea4c05313e46ac468b35d108648272808ce",
+        "new_vanilla": "eb8bc3a4ef998cfc292e8cce4a1357086e8778e3b0830cc41911a76d80d66ddd"
+      },
+      "patch_delta": {
+        "hunks": 6,
+        "removed": 0,
+        "added": 66
+      },
+      "upstream_delta": {
+        "hunks": 36,
+        "removed": 80,
+        "added": 65
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": [
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/iso/IsoWorld.java",
+      "sha256": {
+        "patched": "092248df5655c21c5ce8ea5b3a1e1906dabe8c7d1fc729bc04853d4a884277bf",
+        "old_vanilla": "6f2c81beea7932057dfdfbe5d9dbaf3d1d5b87544190682aab4c00f4ef5aae68",
+        "new_vanilla": "2d71dbc4d1ff6579e016228cf6b786ca06e26fc88c6b8a7369e72a7ac0041d32"
+      },
+      "patch_delta": {
+        "hunks": 17,
+        "removed": 19,
+        "added": 29
+      },
+      "upstream_delta": {
+        "hunks": 32,
+        "removed": 264,
+        "added": 278
+      },
+      "merge_conflicts": 2,
+      "status": "manual_rebase",
+      "removed_type_references": [
+        "zombie/entity/util/TimSort.java",
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/iso/LosUtil.java",
+      "sha256": {
+        "patched": "1b5d326b5efe0a90f53617564ecae32c0883f30e42ed5fcfd48d9e095d4052ed",
+        "old_vanilla": "b276b86bf938e2d025de97e4217fc0940e8d8b07df77d6b5bdb5c1bd7c5148e8",
+        "new_vanilla": "b276b86bf938e2d025de97e4217fc0940e8d8b07df77d6b5bdb5c1bd7c5148e8"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 3,
+        "added": 4
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/objects/IsoDeadBody.java",
+      "sha256": {
+        "patched": "8ae2564f56732c81903b8d26a961c3c037277cc7df400f1848393f1300497f89",
+        "old_vanilla": "da58e27e9878d58b3619d74f42b04cd468d5313895d1157564cc2040452c7ea3",
+        "new_vanilla": "78596cb4a98b636df263a470c3a484f08d130827c5f4b8fb9b58098a990cf356"
+      },
+      "patch_delta": {
+        "hunks": 6,
+        "removed": 0,
+        "added": 11
+      },
+      "upstream_delta": {
+        "hunks": 5,
+        "removed": 5,
+        "added": 8
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/objects/IsoDoor.java",
+      "sha256": {
+        "patched": "ae2dde6d7021b90eee17a55e7a1790ca6e934dd5ff0964cb1a7b793a67105dcd",
+        "old_vanilla": "b28f8f834f9895238bc7d62877e179f813c4e059251dd956e6433e1f4b1acaed",
+        "new_vanilla": "6cb9e87b28848ed63d07bc0774e170b4a962dae67ddafa7c6d5b425348551b67"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 3,
+        "added": 3
+      },
+      "upstream_delta": {
+        "hunks": 18,
+        "removed": 277,
+        "added": 190
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/objects/IsoFeedingTrough.java",
+      "sha256": {
+        "patched": "ebc619e5da4008f87ce6433d9e895ba31bd5f8a19a3639b151738bbfc9f700c8",
+        "old_vanilla": "b0bfb7abaa17d8415d8f1a879dc90bdd9c02589cf25fe62873bebbd7e8608541",
+        "new_vanilla": "b0bfb7abaa17d8415d8f1a879dc90bdd9c02589cf25fe62873bebbd7e8608541"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 8
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/objects/IsoGenerator.java",
+      "sha256": {
+        "patched": "35a5927e5b7c58a765969ed041ec430e7771a35585528c0aa345bcbcb389aea6",
+        "old_vanilla": "3afeaff7841dc874d9c341f803902ef97ffb2cf9c1999b409f3878a16b6f6c66",
+        "new_vanilla": "37336c59c87eb0ab36e377b9b92cf40e0eaac2c9b88f6389082213b600a85927"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 1,
+        "added": 1
+      },
+      "upstream_delta": {
+        "hunks": 7,
+        "removed": 8,
+        "added": 12
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/objects/IsoMannequin.java",
+      "sha256": {
+        "patched": "4a781af4ccfce88528fa1798c4391d391cd982eb9ff2a08a054d463202b33fb7",
+        "old_vanilla": "b969f32b52b2bb88dc0f5a6b6ac2270d4a238e78a6441786f3cf249e5cb64a8d",
+        "new_vanilla": "bbffd78e4c0edff14b85ceb9905874def6aaaca28d36820dcb7dd0906347a89c"
+      },
+      "patch_delta": {
+        "hunks": 7,
+        "removed": 2,
+        "added": 9
+      },
+      "upstream_delta": {
+        "hunks": 9,
+        "removed": 17,
+        "added": 20
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/objects/IsoThumpable.java",
+      "sha256": {
+        "patched": "c62c8510d5c79d7669c391c173fb2539839ae71da7d435da8ee508c55c7abe5b",
+        "old_vanilla": "7b1745d0f3800ec3ff08794bff75da1e67cf4faf44e16b5a99da9487abf2b671",
+        "new_vanilla": "413074edb4b42f31f2e8e3f85b2bab4977b565d7ebc26acda328048c37542040"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 8
+      },
+      "upstream_delta": {
+        "hunks": 13,
+        "removed": 6,
+        "added": 72
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/iso/ServerIsoObjectUpdateTelemetry.java",
+      "sha256": {
+        "patched": "56391ad841eb265c702a03380aa2d7d796f77ee6ea706f703e18875220b560d5",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/LoadGridsquarePerformanceWorkaround.java",
+      "sha256": {
+        "patched": "b119ffe7c2bda92b604b5d6e8b8872c462c48893beb1f3742a361dee0ab29434",
+        "old_vanilla": "02f1273a687346d13b4a97597d6035126b7dbb213ade0e79d15cd512f47c5788",
+        "new_vanilla": "d7df0fa618f480224e43a26d378e9b3153afc6b87ac7709700b9c8d2d9723509"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 1,
+        "added": 1
+      },
+      "upstream_delta": {
+        "hunks": 3,
+        "removed": 3,
+        "added": 4
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/LootRespawn.java",
+      "sha256": {
+        "patched": "2ea201a80fc2fb36cd45cbb99488f8d087029926ec2e4ce23cc140b515a98839",
+        "old_vanilla": "5946db8998cbb04411e79285af2b7b51959a03b429d9a9cc5b9bc17be5d76eb5",
+        "new_vanilla": "a55e670efbec7f91d7a02f6deabd3fceb9646ea38dad264107d89da9fc807cff"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 1,
+        "added": 1
+      },
+      "upstream_delta": {
+        "hunks": 3,
+        "removed": 3,
+        "added": 5
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/Lua/Event.java",
+      "sha256": {
+        "patched": "1efd21fe6149beae68811912f6a973c1a1492ae9d77391efad4bf80cdd842d9d",
+        "old_vanilla": "6ec9265571b60036164d25371a39c407afbbd00ce2adb5e1f54b6c6d14260973",
+        "new_vanilla": "6ec9265571b60036164d25371a39c407afbbd00ce2adb5e1f54b6c6d14260973"
+      },
+      "patch_delta": {
+        "hunks": 12,
+        "removed": 15,
+        "added": 25
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/Lua/LuaManager.java",
+      "sha256": {
+        "patched": "c761e5e5ce8c2eb4beed1516d5a8a01dbaf051d70dc0b20b5f8165bd469396fd",
+        "old_vanilla": "c34ebbabb71c7cc130d21615340ba84ac6ef476289845eed65b36838618504db",
+        "new_vanilla": "50f780df0d34d89c457b8a81c70792d09f39a4c6a464b485076ea649c9816670"
+      },
+      "patch_delta": {
+        "hunks": 10,
+        "removed": 14,
+        "added": 22
+      },
+      "upstream_delta": {
+        "hunks": 50,
+        "removed": 149,
+        "added": 133
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": [
+        "zombie/ai/states/ClimbDownSheetRopeState.java",
+        "zombie/ai/states/ClimbSheetRopeState.java",
+        "zombie/network/fields/hit/WeaponHit.java",
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/MovingObjectUpdateScheduler.java",
+      "sha256": {
+        "patched": "f5fd5bb1a1d6d7ab5e03615d87a01fecc3ebbc506fbf237020a727b360751435",
+        "old_vanilla": "f8c5a676f46451009d0c5b68ea3f08094e89bf417eab2b4748b11007273dd83a",
+        "new_vanilla": "7ea1c8ab7aee43289414bc755ec1e91c2b531b7a5a314921059095610c3a3126"
+      },
+      "patch_delta": {
+        "hunks": 12,
+        "removed": 37,
+        "added": 207
+      },
+      "upstream_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 8
+      },
+      "merge_conflicts": 2,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/MovingObjectUpdateSchedulerUpdateBucket.java",
+      "sha256": {
+        "patched": "9366b37324e5702ce29a9bf612196f78c37e16fd8d4e5b22744a0f167fee102b",
+        "old_vanilla": "8870a648b6afd7f06d96f65f828faeb77a1671c9462410591ee037e6455bbe8b",
+        "new_vanilla": "8870a648b6afd7f06d96f65f828faeb77a1671c9462410591ee037e6455bbe8b"
+      },
+      "patch_delta": {
+        "hunks": 12,
+        "removed": 38,
+        "added": 195
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/anticheats/AntiCheatSafeHouseMember.java",
+      "sha256": {
+        "patched": "19f75212103f63e674a580e2eb0bec75efba11320c6801dc8baec660c7bb3a7e",
+        "old_vanilla": "5136f32c6e0156d9f41fe1a361eb0dbebdf7e62f06cd43019205a299e65d07db",
+        "new_vanilla": "5136f32c6e0156d9f41fe1a361eb0dbebdf7e62f06cd43019205a299e65d07db"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 2,
+        "added": 2
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ApocBRBackendBridge.java",
+      "sha256": {
+        "patched": "4642d23a80b1b6d0add5d39abb023a4437e2eac352810c08977af1daa2bfbf45",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ApocBRBackendBridgeHooks.java",
+      "sha256": {
+        "patched": "704d5122809f294c553f71a17538a0a051af06c94050daee0837583add802ef9",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ApocBRBackendHttpDelivery.java",
+      "sha256": {
+        "patched": "a5b0f59908a4cdd9d32328ff8fa9b2f02cc3a635ca09ee3cbb789d19ba6a91d1",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ApocBRPacketOwnershipGuard.java",
+      "sha256": {
+        "patched": "2c8a22f310cd66dad01932f57d7d498b5af8ad5dd15b7952866d88d757d45f0e",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ApocBRRadioBridge.java",
+      "sha256": {
+        "patched": "8c04048cdd55f8f55493c7135ae6f795032e6e51eab14f543d7161aaae6247dd",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/chat/ChatServer.java",
+      "sha256": {
+        "patched": "94f5a88f700a97c94cb79daf4e74bb0c82a5bdce3fcdfe7656e469631fbae032",
+        "old_vanilla": "7a63531f66ecfd280d2527c765afaa0b110a0e7e1c79703ad13acbb168d0cd0a",
+        "new_vanilla": "ddadfb9b38dc683d39dac4d44baab4f88c378213fef3d8f7c08787df6d1b5830"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 28
+      },
+      "upstream_delta": {
+        "hunks": 6,
+        "removed": 55,
+        "added": 72
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/fields/hit/WeaponHit.java",
+      "sha256": {
+        "patched": "ae552a3755651f992bd5036bc0cb384b2e7d3680cf3416eb156d6cd619d69e4f",
+        "old_vanilla": "409350d34a28123e925f769f21672690ddbe39d6074e72e33b5395e9ee0ffb3e",
+        "new_vanilla": null
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 5
+      },
+      "status": "missing_target",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/fields/Trading.java",
+      "sha256": {
+        "patched": "6a3e6106cd80561b1aecc8c663cc02807f33047a920f58214816e91c9722e1c0",
+        "old_vanilla": "7af2123355d5f46d341a3c10b2ec15e4d0e88c47bd17b0f15d2581e132a2bbc3",
+        "new_vanilla": null
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 1
+      },
+      "status": "missing_target",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/GameServer.java",
+      "sha256": {
+        "patched": "ad60663af690eeb635dbce39bb882881969b4d1ac4fd3091af08ae1dbf8e4110",
+        "old_vanilla": "5257611f012964ceba5215cf7587b9a361e903e504c840b636d9f9828cad0569",
+        "new_vanilla": "7c7bd96fc775d48f78419403b8ebb0a527114ede66bb922395a4955be2222f0c"
+      },
+      "patch_delta": {
+        "hunks": 32,
+        "removed": 67,
+        "added": 169
+      },
+      "upstream_delta": {
+        "hunks": 33,
+        "removed": 59,
+        "added": 67
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": [
+        "zombie/UnitTests.java"
+      ]
+    },
+    {
+      "path": "zombie/network/NetworkPlayerManager.java",
+      "sha256": {
+        "patched": "46f21a5800090e37a30b0856646c0047aec60c22d1e8c6f3a8d83cb450cdd85b",
+        "old_vanilla": "4219cecbcf0bf2db586b7e86a2c00877176d83a07d14f5fd39ce079bcd46a061",
+        "new_vanilla": "4219cecbcf0bf2db586b7e86a2c00877176d83a07d14f5fd39ce079bcd46a061"
+      },
+      "patch_delta": {
+        "hunks": 4,
+        "removed": 0,
+        "added": 7
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/NetworkVariables.java",
+      "sha256": {
+        "patched": "1f280bec57bb3ecae4ab78cf36a932502c8881326be85ad210efd401bd5a862e",
+        "old_vanilla": "a85a85de08fd2b761107d6c3a96a38dbc696b99d621b130e2095f8efb89b75f8",
+        "new_vanilla": "a85a85de08fd2b761107d6c3a96a38dbc696b99d621b130e2095f8efb89b75f8"
+      },
+      "patch_delta": {
+        "hunks": 6,
+        "removed": 3,
+        "added": 9
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/character/CreatePlayerPacket.java",
+      "sha256": {
+        "patched": "8c655e4f553addb4e8687f93b878c0c2a0e232d691ec249df38dd76e91b54ce4",
+        "old_vanilla": "ac9df50b4847bb3824cdd68eb7c3f7a7e3d290c4031c028ea137c7d84ec02428",
+        "new_vanilla": "ac9df50b4847bb3824cdd68eb7c3f7a7e3d290c4031c028ea137c7d84ec02428"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 5,
+        "added": 40
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/character/PlayerDamagePacket.java",
+      "sha256": {
+        "patched": "d8a3cd112e86b421a988b727c90c71d68580e2436986f0a69cc4e48bf4edc834",
+        "old_vanilla": "375f250e6cb3f12e050c16e87302484f7e4a050d52be28c8ebfa547fcababa92",
+        "new_vanilla": "a65dbf5d95f43b9722b24222ea3b9cac9877aaf4793226064f6487962a78e3be"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 1,
+        "added": 5
+      },
+      "upstream_delta": {
+        "hunks": 9,
+        "removed": 11,
+        "added": 22
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/character/PlayerDataRequestPacket.java",
+      "sha256": {
+        "patched": "e4c8638d7c07c6d7ae3bdab27c82dadea05ca944558ef4d95fa04878bad5cac2",
+        "old_vanilla": "c5fa711c23e5f7ab1913b0595bc1194adaf9fc772e3d52050b1dc4cd06cd8e95",
+        "new_vanilla": "c5fa711c23e5f7ab1913b0595bc1194adaf9fc772e3d52050b1dc4cd06cd8e95"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 1
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/character/PlayerEffectsPacket.java",
+      "sha256": {
+        "patched": "e55002a5da1ed7f3156c85f7faba3d613843ddc5dea4e0d74da3bdb37f39486e",
+        "old_vanilla": "286ee4464028a4f96c595bf1cd2d48d8a73b40d0b29740d824facc1a967a8559",
+        "new_vanilla": "0ae52049331851e78be02948d5924c29bcce5d2a15e44f707afda1f5e11188bc"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 1,
+        "added": 6
+      },
+      "upstream_delta": {
+        "hunks": 8,
+        "removed": 23,
+        "added": 34
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/character/PlayerStatsPacket.java",
+      "sha256": {
+        "patched": "7fde2978e226650ff2d3e7ac0925b5ea18d0aa3b4f683543ba03514c30ee5866",
+        "old_vanilla": "eab3fb43e7633ade296a8cfa0ff7fc4ef8c2d864df680f79b1fc15a8fed504f2",
+        "new_vanilla": "0d89922ad60febf86af2616bf45839315f25de2d0a728bc43b0fdbf39f07e681"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 1,
+        "added": 5
+      },
+      "upstream_delta": {
+        "hunks": 11,
+        "removed": 15,
+        "added": 26
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/character/ZombiePacket.java",
+      "sha256": {
+        "patched": "f982c03498af8347d371362dd0b8e27f6710e8bd599129baebcb9b0dd0309ee6",
+        "old_vanilla": "663a26f2ecfda3d01f06db91c1bc9fab3da1d179e84f60e8acc1f9990c86ff62",
+        "new_vanilla": "7796d4a1bba822af0b4574a5d7e5626b096cee9a304e4cce172a0df45ad42552"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 2,
+        "added": 13
+      },
+      "upstream_delta": {
+        "hunks": 19,
+        "removed": 23,
+        "added": 17
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/connection/ConnectPacket.java",
+      "sha256": {
+        "patched": "218b4958abb94207786712559993e3a6c8caf37d02ccfc592918e829bf422a78",
+        "old_vanilla": "2e4ea4f0ee89465374f334a5919754949a30e1a98f81c6de04c9b63d4744025e",
+        "new_vanilla": "2e4ea4f0ee89465374f334a5919754949a30e1a98f81c6de04c9b63d4744025e"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 3,
+        "added": 4
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/connection/GoogleAuthKeyPacket.java",
+      "sha256": {
+        "patched": "e4c2781b346669d34e00309ecf8921c66fc227b13d49992344eb0208b5c00001",
+        "old_vanilla": "0f21b622f84369a0c9e27ee2aab238ff211ebbdd28bc1c8968b4ebd498d1b955",
+        "new_vanilla": "0f21b622f84369a0c9e27ee2aab238ff211ebbdd28bc1c8968b4ebd498d1b955"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 0,
+        "added": 35
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/connection/GoogleAuthPacket.java",
+      "sha256": {
+        "patched": "2a16f988de3ade282b334e5d4ce75e90c47f1c0c31e19aaa7455687289b34383",
+        "old_vanilla": "ca0e6358a475da47dc34cbe6d553d6264bde0e6867bdd0a80bce7c0636b7d414",
+        "new_vanilla": "ca0e6358a475da47dc34cbe6d553d6264bde0e6867bdd0a80bce7c0636b7d414"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 26
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/connection/LoadPlayerProfilePacket.java",
+      "sha256": {
+        "patched": "c19a46255637341b8a66361543cbb1e060c486f15f1d469db58e1a0d42b7f430",
+        "old_vanilla": "3c387025e712b18b08b638e2b1cad1610c28f267cf9bae915bec1161b9eefa16",
+        "new_vanilla": "3c387025e712b18b08b638e2b1cad1610c28f267cf9bae915bec1161b9eefa16"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 0,
+        "added": 30
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/connection/LoginPacket.java",
+      "sha256": {
+        "patched": "24da7262db41a2e046a6bc5230fcabcdf6fda3dc923a05c7fcd0f894f373580c",
+        "old_vanilla": "1d3384040c89a643004dfc200aa57686a0e957debd84fc602b97a1150602813c",
+        "new_vanilla": "1d3384040c89a643004dfc200aa57686a0e957debd84fc602b97a1150602813c"
+      },
+      "patch_delta": {
+        "hunks": 9,
+        "removed": 4,
+        "added": 80
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+      "sha256": {
+        "patched": "55ed1b1fd4c57b5cae1160ebd198aa5b33090bc1a1761475a44ce1098a28c903",
+        "old_vanilla": "1830712de0d817773251cac487a07248b44f7bbc7a37b18e67fd1293415fa4ca",
+        "new_vanilla": "5be8205b8cdfc621eff94b04e92efa6cf720a7bdd6c551e24c655501cd2235d1"
+      },
+      "patch_delta": {
+        "hunks": 4,
+        "removed": 1,
+        "added": 23
+      },
+      "upstream_delta": {
+        "hunks": 21,
+        "removed": 60,
+        "added": 34
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": [
+        "zombie/network/anticheats/AntiCheatHitDamage.java",
+        "zombie/network/fields/hit/WeaponHit.java"
+      ]
+    },
+    {
+      "path": "zombie/network/packets/hit/PlayerHitSquarePacket.java",
+      "sha256": {
+        "patched": "e4a1835331db782bd95f4170ddf6209a7f7e8dd769da7b7c60abafb1d885ddc0",
+        "old_vanilla": "d1cbcb8bc49e4b46af99e66fc7bd11c0a7bf1bceb0b8a9812b299a3453f1cc52",
+        "new_vanilla": "34f152157f44a46943ee01b6043c2ce252c6fdfdd3be034d9ba110f808186e62"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 1
+      },
+      "upstream_delta": {
+        "hunks": 9,
+        "removed": 6,
+        "added": 21
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/RequestTradingPacket.java",
+      "sha256": {
+        "patched": "1d3b9117f7a73319cbd4ba9b66ba74747065c4e3dba30b10797ec02bba771e4f",
+        "old_vanilla": "a21a0b6f4f7d89f4f40b426b49213f9aa6cf2dfa1414f17bac5a5717eb73d82b",
+        "new_vanilla": "84358cead537eec52cd9b657d9b9aafc945458f7a9ee8bf01d2ef2610f8f7991"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 3
+      },
+      "upstream_delta": {
+        "hunks": 6,
+        "removed": 71,
+        "added": 5
+      },
+      "merge_conflicts": 2,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/safehouse/SafehouseChangeOwnerPacket.java",
+      "sha256": {
+        "patched": "701d26068ce49d3a37a7f903cd844ce5178a3971f1c9bdaf1c93955a2a119a52",
+        "old_vanilla": "d53682f646feeb30041410b0ead2a11f96dcf0bb6232f8acb47c0488b4a15932",
+        "new_vanilla": "d53682f646feeb30041410b0ead2a11f96dcf0bb6232f8acb47c0488b4a15932"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 2,
+        "added": 2
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/SyncPlayerStatsPacket.java",
+      "sha256": {
+        "patched": "e6fe320eb1319c99a083704470fcd6ff6ca792469597076e42cf2cf96287c540",
+        "old_vanilla": "6ca8cf4a9e1c0bbfc9fb45a8d8b82104c50003d04fc757a721fde7a2bf737386",
+        "new_vanilla": "a411ac35e298cfa5703fd8293378709bd6c2e430962e6c11bd2dc24ec0abe8b5"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 7
+      },
+      "upstream_delta": {
+        "hunks": 9,
+        "removed": 15,
+        "added": 25
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/packets/TradingUIAddItemPacket.java",
+      "sha256": {
+        "patched": "efe297bf1a358c2fbae9639e40f0f26af6814f0ca5660dc6a407df15331126cb",
+        "old_vanilla": "416fbd4233c7946fe193dd905adb1e00936ae5a96e219fa17f8ef3cfb957651b",
+        "new_vanilla": "a2a96789b126c79ee9ca540450b2fdd4e8f2f524a6c8ca5805bc50918b5165e6"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 1
+      },
+      "upstream_delta": {
+        "hunks": 9,
+        "removed": 16,
+        "added": 26
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": [
+        "zombie/network/fields/Trading.java"
+      ]
+    },
+    {
+      "path": "zombie/network/packets/TradingUIRemoveItemPacket.java",
+      "sha256": {
+        "patched": "62b4e80053228354ec7f1d22500af9e1c3dd221089d197509daee2d53480a5ab",
+        "old_vanilla": "a62910b0791066bac82626eb1299f878316030adc5f947e947d4c7639273d45e",
+        "new_vanilla": "03270af1c7249ee0bf4ee3f65c98506a95f779c52c10347b8364b5ef81a087f7"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 1
+      },
+      "upstream_delta": {
+        "hunks": 7,
+        "removed": 14,
+        "added": 9
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": [
+        "zombie/network/fields/Trading.java"
+      ]
+    },
+    {
+      "path": "zombie/network/packets/TradingUIUpdateStatePacket.java",
+      "sha256": {
+        "patched": "bdd9e50cd923dfd6b07093761b1ac73f1e17557411ed0cb9ebfe8cc65924fa43",
+        "old_vanilla": "291eba559e0436cac3e0b86416b2795b3605e59ea1475652b64208a21f511654",
+        "new_vanilla": "b9531aeaa52a519a97444a061990a9e917c24c5e1db4e53eca1b7950ed5b7fd8"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 1
+      },
+      "upstream_delta": {
+        "hunks": 8,
+        "removed": 16,
+        "added": 12
+      },
+      "merge_conflicts": 1,
+      "status": "manual_rebase",
+      "removed_type_references": [
+        "zombie/network/fields/Trading.java"
+      ]
+    },
+    {
+      "path": "zombie/network/packets/WorldMessagePacket.java",
+      "sha256": {
+        "patched": "09a65d1ae56705a4c16907ae2faa3610c7faa02d1dc4f650078945bde269b470",
+        "old_vanilla": "22d42e4e8f85fc92d802b7cca9e9a11f8a014e12b539aee9b01c5f9a57e55f69",
+        "new_vanilla": "22d42e4e8f85fc92d802b7cca9e9a11f8a014e12b539aee9b01c5f9a57e55f69"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 1
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ServerLOS.java",
+      "sha256": {
+        "patched": "562e174f071e62d414eeb1871b7c359220f7405240aae575d336f5b141127bb3",
+        "old_vanilla": "09dd4522b2657ff94259517ddb9a10ea5d7aabd319f5fde523772b2a15a6aceb",
+        "new_vanilla": "09dd4522b2657ff94259517ddb9a10ea5d7aabd319f5fde523772b2a15a6aceb"
+      },
+      "patch_delta": {
+        "hunks": 31,
+        "removed": 217,
+        "added": 298
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ServerMap.java",
+      "sha256": {
+        "patched": "f06ca93e334efba5874969c3d115c05b9da94e126901eb028bfa67f5795f77cb",
+        "old_vanilla": "a2fefa6a2a820bf8e7e28439e193bfa0ec8f0156aa471b6259e5e0b526873e3c",
+        "new_vanilla": "96f48883a3489907c236881e111eeccfc88bcd5dab5f44dab07bde999e6e490a"
+      },
+      "patch_delta": {
+        "hunks": 33,
+        "removed": 120,
+        "added": 225
+      },
+      "upstream_delta": {
+        "hunks": 5,
+        "removed": 111,
+        "added": 122
+      },
+      "merge_conflicts": 4,
+      "status": "manual_rebase",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ServerPlayersVehicles.java",
+      "sha256": {
+        "patched": "269fc2d88d25c5e480654f972c45bd83cfb8a2726913c9978ef520db779fc8ff",
+        "old_vanilla": "8fc8d29e01e2734dbfadb476d7250971f9a1700de0a7a65a9387516f0fd7e322",
+        "new_vanilla": "8fc8d29e01e2734dbfadb476d7250971f9a1700de0a7a65a9387516f0fd7e322"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 10,
+        "added": 21
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/network/ServerWorldDatabase.java",
+      "sha256": {
+        "patched": "e75a22c98cfe4fca7aeeb2353d10fbb49a139020c3746a75db5cb995257dbe8c",
+        "old_vanilla": "0d629992615067daae5bdfea31ffe0f95ad589c589fa3489b78e33a3c19dbc77",
+        "new_vanilla": "0d629992615067daae5bdfea31ffe0f95ad589c589fa3489b78e33a3c19dbc77"
+      },
+      "patch_delta": {
+        "hunks": 74,
+        "removed": 1125,
+        "added": 1515
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/pathfind/LineClearCollideMain.java",
+      "sha256": {
+        "patched": "056b6fe6af97e266ac9902714d16df990dd73f8de9fae23924b7ce41ab2f2866",
+        "old_vanilla": "3230cfde198ae2e808cb91653116c566bf2ebb4dd5e82276b7949a99d435f8f3",
+        "new_vanilla": "3230cfde198ae2e808cb91653116c566bf2ebb4dd5e82276b7949a99d435f8f3"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 9,
+        "added": 11
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/pathfind/PathFindBehavior2.java",
+      "sha256": {
+        "patched": "5f0125b1985adb48ee4b843038a75806a2b032d0cd50a4cdf4d733e4779b1147",
+        "old_vanilla": "1ab726655803d9d7462f1eb0da2775f6a90c56ade57917f5c9e159687be0c2ca",
+        "new_vanilla": "2b962d0a6b38f6efffec832e923d9f9636a9db3972a9f1b65bfd44a7ae1c1544"
+      },
+      "patch_delta": {
+        "hunks": 1,
+        "removed": 0,
+        "added": 18
+      },
+      "upstream_delta": {
+        "hunks": 4,
+        "removed": 15,
+        "added": 24
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/pathfind/PolygonalMap2.java",
+      "sha256": {
+        "patched": "7cd6e0795c1399329f556221ef89f2744c344df3be43214900effd0d5579d071",
+        "old_vanilla": "13f96e8aa87fbe4c3b581d640353ffb4f994d187e3796d2c0b38cda5ea2bc5ac",
+        "new_vanilla": "13f96e8aa87fbe4c3b581d640353ffb4f994d187e3796d2c0b38cda5ea2bc5ac"
+      },
+      "patch_delta": {
+        "hunks": 14,
+        "removed": 8,
+        "added": 34
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/pathfind/VehicleState.java",
+      "sha256": {
+        "patched": "7740c0683647995c00cb4801749eb1e1b294feb7e3b551cf605be4db8e5e262d",
+        "old_vanilla": "a411c6ec17910c66c085e8317024e5a4684a80a11b3049eda48c28e42f950dea",
+        "new_vanilla": "a411c6ec17910c66c085e8317024e5a4684a80a11b3049eda48c28e42f950dea"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 1,
+        "added": 6
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/animal/AnimalSynchronizationManager.java",
+      "sha256": {
+        "patched": "92efacd4be68b60d467681ca00198c9fd72d03768151bc348893303bf7d715fb",
+        "old_vanilla": "66eada014f4cf1078e481121e9d08464d4ade689b38925aff8c4d17aedff84c5",
+        "new_vanilla": "66eada014f4cf1078e481121e9d08464d4ade689b38925aff8c4d17aedff84c5"
+      },
+      "patch_delta": {
+        "hunks": 6,
+        "removed": 5,
+        "added": 15
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/animal/ServerAnimalUpdateCoverage.java",
+      "sha256": {
+        "patched": "20ae7e9b390c22e7b298dfc1080c803569ee0620e05ac6c1eddec7788c1bad25",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/NetworkZombieList.java",
+      "sha256": {
+        "patched": "510e8f8cca8cdc864f659a635c9826801b235d6d2f8d44d94a4a56c9df0f6d45",
+        "old_vanilla": "d177a29c3e1d403ff11d185d69f703de5a41f79e8a4d206fdf0bb6a8a316d9ad",
+        "new_vanilla": "d177a29c3e1d403ff11d185d69f703de5a41f79e8a4d206fdf0bb6a8a316d9ad"
+      },
+      "patch_delta": {
+        "hunks": 7,
+        "removed": 9,
+        "added": 57
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/NetworkZombieManager.java",
+      "sha256": {
+        "patched": "49a616fbaf9d7e4647f07873fabfbed4b788d75e7d97bd52f856f72295a9c668",
+        "old_vanilla": "ee39e438ef61820d523fbd5100cf9d4556e0ece7e54f500a11a5996cecee6839",
+        "new_vanilla": "ee39e438ef61820d523fbd5100cf9d4556e0ece7e54f500a11a5996cecee6839"
+      },
+      "patch_delta": {
+        "hunks": 24,
+        "removed": 21,
+        "added": 98
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/NetworkZombiePacker.java",
+      "sha256": {
+        "patched": "655f310519a7fafecf0323fee287e567f9eb45b49a304a899355a4c17d49779d",
+        "old_vanilla": "7b216dcce2443148cb6f6295db5750b1723151d469f245716044fbe2248a19f6",
+        "new_vanilla": "7b216dcce2443148cb6f6295db5750b1723151d469f245716044fbe2248a19f6"
+      },
+      "patch_delta": {
+        "hunks": 25,
+        "removed": 106,
+        "added": 443
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/ServerZombieAsyncSender.java",
+      "sha256": {
+        "patched": "99187c16ce768fda73efc885b0953ff399600f34aa0a63c0c7643c4473b25973",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/ServerZombiePacketPreparation.java",
+      "sha256": {
+        "patched": "b9be39c5d7bfc83ce568b4d5636ca6ed42eca0b350d134547b2bf9f245069eed",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/ZombieAuthCoverage.java",
+      "sha256": {
+        "patched": "1cb839ca3f966dc08b06a9f4f0914bf0fbb43cdb4d2bb0d227f4e0cc74df7add",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/ZombieCountOptimiser.java",
+      "sha256": {
+        "patched": "515db05c4665af2b7bf6226155fa40de60360934e498e114dea2778f44ba3bde",
+        "old_vanilla": "b51020aea5d19f51f1ada943d4fd378168e880d2f52ee1e255a2237c7a6c4426",
+        "new_vanilla": "52fad7f7a53de26ea419a3bf4a580256b801265f8478435efe85d38416c5148d"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 2
+      },
+      "upstream_delta": {
+        "hunks": 2,
+        "removed": 14,
+        "added": 7
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/popman/ZombieOwnershipIndex.java",
+      "sha256": {
+        "patched": "ecbd800888125917592ff07f2ae9c7bcc0fe3826ec6bfbc97efcba81e7d47c53",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRAsyncLogin.java",
+      "sha256": {
+        "patched": "b62de9c32a527e8d6c525ec62a6b20606316cf1da87ba3d538c3b90653c984a7",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRCreatedPlayerHandoff.java",
+      "sha256": {
+        "patched": "9442ce86691e23ebfebcf75b4122d0eec0b660540040f4c6df54ec73612d86b5",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRForegroundDatabase.java",
+      "sha256": {
+        "patched": "3aa3c2bf41fe0226321faeda10470182e447bd29ddbbd782fae420d4d2fc7711",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRHumanSales.java",
+      "sha256": {
+        "patched": "d2584c3ee29246054c0f813db939071080eb75cff7e2ce2f0e00d300cc562a16",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRLoginGuard.java",
+      "sha256": {
+        "patched": "6a97a29bb3a92cacd5ac61ff9bece96c80d378dc2b3b299f3016abc25ad78fcf",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRModEntities.java",
+      "sha256": {
+        "patched": "e165b482bcb7c10b05f67f4826a1f0ea4d7f472ff05d4b1269789ba492be0c5c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRNpcDialogues.java",
+      "sha256": {
+        "patched": "32ccfa3a2f0d88284c901c117e14fd24aca7b7f448b1b94885cec207bc659e31",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRNpcMortality.java",
+      "sha256": {
+        "patched": "8130375ceb10527ee4d1479478cc684aaf2b8aa37ac66b7ce63051c5ee43c053",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRNpcRelationships.java",
+      "sha256": {
+        "patched": "16476bea0797dd4cd567ca32c75462c3df6cc67a8bc8325f2d5da718a43ddac0",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRNpcSpeech.java",
+      "sha256": {
+        "patched": "5a3420d4a5d510865d68bd29d385b47b5f172a0b782ae1f498e0363560b20e2c",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRNpcStore.java",
+      "sha256": {
+        "patched": "495394fc63eac575ef41905b1d07963fe502347e06036eabddd04883c10b84c3",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPayloadProvenance.java",
+      "sha256": {
+        "patched": "c0ede626393436fed09d210048acc441098793528b1ff1c006cd372658518e1d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPersistence.java",
+      "sha256": {
+        "patched": "1f0f0628ef06cfad7d930ce64747b187720b32c254838bb2912cd2fca35ad6f2",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPersistenceJournal.java",
+      "sha256": {
+        "patched": "a58676b4932f9e21cc2703022d5ced139723eeea6adc47fb421553304cd726d2",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPersistenceOperations.java",
+      "sha256": {
+        "patched": "37f1930679980dfefa34cbeda6bedb3716ba5334ff5f8c968c5b230b3524beca",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerDatabase.java",
+      "sha256": {
+        "patched": "371d3b2c05227acdf28c1f471a296750c9d12d427c2057fdf0e89c1ece3ab5e9",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerLoadQuality.java",
+      "sha256": {
+        "patched": "7fedcf448a848dc3dc16da2c2a644a18188eac852599d01f900a391a667d6e2a",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerLogin.java",
+      "sha256": {
+        "patched": "b6687e83c383b49b87474096c72eff8afd5547de7f7699352a320d4996b0c890",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerMigration.java",
+      "sha256": {
+        "patched": "da95914f308b587ca9279386f6330b5a1c9616e02c7414639161345d4f2c7b4a",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerMigrationVerification.java",
+      "sha256": {
+        "patched": "0756401be2b0e3394346a8b62bdf4a1185407351cb30506e510787bdd81acdce",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerReconstructionLog.java",
+      "sha256": {
+        "patched": "bd4edd71b2aef91dab5dcc12142dcf0cb196eeb066a52486eeee23bce5df2f24",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalAccess.java",
+      "sha256": {
+        "patched": "49002973f02aeaa7e8a12e539d78042e340e8e93a314904351d12799c33dda88",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "sha256": {
+        "patched": "5cd294474963d4392cd5f0e1ff138a7c496094d5618601e5d66c082760051890",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalCodecs.java",
+      "sha256": {
+        "patched": "6df6d7091a22b13aa008be3c5b4a8b152570ea04b6de6a058f4c102d8c77d2a5",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "sha256": {
+        "patched": "e4dee93ab53e2eabbce4f1ed432eb7374a02e4d7413c81aa39d3cb3ce15399ab",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalDelta.java",
+      "sha256": {
+        "patched": "bcd6f2e2478adffa98bea8381e55482e890ff2f09d655be48e2d8af7e5727d38",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "sha256": {
+        "patched": "a7471d5197001f9d2c714d42409fc70d4b9a1b04e2283a93bbcef74efe76668a",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalMetrics.java",
+      "sha256": {
+        "patched": "5cd247905607929a79f23640801ff0fbfb0903bef998ab542360b6f0ec6efe4d",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalMutations.java",
+      "sha256": {
+        "patched": "9b35652902224471e4f3292635e3dfa9471564d82882b9a8d1dfac95a1fa7f93",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalReader.java",
+      "sha256": {
+        "patched": "77ec62501364b1f2ceb06d8e750e990763126111af3bd5e44aee1bc2f34312aa",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalReconstruction.java",
+      "sha256": {
+        "patched": "38b9c6e47da12673b4e9aeec13be8ae4e3d31916bfe1127db6aadd180f7f3f21",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalSchema.java",
+      "sha256": {
+        "patched": "03456fcd45696db9eea1648d1efc64ef452e0b3441ff4f92ad570bd57f4f1761",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalSnapshot.java",
+      "sha256": {
+        "patched": "378c262c1c435919b1c5eed7932ff3f5c9abfd78146f3a1615b8f66ac1e54227",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerRelationalSync.java",
+      "sha256": {
+        "patched": "999ea4630d4e171caeaf6850eee5dd7413949a5af2e6c34eeb05b3f16e20dfd2",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPlayerValidationTargets.java",
+      "sha256": {
+        "patched": "8cc4a16ac0793ad09ebcb023a25fee6128108e6e05f04dcbc2bc19ea358b4980",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRPostgresConnector.java",
+      "sha256": {
+        "patched": "542744fd18873e169629b0789c104121af3924703ebe31dee5cd1225de7120ab",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRServerDatabase.java",
+      "sha256": {
+        "patched": "545d63f4f64d5e4658c614cc2abc1b00c4b99e3eb34ca7ff11211250c246abd7",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRSuccessfulLogin.java",
+      "sha256": {
+        "patched": "ef434b0ccad2d314888d719b029f133da7825350aad064c8f461884cd2e22eb6",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRVehicleDatabase.java",
+      "sha256": {
+        "patched": "eeb75bfdd8b6dc82748cb5bb14134f4930083616865ce2abf3c1707fce923d7b",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ApocBRWorldDictionaryDatabase.java",
+      "sha256": {
+        "patched": "f573063a572e524bd3c361fc2f300a6122abae13e5ba96d5c0a67278f1ab9165",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/PlayerDBHelper.java",
+      "sha256": {
+        "patched": "f162706bfa0396a8b62bf8e5e018a96269fcbcab5142dc56c25ee18e376aa29c",
+        "old_vanilla": "a54094205c450b2c8eb70c074441722296d6568300f49126b84fa1c5d6058b84",
+        "new_vanilla": "a54094205c450b2c8eb70c074441722296d6568300f49126b84fa1c5d6058b84"
+      },
+      "patch_delta": {
+        "hunks": 2,
+        "removed": 0,
+        "added": 4
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/savefile/ServerPlayerDB.java",
+      "sha256": {
+        "patched": "5ed6a3a788c2979f8079a6943fb89478d56410e293d269e0f60b90271ef9c607",
+        "old_vanilla": "eb0f62a1f18c4155ac9aa76cb70369b14195a5db594263dba7059c40b8e16987",
+        "new_vanilla": "eb0f62a1f18c4155ac9aa76cb70369b14195a5db594263dba7059c40b8e16987"
+      },
+      "patch_delta": {
+        "hunks": 15,
+        "removed": 2,
+        "added": 149
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/ServerAnimalPerceptionGrid.java",
+      "sha256": {
+        "patched": "f75ffcce180584fd236177ff97d7f72059c117627944f9885053f0a7d6a8d345",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/ServerMovingObjectIndex.java",
+      "sha256": {
+        "patched": "c5c5fd338ab4bba5e33978159f088ee17759cc0899de0c12c97ab97110a5f682",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/ServerMovingObjectSet.java",
+      "sha256": {
+        "patched": "778cc0d541152605797809d97011845a4bc4067415ceeff4376f29d0fb12e46e",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/ServerPlayerSpatialQueries.java",
+      "sha256": {
+        "patched": "58b2adf962b22cb04dcb4ac0d1065e02eff102e6b4c17c566bbd9b91a75be8ba",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/ServerSoundStressIndex.java",
+      "sha256": {
+        "patched": "ddc24178d4ca3039ec721086539dea62cf170a977ff577ace898a2aac9e8835b",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/util/list/MutationTrackedArrayList.java",
+      "sha256": {
+        "patched": "f2741df2221a4bdd7f650308307fb6df2c09bc957d5c777126754454e126c0bb",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/util/list/PZArrayList.java",
+      "sha256": {
+        "patched": "21186da5635d8be575a973d5917f0d4dc090e07535b5b95e836fe713b2905ffe",
+        "old_vanilla": "1688efa76c5e4404943721a99ab4ddf373dece015a38e1dd44b3ba0dffddbb67",
+        "new_vanilla": null
+      },
+      "patch_delta": {
+        "hunks": 16,
+        "removed": 0,
+        "added": 101
+      },
+      "status": "missing_target",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/util/PZXmlUtil.java",
+      "sha256": {
+        "patched": "fa4a340c9d6f9053b752cf158dab5a69d8b6a2a93b0d9ea04c6a25280139d2c9",
+        "old_vanilla": "4043dcec4aa4e2ce5c31e16715a6b4cb6a5d9264f3511a6aefd8943c022cebfa",
+        "new_vanilla": "4043dcec4aa4e2ce5c31e16715a6b4cb6a5d9264f3511a6aefd8943c022cebfa"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 0,
+        "added": 32
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/vehicles/BaseVehicle.java",
+      "sha256": {
+        "patched": "244373eaad831db69a5ebd1b0e002eeb9edd48e8675453ade14b0292e89ba72d",
+        "old_vanilla": "0e958aaf46230c9288d7f94098bde4332be7866f8a174f55cac89330d2307f5e",
+        "new_vanilla": "6940b1521af7f0879e59f32ca444880cf358a05a997df7a0594e7ad0357d358a"
+      },
+      "patch_delta": {
+        "hunks": 17,
+        "removed": 2,
+        "added": 65
+      },
+      "upstream_delta": {
+        "hunks": 54,
+        "removed": 78,
+        "added": 185
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": [
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/vehicles/ServerVehicleUpdateTelemetry.java",
+      "sha256": {
+        "patched": "b43c0fb5c155cc4cb08914f50779b43c253e779e3a265873420f0d7d38a89770",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/vehicles/VehiclePart.java",
+      "sha256": {
+        "patched": "a4f8647f6114a8a1e221593f64c70114eec6dc9f1f51496885509d2215334c7c",
+        "old_vanilla": "768728ce94f63837b62e78dae613483a5d993016c4495baef9e75b444fc15af0",
+        "new_vanilla": "768728ce94f63837b62e78dae613483a5d993016c4495baef9e75b444fc15af0"
+      },
+      "patch_delta": {
+        "hunks": 4,
+        "removed": 0,
+        "added": 4
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/vehicles/VehicleParts.java",
+      "sha256": {
+        "patched": "aec6a8280e48d5eca498e478833da52eb23a2f96a1063689fbe799e225c89e7f",
+        "old_vanilla": "bb5080b2893d1c662b281603b7f42eb908ba79538dc0071cda3b1ede7a1952b8",
+        "new_vanilla": "bd6b5487d7c475d0e09fab0511555b32a12ac17d5e465ad103e329e8c1b17ee3"
+      },
+      "patch_delta": {
+        "hunks": 3,
+        "removed": 0,
+        "added": 61
+      },
+      "upstream_delta": {
+        "hunks": 4,
+        "removed": 6,
+        "added": 6
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": [
+        "zombie/util/list/PZArrayList.java"
+      ]
+    },
+    {
+      "path": "zombie/vehicles/VehiclesDB2.java",
+      "sha256": {
+        "patched": "2f4c2f7f53820058bf02d9c88fc1823448bb5319dffbf894de3d205d5e69ec2a",
+        "old_vanilla": "273dc8c20f06453acf900034b4bb26371ff10c4ce1672ea99df6afc722a7bc30",
+        "new_vanilla": "a985b51273236be39473abe305524ce375ebd01241fca6e047026b0af88cec6b"
+      },
+      "patch_delta": {
+        "hunks": 12,
+        "removed": 1,
+        "added": 85
+      },
+      "upstream_delta": {
+        "hunks": 15,
+        "removed": 28,
+        "added": 101
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/world/ApocBRWorldDictionaryDecode.java",
+      "sha256": {
+        "patched": "60698618cf59254ac9ab2ea2857b7c57f7f56fdc1964004a3f3bfbfdf328eaed",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/world/ApocBRWorldDictionaryMirror.java",
+      "sha256": {
+        "patched": "5e7a789baa8944b608c356b2cc3486ba96afe7b7c94babadd2e5a6d0dc29d584",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/world/ApocBRWorldDictionarySnapshot.java",
+      "sha256": {
+        "patched": "7c4e68cf5fe5c15242ac502a9c38d306622064b34c02deffabad45f95bf1ffa6",
+        "old_vanilla": null,
+        "new_vanilla": null
+      },
+      "status": "support_no_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/world/ScriptsDictionary.java",
+      "sha256": {
+        "patched": "f7b7369a6021ea8b9dcf06998f3b682a2e3f755205c77b715d05c282c9463437",
+        "old_vanilla": "82922a006e8fd3550abb37555fd4af1d128eaa93ecbb60814249171b6c3ce8da",
+        "new_vanilla": "82922a006e8fd3550abb37555fd4af1d128eaa93ecbb60814249171b6c3ce8da"
+      },
+      "patch_delta": {
+        "hunks": 4,
+        "removed": 2,
+        "added": 4
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/world/StringDictionary.java",
+      "sha256": {
+        "patched": "a0c91b81f7e7d2a9a46d21925369cbdb60bcb717874ff6fdd975cf7be2d5a2af",
+        "old_vanilla": "996c840a97ef171e4921039518c633c92cf9e8f7c51b747d79a1c71779dc14c2",
+        "new_vanilla": "996c840a97ef171e4921039518c633c92cf9e8f7c51b747d79a1c71779dc14c2"
+      },
+      "patch_delta": {
+        "hunks": 4,
+        "removed": 2,
+        "added": 4
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/world/WorldDictionary.java",
+      "sha256": {
+        "patched": "e5e62ada6fdce69b54b709bc00897a250254964ecd67dab90769d87636aa03b7",
+        "old_vanilla": "c2e1c4ef07dc5908c556cca0033573f4b9bb7309bcaff54ac65c7106df2a1752",
+        "new_vanilla": "423ac146bacdeb96253c444e2eba9b3ea475aef4460235fb4967f389198005b1"
+      },
+      "patch_delta": {
+        "hunks": 9,
+        "removed": 8,
+        "added": 10
+      },
+      "upstream_delta": {
+        "hunks": 1,
+        "removed": 1,
+        "added": 1
+      },
+      "merge_conflicts": 0,
+      "status": "clean_text_merge",
+      "removed_type_references": []
+    },
+    {
+      "path": "zombie/WorldSoundManager.java",
+      "sha256": {
+        "patched": "2d7e38482004394e85ec1a82c818c7b8306a6c3c84b846cb84d2883d24d9ed7f",
+        "old_vanilla": "fc0a030e9d5056d43bb664c06b6da4f7996cf5aacbe16b67f2411f18a44bcb5c",
+        "new_vanilla": "fc0a030e9d5056d43bb664c06b6da4f7996cf5aacbe16b67f2411f18a44bcb5c"
+      },
+      "patch_delta": {
+        "hunks": 5,
+        "removed": 1,
+        "added": 28
+      },
+      "status": "identical_baseline",
+      "removed_type_references": []
+    }
+  ]
+}

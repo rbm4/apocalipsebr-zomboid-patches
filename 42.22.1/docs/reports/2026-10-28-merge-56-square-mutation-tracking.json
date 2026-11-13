@@ -1,0 +1,36 @@
+{
+  "review": 56,
+  "state": "candidate-awaiting-approval",
+  "source_applied": false,
+  "installed_files_modified": false,
+  "affected_sources": [
+    "zombie/iso/IsoGridSquare.java",
+    "zombie/util/list/MutationTrackedArrayList.java"
+  ],
+  "preimage_sha256": {
+    "zombie/iso/IsoGridSquare.java": "bb48570691bce5051f69613e9f26ed09e5fd580a1b90a3f8fbddc9dcdd1bd59d",
+    "zombie/util/list/MutationTrackedArrayList.java": "f2741df2221a4bdd7f650308307fb6df2c09bc957d5c777126754454e126c0bb"
+  },
+  "candidate_diff_sha256": "83836a124bc61fc92031e4ba6552d6902a45f4345b7df56430d1ef93c6cedc59",
+  "change": "Use existing mutation-tracked ArrayList for square.objects, retaining capacity2 and declared List API; add explicit default/capacity constructors. Activates already ported eligible server entity-ID cache.",
+  "verification": {
+    "target_runtime": false,
+    "target_fixture": {
+      "script": "tools/test_square_list_port.py",
+      "passed": true,
+      "assertions": 33,
+      "scope": "Square allocation source contract, candidate constructors and actual extracted entity-ID/cache/decode code using engine/registry/decoder doubles. No whole-square runtime."
+    },
+    "candidate_build": {
+      "source_count": 303,
+      "compiler_exit": 0,
+      "compiled_class_files": 895,
+      "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_review56_compile_m5gltas2\\javac.log",
+      "scope": "Full target compile with only56 overlay on approved55 sources; no deployment/runtime."
+    }
+  },
+  "scope_limits": [
+    "Does not implement identity-position index or complete removed PZArrayList design.",
+    "No raw-array readers restored; no list thread-safety or measured speedup claim."
+  ]
+}

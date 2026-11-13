@@ -1,0 +1,80 @@
+--- a/42.22.0/src/zombie/inventory/InventoryItem.java
++++ b/42.22.0/src/zombie/inventory/InventoryItem.java
+@@ -444,6 +444,7 @@
+     }
+ 
+     public void storeInByteData(IsoObject o) {
++        var encodingOrigin=zombie.savefile.ApocBRPayloadProvenance.localEncoding();
+         tempBuffer.clear();
+ 
+         try {
+@@ -467,6 +468,8 @@
+         this.byteData.putInt(251);
+         this.byteData.put(tempBuffer);
+         this.byteData.flip();
++        zombie.savefile.ApocBRPayloadProvenance.remember(this.byteData,
++            new zombie.savefile.ApocBRPayloadProvenance.Metadata(encodingOrigin,251));
+     }
+ 
+     public ByteBuffer getByteData() {
+@@ -1890,6 +1893,7 @@
+     }
+ 
+     public static InventoryItem loadItem(ByteBuffer input, int worldVersion, boolean doSaveTypeCheck, InventoryItem i) throws IOException {
++        try(var dictionary=zombie.world.ApocBRWorldDictionaryDecode.enter(input)) {
+         int dataLen = input.getInt();
+         if (dataLen > 0 && dataLen <= input.remaining()) {
+             int position = input.position();
+@@ -1904,6 +1908,8 @@
+                 try {
+                     item.load(input, worldVersion);
+                 } catch (Exception var10) {
++                    if(var10 instanceof zombie.world.ApocBRWorldDictionaryDecode.Unavailable unavailable)throw unavailable;
++                    zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_LOAD_FAILED");
+                     ExceptionLogger.logException(var10);
+                     item = null;
+                 }
+@@ -1912,6 +1918,7 @@
+             if (item != null) {
+                 item.loadByteCount = input.position() - position;
+                 if (dataLen != item.loadByteCount) {
++                    zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_LENGTH_MISMATCH");
+                     input.position(position + dataLen);
+                     DebugLog.log(
+                         "InventoryItem.loadItem() data length not matching, resetting buffer position to '"
+@@ -1928,6 +1935,7 @@
+ 
+                 return item;
+             } else {
++                zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_SKIPPED");
+                 if (input.position() >= position + dataLen) {
+                     if (input.position() >= position + dataLen) {
+                         input.position(position + dataLen);
+@@ -1951,9 +1959,11 @@
+         } else {
+             throw new IOException("InventoryItem.loadItem() invalid item data length: " + dataLen);
+         }
++            }
+     }
+ 
+     public void load(ByteBuffer input, int worldVersion) throws IOException {
++        try(var dictionary=zombie.world.ApocBRWorldDictionaryDecode.enter(input)) {
+         this.id = input.getInt();
+         BitHeaderRead header = BitHeader.allocRead(BitHeader.HeaderSize.Byte, input);
+         this.setCurrentUses(1);
+@@ -2061,6 +2071,7 @@
+                     }
+ 
+                     this.byteData.flip();
++                    zombie.world.ApocBRWorldDictionaryDecode.inherit(this.byteData,null);
+                 }
+ 
+                 if (bits.hasFlags(32)) {
+@@ -2200,6 +2211,7 @@
+ 
+         this.synchWithVisual();
+         header.release();
++            }
+     }
+ 
+     public InventoryItem createCloneItem() {

@@ -1,0 +1,11 @@
+--- a/42.22.0/src/zombie/apocalipse/events/ApocBREventControl.java
++++ b/42.22.0/src/zombie/apocalipse/events/ApocBREventControl.java
+@@ -29,7 +29,7 @@
+     static final long DEFAULT_FRESH_MILLIS = 90000L;
+     static final String REGISTER = """
+         INSERT INTO player_rel.lobby_event_control(server_key,world,engine_version,engine_heartbeat_at)
+-        VALUES (?,?,'42.21.0/event-control-v2',CURRENT_TIMESTAMP)
++        VALUES (?,?,'42.22.0/event-control-v2',CURRENT_TIMESTAMP)
+         ON CONFLICT(server_key,world) DO UPDATE
+         SET engine_version=EXCLUDED.engine_version,engine_heartbeat_at=EXCLUDED.engine_heartbeat_at
+         """;

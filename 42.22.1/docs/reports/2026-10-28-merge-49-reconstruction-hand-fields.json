@@ -1,0 +1,23 @@
+{
+  "review": 49,
+  "state": "approved-applied-unverified",
+  "path": "zombie/savefile/ApocBRPlayerRelationalReconstruction.java",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "preimage_sha256": "38b9c6e47da12673b4e9aeec13be8ae4e3d31916bfe1127db6aadd180f7f3f21",
+  "candidate_diff_sha256": "b04abb5743d483c54abf25e21012317bc95540c1974f4b0a354bc128a9a77c29",
+  "change": "Use target primaryHandItem/secondaryHandItem storage names for hand-equipment reconstruction; retain direct field restore without equip callbacks.",
+  "verification": {
+    "source_contracts": true,
+    "full_game_jar_compile": false,
+    "target_runtime": false
+  },
+  "scope_limit": "No database/schema/load round-trip or complete reconstruction validation.",
+  "applied_sha256": "7f313061c18ca79c0ce073a68ea26e3e1cb8468f601bc2eff2ef3806cffdebda",
+  "applied_candidate_equivalence": true,
+  "approval": {
+    "date": "2026-10-28",
+    "user_instruction": "yes, this is necessary due to the 42.22.0 changes to the vanilla code right?",
+    "decision": "apply reviewed two-field adaptation"
+  }
+}

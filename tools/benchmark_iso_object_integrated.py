@@ -15,6 +15,7 @@ V = ROOT / "42.21.0"
 
 
 def main():
+    raise SystemExit("Retired: this benchmark requires the removed eager registry repair contract. Use test_iso_entity_registry.py for vanilla lazy ID validation.")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("input", type=Path)
     parser.add_argument("--repeats", type=int, default=3)

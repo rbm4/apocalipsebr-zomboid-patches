@@ -1,0 +1,29 @@
+--- a/42.22.0/src/zombie/iso/objects/IsoDoor.java
++++ b/42.22.0/src/zombie/iso/objects/IsoDoor.java
+@@ -1419,7 +1419,7 @@
+                                 this.playDoorSound(chr.getEmitter(), this.isOpen() ? "Open" : "Close");
+                             }
+ 
+-                            if (player.isLocalPlayer()) {
++                            if (player != null && player.isLocalPlayer()) {
+                                 player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
+                             }
+                         }
+@@ -1452,7 +1452,7 @@
+                         PolygonalMap2.instance.squareChanged(this.square);
+                         LuaEventManager.triggerEvent("OnContainerUpdate");
+                         this.invalidateRenderChunkLevel(256L);
+-                        if (player.isLocalPlayer()) {
++                        if (player != null && player.isLocalPlayer()) {
+                             player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
+                         }
+ 
+@@ -1466,7 +1466,7 @@
+                     toggleDoubleDoor(this, true);
+                     if (wasOpenx != this.isOpen()) {
+                         this.playDoorSound(chr.getEmitter(), this.isOpen() ? "Open" : "Close");
+-                        if (player.isLocalPlayer()) {
++                        if (player != null && player.isLocalPlayer()) {
+                             player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
+                         }
+                     }

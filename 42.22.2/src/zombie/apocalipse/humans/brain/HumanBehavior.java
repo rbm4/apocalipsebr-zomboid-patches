@@ -1,0 +1,14 @@
+package zombie.apocalipse.humans.brain;
+
+/** Per-NPC autonomous policy. Interaction/lifecycle ownership stays outside it. */
+public interface HumanBehavior {
+    default zombie.apocalipse.humans.furniture.FurnitureDemand furnitureDemand(){return zombie.apocalipse.humans.furniture.FurnitureDemand.NONE;}
+    default boolean needsPerception() { return true; }
+    /** Pure safety query, including while suspended; never starts actions or changes scheduling. */
+    default boolean emergency(HumanObservation observation) { return false; }
+    void update(HumanObservation observation, HumanActuator actuator);
+    void suspend(long now, HumanActuator actuator);
+    void resume(HumanObservation.Identity visitor, long now, HumanActuator actuator);
+    void stop(long now, HumanActuator actuator);
+    boolean available();
+}
