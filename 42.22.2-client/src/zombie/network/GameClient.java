@@ -309,157 +309,253 @@ public class GameClient {
     }
 
     public void update() {
-        if (this.safehouseUpdateTimer == 0 && ServerOptions.instance.disableSafehouseWhenOwnerConnected.getValue()) {
-            this.safehouseUpdateTimer = 3000;
-            SafeHouse.updateSafehousePlayersConnected();
-        }
+        try {
 
-        if (this.safehouseUpdateTimer > 0) {
-            this.safehouseUpdateTimer--;
-        }
-
-        for (ZomboidNetData data = MainLoopNetDataQ.poll(); data != null; data = MainLoopNetDataQ.poll()) {
-            MainLoopNetData.add(data);
-        }
-
-        synchronized (this.delayedDisconnect) {
-            while (!this.delayedDisconnect.isEmpty()) {
-                int packet = this.delayedDisconnect.remove(0);
-                switch (packet) {
-                    case 17:
-                        if (!SteamUtils.isSteamModeEnabled()) {
-                            LuaEventManager.triggerEvent("OnConnectFailed", null);
-                        }
-                        break;
-                    case 18:
-                        LuaEventManager.triggerEvent("OnConnectFailed", Translator.getText("UI_OnConnectFailed_AlreadyConnected"));
-                    case 19:
-                    case 20:
-                    case 22:
-                    case 25:
-                    case 26:
-                    case 27:
-                    case 28:
-                    case 29:
-                    case 30:
-                    case 31:
-                    default:
-                        break;
-                    case 21:
-                        LuaEventManager.triggerEvent("OnDisconnect");
-                        break;
-                    case 23:
-                        LuaEventManager.triggerEvent("OnConnectFailed", Translator.getText("UI_OnConnectFailed_Banned"));
-                        break;
-                    case 24:
-                        LuaEventManager.triggerEvent("OnConnectFailed", Translator.getText("UI_OnConnectFailed_InvalidServerPassword"));
-                        break;
-                    case 32:
-                        LuaEventManager.triggerEvent("OnConnectFailed", Translator.getText("UI_OnConnectFailed_ConnectionLost"));
-                }
-            }
-        }
-
-        if (!this.connectionLost) {
-            if (!this.playerConnectSent) {
-                for (int n = 0; n < MainLoopNetData.size(); n++) {
-                    ZomboidNetData data = MainLoopNetData.get(n);
-                    if (!this.gameLoadingDealWithNetData(data)) {
-                        LoadingMainLoopNetData.add(data);
-                    }
-                }
-
-                MainLoopNetData.clear();
-                WorldStreamer.instance.updateMain();
-            } else {
-                if (!LoadingMainLoopNetData.isEmpty()) {
-                    DebugLog.log(DebugType.Network, "Processing delayed packets...");
-                    MainLoopNetData.addAll(0, LoadingMainLoopNetData);
-                    LoadingMainLoopNetData.clear();
-                }
-
-                if (!DelayedCoopNetData.isEmpty() && IsoWorld.instance.addCoopPlayers.isEmpty()) {
-                    DebugLog.log(DebugType.Network, "Processing delayed coop packets...");
-                    MainLoopNetData.addAll(0, DelayedCoopNetData);
-                    DelayedCoopNetData.clear();
-                }
-
-                long time = System.currentTimeMillis();
-
-                for (int nx = 0; nx < MainLoopNetData.size(); nx++) {
-                    ZomboidNetData data = MainLoopNetData.get(nx);
-                    if (data.time + 5L <= time) {
-                        this.mainLoopDealWithNetData(data);
-                        MainLoopNetData.remove(nx--);
-                    }
-                }
-
-                if (requestsFrequency.Check()) {
-                    if (!connection.chunkObjectStateRequests.isEmpty()) {
-                        INetworkPacket.send(PacketTypes.PacketType.ChunkObjectStateRequest, connection.chunkObjectStateRequests);
-                        connection.chunkObjectStateRequests.clear();
-                    }
-
-                    if (!connection.vehicleRequests.isEmpty()) {
-                        INetworkPacket.send(PacketTypes.PacketType.VehicleRequest, connection.vehicleRequests);
-                        connection.vehicleRequests.clear();
-                    }
-
-                    if (!connection.thumpHits.isEmpty()) {
-                        INetworkPacket.send(PacketTypes.PacketType.ZombieHitThumpable, connection.thumpHits);
-                        connection.thumpHits.clear();
-                    }
-                }
-
-                this.timeoutRemotePlayers();
-
+            {
+                long apocNET_SAFEHOUSE = zombie.ApocBRClientTelemetryLite.beginPhase();
                 try {
-                    this.sendAddedRemovedItems(false);
-                } catch (Exception var5) {
-                    DebugType.General.printException(var5, LogSeverity.Error);
-                    ExceptionLogger.logException(var5);
-                }
+                    if (this.safehouseUpdateTimer == 0 && ServerOptions.instance.disableSafehouseWhenOwnerConnected.getValue()) {
+                        this.safehouseUpdateTimer = 3000;
+                        SafeHouse.updateSafehousePlayersConnected();
+                    }
 
-                if (this.updateChannelsRoamingLimit.Check()) {
-                    VoiceManager.getInstance().UpdateChannelsRoaming(connection);
-                }
-
-                this.updateVehiclesAnticlipping();
-                WorldStreamer.instance.updateMain();
-                this.timeSinceKeepAlive = this.timeSinceKeepAlive + GameTime.getInstance().getMultiplier();
-                connection.checkReady();
-                ChatManager.UpdateClient();
-                this.clientCycleLast = this.clientCycle;
-                this.clientCycle = System.currentTimeMillis();
-                long dif = this.clientCycle - this.clientCycleLast;
-                StatisticManager.getInstance().update(dif);
+                    if (this.safehouseUpdateTimer > 0) {
+                        this.safehouseUpdateTimer--;
+                    }
+                } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_SAFEHOUSE, apocNET_SAFEHOUSE); }
             }
-        } else {
-            if (!this.playerConnectSent) {
-                for (int nxx = 0; nxx < MainLoopNetData.size(); nxx++) {
-                    ZomboidNetData data = MainLoopNetData.get(nxx);
-                    this.gameLoadingDealWithNetData(data);
-                }
 
-                MainLoopNetData.clear();
-            } else {
-                for (int nxx = 0; nxx < MainLoopNetData.size(); nxx++) {
-                    ZomboidNetData data = MainLoopNetData.get(nxx);
-                    if (data.type == PacketTypes.PacketType.Kicked) {
-                        KickedPacket packet = new KickedPacket();
-                        packet.parse(data.buffer, null);
-                        GameWindow.kickReason = packet.getMessage();
-                        DebugType.Multiplayer.warn("ReceiveKickedDisconnect: " + packet.reason);
+            {
+                long apocNET_QUEUE_DRAIN = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    long apocPolled=0L;
+                    for (ZomboidNetData data = MainLoopNetDataQ.poll(); data != null; data = MainLoopNetDataQ.poll()) {
+                        MainLoopNetData.add(data);
+                        apocPolled++;
+                    }
+                    zombie.ApocBRClientTelemetryLite.networkPolled(apocPolled);
+                    zombie.ApocBRClientTelemetryLite.networkQueues(MainLoopNetData.size(),LoadingMainLoopNetData.size(),DelayedCoopNetData.size());
+                } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_QUEUE_DRAIN, apocNET_QUEUE_DRAIN); }
+            }
+
+            {
+                long apocNET_DISCONNECT_EVENTS = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    synchronized (this.delayedDisconnect) {
+                        while (!this.delayedDisconnect.isEmpty()) {
+                            int packet = this.delayedDisconnect.remove(0);
+                            switch (packet) {
+                                case 17:
+                                    if (!SteamUtils.isSteamModeEnabled()) {
+                                        LuaEventManager.triggerEvent("OnConnectFailed", null);
+                                    }
+                                    break;
+                                case 18:
+                                    LuaEventManager.triggerEvent("OnConnectFailed", Translator.getText("UI_OnConnectFailed_AlreadyConnected"));
+                                case 19:
+                                case 20:
+                                case 22:
+                                case 25:
+                                case 26:
+                                case 27:
+                                case 28:
+                                case 29:
+                                case 30:
+                                case 31:
+                                default:
+                                    break;
+                                case 21:
+                                    LuaEventManager.triggerEvent("OnDisconnect");
+                                    break;
+                                case 23:
+                                    LuaEventManager.triggerEvent("OnConnectFailed", Translator.getText("UI_OnConnectFailed_Banned"));
+                                    break;
+                                case 24:
+                                    LuaEventManager.triggerEvent("OnConnectFailed", Translator.getText("UI_OnConnectFailed_InvalidServerPassword"));
+                                    break;
+                                case 32:
+                                    LuaEventManager.triggerEvent("OnConnectFailed", Translator.getText("UI_OnConnectFailed_ConnectionLost"));
+                            }
+                        }
+                    }
+                } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_DISCONNECT_EVENTS, apocNET_DISCONNECT_EVENTS); }
+            }
+
+            if (!this.connectionLost) {
+                if (!this.playerConnectSent) {
+                    {
+                        long apocNET_LOADING_DISPATCH = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            for (int n = 0; n < MainLoopNetData.size(); n++) {
+                                ZomboidNetData data = MainLoopNetData.get(n);
+                                if (!this.gameLoadingDealWithNetData(data)) {
+                                    LoadingMainLoopNetData.add(data);
+                                }
+                            }
+
+                            MainLoopNetData.clear();
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_LOADING_DISPATCH, apocNET_LOADING_DISPATCH); }
+                    }
+                    {
+                        long apocNET_STREAMING = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            WorldStreamer.instance.updateMain();
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_STREAMING, apocNET_STREAMING); }
+                    }
+                } else {
+                    {
+                        long apocNET_REPLAY_QUEUES = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            if (!LoadingMainLoopNetData.isEmpty()) {
+                                DebugLog.log(DebugType.Network, "Processing delayed packets...");
+                                MainLoopNetData.addAll(0, LoadingMainLoopNetData);
+                                LoadingMainLoopNetData.clear();
+                            }
+
+                            if (!DelayedCoopNetData.isEmpty() && IsoWorld.instance.addCoopPlayers.isEmpty()) {
+                                DebugLog.log(DebugType.Network, "Processing delayed coop packets...");
+                                MainLoopNetData.addAll(0, DelayedCoopNetData);
+                                DelayedCoopNetData.clear();
+                            }
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_REPLAY_QUEUES, apocNET_REPLAY_QUEUES); }
+                    }
+
+                    zombie.ApocBRClientTelemetryLite.networkQueues(MainLoopNetData.size(),LoadingMainLoopNetData.size(),DelayedCoopNetData.size());
+                    long time = System.currentTimeMillis();
+
+                    {
+                        long apocNET_DISPATCH_BATCH = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            for (int nx = 0; nx < MainLoopNetData.size(); nx++) {
+                                ZomboidNetData data = MainLoopNetData.get(nx);
+                                if (data.time + 5L <= time) {
+                                    this.mainLoopDealWithNetData(data);
+                                    MainLoopNetData.remove(nx--);
+                                }
+                            }
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_DISPATCH_BATCH, apocNET_DISPATCH_BATCH); }
+                    }
+
+                    {
+                        long apocNET_OUTGOING_REQUESTS = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            if (requestsFrequency.Check()) {
+                                if (!connection.chunkObjectStateRequests.isEmpty()) {
+                                    INetworkPacket.send(PacketTypes.PacketType.ChunkObjectStateRequest, connection.chunkObjectStateRequests);
+                                    connection.chunkObjectStateRequests.clear();
+                                }
+
+                                if (!connection.vehicleRequests.isEmpty()) {
+                                    INetworkPacket.send(PacketTypes.PacketType.VehicleRequest, connection.vehicleRequests);
+                                    connection.vehicleRequests.clear();
+                                }
+
+                                if (!connection.thumpHits.isEmpty()) {
+                                    INetworkPacket.send(PacketTypes.PacketType.ZombieHitThumpable, connection.thumpHits);
+                                    connection.thumpHits.clear();
+                                }
+                            }
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_OUTGOING_REQUESTS, apocNET_OUTGOING_REQUESTS); }
+                    }
+
+                    {
+                        long apocNET_PLAYER_TIMEOUTS = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            this.timeoutRemotePlayers();
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_PLAYER_TIMEOUTS, apocNET_PLAYER_TIMEOUTS); }
+                    }
+
+                    {
+                        long apocNET_OUTGOING_INVENTORY = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            try {
+                                this.sendAddedRemovedItems(false);
+                            } catch (Exception var5) {
+                                DebugType.General.printException(var5, LogSeverity.Error);
+                                ExceptionLogger.logException(var5);
+                            }
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_OUTGOING_INVENTORY, apocNET_OUTGOING_INVENTORY); }
+                    }
+
+                    {
+                        long apocNET_VOICE = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            if (this.updateChannelsRoamingLimit.Check()) {
+                                VoiceManager.getInstance().UpdateChannelsRoaming(connection);
+                            }
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_VOICE, apocNET_VOICE); }
+                    }
+
+                    {
+                        long apocNET_VEHICLE_CLIP = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            this.updateVehiclesAnticlipping();
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_VEHICLE_CLIP, apocNET_VEHICLE_CLIP); }
+                    }
+                    {
+                        long apocNET_STREAMING = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            WorldStreamer.instance.updateMain();
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_STREAMING, apocNET_STREAMING); }
+                    }
+                    {
+                        long apocNET_CONNECTION_MAINTENANCE = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            this.timeSinceKeepAlive = this.timeSinceKeepAlive + GameTime.getInstance().getMultiplier();
+                            connection.checkReady();
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_CONNECTION_MAINTENANCE, apocNET_CONNECTION_MAINTENANCE); }
+                    }
+                    {
+                        long apocNET_CHAT = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            ChatManager.UpdateClient();
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_CHAT, apocNET_CHAT); }
+                    }
+                    {
+                        long apocNET_STATISTICS = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            this.clientCycleLast = this.clientCycle;
+                            this.clientCycle = System.currentTimeMillis();
+                            long dif = this.clientCycle - this.clientCycleLast;
+                            StatisticManager.getInstance().update(dif);
+                        } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_STATISTICS, apocNET_STATISTICS); }
                     }
                 }
+            } else {
+                {
+                    long apocNET_DISCONNECT_CLEANUP = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
 
-                MainLoopNetData.clear();
+                        if (!this.playerConnectSent) {
+                            for (int nxx = 0; nxx < MainLoopNetData.size(); nxx++) {
+                                ZomboidNetData data = MainLoopNetData.get(nxx);
+                                this.gameLoadingDealWithNetData(data);
+                            }
+
+                            MainLoopNetData.clear();
+                        } else {
+                            for (int nxx = 0; nxx < MainLoopNetData.size(); nxx++) {
+                                ZomboidNetData data = MainLoopNetData.get(nxx);
+                                if (data.type == PacketTypes.PacketType.Kicked) {
+                                    KickedPacket packet = new KickedPacket();
+                                    packet.parse(data.buffer, null);
+                                    GameWindow.kickReason = packet.getMessage();
+                                    DebugType.Multiplayer.warn("ReceiveKickedDisconnect: " + packet.reason);
+                                }
+                            }
+
+                            MainLoopNetData.clear();
+                        }
+
+                        GameWindow.serverDisconnected = true;
+                        connection = null;
+                        ConnectionManager.getInstance().process();
+
+                    } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.NET_DISCONNECT_CLEANUP, apocNET_DISCONNECT_CLEANUP); }
+                }
             }
 
-            GameWindow.serverDisconnected = true;
-            connection = null;
-            ConnectionManager.getInstance().process();
-        }
+        } finally { zombie.ApocBRClientTelemetryLite.networkQueues(MainLoopNetData.size(),LoadingMainLoopNetData.size(),DelayedCoopNetData.size()); }
     }
 
     private void updateVehiclesAnticlipping() {
@@ -553,23 +649,39 @@ public class GameClient {
     }
 
     private void mainLoopDealWithNetData(ZomboidNetData d) {
-        int position = d.buffer.position();
-        this.delayPacket = false;
-        if (d.type == null) {
-            ZomboidNetDataPool.instance.discard(d);
-        } else {
-            try {
-                this.mainLoopHandlePacketInternal(d);
-                if (this.delayPacket) {
-                    d.buffer.position(position);
-                    DelayedCoopNetData.add(d);
-                    return;
+        long apocDispatch = zombie.ApocBRClientTelemetryLite.beginPhase();
+        String apocType = apocDispatch == 0L ? null : d.type == null ? "<unknown>" : d.type.name();
+        int apocBytes = apocDispatch == 0L ? 0 : d.buffer.remaining();
+        long apocAge = apocDispatch == 0L ? 0L : Math.max(0L, System.currentTimeMillis() - d.time);
+        boolean apocDelayed = false, apocFailed = false;
+        try {
+
+            int position = d.buffer.position();
+            this.delayPacket = false;
+            if (d.type == null) {
+                ZomboidNetDataPool.instance.discard(d);
+            } else {
+                try {
+                    this.mainLoopHandlePacketInternal(d);
+                    if (this.delayPacket) {
+                        d.buffer.position(position);
+                        apocDelayed = true;
+                        DelayedCoopNetData.add(d);
+                        return;
+                    }
+                } catch (Exception var4) {
+                    apocFailed = true;
+                    DebugType.Network.printException(var4, "Error with packet of type: " + d.type, LogSeverity.Error);
                 }
-            } catch (Exception var4) {
-                DebugType.Network.printException(var4, "Error with packet of type: " + d.type, LogSeverity.Error);
+
+                ZomboidNetDataPool.instance.discard(d);
             }
 
-            ZomboidNetDataPool.instance.discard(d);
+        } catch (RuntimeException | Error apocFailure) {
+            apocFailed = true;
+            throw apocFailure;
+        } finally {
+            zombie.ApocBRClientTelemetryLite.networkPacket(apocType, apocDispatch, apocBytes, apocAge, apocDelayed, apocFailed);
         }
     }
 

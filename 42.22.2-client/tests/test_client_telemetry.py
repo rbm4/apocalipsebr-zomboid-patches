@@ -18,6 +18,7 @@ class ClientTelemetryTest(unittest.TestCase):
                             str(ROOT / 'tests/ClientTelemetryHarness.java')], check=True)
             output = work / 'nested' / 'capture.ndjson'
             command = [str(JDK / 'java.exe'), '-Dapocbr.clientTelemetry.intervalMs=60000',
+                       '-Dapocbr.clientTelemetry.slowLuaMs=1',
                        '-Dapocbr.clientTelemetry.slowFrameMs=1',
                        f'-Dapocbr.clientTelemetry.path={output}', '-cp', str(work), 'ClientTelemetryHarness']
             subprocess.run(command[:1] + ['-Dapocbr.clientTelemetry.enabled=true'] + command[1:], check=True)
@@ -32,7 +33,28 @@ class ClientTelemetryTest(unittest.TestCase):
             self.assertEqual(len(first['worstFrames']), 16)
             self.assertEqual(first['context'], {'loadedZombies': 224, 'movingObjects': 324,
                                                'screenWidth': 1920, 'screenHeight': 1080, 'playerZoom': 1.5})
-            self.assertEqual(first['schemaVersion'], 3)
+            self.assertEqual(first['schemaVersion'], 7)
+            network=first['network']
+            self.assertEqual(network['polled'],50)
+            self.assertEqual(network['ownerBacklogMax'],12)
+            self.assertEqual(len(network['types']),257)
+            self.assertEqual(network['typeOverflow'],45)
+            self.assertEqual(sum(t['dispatch']['count'] for t in network['types'].values()),325)
+            self.assertEqual(sum(t['payloadBytes'] for t in network['types'].values()),600)
+            self.assertEqual(sum(t['errors'] for t in network['types'].values()),1)
+            self.assertNotIn('wrong-thread',network['types'])
+            self.assertEqual(network['types']['test']['stages']['PARSE']['count'],25)
+            self.assertEqual(first['slowLua']['count'], 65)
+            self.assertEqual(len(first['slowLua']['callbacks']), 32)
+            self.assertEqual(first['phases']['LUA_ONTICK_CALLBACK']['count'], 65)
+            self.assertTrue(all('closureId' in c for c in first['slowLua']['callbacks']))
+            self.assertIn('PREPROCESSED', first['workerTextures'])
+            self.assertTrue(first['workerTextures']['enabled'])
+            self.assertIn('OVERSIZED', first['workerTextures'])
+            self.assertIn('CAPACITY_WAIT_NANOS', first['workerTextures'])
+            self.assertTrue(first['translucentWorker']['enabled'])
+            self.assertIn('REUSED', first['translucentWorker'])
+            self.assertIn('OWNER_CATCHUP', first['translucentWorker'])
             self.assertEqual(first['textures']['limitCalls'], 25)
             self.assertEqual(first['textures']['scaled'], 25)
             self.assertEqual(first['textures']['inputPixels'], 25 * 4096 * 2048)
@@ -62,7 +84,13 @@ class ClientTelemetryTest(unittest.TestCase):
             self.assertEqual(second['fileSystem']['backlogMax'], 0)
             self.assertEqual(second['textures']['limitCalls'], 0)
             self.assertIsNone(second['textures']['largestLimit'])
+            self.assertEqual(second['slowLua']['count'], 0)
+            self.assertEqual(second['slowLua']['callbacks'], [])
             self.assertEqual(second['seq'], 2)
+            self.assertEqual(second['network']['polled'],0)
+            self.assertEqual(second['network']['ownerBacklogMax'],0)
+            self.assertEqual(sum(t['dispatch']['count'] for t in second['network']['types'].values()),0)
+            self.assertTrue(all(f['network']['packets']>0 for f in first['worstFrames']))
             self.assertEqual(second['droppedWindows'], 0)
             self.assertEqual(second['writeErrors'], 0)
             before = output.read_bytes()

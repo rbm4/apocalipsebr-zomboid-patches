@@ -354,7 +354,7 @@ public final class ImageData implements Serializable {
 
         if (this.mipMaps != null) {
             for (int i = 0; i < this.mipMaps.length; i++) {
-                this.mipMaps[i].dispose();
+                if (this.mipMaps[i] != null) this.mipMaps[i].dispose();
                 this.mipMaps[i] = null;
             }
 
@@ -399,6 +399,7 @@ public final class ImageData implements Serializable {
     }
 
     private void scaleMipLevelMaxAlpha(MipMapLevel parentLevel, MipMapLevel subLevel, int levelNo) {
+        boolean apocMipmapColors = ApocBRTexturePreprocessor.mipmapDebugColors();
         ImageData.L_generateMipMaps generateMipMaps = TL_generateMipMaps.get();
         ByteBuffer subLevelBuff = subLevel.getBuffer();
         subLevelBuff.rewind();
@@ -431,7 +432,7 @@ public final class ImageData implements Serializable {
                     resultPixelBytes[1] /= numSamples;
                     resultPixelBytes[2] /= numSamples;
                     resultPixelBytes[3] /= numSamples;
-                    if (DebugOptions.instance.isoSprite.worldMipmapColors.getValue()) {
+                    if (apocMipmapColors) {
                         setMipmapDebugColors(levelNo, resultPixelBytes);
                     }
                 }
@@ -442,6 +443,7 @@ public final class ImageData implements Serializable {
     }
 
     private void scaleMipLevelAverage(MipMapLevel parentLevel, MipMapLevel subLevel, int levelNo) {
+        boolean apocMipmapColors = ApocBRTexturePreprocessor.mipmapDebugColors();
         ImageData.L_generateMipMaps generateMipMaps = TL_generateMipMaps.get();
         ByteBuffer subLevelBuff = subLevel.getBuffer();
         subLevelBuff.rewind();
@@ -463,7 +465,7 @@ public final class ImageData implements Serializable {
                 resultPixelBytes[1] /= numSamples;
                 resultPixelBytes[2] /= numSamples;
                 resultPixelBytes[3] /= numSamples;
-                if (resultPixelBytes[3] != 0 && DebugOptions.instance.isoSprite.worldMipmapColors.getValue()) {
+                if (resultPixelBytes[3] != 0 && apocMipmapColors) {
                     setMipmapDebugColors(levelNo, resultPixelBytes);
                 }
 

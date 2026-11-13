@@ -45,6 +45,9 @@ class FileSystemImpl {
         String getErrorMessage() {return name;}
     }
     static class AsyncItem {Task task; FutureTask<Object> future;}
+    static class TextureTask extends Task implements zombie.core.textures.ApocBRTextureLoadTask {
+        TextureTask(){super("texture",7,0);}
+    }
     final ArrayList<AsyncItem> inProgress=new ArrayList<>(), pending=new ArrayList<>(), added=new ArrayList<>();
     final AtomicBoolean lock=new AtomicBoolean();
     final Recorder executor=new Recorder();
@@ -79,6 +82,15 @@ public class FileCompletionHarness {
             ApocBRClientTelemetryLite.endFrame(0,0);
             if(!expected.equals(actual))throw new AssertionError(expected+" != "+actual);
         }
+        Patched fs=new Patched();FileSystemImpl.events=new ArrayList<>();
+        FileSystemImpl.AsyncItem texture=new FileSystemImpl.AsyncItem();texture.task=new FileSystemImpl.TextureTask();texture.future=new FutureTask<>(()->"pixels");
+        fs.pending.add(texture);
+        zombie.core.textures.ApocBRTextureLoadTask.ACCEPT.set(false);fs.updateAsyncTransactions();
+        if(fs.pending.size()!=1 || !fs.inProgress.isEmpty() || texture.future.isDone())throw new AssertionError("rejected task lost or ran on main");
+        zombie.core.textures.ApocBRTextureLoadTask.ACCEPT.set(true);fs.updateAsyncTransactions();
+        if(!fs.pending.isEmpty() || fs.inProgress.size()!=1)throw new AssertionError("deferred task not readmitted");
+        texture.future.run();fs.updateAsyncTransactions();
+        if(!fs.inProgress.isEmpty() || !FileSystemImpl.events.equals(List.of("texture:result:pixels","texture:done")))throw new AssertionError("deferred completion ordering");
         ApocBRClientTelemetryLite.shutdown();
     }
 }
@@ -87,8 +99,13 @@ public class FileCompletionHarness {
             work = pathlib.Path(temp)
             harness = work / 'FileCompletionHarness.java'
             harness.write_text(source)
+            # External task/executor double; production executor saturation is tested with real native image tasks separately.
+            task = work/'ApocBRTextureLoadTask.java'
+            task.write_text('package zombie.core.textures; public interface ApocBRTextureLoadTask {'
+                            'java.util.concurrent.atomic.AtomicBoolean ACCEPT=new java.util.concurrent.atomic.AtomicBoolean();'
+                            'static boolean submit(java.util.concurrent.FutureTask<Object> future){return ACCEPT.get();}}')
             subprocess.run([str(JDK/'javac.exe'), '--release', '25', '-d', str(work),
-                            str(ROOT/'src/zombie/ApocBRClientTelemetryLite.java'), str(harness)], check=True)
+                            str(ROOT/'src/zombie/ApocBRClientTelemetryLite.java'), str(task), str(harness)], check=True)
             for enabled in ('false', 'true'):
                 subprocess.run([str(JDK/'java.exe'), f'-Dapocbr.clientTelemetry.enabled={enabled}',
                                 f'-Dapocbr.clientTelemetry.path={work / "capture.ndjson"}',

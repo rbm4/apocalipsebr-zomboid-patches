@@ -28,7 +28,17 @@ public final class TextureIDAssetManager extends AssetManager {
             this.setTask(asset, assetTask);
             assetTask.execute();
         } else {
-            FileTask fileTask = new FileTask_LoadImageData(asset.getPath().getPath(), fs, result -> this.onFileTaskFinished(asset, result));
+            int flags = textureID.assetParams == null ? 0 : textureID.assetParams.flags;
+            int maxSize = (flags & 384) == 0 ? 0 : zombie.core.Core.getInstance().getMaxTextureSizeFromFlags(flags);
+            FileTask fileTask;
+            if (ApocBRTexturePreprocessor.ENABLED && maxSize > 0 && !zombie.network.GameServer.server) {
+                ApocBRTextureLoadTask.Plan plan = new ApocBRTextureLoadTask.Plan(flags, maxSize,
+                    zombie.debug.DebugOptions.instance.isoSprite.worldMipmapColors.getValue());
+                fileTask = new ApocBRTextureLoadTask(asset.getPath().getPath(), fs, plan,
+                    (task, image) -> this.onPreparedFileTaskFinished(asset, task.plan(), image));
+            } else {
+                fileTask = new FileTask_LoadImageData(asset.getPath().getPath(), fs, result -> this.onFileTaskFinished(asset, result));
+            }
             fileTask.setPriority(7);
             AssetTask assetTask = new AssetTask_RunFileTask(fileTask, asset);
             this.setTask(asset, assetTask);
@@ -74,6 +84,33 @@ public final class TextureIDAssetManager extends AssetManager {
                 Thread.sleep(20L);
             } catch (InterruptedException var2) {
             }
+        }
+    }
+
+    /** Runs on the existing asset-completion owner, never the decode worker. */
+    private void onPreparedFileTaskFinished(Asset asset, ApocBRTextureLoadTask.Plan plan, ImageData image) {
+        if (image == null) { this.onLoadingFailed(asset); return; }
+        TextureID textureID = (TextureID)asset;
+        int flags = textureID.assetParams == null ? 0 : textureID.assetParams.flags;
+        int maxSize = (flags & 384) == 0 ? 0 : zombie.core.Core.getInstance().getMaxTextureSizeFromFlags(flags);
+        boolean debugColors = zombie.debug.DebugOptions.instance.isoSprite.worldMipmapColors.getValue();
+        if (flags != plan.flags() || maxSize != plan.maxSize() || debugColors != plan.debugColors()) {
+            ApocBRTexturePreprocessor.disposeOwned(image);
+            zombie.ApocBRClientTelemetryLite.workerTexture(zombie.ApocBRClientTelemetryLite.WorkerTexture.SETTINGS_RELOADS, 1L);
+            // A smaller decoded result cannot recover pixels when the user raises the limit.
+            this.setTask(asset, null);
+            this.startLoading(asset);
+            return;
+        }
+        boolean adopted = false;
+        try {
+            textureID.setImageData(image);
+            adopted = true;
+            long started = zombie.ApocBRClientTelemetryLite.beginPhase();
+            try { this.onLoadingSucceeded(asset); }
+            finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.TEXTURE_ASSET_SUCCESS, started); }
+        } finally {
+            if (!adopted && textureID.getImageData() != image && image.data != null) ApocBRTexturePreprocessor.disposeOwned(image);
         }
     }
 }

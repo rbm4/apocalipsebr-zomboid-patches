@@ -207,16 +207,26 @@ public final class IsoRegions {
         }
 
         squareChangePerTick = 0;
-        if (IsoRegionWorker.isRequestingBufferSwap.get()) {
-            logger.log("IsoRegion Swapping DataRoot");
-            DataRoot root = dataRoot;
-            dataRoot = regionWorker.getRootBuffer();
-            regionWorker.setRootBuffer(root);
-            IsoRegionWorker.isRequestingBufferSwap.set(false);
-            if (!GameServer.server) {
-                clientResetCachedRegionReferences();
-                dataRoot.clientProcessBuildings();
+        long apocProbe501 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (IsoRegionWorker.isRequestingBufferSwap.get()) {
+                logger.log("IsoRegion Swapping DataRoot");
+                DataRoot root = dataRoot;
+                dataRoot = regionWorker.getRootBuffer();
+                regionWorker.setRootBuffer(root);
+                IsoRegionWorker.isRequestingBufferSwap.set(false);
+                if (!GameServer.server) {
+                    clientResetCachedRegionReferences();
+                    long apocProbe502 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                        dataRoot.clientProcessBuildings();
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_PROCESS_BUILDINGS, apocProbe502);
+                    }
+                }
             }
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_SWAP, apocProbe501);
         }
 
         if (!GameClient.client && !GameServer.server && debugLoadAllChunks && Core.debug) {
@@ -229,8 +239,18 @@ public final class IsoRegions {
             }
         }
 
-        regionWorker.update();
-        logger.update();
+        long apocProbe503 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            regionWorker.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_WORKER_UPDATE, apocProbe503);
+        }
+        long apocProbe504 = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            logger.update();
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_LOGGER, apocProbe504);
+        }
     }
 
     protected static void forceRecalcSurroundingChunks() {
@@ -287,27 +307,30 @@ public final class IsoRegions {
     }
 
     private static void clientResetCachedRegionReferences() {
-        if (!GameServer.server) {
-            int chunkMinX = 0;
-            int chunkMinY = 0;
-            int chunkMaxX = IsoChunkMap.chunkGridWidth;
-            int chunkMaxY = IsoChunkMap.chunkGridWidth;
+        long apocREGION_RESET_REFERENCES = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (!GameServer.server) {
+                int chunkMinX = 0;
+                int chunkMinY = 0;
+                int chunkMaxX = IsoChunkMap.chunkGridWidth;
+                int chunkMaxY = IsoChunkMap.chunkGridWidth;
 
-            for (int playerIndex = 0; playerIndex < IsoPlayer.numPlayers; playerIndex++) {
-                IsoChunkMap cm = IsoWorld.instance.getCell().getChunkMap(playerIndex);
-                if (cm == null || cm.ignore) {
-                    return;
-                }
+                for (int playerIndex = 0; playerIndex < IsoPlayer.numPlayers; playerIndex++) {
+                    IsoChunkMap cm = IsoWorld.instance.getCell().getChunkMap(playerIndex);
+                    if (cm == null || cm.ignore) {
+                        return;
+                    }
 
-                for (int xx = 0; xx < chunkMaxX; xx++) {
-                    for (int yy = 0; yy < chunkMaxY; yy++) {
-                        IsoChunk c = cm.getChunk(xx, yy);
-                        if (c != null) {
-                            for (int z = 0; z < c.squares.length; z++) {
-                                for (int p = 0; p < c.squares[0].length; p++) {
-                                    IsoGridSquare sq = c.squares[z][p];
-                                    if (sq != null) {
-                                        sq.setIsoWorldRegion(null);
+                    for (int xx = 0; xx < chunkMaxX; xx++) {
+                        for (int yy = 0; yy < chunkMaxY; yy++) {
+                            IsoChunk c = cm.getChunk(xx, yy);
+                            if (c != null) {
+                                for (int z = 0; z < c.squares.length; z++) {
+                                    for (int p = 0; p < c.squares[0].length; p++) {
+                                        IsoGridSquare sq = c.squares[z][p];
+                                        if (sq != null) {
+                                            sq.setIsoWorldRegion(null);
+                                        }
                                     }
                                 }
                             }
@@ -315,6 +338,9 @@ public final class IsoRegions {
                     }
                 }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_RESET_REFERENCES, apocREGION_RESET_REFERENCES);
         }
     }
 

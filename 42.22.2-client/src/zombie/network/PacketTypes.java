@@ -782,31 +782,73 @@ public class PacketTypes {
         }
 
         public void onClientPacket(ByteBufferReader bb) throws Exception {
-            NetworkStatistic.getInstance().addIncomePacket(this.getId(), bb.limit(), GameClient.connection);
+            {
+                long apocSTATISTICS = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
+                    NetworkStatistic.getInstance().addIncomePacket(this.getId(), bb.limit(), GameClient.connection);
+                } finally { zombie.ApocBRClientTelemetryLite.networkStage(this.name(), zombie.ApocBRClientTelemetryLite.NetworkStage.STATISTICS, apocSTATISTICS); }
+            }
             if ((this.handlingType & 2) != 0) {
                 if (this.handler != null) {
-                    INetworkPacket packet = GameClient.connection.getPacket(this);
-                    if (packet.isPostponed() || packet.shouldInstantiate()) {
-                        packet = this.handler.getDeclaredConstructor().newInstance();
+                    INetworkPacket packet;
+                    {
+                        long apocFACTORY = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            packet = GameClient.connection.getPacket(this);
+                            if (packet.isPostponed() || packet.shouldInstantiate()) {
+                                packet = this.handler.getDeclaredConstructor().newInstance();
+                                zombie.ApocBRClientTelemetryLite.networkInstance(this.name());
+                            }
+                        } finally { zombie.ApocBRClientTelemetryLite.networkStage(this.name(), zombie.ApocBRClientTelemetryLite.NetworkStage.FACTORY, apocFACTORY); }
                     }
 
-                    packet.parseClient(bb, GameClient.connection);
-                    if (!packet.isConsistent(GameClient.connection)) {
-                        EventManager.instance().report(String.format("The packet %s is not consistent: %s", this.name(), packet.getDescription()));
-                        return;
+                    {
+                        long apocPARSE = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            packet.parseClient(bb, GameClient.connection);
+                        } finally { zombie.ApocBRClientTelemetryLite.networkStage(this.name(), zombie.ApocBRClientTelemetryLite.NetworkStage.PARSE, apocPARSE); }
+                    }
+                    {
+                        long apocVALIDATE = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            if (!packet.isConsistent(GameClient.connection)) {
+                                EventManager.instance().report(String.format("The packet %s is not consistent: %s", this.name(), packet.getDescription()));
+                                return;
+                            }
+                        } finally { zombie.ApocBRClientTelemetryLite.networkStage(this.name(), zombie.ApocBRClientTelemetryLite.NetworkStage.VALIDATE, apocVALIDATE); }
                     }
 
-                    if (this.isLogEnabled()) {
-                        this.logPacket(GameClient.connection);
+                    {
+                        long apocLOG = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            if (this.isLogEnabled()) {
+                                this.logPacket(GameClient.connection);
+                            }
+                        } finally { zombie.ApocBRClientTelemetryLite.networkStage(this.name(), zombie.ApocBRClientTelemetryLite.NetworkStage.LOG, apocLOG); }
                     }
 
                     if (packet.isPostponed()) {
-                        packet.postpone();
+                        {
+                            long apocPOSTPONE = zombie.ApocBRClientTelemetryLite.beginPhase();
+                            try {
+                                packet.postpone();
+                            } finally { zombie.ApocBRClientTelemetryLite.networkStage(this.name(), zombie.ApocBRClientTelemetryLite.NetworkStage.POSTPONE, apocPOSTPONE); }
+                        }
                     } else {
-                        packet.processClient(GameClient.connection);
+                        {
+                            long apocAPPLY = zombie.ApocBRClientTelemetryLite.beginPhase();
+                            try {
+                                packet.processClient(GameClient.connection);
+                            } finally { zombie.ApocBRClientTelemetryLite.networkStage(this.name(), zombie.ApocBRClientTelemetryLite.NetworkStage.APPLY, apocAPPLY); }
+                        }
                     }
                 } else {
-                    this.clientHandler.call(bb, this.getId());
+                    {
+                        long apocLEGACY = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            this.clientHandler.call(bb, this.getId());
+                        } finally { zombie.ApocBRClientTelemetryLite.networkStage(this.name(), zombie.ApocBRClientTelemetryLite.NetworkStage.LEGACY, apocLEGACY); }
+                    }
                 }
             }
         }

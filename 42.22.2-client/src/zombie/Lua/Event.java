@@ -34,7 +34,19 @@ public final class Event {
 
                     try (GameProfiler.ProfileArea var20 = profiler.profile("Lua - " + this.name)) {
                         long start = System.nanoTime();
-                        caller.protectedCallVoid(LuaManager.thread, closure, params);
+                        long apocCallbackStarted = zombie.ApocBRClientTelemetryLite.beginLuaCallback(this.name);
+                        try {
+                            caller.protectedCallVoid(LuaManager.thread, closure, params);
+                        } finally {
+                            if (apocCallbackStarted != 0L) {
+                                var apocPrototype = closure == null ? null : closure.prototype;
+                                zombie.ApocBRClientTelemetryLite.luaCallback(apocCallbackStarted,
+                                    apocPrototype == null ? null : apocPrototype.file != null ? apocPrototype.file : apocPrototype.filename,
+                                    apocPrototype == null ? null : apocPrototype.name,
+                                    apocPrototype != null && apocPrototype.lines != null && apocPrototype.lines.length > 0
+                                        ? apocPrototype.lines[0] : -1, System.identityHashCode(closure));
+                            }
+                        }
                         double delayMS = (System.nanoTime() - start) / 1000000.0;
                         if (delayMS > 250.0) {
                             DebugType.Lua.warn("SLOW Lua event callback %s %s %dms", closure.prototype.file, closure, (int)delayMS);
@@ -54,7 +66,19 @@ public final class Event {
                     LuaClosure closure = this.callbacks.get(n);
 
                     try (GameProfiler.ProfileArea ex = profiler.profile("Lua - " + this.name)) {
-                        caller.protectedCallVoid(LuaManager.thread, closure, params);
+                        long apocCallbackStarted = zombie.ApocBRClientTelemetryLite.beginLuaCallback(this.name);
+                        try {
+                            caller.protectedCallVoid(LuaManager.thread, closure, params);
+                        } finally {
+                            if (apocCallbackStarted != 0L) {
+                                var apocPrototype = closure == null ? null : closure.prototype;
+                                zombie.ApocBRClientTelemetryLite.luaCallback(apocCallbackStarted,
+                                    apocPrototype == null ? null : apocPrototype.file != null ? apocPrototype.file : apocPrototype.filename,
+                                    apocPrototype == null ? null : apocPrototype.name,
+                                    apocPrototype != null && apocPrototype.lines != null && apocPrototype.lines.length > 0
+                                        ? apocPrototype.lines[0] : -1, System.identityHashCode(closure));
+                            }
+                        }
                     } catch (Exception var17) {
                         ExceptionLogger.logException(var17);
                     }

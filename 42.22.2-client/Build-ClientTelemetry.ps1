@@ -21,9 +21,18 @@ if (Test-Path -LiteralPath $ArtifactDir) { throw "Artifact directory already exi
 $classes = Join-Path $ArtifactDir 'classes'
 New-Item -ItemType Directory -Path $classes -Force | Out-Null
 $sources = @(Get-ChildItem -LiteralPath (Join-Path $PSScriptRoot 'src') -Recurse -Filter '*.java' -File | Select-Object -ExpandProperty FullName)
-& $javac --release 25 -encoding UTF-8 -implicit:none -cp $gameJar -d $classes @sources 2>&1 |
-    Tee-Object -FilePath (Join-Path $ArtifactDir 'compiler.log')
-if ($LASTEXITCODE -ne 0) { throw "Client telemetry compilation failed. See $ArtifactDir/compiler.log" }
+$previousErrorPreference = $ErrorActionPreference
+try {
+    # Windows PowerShell wraps native stderr (including successful javac notes)
+    # in ErrorRecord. Use the process exit code to distinguish notes from failure.
+    $ErrorActionPreference = 'Continue'
+    $compilerOutput = @(& $javac --release 25 -encoding UTF-8 -implicit:none -cp $gameJar -d $classes @sources 2>&1 |
+        ForEach-Object { $_.ToString() })
+    $compilerExit = $LASTEXITCODE
+} finally { $ErrorActionPreference = $previousErrorPreference }
+$compilerOutput | Set-Content -LiteralPath (Join-Path $ArtifactDir 'compiler.log') -Encoding UTF8
+$compilerOutput | ForEach-Object { Write-Output $_ }
+if ($compilerExit -ne 0) { throw "Client telemetry compilation failed. See $ArtifactDir/compiler.log" }
 $count = @(Get-ChildItem -LiteralPath $classes -Recurse -Filter '*.class' -File).Count
 @{
     target = '42.22.2-client'; jar_sha256 = $actualHash; source_count = $sources.Count

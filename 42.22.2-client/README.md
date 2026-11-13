@@ -30,3 +30,10 @@ py -3.12 .\42.22.2-client\tests\test_client_deployment.py
 Once installed through the client override deployment flow, enable at JVM startup
 with `-Dapocbr.clientTelemetry.enabled=true`. Output defaults to
 `apocbr-client-telemetry.ndjson` in the process working directory.
+
+Raw-image CPU preprocessing now runs on existing file workers by default,
+independently of telemetry enablement. For a baseline comparison, restart with
+`-Dapocbr.clientTextures.workerPreprocess=false`. See
+[worker ownership and probes](docs/features/2026-11-12-texture-workers-and-client-probes.md).
+Texture/rendering changes include [deferred resizing, async translucent ordering and building lookup optimizations](docs/features/2026-11-12-client-deferred-textures-and-async-translucency.md), with [continuous drawing during ordering refresh](docs/issues/2026-11-12-async-translucent-flicker.md).
+Current schema 7 adds [network update, per-type packet timings and slow-frame attribution](docs/features/2026-11-13-client-network-telemetry.md).

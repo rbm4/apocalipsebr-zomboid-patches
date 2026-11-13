@@ -5,6 +5,9 @@ Analyzed 2026-11-12. Input: apocbr-client-telemetry.ndjson, schema 2 only,
 `2c2fa5f2978e608172a075543359d1fb2a9a36873086167ea5a92fa38d59243c`.
 Capture interval approximately 17:12:05-17:13:07 America/Fortaleza.
 The input file replaced the earlier schema-1 capture; this is a different run.
+That filename was subsequently replaced again; the
+[schema-3 follow-up](2026-11-12-schema-3-capture-analysis.md) describes its newer
+contents. The SHA-256 above identifies this historical schema-2 run.
 See [metric definitions](../features/2026-11-12-client-main-thread-telemetry.md)
 and the historical [schema-1 analysis](2026-11-12-sprite-heavy-client-capture.md).
 

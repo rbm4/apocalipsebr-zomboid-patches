@@ -1,2 +1,3 @@
 /artifacts/
 *.ndjson
+/tests/__pycache__/

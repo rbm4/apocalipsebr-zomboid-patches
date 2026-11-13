@@ -1,5 +1,11 @@
 # Client main-thread telemetry scaffold
 
+Current schema 7 adds [network update and packet-stage telemetry](2026-11-13-client-network-telemetry.md).
+Existing behavior: [deferred textures and asynchronous translucent ordering](2026-11-12-client-deferred-textures-and-async-translucency.md).
+See the [client network async assessment](../reports/2026-11-12-client-network-async-assessment.md) for the scope of NETWORK timings.
+Full cost review: [measured rendering/simulation costs and worker boundaries](../reports/2026-11-13-client-worker-boundaries-and-full-cost-review.md).
+Rendering/building lifecycle: [source-backed practical async plan](../reports/2026-11-13-rendering-and-building-async-lifecycle.md).
+
 Created 2026-11-12 for **42.22.2-client**. Compiled against the exact original game
 JAR; deployment tested in disposable installations, not in a live multiplayer session. See
 [validation and provenance](../reports/2026-11-12-client-telemetry-validation.md).
@@ -160,7 +166,7 @@ Optional properties:
 No rotation is implemented in this scaffold. Use a fresh path for separate runs
 or archive the output between runs; seq restarts with the JVM.
 
-## Schema 3 interpretation
+## Schema 4 interpretation
 
 Each NDJSON line has kind=client-main-thread, targetBuild=42.22.2, seq, ts and
 monotonic elapsed intervalMs. Wall-clock ts is for correlation, not duration.
@@ -230,8 +236,9 @@ Schema 2 adds these inclusive child boundaries. They also appear in worstFrames:
 | WORLD_CELL | MOVING_UPDATE wraps the scheduler update; MOVING_POSTUPDATE normally occurs after the cell update under UPDATE_WORLD, or remains unmeasured on an animation worker. |
 | FILE_TRANSACTIONS | FILE_HANDLE_RESULT, FILE_DONE, FILE_ADMISSION_LOCK, FILE_ADMISSION, FILE_SUBMIT |
 
-Phases run only on the capturing owner thread. No worker instrumentation or
-simulation scheduling options are enabled. Nested phase counts can differ from
+Phase arrays run only on the capturing owner thread. Schema 4 reports worker
+preprocessing separately through numeric workerTextures counters; simulation
+scheduling options are unchanged. Nested phase counts can differ from
 frame counts and must not be added to their parents. RENDER_SCENE still includes
 multiple rendering systems. UPDATE_CHUNK_POSITION measures ProcessChunkPos, not
 all chunk ingestion. WORLD_CELL still includes unseparated cell systems.
@@ -244,7 +251,7 @@ phase remainders.
 Previous captures are schema 1 and schema 2. Old files retain their schema, and
 append output can contain multiple versions. Use a fresh output path for the next
 comparison. Rebuild/reinstall through instalador.bat with the client stopped;
-the installer now discovers eleven Java sources (40 generated classes).
+the installer now discovers seventeen Java sources (54 generated classes).
 
 ### Schema 3: scene, world remainder and texture processing
 
@@ -260,8 +267,10 @@ the installer now discovers eleven Java sources (40 generated classes).
 
 All new timings still require the capturing main-thread owner. Decode workers
 and render-thread GPU uploads are not timed by these phase arrays. QUEUE_UPLOAD
-measures the enqueue operation, not subsequent GPU texture creation. No work was
-moved between threads. Whole-loop phases avoid per-emitter/pixel instrumentation.
+measures the enqueue operation, not subsequent GPU texture creation. Schema 3
+itself did not move work between threads. Schema 4 adds the
+[worker preprocessing path](2026-11-12-texture-workers-and-client-probes.md).
+Whole-loop phases avoid per-emitter/pixel instrumentation.
 
 The new `textures` object reports limitCalls (measured limitMaxSize attempts),
 scaled (successful source replacement/disposal), inputPixels/outputPixels totals
@@ -274,6 +283,10 @@ on that path. Each retained worst frame has its own largestTextureLimit or null.
 Only detached numeric data are retained, with no texture object/path collection.
 
 See the [schema 3 implementation and worker-offload assessment](../reports/2026-11-12-client-probe-schema-3-texture-offload.md).
+
+The [schema 3 capture analysis](../reports/2026-11-12-schema-3-capture-analysis.md)
+confirms CPU mip preprocessing as the image-result cost, identifies IsoRegions
+spikes, and narrows persistent rendering cost to cell rendering.
 
 The [first sprite-heavy multiplayer capture](../reports/2026-11-12-sprite-heavy-client-capture.md)
 records measured costs and the next instrumentation boundaries, including render

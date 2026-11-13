@@ -172,6 +172,7 @@ public final class FBORenderCell {
     public static float blackedOutRoomFadeBlackness;
     public static long blackedOutRoomFadeDurationMs = 800L;
     private final Object[] L_callBeforeWorldRender = new Object[4];
+    private final ApocBRTranslucentOrder<IsoGridSquare> apocTranslucentOrder = new ApocBRTranslucentOrder<>();
 
     private FBORenderCell() {
         for (int playerIndex = 0; playerIndex < 4; playerIndex++) {
@@ -180,141 +181,148 @@ public final class FBORenderCell {
     }
 
     public void renderInternal() {
-        int playerIndex = IsoCamera.frameState.playerIndex;
-        int playerZ = PZMath.fastfloor(IsoCamera.frameState.camCharacterZ);
-        if (!PerformanceSettings.newRoofHiding) {
-            if (this.cell.hideFloors[playerIndex] && this.cell.unhideFloorsCounter[playerIndex] > 0) {
-                this.cell.unhideFloorsCounter[playerIndex]--;
-            }
-
-            if (this.cell.unhideFloorsCounter[playerIndex] <= 0) {
-                this.cell.hideFloors[playerIndex] = false;
-                this.cell.unhideFloorsCounter[playerIndex] = 60;
-            }
-        }
-
-        int x1 = 0;
-        int y1 = 0;
-        int x2 = 0 + IsoCamera.getOffscreenWidth(playerIndex);
-        int y2 = 0 + IsoCamera.getOffscreenHeight(playerIndex);
-        float topLeftX = IsoUtils.XToIso(0.0F, 0.0F, 0.0F);
-        float topRightY = IsoUtils.YToIso(x2, 0.0F, 0.0F);
-        float bottomRightX = IsoUtils.XToIso(x2, y2, 6.0F);
-        float bottomLeftY = IsoUtils.YToIso(0.0F, y2, 6.0F);
-        this.cell.minY = (int)topRightY;
-        this.cell.maxY = (int)bottomLeftY;
-        this.cell.minX = (int)topLeftX;
-        this.cell.maxX = (int)bottomRightX;
-        FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
-        perPlayerData1.occludedGridX1 = this.cell.minX;
-        perPlayerData1.occludedGridY1 = this.cell.minY;
-        perPlayerData1.occludedGridX2 = this.cell.maxX;
-        perPlayerData1.occludedGridY2 = this.cell.maxY;
-        this.cell.minX -= 2;
-        this.cell.minY -= 2;
-        this.cell.minX = this.cell.minX - this.cell.minX % 8;
-        this.cell.minY = this.cell.minY - this.cell.minY % 8;
-        this.cell.maxX = this.cell.maxX + (8 - this.cell.maxX % 8);
-        this.cell.maxY = this.cell.maxY + (8 - this.cell.maxY % 8);
-        this.cell.maxZ = IsoCell.maxHeight;
-        IsoGameCharacter isoGameCharacter = IsoCamera.getCameraCharacter();
-        if (isoGameCharacter == null) {
-            this.cell.maxZ = 1;
-        }
-
-        if (IsoPlayer.getInstance().getZ() < 0.0F) {
-            this.cell.maxZ = (int)Math.ceil(IsoPlayer.getInstance().getZ()) + 1;
-        }
-
-        if (this.cell.minX != this.cell.lastMinX || this.cell.minY != this.cell.lastMinY) {
-            this.cell.lightUpdateCount = 10;
-        }
-
-        if (!PerformanceSettings.newRoofHiding) {
-            IsoGridSquare currentSq = isoGameCharacter == null ? null : isoGameCharacter.getCurrentSquare();
-            if (currentSq != null) {
-                IsoGridSquare sq = this.cell.getGridSquare(Math.round(isoGameCharacter.getX()), Math.round(isoGameCharacter.getY()), playerZ);
-                if (sq != null && this.cell.IsBehindStuff(sq)) {
-                    this.cell.hideFloors[playerIndex] = true;
+        if (ApocBRTranslucentOrder.ENABLED) this.apocTranslucentOrder.beginFrame(IsoWorld.instance.currentCell);
+        long apocCELL_FBO_RENDER = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            int playerIndex = IsoCamera.frameState.playerIndex;
+            int playerZ = PZMath.fastfloor(IsoCamera.frameState.camCharacterZ);
+            if (!PerformanceSettings.newRoofHiding) {
+                if (this.cell.hideFloors[playerIndex] && this.cell.unhideFloorsCounter[playerIndex] > 0) {
+                    this.cell.unhideFloorsCounter[playerIndex]--;
                 }
 
-                if (!this.cell.hideFloors[playerIndex] && currentSq.getProperties().has(IsoFlagType.hidewalls)
-                    || !currentSq.getProperties().has(IsoFlagType.exterior)) {
-                    this.cell.hideFloors[playerIndex] = true;
+                if (this.cell.unhideFloorsCounter[playerIndex] <= 0) {
+                    this.cell.hideFloors[playerIndex] = false;
+                    this.cell.unhideFloorsCounter[playerIndex] = 60;
                 }
             }
 
-            if (this.cell.hideFloors[playerIndex]) {
-                this.cell.maxZ = playerZ + 1;
+            int x1 = 0;
+            int y1 = 0;
+            int x2 = 0 + IsoCamera.getOffscreenWidth(playerIndex);
+            int y2 = 0 + IsoCamera.getOffscreenHeight(playerIndex);
+            float topLeftX = IsoUtils.XToIso(0.0F, 0.0F, 0.0F);
+            float topRightY = IsoUtils.YToIso(x2, 0.0F, 0.0F);
+            float bottomRightX = IsoUtils.XToIso(x2, y2, 6.0F);
+            float bottomLeftY = IsoUtils.YToIso(0.0F, y2, 6.0F);
+            this.cell.minY = (int)topRightY;
+            this.cell.maxY = (int)bottomLeftY;
+            this.cell.minX = (int)topLeftX;
+            this.cell.maxX = (int)bottomRightX;
+            FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+            perPlayerData1.occludedGridX1 = this.cell.minX;
+            perPlayerData1.occludedGridY1 = this.cell.minY;
+            perPlayerData1.occludedGridX2 = this.cell.maxX;
+            perPlayerData1.occludedGridY2 = this.cell.maxY;
+            this.cell.minX -= 2;
+            this.cell.minY -= 2;
+            this.cell.minX = this.cell.minX - this.cell.minX % 8;
+            this.cell.minY = this.cell.minY - this.cell.minY % 8;
+            this.cell.maxX = this.cell.maxX + (8 - this.cell.maxX % 8);
+            this.cell.maxY = this.cell.maxY + (8 - this.cell.maxY % 8);
+            this.cell.maxZ = IsoCell.maxHeight;
+            IsoGameCharacter isoGameCharacter = IsoCamera.getCameraCharacter();
+            if (isoGameCharacter == null) {
+                this.cell.maxZ = 1;
             }
-        }
 
-        this.cell.drawStencilMask();
-        long lastPlayerWindowPeekingRoomId = this.cell.playerWindowPeekingRoomId[playerIndex];
+            if (IsoPlayer.getInstance().getZ() < 0.0F) {
+                this.cell.maxZ = (int)Math.ceil(IsoPlayer.getInstance().getZ()) + 1;
+            }
 
-        for (int i = 0; i < IsoPlayer.numPlayers; i++) {
-            this.cell.playerWindowPeekingRoomId[i] = -1L;
-            IsoPlayer player2 = IsoPlayer.players[i];
-            if (player2 != null) {
-                IsoBuilding currentBuilding = player2.getCurrentBuilding();
-                if (currentBuilding == null) {
-                    IsoDirections playerDir = IsoDirections.fromAngle(player2.getForwardDirection());
-                    currentBuilding = this.cell.GetPeekedInBuilding(player2.getCurrentSquare(), playerDir);
-                    if (currentBuilding != null) {
-                        this.cell.playerWindowPeekingRoomId[i] = this.cell.playerPeekedRoomId;
+            if (this.cell.minX != this.cell.lastMinX || this.cell.minY != this.cell.lastMinY) {
+                this.cell.lightUpdateCount = 10;
+            }
+
+            if (!PerformanceSettings.newRoofHiding) {
+                IsoGridSquare currentSq = isoGameCharacter == null ? null : isoGameCharacter.getCurrentSquare();
+                if (currentSq != null) {
+                    IsoGridSquare sq = this.cell.getGridSquare(Math.round(isoGameCharacter.getX()), Math.round(isoGameCharacter.getY()), playerZ);
+                    if (sq != null && this.cell.IsBehindStuff(sq)) {
+                        this.cell.hideFloors[playerIndex] = true;
+                    }
+
+                    if (!this.cell.hideFloors[playerIndex] && currentSq.getProperties().has(IsoFlagType.hidewalls)
+                        || !currentSq.getProperties().has(IsoFlagType.exterior)) {
+                        this.cell.hideFloors[playerIndex] = true;
+                    }
+                }
+
+                if (this.cell.hideFloors[playerIndex]) {
+                    this.cell.maxZ = playerZ + 1;
+                }
+            }
+
+            this.cell.drawStencilMask();
+            long lastPlayerWindowPeekingRoomId = this.cell.playerWindowPeekingRoomId[playerIndex];
+
+            for (int i = 0; i < IsoPlayer.numPlayers; i++) {
+                this.cell.playerWindowPeekingRoomId[i] = -1L;
+                IsoPlayer player2 = IsoPlayer.players[i];
+                if (player2 != null) {
+                    IsoBuilding currentBuilding = player2.getCurrentBuilding();
+                    if (currentBuilding == null) {
+                        IsoDirections playerDir = IsoDirections.fromAngle(player2.getForwardDirection());
+                        currentBuilding = this.cell.GetPeekedInBuilding(player2.getCurrentSquare(), playerDir);
+                        if (currentBuilding != null) {
+                            this.cell.playerWindowPeekingRoomId[i] = this.cell.playerPeekedRoomId;
+                        }
                     }
                 }
             }
-        }
 
-        if (lastPlayerWindowPeekingRoomId != this.cell.playerWindowPeekingRoomId[playerIndex]) {
-            IsoPlayer.players[playerIndex].dirtyRecalcGridStack = true;
-        }
+            if (lastPlayerWindowPeekingRoomId != this.cell.playerWindowPeekingRoomId[playerIndex]) {
+                IsoPlayer.players[playerIndex].dirtyRecalcGridStack = true;
+            }
 
-        if (isoGameCharacter != null
-            && isoGameCharacter.getCurrentSquare() != null
-            && isoGameCharacter.getCurrentSquare().getProperties().has(IsoFlagType.hidewalls)) {
-            this.cell.maxZ = playerZ + 1;
-        }
+            if (isoGameCharacter != null
+                && isoGameCharacter.getCurrentSquare() != null
+                && isoGameCharacter.getCurrentSquare().getProperties().has(IsoFlagType.hidewalls)) {
+                this.cell.maxZ = playerZ + 1;
+            }
 
-        this.callBeforeWorldRender(playerIndex);
-        this.cell.rendering = true;
+            this.callBeforeWorldRender(playerIndex);
+            this.cell.rendering = true;
 
-        try {
-            int maxHeight = playerZ < 0 ? playerZ : IsoCell.getInstance().chunkMap[playerIndex].maxHeight;
-            int min = this.cell.chunkMap[playerIndex].minHeight;
-            min = Math.max(min, playerZ);
-            this.RenderTiles(min, maxHeight);
-        } catch (Exception var20) {
+            try {
+                int maxHeight = playerZ < 0 ? playerZ : IsoCell.getInstance().chunkMap[playerIndex].maxHeight;
+                int min = this.cell.chunkMap[playerIndex].minHeight;
+                min = Math.max(min, playerZ);
+                this.RenderTiles(min, maxHeight);
+            } catch (Exception var20) {
+                this.cell.rendering = false;
+                ExceptionLogger.logException(var20);
+            }
+
             this.cell.rendering = false;
-            ExceptionLogger.logException(var20);
-        }
-
-        this.cell.rendering = false;
-        if (IsoGridSquare.getRecalcLightTime() < 0.0F) {
-            IsoGridSquare.setRecalcLightTime(60.0F);
-        }
-
-        if (IsoGridSquare.getLightcache() <= 0) {
-            IsoGridSquare.setLightcache(90);
-        }
-
-        try (GameProfiler.ProfileArea var24 = GameProfiler.getInstance().profile("renderLast")) {
-            for (IsoMovingObject obj : this.cell.getObjectList()) {
-                obj.renderlast();
+            if (IsoGridSquare.getRecalcLightTime() < 0.0F) {
+                IsoGridSquare.setRecalcLightTime(60.0F);
             }
 
-            for (int ix = 0; ix < this.cell.getStaticUpdaterObjectList().size(); ix++) {
-                IsoObject obj = this.cell.getStaticUpdaterObjectList().get(ix);
-                obj.renderlast();
+            if (IsoGridSquare.getLightcache() <= 0) {
+                IsoGridSquare.setLightcache(90);
             }
-        }
 
-        IsoTree.checkChopTreeIndicators(playerIndex);
-        IsoTree.renderChopTreeIndicators();
-        this.cell.lastMinX = this.cell.minX;
-        this.cell.lastMinY = this.cell.minY;
-        this.cell.DoBuilding(playerIndex, true);
+            try (GameProfiler.ProfileArea var24 = GameProfiler.getInstance().profile("renderLast")) {
+                for (IsoMovingObject obj : this.cell.getObjectList()) {
+                    obj.renderlast();
+                }
+
+                for (int ix = 0; ix < this.cell.getStaticUpdaterObjectList().size(); ix++) {
+                    IsoObject obj = this.cell.getStaticUpdaterObjectList().get(ix);
+                    obj.renderlast();
+                }
+            }
+
+            IsoTree.checkChopTreeIndicators(playerIndex);
+            IsoTree.renderChopTreeIndicators();
+            this.cell.lastMinX = this.cell.minX;
+            this.cell.lastMinY = this.cell.minY;
+            this.cell.DoBuilding(playerIndex, true);
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_FBO_RENDER, apocCELL_FBO_RENDER);
+        }
     }
 
     public void RenderTiles(int minHeight, int maxHeight) {
@@ -480,13 +488,19 @@ public final class FBORenderCell {
     }
 
     private boolean recalculateGridStacks(IsoPlayer player, int playerIndex) {
-        boolean bForceCutawayUpdate = false;
-        FBORenderCutaways.getInstance().CalculatePointsOfInterest();
-        bForceCutawayUpdate |= FBORenderCutaways.getInstance().CalculateBuildingsToCollapse();
-        bForceCutawayUpdate |= FBORenderCutaways.getInstance().checkHiddenBuildingLevels();
-        bForceCutawayUpdate |= player.dirtyRecalcGridStack;
-        this.recalculateAnyGridStacks(playerIndex);
-        return bForceCutawayUpdate;
+        long apocCELL_GRID_STACKS = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            boolean bForceCutawayUpdate = false;
+            FBORenderCutaways.getInstance().CalculatePointsOfInterest();
+            bForceCutawayUpdate |= FBORenderCutaways.getInstance().CalculateBuildingsToCollapse();
+            bForceCutawayUpdate |= FBORenderCutaways.getInstance().checkHiddenBuildingLevels();
+            bForceCutawayUpdate |= player.dirtyRecalcGridStack;
+            this.recalculateAnyGridStacks(playerIndex);
+            return bForceCutawayUpdate;
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_GRID_STACKS, apocCELL_GRID_STACKS);
+        }
     }
 
     private void updateWeatherMask(int playerIndex, int currentZ) {
@@ -497,28 +511,34 @@ public final class FBORenderCell {
     }
 
     private boolean runChecks(int playerIndex) {
-        GameProfiler profiler = GameProfiler.getInstance();
-        this.checkWaterQualityOption(playerIndex);
-        this.checkWindEffectsOption(playerIndex);
+        long apocCELL_CHECKS = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            GameProfiler profiler = GameProfiler.getInstance();
+            this.checkWaterQualityOption(playerIndex);
+            this.checkWindEffectsOption(playerIndex);
 
-        boolean result;
-        try (GameProfiler.ProfileArea var4 = profiler.profile("Newly")) {
-            result = this.checkNewlyOnScreenChunks(playerIndex);
+            boolean result;
+            try (GameProfiler.ProfileArea var4 = profiler.profile("Newly")) {
+                result = this.checkNewlyOnScreenChunks(playerIndex);
+            }
+
+            try (GameProfiler.ProfileArea var13 = profiler.profile("Obscuring")) {
+                this.checkObjectsObscuringPlayer(playerIndex);
+                this.checkFadingInObjectsObscuringPlayer(playerIndex);
+            }
+
+            try (GameProfiler.ProfileArea var14 = profiler.profile("Chunks")) {
+                this.checkChunksWithTrees(playerIndex);
+                this.checkSeamChunks(playerIndex);
+            }
+
+            this.checkMannequinRenderDirection(playerIndex);
+            this.checkPuddlesQualityOption(playerIndex);
+            return result;
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_CHECKS, apocCELL_CHECKS);
         }
-
-        try (GameProfiler.ProfileArea var13 = profiler.profile("Obscuring")) {
-            this.checkObjectsObscuringPlayer(playerIndex);
-            this.checkFadingInObjectsObscuringPlayer(playerIndex);
-        }
-
-        try (GameProfiler.ProfileArea var14 = profiler.profile("Chunks")) {
-            this.checkChunksWithTrees(playerIndex);
-            this.checkSeamChunks(playerIndex);
-        }
-
-        this.checkMannequinRenderDirection(playerIndex);
-        this.checkPuddlesQualityOption(playerIndex);
-        return result;
     }
 
     private void invalidateAll(int playerIndex) {
@@ -1069,150 +1089,162 @@ public final class FBORenderCell {
     }
 
     private void performRenderTiles(IsoCell.PerPlayerRender perPlayerRender, int playerIndex, long currentTimeMillis) {
-        Shader floorRenderShader = null;
-        Shader wallRenderShader = null;
-        this.renderAnimatedAttachments = false;
-        this.renderTranslucentOnly = false;
-        this.renderWindowFrameOutline = false;
-        FBORenderChunkManager.instance.startFrame();
-        IsoPuddles.getInstance().clearThreadData();
-        IsoWater.getInstance().clearThreadData();
-        this.invalidateDelayedLoadingLevels = false;
-        if (this.delayedLoadingTimerMs != 0L && this.delayedLoadingTimerMs <= currentTimeMillis) {
-            this.delayedLoadingTimerMs = 0L;
-            this.invalidateDelayedLoadingLevels = true;
-        }
-
-        FBORenderTrees.startFrame();
-        SpriteRenderer.instance.beginProfile(tilesProbe);
-        FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
-        perPlayerData1.chunksWithTranslucentFloor.clear();
-        perPlayerData1.chunksWithTranslucentNonFloor.clear();
-
-        for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
-            IsoChunk c = perPlayerData1.onScreenChunks.get(i);
-
-            try (AbstractPerformanceProfileProbe var10 = renderOneChunk.profile()) {
-                this.renderOneChunk(c, perPlayerRender, playerIndex, currentTimeMillis, floorRenderShader, wallRenderShader);
-            }
-        }
-
-        SpriteRenderer.instance.endProfile(tilesProbe);
-        FBORenderCorpses.getInstance().update();
-        FBORenderItems.getInstance().update();
-        FBORenderChunkManager.instance.endFrame();
-        FBORenderShadows.getInstance().clear();
-        this.renderPlayers(playerIndex);
-        this.renderCorpseShadows(playerIndex);
-        this.renderMannequinShadows(playerIndex);
-        if (!DebugOptions.instance.fboRenderChunk.corpsesInChunkTexture.getValue()) {
-            this.renderCorpsesInWorld(playerIndex);
-        }
-
-        if (!DebugOptions.instance.fboRenderChunk.itemsInChunkTexture.getValue()) {
-            SpriteRenderer.instance.beginProfile(itemsProbe);
-            this.renderItemsInWorld(playerIndex);
-            SpriteRenderer.instance.endProfile(itemsProbe);
-        }
-
-        if (PerformanceSettings.puddlesQuality < 2) {
-            try (AbstractPerformanceProfileProbe var29 = puddles.profile()) {
-                this.renderPuddles(playerIndex);
-            }
-        }
-
-        this.renderOpaqueObjectsEvent(playerIndex);
-        SpriteRenderer.instance.beginProfile(movingObjectsProbe);
-        this.renderMovingObjects();
-        SpriteRenderer.instance.endProfile(movingObjectsProbe);
-
-        try (AbstractPerformanceProfileProbe var30 = water.profile()) {
-            this.renderWater(playerIndex);
-        }
-
-        this.renderAnimatedAttachments(playerIndex);
-        this.renderFlies(playerIndex);
-        FBORenderObjectHighlight.getInstance().render(playerIndex);
-        IsoChunkMap chunkMap = IsoWorld.instance.currentCell.getChunkMap(playerIndex);
-
-        for (int z = chunkMap.minHeight; z <= chunkMap.maxHeight; z++) {
-            SpriteRenderer.instance.beginProfile(translucentFloorObjectsProbe);
-
-            try (AbstractPerformanceProfileProbe var34 = translucentFloor.profile()) {
-                this.renderTranslucentFloorObjects(playerIndex, z, floorRenderShader, wallRenderShader, currentTimeMillis);
+        long apocCELL_DRAW_TILES = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            Shader floorRenderShader = null;
+            Shader wallRenderShader = null;
+            this.renderAnimatedAttachments = false;
+            this.renderTranslucentOnly = false;
+            this.renderWindowFrameOutline = false;
+            FBORenderChunkManager.instance.startFrame();
+            IsoPuddles.getInstance().clearThreadData();
+            IsoWater.getInstance().clearThreadData();
+            this.invalidateDelayedLoadingLevels = false;
+            if (this.delayedLoadingTimerMs != 0L && this.delayedLoadingTimerMs <= currentTimeMillis) {
+                this.delayedLoadingTimerMs = 0L;
+                this.invalidateDelayedLoadingLevels = true;
             }
 
-            SpriteRenderer.instance.endProfile(translucentFloorObjectsProbe);
+            FBORenderTrees.startFrame();
+            SpriteRenderer.instance.beginProfile(tilesProbe);
+            FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+            perPlayerData1.chunksWithTranslucentFloor.clear();
+            perPlayerData1.chunksWithTranslucentNonFloor.clear();
 
-            try (AbstractPerformanceProfileProbe var35 = puddles.profile()) {
-                this.renderPuddlesTranslucentFloorsOnly(playerIndex, z);
+            for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
+                IsoChunk c = perPlayerData1.onScreenChunks.get(i);
+
+                try (AbstractPerformanceProfileProbe var10 = renderOneChunk.profile()) {
+                    this.renderOneChunk(c, perPlayerRender, playerIndex, currentTimeMillis, floorRenderShader, wallRenderShader);
+                }
             }
 
-            if (z == 0) {
-                this.renderWaterShore(playerIndex);
+            SpriteRenderer.instance.endProfile(tilesProbe);
+            FBORenderCorpses.getInstance().update();
+            FBORenderItems.getInstance().update();
+            FBORenderChunkManager.instance.endFrame();
+            FBORenderShadows.getInstance().clear();
+            this.renderPlayers(playerIndex);
+            this.renderCorpseShadows(playerIndex);
+            this.renderMannequinShadows(playerIndex);
+            if (!DebugOptions.instance.fboRenderChunk.corpsesInChunkTexture.getValue()) {
+                this.renderCorpsesInWorld(playerIndex);
             }
 
-            this.renderRainSplashes(playerIndex, z);
-            SpriteRenderer.instance.beginProfile(shadowsProbe);
-            FBORenderShadows.getInstance().renderMain(z);
-            SpriteRenderer.instance.endProfile(shadowsProbe);
-            if (z == PZMath.fastfloor(IsoCamera.frameState.camCharacterZ)) {
-                SpriteRenderer.instance.beginProfile(visibilityProbe);
+            if (!DebugOptions.instance.fboRenderChunk.itemsInChunkTexture.getValue()) {
+                SpriteRenderer.instance.beginProfile(itemsProbe);
+                this.renderItemsInWorld(playerIndex);
+                SpriteRenderer.instance.endProfile(itemsProbe);
+            }
 
-                try (GameProfiler.ProfileArea var36 = GameProfiler.getInstance().profile("Visibility")) {
-                    VisibilityPolygon2.getInstance().renderMain(playerIndex);
+            if (PerformanceSettings.puddlesQuality < 2) {
+                try (AbstractPerformanceProfileProbe var29 = puddles.profile()) {
+                    this.renderPuddles(playerIndex);
+                }
+            }
+
+            this.renderOpaqueObjectsEvent(playerIndex);
+            SpriteRenderer.instance.beginProfile(movingObjectsProbe);
+            this.renderMovingObjects();
+            SpriteRenderer.instance.endProfile(movingObjectsProbe);
+
+            try (AbstractPerformanceProfileProbe var30 = water.profile()) {
+                this.renderWater(playerIndex);
+            }
+
+            this.renderAnimatedAttachments(playerIndex);
+            this.renderFlies(playerIndex);
+            FBORenderObjectHighlight.getInstance().render(playerIndex);
+            IsoChunkMap chunkMap = IsoWorld.instance.currentCell.getChunkMap(playerIndex);
+
+            for (int z = chunkMap.minHeight; z <= chunkMap.maxHeight; z++) {
+                SpriteRenderer.instance.beginProfile(translucentFloorObjectsProbe);
+
+                try (AbstractPerformanceProfileProbe var34 = translucentFloor.profile()) {
+                    this.renderTranslucentFloorObjects(playerIndex, z, floorRenderShader, wallRenderShader, currentTimeMillis);
                 }
 
-                SpriteRenderer.instance.endProfile(visibilityProbe);
+                SpriteRenderer.instance.endProfile(translucentFloorObjectsProbe);
+
+                try (AbstractPerformanceProfileProbe var35 = puddles.profile()) {
+                    this.renderPuddlesTranslucentFloorsOnly(playerIndex, z);
+                }
+
+                if (z == 0) {
+                    this.renderWaterShore(playerIndex);
+                }
+
+                this.renderRainSplashes(playerIndex, z);
+                SpriteRenderer.instance.beginProfile(shadowsProbe);
+                FBORenderShadows.getInstance().renderMain(z);
+                SpriteRenderer.instance.endProfile(shadowsProbe);
+                if (z == PZMath.fastfloor(IsoCamera.frameState.camCharacterZ)) {
+                    SpriteRenderer.instance.beginProfile(visibilityProbe);
+
+                    try (GameProfiler.ProfileArea var36 = GameProfiler.getInstance().profile("Visibility")) {
+                        VisibilityPolygon2.getInstance().renderMain(playerIndex);
+                    }
+
+                    SpriteRenderer.instance.endProfile(visibilityProbe);
+                }
+
+                WorldMarkers.instance.renderGridSquareMarkers(z);
+                this.renderTranslucentOnly = true;
+                IsoMarkers.instance.renderIsoMarkers(perPlayerRender, z, playerIndex);
+                this.renderTranslucentOnly = false;
+                SpriteRenderer.instance.beginProfile(translucentObjectsProbe);
+
+                try (AbstractPerformanceProfileProbe var37 = translucentNonFloor.profile()) {
+                    this.renderTranslucentObjects(playerIndex, z, floorRenderShader, wallRenderShader, currentTimeMillis);
+                }
+
+                SpriteRenderer.instance.endProfile(translucentObjectsProbe);
             }
 
-            WorldMarkers.instance.renderGridSquareMarkers(z);
-            this.renderTranslucentOnly = true;
-            IsoMarkers.instance.renderIsoMarkers(perPlayerRender, z, playerIndex);
-            this.renderTranslucentOnly = false;
-            SpriteRenderer.instance.beginProfile(translucentObjectsProbe);
-
-            try (AbstractPerformanceProfileProbe var37 = translucentNonFloor.profile()) {
-                this.renderTranslucentObjects(playerIndex, z, floorRenderShader, wallRenderShader, currentTimeMillis);
+            FBORenderShadows.getInstance().endRender();
+            if (DebugOptions.instance.weather.showUsablePuddles.getValue()) {
+                this.renderPuddleDebug(playerIndex);
             }
 
-            SpriteRenderer.instance.endProfile(translucentObjectsProbe);
-        }
+            try (AbstractPerformanceProfileProbe var33 = fog.profile()) {
+                this.renderFog(playerIndex);
+            }
 
-        FBORenderShadows.getInstance().endRender();
-        if (DebugOptions.instance.weather.showUsablePuddles.getValue()) {
-            this.renderPuddleDebug(playerIndex);
-        }
+            FBORenderObjectOutline.getInstance().render(playerIndex);
 
-        try (AbstractPerformanceProfileProbe var33 = fog.profile()) {
-            this.renderFog(playerIndex);
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_DRAW_TILES, apocCELL_DRAW_TILES);
         }
-
-        FBORenderObjectOutline.getInstance().render(playerIndex);
     }
 
     private void renderOneChunk(
         IsoChunk c, IsoCell.PerPlayerRender perPlayerRender, int playerIndex, long currentTimeMillis, Shader floorRenderShader, Shader wallRenderShader
     ) {
-        if (c != null && c.IsOnScreen(true)) {
-            if (!c.lightingNeverDone[playerIndex]) {
-                FBORenderLevels renderLevels = c.getRenderLevels(playerIndex);
-                renderLevels.prevMinZ = c.minLevel;
-                renderLevels.prevMaxZ = c.maxLevel;
+        long apocCELL_RENDER_CHUNK = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (c != null && c.IsOnScreen(true)) {
+                if (!c.lightingNeverDone[playerIndex]) {
+                    FBORenderLevels renderLevels = c.getRenderLevels(playerIndex);
+                    renderLevels.prevMinZ = c.minLevel;
+                    renderLevels.prevMaxZ = c.maxLevel;
 
-                for (int zza = c.minLevel; zza <= c.maxLevel; zza++) {
-                    try (AbstractPerformanceProfileProbe var10 = renderOneChunkLevel.profile()) {
-                        this.renderOneLevel(c, zza, perPlayerRender, playerIndex, currentTimeMillis, floorRenderShader, wallRenderShader);
+                    for (int zza = c.minLevel; zza <= c.maxLevel; zza++) {
+                        try (AbstractPerformanceProfileProbe var10 = renderOneChunkLevel.profile()) {
+                            this.renderOneLevel(c, zza, perPlayerRender, playerIndex, currentTimeMillis, floorRenderShader, wallRenderShader);
+                        }
+
+                        if (DebugOptions.instance.fboRenderChunk.renderWallLines.getValue() && zza == PZMath.fastfloor(IsoCamera.frameState.camCharacterZ)) {
+                            c.getCutawayData().debugRender(zza);
+                        }
                     }
 
-                    if (DebugOptions.instance.fboRenderChunk.renderWallLines.getValue() && zza == PZMath.fastfloor(IsoCamera.frameState.camCharacterZ)) {
-                        c.getCutawayData().debugRender(zza);
-                    }
+                    IndieGL.glDepthMask(false);
+                    IndieGL.glDepthFunc(519);
                 }
-
-                IndieGL.glDepthMask(false);
-                IndieGL.glDepthFunc(519);
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_RENDER_CHUNK, apocCELL_RENDER_CHUNK);
         }
     }
 
@@ -1261,6 +1293,8 @@ public final class FBORenderCell {
             }
 
             if (isDirty && canRender) {
+                long apocRebakeStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try {
                 boolean[][] flattenGrassEtc = perPlayerRender.flattenGrassEtc;
                 IsoCell.ShadowSquares.clear();
                 IsoCell.SolidFloor.clear();
@@ -1599,6 +1633,9 @@ public final class FBORenderCell {
                 }
 
                 FBORenderChunkManager.instance.endRenderChunkLevel(c, level, zoom, true);
+                            } finally {
+                    zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_REBAKE_LEVEL, apocRebakeStarted);
+                }
             } else {
                 FBORenderChunkManager.instance.endRenderChunkLevel(c, level, zoom, false);
                 if (!renderLevels.getCachedSquares_AnimatedAttachments(level).isEmpty()) {
@@ -2375,22 +2412,28 @@ public final class FBORenderCell {
     }
 
     private void renderCorpsesInWorld(int playerIndex) {
-        FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+        long apocCELL_CORPSES = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
 
-        for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
-            IsoChunk chunk = perPlayerData1.onScreenChunks.get(i);
-            FBORenderLevels renderLevels = chunk.getRenderLevels(playerIndex);
+            for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
+                IsoChunk chunk = perPlayerData1.onScreenChunks.get(i);
+                FBORenderLevels renderLevels = chunk.getRenderLevels(playerIndex);
 
-            for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
-                if (renderLevels.isOnScreen(z) && z == renderLevels.getMinLevel(z)) {
-                    List<IsoGridSquare> squares = renderLevels.getCachedSquares_Corpses(z);
+                for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
+                    if (renderLevels.isOnScreen(z) && z == renderLevels.getMinLevel(z)) {
+                        List<IsoGridSquare> squares = renderLevels.getCachedSquares_Corpses(z);
 
-                    for (int j = 0; j < squares.size(); j++) {
-                        IsoGridSquare square = squares.get(j);
-                        this.renderCorpses(square, square, false);
+                        for (int j = 0; j < squares.size(); j++) {
+                            IsoGridSquare square = squares.get(j);
+                            this.renderCorpses(square, square, false);
+                        }
                     }
                 }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_CORPSES, apocCELL_CORPSES);
         }
     }
 
@@ -2436,27 +2479,33 @@ public final class FBORenderCell {
     }
 
     private void renderItemsInWorld(int playerIndex) {
-        FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+        long apocCELL_ITEMS = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
 
-        for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
-            IsoChunk chunk = perPlayerData1.onScreenChunks.get(i);
-            FBORenderLevels renderLevels = chunk.getRenderLevels(playerIndex);
+            for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
+                IsoChunk chunk = perPlayerData1.onScreenChunks.get(i);
+                FBORenderLevels renderLevels = chunk.getRenderLevels(playerIndex);
 
-            for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
-                if (renderLevels.isOnScreen(z) && z == renderLevels.getMinLevel(z)) {
-                    List<IsoGridSquare> squares = renderLevels.getCachedSquares_Items(z);
+                for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
+                    if (renderLevels.isOnScreen(z) && z == renderLevels.getMinLevel(z)) {
+                        List<IsoGridSquare> squares = renderLevels.getCachedSquares_Items(z);
 
-                    for (int j = 0; j < squares.size(); j++) {
-                        IsoGridSquare square = squares.get(j);
-                        if (square.chunk == chunk) {
-                            this.renderWorldInventoryObjects(square, square, false);
-                        } else {
-                            IsoGridSquare renderSquare = chunk.getGridSquare(0, 0, square.z);
-                            this.renderWorldInventoryObjects(square, renderSquare, false);
+                        for (int j = 0; j < squares.size(); j++) {
+                            IsoGridSquare square = squares.get(j);
+                            if (square.chunk == chunk) {
+                                this.renderWorldInventoryObjects(square, square, false);
+                            } else {
+                                IsoGridSquare renderSquare = chunk.getGridSquare(0, 0, square.z);
+                                this.renderWorldInventoryObjects(square, renderSquare, false);
+                            }
                         }
                     }
                 }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_ITEMS, apocCELL_ITEMS);
         }
     }
 
@@ -3101,35 +3150,41 @@ public final class FBORenderCell {
     }
 
     private void updateChunkLighting(int playerIndex) {
-        if (!DebugOptions.instance.fboRenderChunk.nolighting.getValue()) {
-            if (DebugOptions.instance.fboRenderChunk.updateSquareLightInfo.getValue()) {
-                FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
-                if (perPlayerData1.lightingUpdateCounter != LightingJNI.getUpdateCounter(playerIndex)) {
-                    perPlayerData1.lightingUpdateCounter = LightingJNI.getUpdateCounter(playerIndex);
-                    int chunkLevelCount = 0;
-                    this.sortedChunks.clear();
-                    PZArrayUtil.addAll(this.sortedChunks, perPlayerData1.onScreenChunks);
-                    this.sortedChunks.sort(Comparator.comparingInt(a -> a.lightingUpdateCounter));
+        long apocCELL_LIGHTING = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (!DebugOptions.instance.fboRenderChunk.nolighting.getValue()) {
+                if (DebugOptions.instance.fboRenderChunk.updateSquareLightInfo.getValue()) {
+                    FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+                    if (perPlayerData1.lightingUpdateCounter != LightingJNI.getUpdateCounter(playerIndex)) {
+                        perPlayerData1.lightingUpdateCounter = LightingJNI.getUpdateCounter(playerIndex);
+                        int chunkLevelCount = 0;
+                        this.sortedChunks.clear();
+                        PZArrayUtil.addAll(this.sortedChunks, perPlayerData1.onScreenChunks);
+                        this.sortedChunks.sort(Comparator.comparingInt(a -> a.lightingUpdateCounter));
 
-                    for (int i = 0; i < this.sortedChunks.size(); i++) {
-                        IsoChunk chunk = this.sortedChunks.get(i);
-                        boolean updated = false;
+                        for (int i = 0; i < this.sortedChunks.size(); i++) {
+                            IsoChunk chunk = this.sortedChunks.get(i);
+                            boolean updated = false;
 
-                        for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
-                            if (this.updateChunkLevelLighting(playerIndex, chunk, z)) {
-                                updated = true;
-                                chunk.lightingUpdateCounter = perPlayerData1.lightingUpdateCounter;
+                            for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
+                                if (this.updateChunkLevelLighting(playerIndex, chunk, z)) {
+                                    updated = true;
+                                    chunk.lightingUpdateCounter = perPlayerData1.lightingUpdateCounter;
+                                }
                             }
-                        }
 
-                        if (DebugOptions.instance.lightingSplitUpdate.getValue() && updated) {
-                            if (++chunkLevelCount >= 5) {
-                                return;
+                            if (DebugOptions.instance.lightingSplitUpdate.getValue() && updated) {
+                                if (++chunkLevelCount >= 5) {
+                                    return;
+                                }
                             }
                         }
                     }
                 }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_LIGHTING, apocCELL_LIGHTING);
         }
     }
 
@@ -3348,28 +3403,34 @@ public final class FBORenderCell {
     }
 
     private void calculateOccludingSquares(int playerIndex) {
-        FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+        long apocCELL_OCCLUSION = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
 
-        for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
-            IsoChunk c = perPlayerData1.onScreenChunks.get(i);
-            FBORenderLevels renderLevels = c.getRenderLevels(playerIndex);
+            for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
+                IsoChunk c = perPlayerData1.onScreenChunks.get(i);
+                FBORenderLevels renderLevels = c.getRenderLevels(playerIndex);
 
-            for (int z = c.minLevel; z <= c.maxLevel; z++) {
-                if (renderLevels.isOnScreen(z)) {
-                    FBORenderCutaways.ChunkLevelData levelData = c.getCutawayData().getDataForLevel(z);
-                    boolean bChanged = levelData.calculateOccludingSquares(
-                        playerIndex,
-                        perPlayerData1.occludedGridX1,
-                        perPlayerData1.occludedGridY1,
-                        perPlayerData1.occludedGridX2,
-                        perPlayerData1.occludedGridY2,
-                        perPlayerData1.occludedGrid
-                    );
-                    if (bChanged) {
-                        FBORenderOcclusion.getInstance().invalidateOverlappedChunkLevels(playerIndex, c, z);
+                for (int z = c.minLevel; z <= c.maxLevel; z++) {
+                    if (renderLevels.isOnScreen(z)) {
+                        FBORenderCutaways.ChunkLevelData levelData = c.getCutawayData().getDataForLevel(z);
+                        boolean bChanged = levelData.calculateOccludingSquares(
+                            playerIndex,
+                            perPlayerData1.occludedGridX1,
+                            perPlayerData1.occludedGridY1,
+                            perPlayerData1.occludedGridX2,
+                            perPlayerData1.occludedGridY2,
+                            perPlayerData1.occludedGrid
+                        );
+                        if (bChanged) {
+                            FBORenderOcclusion.getInstance().invalidateOverlappedChunkLevels(playerIndex, c, z);
+                        }
                     }
                 }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_OCCLUSION, apocCELL_OCCLUSION);
         }
     }
 
@@ -3398,45 +3459,57 @@ public final class FBORenderCell {
     }
 
     private void prepareChunksForUpdating(int playerIndex) {
-        float zoom = Core.getInstance().getZoom(playerIndex);
-        FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+        long apocCELL_PREPARE_CHUNKS = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            float zoom = Core.getInstance().getZoom(playerIndex);
+            FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
 
-        for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
-            IsoChunk c = perPlayerData1.onScreenChunks.get(i);
-            FBORenderLevels renderLevels = c.getRenderLevels(playerIndex);
+            for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
+                IsoChunk c = perPlayerData1.onScreenChunks.get(i);
+                FBORenderLevels renderLevels = c.getRenderLevels(playerIndex);
 
-            for (int z = c.minLevel; z <= c.maxLevel; z++) {
-                if (z == renderLevels.getMinLevel(z) && renderLevels.isOnScreen(z) && renderLevels.isDirty(z, zoom)) {
-                    this.prepareChunkForUpdating(playerIndex, c, z);
+                for (int z = c.minLevel; z <= c.maxLevel; z++) {
+                    if (z == renderLevels.getMinLevel(z) && renderLevels.isOnScreen(z) && renderLevels.isDirty(z, zoom)) {
+                        this.prepareChunkForUpdating(playerIndex, c, z);
+                    }
                 }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_PREPARE_CHUNKS, apocCELL_PREPARE_CHUNKS);
         }
     }
 
     private void prepareChunkForUpdating(int playerIndex, IsoChunk chunk, int z) {
-        if (chunk != null) {
-            FBORenderLevels renderLevels = chunk.getRenderLevels(playerIndex);
-            if (renderLevels.isOnScreen(z)) {
-                int minLevel = renderLevels.getMinLevel(z);
-                int maxLevel = renderLevels.getMaxLevel(z);
+        long apocCELL_PREPARE_CHUNK = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (chunk != null) {
+                FBORenderLevels renderLevels = chunk.getRenderLevels(playerIndex);
+                if (renderLevels.isOnScreen(z)) {
+                    int minLevel = renderLevels.getMinLevel(z);
+                    int maxLevel = renderLevels.getMaxLevel(z);
 
-                for (int z2 = minLevel; z2 <= maxLevel; z2++) {
-                    FBORenderCutaways.ChunkLevelData levelData = chunk.getCutawayDataForLevel(z2);
+                    for (int z2 = minLevel; z2 <= maxLevel; z2++) {
+                        FBORenderCutaways.ChunkLevelData levelData = chunk.getCutawayDataForLevel(z2);
 
-                    for (int y = 0; y < 8; y++) {
-                        for (int x = 0; x < 8; x++) {
-                            IsoGridSquare sq = chunk.getGridSquare(x, y, z2);
-                            levelData.squareFlags[playerIndex][x + y * 8] = 0;
-                            if (sq != null) {
-                                sq.cacheLightInfo();
-                                if (sq.getLightInfo(playerIndex) != null && this.shouldRenderSquare(sq)) {
-                                    levelData.squareFlags[playerIndex][x + y * 8] = (byte)(levelData.squareFlags[playerIndex][x + y * 8] | 1);
+                        for (int y = 0; y < 8; y++) {
+                            for (int x = 0; x < 8; x++) {
+                                IsoGridSquare sq = chunk.getGridSquare(x, y, z2);
+                                levelData.squareFlags[playerIndex][x + y * 8] = 0;
+                                if (sq != null) {
+                                    sq.cacheLightInfo();
+                                    if (sq.getLightInfo(playerIndex) != null && this.shouldRenderSquare(sq)) {
+                                        levelData.squareFlags[playerIndex][x + y * 8] = (byte)(levelData.squareFlags[playerIndex][x + y * 8] | 1);
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_PREPARE_CHUNK, apocCELL_PREPARE_CHUNK);
         }
     }
 
@@ -3452,14 +3525,20 @@ public final class FBORenderCell {
     }
 
     private void renderTranslucentFloorObjects(int playerIndex, int z, Shader floorRenderShader, Shader wallRenderShader, long currentTimeMillis) {
-        if (DebugOptions.instance.fboRenderChunk.renderTranslucentFloor.getValue()) {
-            this.renderTranslucentOnly = true;
-            FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+        long apocCELL_TRANSLUCENT_FLOORS = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (DebugOptions.instance.fboRenderChunk.renderTranslucentFloor.getValue()) {
+                this.renderTranslucentOnly = true;
+                FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
 
-            for (int i = 0; i < perPlayerData1.chunksWithTranslucentFloor.size(); i++) {
-                IsoChunk chunk = perPlayerData1.chunksWithTranslucentFloor.get(i);
-                this.renderOneChunk_TranslucentFloor(chunk, playerIndex, z, floorRenderShader, wallRenderShader, currentTimeMillis);
+                for (int i = 0; i < perPlayerData1.chunksWithTranslucentFloor.size(); i++) {
+                    IsoChunk chunk = perPlayerData1.chunksWithTranslucentFloor.get(i);
+                    this.renderOneChunk_TranslucentFloor(chunk, playerIndex, z, floorRenderShader, wallRenderShader, currentTimeMillis);
+                }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_TRANSLUCENT_FLOORS, apocCELL_TRANSLUCENT_FLOORS);
         }
     }
 
@@ -3493,18 +3572,24 @@ public final class FBORenderCell {
     }
 
     private void renderTranslucentObjects(int playerIndex, int z, Shader floorRenderShader, Shader wallRenderShader, long currentTimeMillis) {
-        if (DebugOptions.instance.fboRenderChunk.renderTranslucentNonFloor.getValue()) {
-            this.renderTranslucentOnly = true;
-            FBORenderTrees.current = FBORenderTrees.alloc();
-            FBORenderTrees.current.init();
-            FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+        long apocCELL_TRANSLUCENT_OBJECTS = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (DebugOptions.instance.fboRenderChunk.renderTranslucentNonFloor.getValue()) {
+                this.renderTranslucentOnly = true;
+                FBORenderTrees.current = FBORenderTrees.alloc();
+                FBORenderTrees.current.init();
+                FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
 
-            for (int i = 0; i < perPlayerData1.chunksWithTranslucentNonFloor.size(); i++) {
-                IsoChunk chunk = perPlayerData1.chunksWithTranslucentNonFloor.get(i);
-                this.renderOneChunk_Translucent(chunk, playerIndex, z, floorRenderShader, wallRenderShader, currentTimeMillis);
+                for (int i = 0; i < perPlayerData1.chunksWithTranslucentNonFloor.size(); i++) {
+                    IsoChunk chunk = perPlayerData1.chunksWithTranslucentNonFloor.get(i);
+                    this.renderOneChunk_Translucent(chunk, playerIndex, z, floorRenderShader, wallRenderShader, currentTimeMillis);
+                }
+
+                SpriteRenderer.instance.drawGeneric(FBORenderTrees.current);
             }
 
-            SpriteRenderer.instance.drawGeneric(FBORenderTrees.current);
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_TRANSLUCENT_OBJECTS, apocCELL_TRANSLUCENT_OBJECTS);
         }
     }
 
@@ -3529,7 +3614,18 @@ public final class FBORenderCell {
             List<IsoGridSquare> squaresCutawayOutlines = renderLevels.getCachedSquares_CutawayWindowFrames(level);
             List<IsoGridSquare> squaresItems = renderLevels.getCachedSquares_Items(level);
             if (squaresObjects.size() + squaresItems.size() + squaresCutawayOutlines.size() != 0) {
-                ArrayList<IsoGridSquare> sorted = this.tempSquares;
+                List<IsoGridSquare> sorted;
+                int apocWorldRight = IsoWorld.instance.getMetaGrid().getMaxX() * 256;
+                if (ApocBRTranslucentOrder.ENABLED) {
+                    long apocOrderStarted = zombie.ApocBRClientTelemetryLite.beginPhase();
+                    try {
+                    sorted = this.apocTranslucentOrder.get(c, playerIndex, level, squaresItems, squaresCutawayOutlines, squaresObjects,
+                        square -> square.x + square.y * apocWorldRight);
+                    } finally {
+                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_TRANSLUCENT_ORDER, apocOrderStarted);
+                    }
+                } else {
+                sorted = this.tempSquares;
                 sorted.clear();
 
                 try (GameProfiler.ProfileArea worldRight = GameProfiler.getInstance().profile("Sort")) {
@@ -3550,8 +3646,8 @@ public final class FBORenderCell {
                     }
                 }
 
-                int worldRight = IsoWorld.instance.getMetaGrid().getMaxX() * 256;
-                sorted.sort(Comparator.comparingInt(o -> o.x + o.y * worldRight));
+                sorted.sort(Comparator.comparingInt(o -> o.x + o.y * apocWorldRight));
+                }
 
                 for (int ixx = 0; ixx < sorted.size(); ixx++) {
                     IsoGridSquare square = sorted.get(ixx);
@@ -3698,14 +3794,20 @@ public final class FBORenderCell {
     }
 
     private void renderMovingObjects() {
-        this.renderTranslucentOnly = true;
+        long apocCELL_MOVING_OBJECTS = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            this.renderTranslucentOnly = true;
 
-        for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
-            this.renderMovingObject(isoMovingObject);
+            for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
+                this.renderMovingObject(isoMovingObject);
+            }
+
+            this.renderTranslucentOnly = false;
+            SpriteRenderer.instance.renderQueued();
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_MOVING_OBJECTS, apocCELL_MOVING_OBJECTS);
         }
-
-        this.renderTranslucentOnly = false;
-        SpriteRenderer.instance.renderQueued();
     }
 
     private void renderMovingObject(IsoMovingObject isoMovingObject) {
@@ -4093,40 +4195,43 @@ public final class FBORenderCell {
     }
 
     private void renderFog(int playerIndex) {
-        if (!(IsoCamera.frameState.camCharacterZ < 0.0F)) {
-            if (PerformanceSettings.fogQuality != 2) {
-                FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
-                ImprovedFog.getDrawer().startFrame();
-                boolean bFirst = true;
+        long apocCELL_FOG = zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            if (!(IsoCamera.frameState.camCharacterZ < 0.0F)) {
+                if (PerformanceSettings.fogQuality != 2) {
+                    FBORenderCell.PerPlayerData perPlayerData1 = this.perPlayerData[playerIndex];
+                    ImprovedFog.getDrawer().startFrame();
+                    boolean bFirst = true;
 
-                for (int z = 0; z <= 1; z++) {
-                    if (ImprovedFog.startRender(playerIndex, z)) {
-                        if (bFirst) {
-                            bFirst = false;
-                            ImprovedFog.startFrame(ImprovedFog.getDrawer());
-                        }
+                    for (int z = 0; z <= 1; z++) {
+                        if (ImprovedFog.startRender(playerIndex, z)) {
+                            if (bFirst) {
+                                bFirst = false;
+                                ImprovedFog.startFrame(ImprovedFog.getDrawer());
+                            }
 
-                        for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
-                            IsoChunk chunk = perPlayerData1.onScreenChunks.get(i);
-                            if (z >= chunk.minLevel && z <= chunk.maxLevel) {
-                                FBORenderLevels renderLevels = chunk.getRenderLevels(playerIndex);
-                                if (renderLevels.isOnScreen(z)) {
-                                    FBORenderCutaways.ChunkLevelData levelData = chunk.getCutawayDataForLevel(z);
-                                    IsoGridSquare[] squares = chunk.squares[chunk.squaresIndexOfLevel(z)];
+                            for (int i = 0; i < perPlayerData1.onScreenChunks.size(); i++) {
+                                IsoChunk chunk = perPlayerData1.onScreenChunks.get(i);
+                                if (z >= chunk.minLevel && z <= chunk.maxLevel) {
+                                    FBORenderLevels renderLevels = chunk.getRenderLevels(playerIndex);
+                                    if (renderLevels.isOnScreen(z)) {
+                                        FBORenderCutaways.ChunkLevelData levelData = chunk.getCutawayDataForLevel(z);
+                                        IsoGridSquare[] squares = chunk.squares[chunk.squaresIndexOfLevel(z)];
 
-                                    for (int j = 0; j < squares.length; j++) {
-                                        IsoGridSquare square = squares[j];
-                                        if (levelData.shouldRenderSquare(playerIndex, square)) {
-                                            List<IsoObject> objects = square.getObjects();
-                                            int size = objects.size();
+                                        for (int j = 0; j < squares.length; j++) {
+                                            IsoGridSquare square = squares[j];
+                                            if (levelData.shouldRenderSquare(playerIndex, square)) {
+                                                List<IsoObject> objects = square.getObjects();
+                                                int size = objects.size();
 
-                                            for (int k = 0; k < size; k++) {
-                                                IsoObject object = objects.get(k);
-                                                ObjectRenderInfo renderInfo = object.getRenderInfo(playerIndex);
-                                                if (renderInfo.layer == ObjectRenderLayer.MinusFloor) {
-                                                    try (GameProfiler.ProfileArea var17 = GameProfiler.getInstance().profile("ImprovedFog")) {
-                                                        ImprovedFog.renderRowsBehind(square);
-                                                        break;
+                                                for (int k = 0; k < size; k++) {
+                                                    IsoObject object = objects.get(k);
+                                                    ObjectRenderInfo renderInfo = object.getRenderInfo(playerIndex);
+                                                    if (renderInfo.layer == ObjectRenderLayer.MinusFloor) {
+                                                        try (GameProfiler.ProfileArea var17 = GameProfiler.getInstance().profile("ImprovedFog")) {
+                                                            ImprovedFog.renderRowsBehind(square);
+                                                            break;
+                                                        }
                                                     }
                                                 }
                                             }
@@ -4134,14 +4239,17 @@ public final class FBORenderCell {
                                     }
                                 }
                             }
+
+                            ImprovedFog.endRender();
                         }
-
-                        ImprovedFog.endRender();
                     }
-                }
 
-                ImprovedFog.getDrawer().endFrame();
+                    ImprovedFog.getDrawer().endFrame();
+                }
             }
+
+        } finally {
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.CELL_FOG, apocCELL_FOG);
         }
     }
 

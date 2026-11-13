@@ -98,6 +98,7 @@ public final class FileSystemImpl extends FileSystem {
             for (int i = 0; i < this.pending.size(); i++) {
                 FileSystemImpl.AsyncItem item = this.pending.get(i);
                 if (item.id == id) {
+                    if (item.task instanceof zombie.core.textures.ApocBRTextureLoadTask textureTask) textureTask.cancelResult();
                     item.future.cancel(false);
                     return;
                 }
@@ -106,6 +107,7 @@ public final class FileSystemImpl extends FileSystem {
             for (int ix = 0; ix < this.inProgress.size(); ix++) {
                 FileSystemImpl.AsyncItem item = this.inProgress.get(ix);
                 if (item.id == id) {
+                    if (item.task instanceof zombie.core.textures.ApocBRTextureLoadTask textureTask) textureTask.cancelResult();
                     item.future.cancel(false);
                     return;
                 }
@@ -118,6 +120,7 @@ public final class FileSystemImpl extends FileSystem {
             for (int ixx = 0; ixx < this.added.size(); ixx++) {
                 FileSystemImpl.AsyncItem item = this.added.get(ixx);
                 if (item.id == id) {
+                    if (item.task instanceof zombie.core.textures.ApocBRTextureLoadTask textureTask) textureTask.cancelResult();
                     item.future.cancel(false);
                     break;
                 }
@@ -248,8 +251,16 @@ public final class FileSystemImpl extends FileSystem {
                     zombie.ApocBRClientTelemetryLite.fileTask(item.task, apocCancelledStarted, true);
                 }
             } else {
+                if (item.task instanceof zombie.core.textures.ApocBRTextureLoadTask) {
+                    if (!zombie.core.textures.ApocBRTextureLoadTask.submit(item.future)) {
+                        this.pending.add(0, item);
+                        break;
+                    }
+                    zombie.ApocBRClientTelemetryLite.workerTexture(zombie.ApocBRClientTelemetryLite.WorkerTexture.QUEUED, 1L);
+                } else {
+                    this.executor.submit(item.future);
+                }
                 this.inProgress.add(item);
-                this.executor.submit(item.future);
                 zombie.ApocBRClientTelemetryLite.fileSubmitted();
                 priority--;
             }

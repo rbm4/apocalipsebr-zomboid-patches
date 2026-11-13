@@ -13,10 +13,18 @@ public final class ClientTelemetryHarness {
             ApocBRClientTelemetryLite.textureLimit(ApocBRClientTelemetryLite.beginPhase(),
                 4096, 2048, 1024, 512, 1024, 128, true);
             ApocBRClientTelemetryLite.fileQueues(3, 4, 5);
+            ApocBRClientTelemetryLite.networkQueues(3,4,5);
+            ApocBRClientTelemetryLite.networkPolled(2);
+            ApocBRClientTelemetryLite.networkStage("test",ApocBRClientTelemetryLite.NetworkStage.PARSE,ApocBRClientTelemetryLite.beginPhase());
+            ApocBRClientTelemetryLite.networkPacket("test",ApocBRClientTelemetryLite.beginPhase(),12,25,false,false);
             ApocBRClientTelemetryLite.fileSubmitted();
             ApocBRClientTelemetryLite.fileTask("result", ApocBRClientTelemetryLite.beginPhase(), false);
             ApocBRClientTelemetryLite.fileTask("cleanup", ApocBRClientTelemetryLite.beginPhase(), true);
             if (i == 0) {
+                for(int type=0;type<300;type++) {
+                    ApocBRClientTelemetryLite.networkStage("type"+type,ApocBRClientTelemetryLite.NetworkStage.APPLY,ApocBRClientTelemetryLite.beginPhase());
+                    ApocBRClientTelemetryLite.networkPacket("type"+type,ApocBRClientTelemetryLite.beginPhase(),1,100,false,type==299);
+                }
                 for (int dimensions = 1; dimensions <= 70; dimensions++) {
                     Object task = java.lang.reflect.Array.newInstance(int.class, new int[dimensions]);
                     ApocBRClientTelemetryLite.fileTask(task, ApocBRClientTelemetryLite.beginPhase(), false);
@@ -29,9 +37,18 @@ public final class ClientTelemetryHarness {
                 ApocBRClientTelemetryLite.endFrame(999, 999);
                 ApocBRClientTelemetryLite.fileTask(new Object(), 1L, false);
                 ApocBRClientTelemetryLite.textureLimit(1L, 999, 999, 999, 999, 999, 0, false);
+                ApocBRClientTelemetryLite.networkStage("wrong-thread",ApocBRClientTelemetryLite.NetworkStage.PARSE,1L);
+                ApocBRClientTelemetryLite.networkPacket("wrong-thread",1L,999,999,false,true);
+                ApocBRClientTelemetryLite.networkPolled(999);
+                ApocBRClientTelemetryLite.networkQueues(999,999,999);
             });
             other.start(); other.join();
             Thread.sleep(2L);
+            ApocBRClientTelemetryLite.luaCallback(start, "mods/test.lua", "tick", 42, 123);
+            if (i == 0) for (int callback = 0; callback < 40; callback++) {
+                ApocBRClientTelemetryLite.luaCallback(System.nanoTime() - 10000000L,
+                    "mods/slow.lua", "slow\"callback", callback, callback);
+            }
             ApocBRClientTelemetryLite.endPhase(Phase.LOGIC, start);
             ApocBRClientTelemetryLite.endFrame(200 + i, 300 + i);
         }

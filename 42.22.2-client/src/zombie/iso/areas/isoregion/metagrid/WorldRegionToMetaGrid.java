@@ -6,6 +6,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.LinkedHashSet;
+import java.util.ArrayDeque;
+import java.util.Iterator;
 import java.util.function.Consumer;
 import zombie.characters.IsoGameCharacter;
 import zombie.characters.IsoPlayer;
@@ -46,13 +49,14 @@ public final class WorldRegionToMetaGrid {
     private final ArrayList<RoomDef> tempRooms = new ArrayList<>();
     private final ArrayList<IsoWorldRegion> tempRegionList = new ArrayList<>();
     private final ArrayList<IsoWorldRegion> worldRegions = new ArrayList<>();
-    private final ArrayList<IsoWorldRegion> allWorldRegions = new ArrayList<>();
+    // Every insertion is gated by the reconciliation's done set. Preserve insertion order with constant-time membership/removal.
+    private final LinkedHashSet<IsoWorldRegion> allWorldRegions = new LinkedHashSet<>();
     private final HashSet<IsoWorldRegion> done = new HashSet<>();
     private final HashSet<BuildingDef> added = new HashSet<>();
     private final HashMap<Integer, ArrayList<BuildingDef>> buildingsByLevel = new HashMap<>();
     private final HashMap<BuildingDef, ArrayList<IsoWorldRegion>> buildingToRegions = new HashMap<>();
     private final TShortArrayList freeSquares = new TShortArrayList();
-    private final List<IsoGameCharacter.Location> dirtyChunks = new ArrayList<>();
+    private final HashSet<Long> dirtyChunks = new HashSet<>();
     private final List<IsoChunk> updateChunks = new ArrayList<>();
     private static final IsoGameCharacter.Location tempLocation = new IsoGameCharacter.Location();
 
@@ -62,6 +66,7 @@ public final class WorldRegionToMetaGrid {
             int addedBuildings = 0;
             this.dirtyChunks.clear();
 
+            long apocRemove = zombie.ApocBRClientTelemetryLite.beginPhase();
             for (IsoGameCharacter.Location location : changedCells) {
                 removedBuildings += this.removeUserDefinedBuildingsFromCell(location.x, location.y);
 
@@ -71,6 +76,7 @@ public final class WorldRegionToMetaGrid {
                 }
             }
 
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_REMOVE, apocRemove);
             this.done.clear();
             this.added.clear();
             this.allWorldRegions.clear();
@@ -83,6 +89,7 @@ public final class WorldRegionToMetaGrid {
                 list.clear();
             }
 
+            long apocCreate = zombie.ApocBRClientTelemetryLite.beginPhase();
             for (IsoGameCharacter.Location location : changedCells) {
                 this.createBuildingsFromRegions(location.x, location.y, this.done, this.added, this.buildingsByLevel);
 
@@ -92,6 +99,8 @@ public final class WorldRegionToMetaGrid {
                 }
             }
 
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_CREATE, apocCreate);
+            long apocFilter = zombie.ApocBRClientTelemetryLite.beginPhase();
             for (int z = 0; z < 31; z++) {
                 ArrayList<BuildingDef> buildings = this.buildingsByLevel.get(z);
                 if (buildings != null) {
@@ -105,6 +114,8 @@ public final class WorldRegionToMetaGrid {
                 }
             }
 
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_FILTER, apocFilter);
+            long apocCombine = zombie.ApocBRClientTelemetryLite.beginPhase();
             for (int zx = 0; zx < 31; zx++) {
                 ArrayList<BuildingDef> buildings = this.buildingsByLevel.get(zx);
                 if (buildings != null) {
@@ -115,6 +126,8 @@ public final class WorldRegionToMetaGrid {
                 }
             }
 
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_COMBINE, apocCombine);
+            long apocInsert = zombie.ApocBRClientTelemetryLite.beginPhase();
             for (int zxx = 0; zxx < 31; zxx++) {
                 ArrayList<BuildingDef> buildings = this.buildingsByLevel.get(zxx);
                 if (buildings != null) {
@@ -126,6 +139,7 @@ public final class WorldRegionToMetaGrid {
                 }
             }
 
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_INSERT, apocInsert);
             if (Core.debug) {
                 for (IsoWorldRegion worldRegion : this.allWorldRegions) {
                     if (worldRegion.getBuildingDef() == null) {
@@ -169,7 +183,9 @@ public final class WorldRegionToMetaGrid {
                 }
 
                 LightingJNI.buildingsChanged();
-                this.updateSquares();
+                long apocSquares = zombie.ApocBRClientTelemetryLite.beginPhase();
+                try { this.updateSquares(); }
+                finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_SQUARES, apocSquares); }
                 IsoGridOcclusionData.SquareChanged();
                 FBORenderCutaways.getInstance().squareChanged(null);
             }
@@ -352,13 +368,19 @@ public final class WorldRegionToMetaGrid {
     }
 
     private void getConnectedRegions(IsoWorldRegion worldRegion, ArrayList<IsoWorldRegion> result) {
-        if (!result.contains(worldRegion)) {
-            result.add(worldRegion);
-
-            for (IsoWorldRegion neighbour : worldRegion.getNeighbors()) {
-                if (neighbour.isEnclosed() && neighbour.getRoofedPercentage() >= 0.5F) {
-                    this.getConnectedRegions(neighbour, result);
-                }
+        HashSet<IsoWorldRegion> seen = new HashSet<>(result);
+        if (!seen.add(worldRegion)) return;
+        result.add(worldRegion);
+        // Iterator stack preserves vanilla depth-first order without linear visited scans or Java-stack growth.
+        ArrayDeque<Iterator<IsoWorldRegion>> stack = new ArrayDeque<>();
+        stack.push(worldRegion.getNeighbors().iterator());
+        while (!stack.isEmpty()) {
+            Iterator<IsoWorldRegion> neighbours = stack.peek();
+            if (!neighbours.hasNext()) { stack.pop(); continue; }
+            IsoWorldRegion neighbour = neighbours.next();
+            if (neighbour.isEnclosed() && neighbour.getRoofedPercentage() >= 0.5F && seen.add(neighbour)) {
+                result.add(neighbour);
+                stack.push(neighbour.getNeighbors().iterator());
             }
         }
     }
@@ -571,9 +593,7 @@ public final class WorldRegionToMetaGrid {
             if (buildingDef == null) {
                 this.allWorldRegions.remove(region);
             } else {
-                if (!this.allWorldRegions.contains(region)) {
-                    this.allWorldRegions.add(region);
-                }
+                this.allWorldRegions.add(region);
 
                 this.buildingToRegions.get(buildingDef).add(region);
             }
@@ -665,12 +685,10 @@ public final class WorldRegionToMetaGrid {
     }
 
     private void markChunkDirty(int cx, int cy) {
-        tempLocation.set(cx, cy, 0);
-        if (!this.dirtyChunks.contains(tempLocation)) {
-            IsoGameCharacter.Location location = new IsoGameCharacter.Location(cx, cy, 0);
-            this.dirtyChunks.add(location);
-        }
+        this.dirtyChunks.add(chunkKey(cx, cy));
     }
+
+    private static long chunkKey(int x, int y) { return ((long)x << 32) | (y & 0xffffffffL); }
 
     private void markRegionChunksDirty(IsoWorldRegion region) {
         for (IsoChunkRegion chunk : region.getChunkRegions()) {
@@ -690,7 +708,6 @@ public final class WorldRegionToMetaGrid {
     private boolean chunkIsDirty(IsoChunk chunk) {
         int chunkX = PZMath.fastfloor(chunk.wx * 8 / 8.0F);
         int chunkY = PZMath.fastfloor(chunk.wy * 8 / 8.0F);
-        tempLocation.set(chunkX, chunkY, 0);
-        return this.dirtyChunks.contains(tempLocation);
+        return this.dirtyChunks.contains(chunkKey(chunkX, chunkY));
     }
 }
