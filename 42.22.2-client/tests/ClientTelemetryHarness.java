@@ -14,6 +14,7 @@ public final class ClientTelemetryHarness {
                 4096, 2048, 1024, 512, 1024, 128, true);
             ApocBRClientTelemetryLite.fileQueues(3, 4, 5);
             ApocBRClientTelemetryLite.networkQueues(3,4,5);
+            ApocBRClientTelemetryLite.buildingCommit(2,3,4,1,2,1,5);
             ApocBRClientTelemetryLite.networkPolled(2);
             ApocBRClientTelemetryLite.networkStage("test",ApocBRClientTelemetryLite.NetworkStage.PARSE,ApocBRClientTelemetryLite.beginPhase());
             ApocBRClientTelemetryLite.networkPacket("test",ApocBRClientTelemetryLite.beginPhase(),12,25,false,false);
@@ -41,6 +42,8 @@ public final class ClientTelemetryHarness {
                 ApocBRClientTelemetryLite.networkPacket("wrong-thread",1L,999,999,false,true);
                 ApocBRClientTelemetryLite.networkPolled(999);
                 ApocBRClientTelemetryLite.networkQueues(999,999,999);
+                ApocBRClientTelemetryLite.buildingCommit(999,999,999,999,999,999,999);
+                ApocBRClientTelemetryLite.buildingWorker(1000000L,400000L,600000L);
             });
             other.start(); other.join();
             Thread.sleep(2L);

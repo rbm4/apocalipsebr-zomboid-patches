@@ -292,6 +292,7 @@ public final class BuildingDef {
         tempRooms.clear();
         PZArrayUtil.addAll(tempRooms, this.rooms);
         PZArrayUtil.addAll(tempRooms, this.emptyoutside);
+        HashSet<Long> apocChunks = new HashSet<>();
 
         for (int n = 0; n < tempRooms.size(); n++) {
             RoomDef r = tempRooms.get(n);
@@ -305,10 +306,12 @@ public final class BuildingDef {
 
                 for (int wy = minY; wy <= maxY; wy++) {
                     for (int wx = minX; wx <= maxX; wx++) {
-                        if (!this.overlapsChunk(wx, wy)) {
+                        long apocStored = ((long)(short)wx << 32) | ((short)wy & 0xffffffffL);
+                        if (wx != (short)wx || wy != (short)wy || !apocChunks.contains(((long)wx << 32) | (wy & 0xffffffffL))) {
                             this.overlappedChunks.add((short)wx);
                             this.overlappedChunks.add((short)wy);
                         }
+                        apocChunks.add(apocStored);
                     }
                 }
             }
@@ -723,6 +726,9 @@ public final class BuildingDef {
 
         return roomID;
     }
+
+    /** Room-count/building-index changes invalidate the synthetic roof IDs used by lighting/cutaways. */
+    public void apocInvalidateRoofRoomIDs() { this.roofRoomId.clear(); }
 
     public boolean isEntirelyEmptyOutside() {
         return this.rooms.isEmpty() && !this.emptyoutside.isEmpty();

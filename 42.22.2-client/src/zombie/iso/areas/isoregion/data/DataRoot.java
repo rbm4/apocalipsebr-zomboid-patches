@@ -34,6 +34,14 @@ public final class DataRoot {
     private static final long[] t_end = new long[5];
     private static final long[] t_time = new long[5];
     private static final WorldRegionToMetaGrid wrtmg = new WorldRegionToMetaGrid();
+    private zombie.iso.areas.isoregion.metagrid.ApocBRBuildingPlan apocBuildingPlan;
+    private long apocBuildingGeneration;
+
+    public void prepareClientBuildings(java.util.function.BooleanSupplier cancelled) {
+        this.apocBuildingPlan=null;
+        this.apocBuildingPlan = zombie.iso.areas.isoregion.metagrid.ApocBRBuildingPlan.build(this,this.changedCells,++this.apocBuildingGeneration,cancelled);
+        zombie.ApocBRClientTelemetryLite.buildingWorker(this.apocBuildingPlan.nanos,this.apocBuildingPlan.collectNanos,this.apocBuildingPlan.geometryNanos);
+    }
 
     public DataRoot() {
         this.regionManager = new IsoRegionManager(this);
@@ -95,13 +103,14 @@ public final class DataRoot {
             return worldRegions;
         } else {
             ArrayList<DataChunk> dataChunks = new ArrayList<>();
+            HashSet<IsoWorldRegion> apocSeen = new HashSet<>();
             dataCell.getAllChunks(dataChunks);
 
             for (DataChunk dataChunk : dataChunks) {
                 for (int z = 0; z < 32; z++) {
                     for (IsoChunkRegion chunkRegion : dataChunk.getChunkRegions(z)) {
                         IsoWorldRegion worldRegion = chunkRegion.getIsoWorldRegion();
-                        if (!worldRegions.contains(worldRegion)) {
+                        if (apocSeen.add(worldRegion)) {
                             worldRegions.add(worldRegion);
                         }
                     }
@@ -125,6 +134,7 @@ public final class DataRoot {
     }
 
     public void resetAllData() {
+        this.apocBuildingPlan=null;this.apocBuildingGeneration++;
         ArrayList<IsoWorldRegion> isoWorldRegions = new ArrayList<>();
 
         for (Entry<Integer, DataCell> entry : this.cellMap.entrySet()) {
@@ -322,7 +332,15 @@ public final class DataRoot {
     }
 
     public void clientProcessBuildings() {
-        wrtmg.clientProcessBuildings(this.changedCells);
+        zombie.iso.areas.isoregion.metagrid.ApocBRBuildingPlan plan=this.apocBuildingPlan;
+        if(plan==null) {
+            long started=zombie.ApocBRClientTelemetryLite.beginPhase();
+            try { plan=zombie.iso.areas.isoregion.metagrid.ApocBRBuildingPlan.build(this,this.changedCells,++this.apocBuildingGeneration,()->false); }
+            finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_SYNC_PLAN,started); }
+        }
+        plan.validate(this,this.apocBuildingGeneration);
+        wrtmg.commitPrepared(this,plan);
+        this.apocBuildingPlan=null;
         this.changedCells.clear();
     }
 

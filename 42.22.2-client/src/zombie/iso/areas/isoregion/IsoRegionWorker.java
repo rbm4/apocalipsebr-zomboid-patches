@@ -47,7 +47,7 @@ import zombie.util.list.PZArrayUtil;
  */
 public final class IsoRegionWorker {
     private Thread thread;
-    private boolean finished;
+    private volatile boolean finished;
     protected static final AtomicBoolean isRequestingBufferSwap = new AtomicBoolean(false);
     private static IsoRegionWorker instance;
     private DataRoot rootBuffer = new DataRoot();
@@ -236,11 +236,22 @@ public final class IsoRegionWorker {
                     case ApplyChanges:
                         this.rootBuffer.processDirtyChunks();
                         if (cycle == 0) {
+                            if (GameClient.client && zombie.iso.areas.isoregion.metagrid.ApocBRBuildingPlan.ASYNC) {
+                                try { this.rootBuffer.prepareClientBuildings(() -> this.finished); }
+                                catch (java.util.concurrent.CancellationException cancelled) { if (this.finished) return; throw cancelled; }
+                                catch (RuntimeException failedPlan) {
+                                    zombie.ApocBRClientTelemetryLite.buildingWorkerFailure();
+                                    DebugType.General.printException(failedPlan, LogSeverity.Error);
+                                    // Geometry preparation is side-effect-free; owner fallback retains normal error behavior.
+                                }
+                            }
+                            if (this.finished) return;
                             isRequestingBufferSwap.set(true);
 
-                            while (isRequestingBufferSwap.get()) {
+                            while (isRequestingBufferSwap.get() && !this.finished) {
                                 Thread.sleep(5L);
                             }
+                            if (this.finished) return;
                         } else {
                             JobApplyChanges jobx = (JobApplyChanges)j;
                             if (!GameClient.client && jobx.isSaveToDisk()) {

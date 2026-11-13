@@ -2,6 +2,8 @@
 
 ## Features
 
+- 2026-11-13: [Async building geometry and bulk owner publication (schema 8)](features/2026-11-13-async-building-reconciliation.md).
+
 - 2026-11-13: [Client network update and packet-stage telemetry (schema 7)](features/2026-11-13-client-network-telemetry.md).
 
 - 2026-11-12: [Deferred textures, asynchronous translucent ordering and building lookups](features/2026-11-12-client-deferred-textures-and-async-translucency.md).
@@ -11,6 +13,8 @@
 - 2026-11-12: [Client main-thread telemetry scaffold](features/2026-11-12-client-main-thread-telemetry.md).
 
 ## Reports
+
+- 2026-11-13: [Schema 8 capture: worker building plans, remaining commit and render waits](reports/2026-11-13-schema-8-capture-analysis.md).
 
 - 2026-11-13: [Translucent work and practical building-reconciliation async lifecycle](reports/2026-11-13-rendering-and-building-async-lifecycle.md).
 

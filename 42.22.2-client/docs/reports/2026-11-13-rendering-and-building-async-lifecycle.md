@@ -1,5 +1,9 @@
 # Translucent rendering and practical building-reconciliation detachment
 
+Implemented follow-up: [worker geometry and bulk owner commit](../features/2026-11-13-async-building-reconciliation.md).
+The implementation keeps authored-overlap filtering and level combination on the
+owner; the extracted worker performs graph collection and initial room geometry.
+
 Source investigation 2026-11-13, exact 42.22.2-client. Scope is rendering,
 tiles/objects and region-derived buildings; packet work and bird callbacks are
 excluded from proposed changes. Measurement reference: [schema 7 capture](2026-11-13-schema-7-capture-analysis.md).

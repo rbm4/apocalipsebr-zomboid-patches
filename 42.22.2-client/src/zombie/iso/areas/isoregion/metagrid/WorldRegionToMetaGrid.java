@@ -35,6 +35,7 @@ import zombie.iso.areas.IsoBuilding;
 import zombie.iso.areas.IsoRoom;
 import zombie.iso.areas.isoregion.IsoRegions;
 import zombie.iso.areas.isoregion.data.DataChunk;
+import zombie.iso.areas.isoregion.data.DataRoot;
 import zombie.iso.areas.isoregion.regions.IsoChunkRegion;
 import zombie.iso.areas.isoregion.regions.IsoWorldRegion;
 import zombie.iso.fboRenderChunk.FBORenderCutaways;
@@ -61,45 +62,101 @@ public final class WorldRegionToMetaGrid {
     private static final IsoGameCharacter.Location tempLocation = new IsoGameCharacter.Location();
 
     public void clientProcessBuildings(ArrayList<IsoGameCharacter.Location> changedCells) {
-        if (!changedCells.isEmpty()) {
-            int removedBuildings = 0;
-            int addedBuildings = 0;
-            this.dirtyChunks.clear();
+        DataRoot root=IsoRegions.apocBuildingRoot();
+        commitPrepared(root,ApocBRBuildingPlan.build(root,changedCells,0L,()->false));
+    }
 
-            long apocRemove = zombie.ApocBRClientTelemetryLite.beginPhase();
-            for (IsoGameCharacter.Location location : changedCells) {
-                removedBuildings += this.removeUserDefinedBuildingsFromCell(location.x, location.y);
+    private final java.util.LinkedHashSet<IsoMetaCell> apocReindex = new java.util.LinkedHashSet<>();
+    private final ArrayList<BuildingDef> apocRetired = new ArrayList<>();
+    private final HashMap<Long,List<IsoWorldRegion>> apocCellRegions = new HashMap<>();
+    private boolean apocBulk;
 
-                for (int i = 0; i < DIRECTIONS.length; i++) {
-                    IsoDirections dir = DIRECTIONS[i];
-                    removedBuildings += this.removeUserDefinedBuildingsFromCell(location.x + dir.dx(), location.y + dir.dy());
+    /** One owner-thread publication. Worker geometry is complete before the first live removal. */
+    public void commitPrepared(DataRoot root,ApocBRBuildingPlan plan) {
+        if(plan.source!=root) throw new IllegalArgumentException("Wrong building-plan root");
+        if(plan.cells.isEmpty()) return;
+        long commitStarted=zombie.ApocBRClientTelemetryLite.beginPhase();
+        try {
+            WorldRegionToMetaGrid prepared=new WorldRegionToMetaGrid();
+            long materialize=zombie.ApocBRClientTelemetryLite.beginPhase();
+            try { prepared.materialize(plan); }
+            finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_MATERIALIZE,materialize); }
+            prepared.filterAndCombine();
+            this.dirtyChunks.clear();this.apocReindex.clear();this.apocRetired.clear();this.apocCellRegions.clear();
+            for(ApocBRBuildingPlan.Cell cell:plan.cells) this.apocCellRegions.put(chunkKey(cell.x(),cell.y()),cell.regions());
+            int removed=0,addedCount=0;
+            this.apocBulk=true;
+            long remove=zombie.ApocBRClientTelemetryLite.beginPhase();
+            try { for(ApocBRBuildingPlan.Cell cell:plan.cells) removed+=this.removeUserDefinedBuildingsFromCell(cell.x(),cell.y()); }
+            finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_REMOVE,remove); }
+            long global=zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                // Retired definitions cannot stay in the global list after eventual pool reuse.
+                HashSet<BuildingDef> retired=new HashSet<>(this.apocRetired);
+                IsoWorld.instance.getMetaGrid().buildings.removeIf(retired::contains);
+            } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_GLOBAL_INDEX,global); }
+            this.buildingsByLevel.clear();this.buildingsByLevel.putAll(prepared.buildingsByLevel);
+            this.buildingToRegions.clear();this.buildingToRegions.putAll(prepared.buildingToRegions);
+            this.allWorldRegions.clear();this.allWorldRegions.addAll(prepared.allWorldRegions);
+            // Removal clears new-root bindings too; publish only the surviving prepared associations.
+            for(var entry:this.buildingToRegions.entrySet()) for(IsoWorldRegion region:entry.getValue()) region.setBuildingDef(entry.getKey());
+            long insert=zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                for(int level=0;level<31;level++) {
+                    ArrayList<BuildingDef> buildings=this.buildingsByLevel.get(level);
+                    if(buildings!=null) for(BuildingDef building:buildings) { this.addToMetaGrid(building);addedCount++; }
                 }
+            } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_INSERT,insert); }
+            this.apocBulk=false;
+            long reindex=zombie.ApocBRClientTelemetryLite.beginPhase();
+            try { for(IsoMetaCell cell:this.apocReindex) this.recalculateBuildingAndRoomIDs(cell); }
+            finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_REINDEX,reindex); }
+            if(removed!=0 || addedCount!=0) {
+                for(IsoWorldRegion region:this.allWorldRegions) this.markRegionChunksDirty(region);
+                LightingJNI.buildingsChanged();
+                long squares=zombie.ApocBRClientTelemetryLite.beginPhase();
+                try { this.updateSquares(); }
+                finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_SQUARES,squares); }
+                IsoGridOcclusionData.SquareChanged();FBORenderCutaways.getInstance().squareChanged(null);
             }
-
-            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_REMOVE, apocRemove);
-            this.done.clear();
-            this.added.clear();
+            long retire=zombie.ApocBRClientTelemetryLite.beginPhase();
+            try {
+                for(BuildingDef building:this.apocRetired) {
+                    this.releaseRooms(building.getRooms());this.releaseRooms(building.getEmptyOutside());
+                    building.resetMinMaxLevel();Pools.buildingDef.release(building);
+                }
+            } finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_RETIRE,retire); }
+            zombie.ApocBRClientTelemetryLite.buildingCommit(plan.cells.size(),plan.regionCount,plan.rectangleCount,removed,addedCount,this.apocReindex.size(),this.dirtyChunks.size());
+            // The graph owns its bindings now. Do not retain its region objects across the next swap.
+            for(ArrayList<IsoWorldRegion> regions:this.buildingToRegions.values()) regions.clear();
             this.allWorldRegions.clear();
+        } finally {
+            this.apocBulk=false;this.apocCellRegions.clear();this.apocReindex.clear();this.apocRetired.clear();
+            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_COMMIT,commitStarted);
+        }
+    }
 
-            for (ArrayList<BuildingDef> list : this.buildingsByLevel.values()) {
-                list.clear();
+    private void materialize(ApocBRBuildingPlan plan) {
+        for(ApocBRBuildingPlan.Shape shape:plan.shapes) {
+            BuildingDef building=Pools.buildingDef.alloc();building.setUserDefined(true);
+            ArrayList<IsoWorldRegion> regions=new ArrayList<>();this.buildingToRegions.put(building,regions);
+            for(ApocBRBuildingPlan.Room source:shape.rooms()) {
+                RoomDef room=Pools.roomDef.alloc();room.id=0L;room.setName("");room.explored=true;room.userDefined=true;
+                room.level=source.level();room.building=building;
+                for(ApocBRBuildingPlan.Rect rect:source.rects()) room.rects.add(Pools.roomRect.alloc().set(rect.x(),rect.y(),rect.w(),rect.h()));
+                room.x=source.x();room.y=source.y();room.x2=source.x2();room.y2=source.y2();room.area=source.area();
+                building.rooms.add(room);regions.add(source.region());this.allWorldRegions.add(source.region());
+                source.region().setBuildingDef(building);
             }
+            building.x=shape.x();building.y=shape.y();building.x2=shape.x2();building.y2=shape.y2();
+            if(building.overlappedChunks==null) building.overlappedChunks=new TShortArrayList();
+            building.overlappedChunks.resetQuick();
+            for(long chunk:shape.chunks()) { building.overlappedChunks.add((short)(chunk>>32));building.overlappedChunks.add((short)chunk); }
+            this.buildingsByLevel.computeIfAbsent(building.getMinLevel(),level->new ArrayList<>()).add(building);
+        }
+    }
 
-            for (ArrayList<IsoWorldRegion> list : this.buildingToRegions.values()) {
-                list.clear();
-            }
-
-            long apocCreate = zombie.ApocBRClientTelemetryLite.beginPhase();
-            for (IsoGameCharacter.Location location : changedCells) {
-                this.createBuildingsFromRegions(location.x, location.y, this.done, this.added, this.buildingsByLevel);
-
-                for (int i = 0; i < DIRECTIONS.length; i++) {
-                    IsoDirections dir = DIRECTIONS[i];
-                    this.createBuildingsFromRegions(location.x + dir.dx(), location.y + dir.dy(), this.done, this.added, this.buildingsByLevel);
-                }
-            }
-
-            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_CREATE, apocCreate);
+    private void filterAndCombine() {
             long apocFilter = zombie.ApocBRClientTelemetryLite.beginPhase();
             for (int z = 0; z < 31; z++) {
                 ArrayList<BuildingDef> buildings = this.buildingsByLevel.get(z);
@@ -127,75 +184,20 @@ public final class WorldRegionToMetaGrid {
             }
 
             zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_COMBINE, apocCombine);
-            long apocInsert = zombie.ApocBRClientTelemetryLite.beginPhase();
-            for (int zxx = 0; zxx < 31; zxx++) {
-                ArrayList<BuildingDef> buildings = this.buildingsByLevel.get(zxx);
-                if (buildings != null) {
-                    for (int ix = 0; ix < buildings.size(); ix++) {
-                        BuildingDef buildingDef = buildings.get(ix);
-                        this.addToMetaGrid(buildingDef);
-                        addedBuildings++;
-                    }
-                }
-            }
 
-            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_INSERT, apocInsert);
-            if (Core.debug) {
-                for (IsoWorldRegion worldRegion : this.allWorldRegions) {
-                    if (worldRegion.getBuildingDef() == null) {
-                        throw new IllegalStateException("world region has no assigned building");
-                    }
-                }
-
-                for (ArrayList<BuildingDef> buildings : this.buildingsByLevel.values()) {
-                    for (BuildingDef buildingDef : buildings) {
-                        for (RoomDef room : buildingDef.getRooms()) {
-                            for (RoomDef.RoomRect rect : room.getRects()) {
-                                if (IsoRegions.getIsoWorldRegion(rect.x, rect.y, room.level) instanceof IsoWorldRegion iwr
-                                    && iwr.getBuildingDef() != buildingDef) {
-                                    DebugType.General.error("world region building isn't the expected one");
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            for (ArrayList<BuildingDef> list : this.buildingsByLevel.values()) {
-                list.clear();
-            }
-
-            for (ArrayList<IsoWorldRegion> list : this.buildingToRegions.values()) {
-                if (Core.debug) {
-                    for (IsoWorldRegion region : list) {
-                        if (region.getBuildingDef() == null) {
-                            DebugType.General.error("world region building isn't the expected one");
-                        }
-                    }
-                }
-
-                list.clear();
-            }
-
-            if (removedBuildings != 0 || addedBuildings != 0) {
-                for (IsoWorldRegion regionx : this.allWorldRegions) {
-                    this.markRegionChunksDirty(regionx);
-                }
-
-                LightingJNI.buildingsChanged();
-                long apocSquares = zombie.ApocBRClientTelemetryLite.beginPhase();
-                try { this.updateSquares(); }
-                finally { zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_BUILD_SQUARES, apocSquares); }
-                IsoGridOcclusionData.SquareChanged();
-                FBORenderCutaways.getInstance().squareChanged(null);
-            }
-        }
     }
+
+    private void collectRegions(int x,int y) {
+        List<IsoWorldRegion> cached=this.apocCellRegions.get(chunkKey(x,y));
+        if(cached==null) IsoRegions.getIsoWorldRegionsInCell(x,y,this.worldRegions);
+        else { this.worldRegions.clear();this.worldRegions.addAll(cached); }
+    }
+
 
     private void createBuildingsFromRegions(
         int cellX, int cellY, HashSet<IsoWorldRegion> done, HashSet<BuildingDef> added, HashMap<Integer, ArrayList<BuildingDef>> buildingsByLevel
     ) {
-        IsoRegions.getIsoWorldRegionsInCell(cellX, cellY, this.worldRegions);
+        this.collectRegions(cellX,cellY);
 
         for (IsoWorldRegion worldRegion : this.worldRegions) {
             if (worldRegion.isEnclosed() && !(worldRegion.getRoofedPercentage() < 0.5F) && !done.contains(worldRegion)) {
@@ -221,7 +223,7 @@ public final class WorldRegionToMetaGrid {
     }
 
     private int removeUserDefinedBuildingsFromCell(int cellX, int cellY) {
-        IsoRegions.getIsoWorldRegionsInCell(cellX, cellY, this.worldRegions);
+        this.collectRegions(cellX,cellY);
 
         for (IsoWorldRegion worldRegion : this.worldRegions) {
             if (worldRegion.getBuildingDef() != null) {
@@ -242,7 +244,8 @@ public final class WorldRegionToMetaGrid {
                 if (buildingDef.isUserDefined()) {
                     this.markBuildingChunksDirty(buildingDef);
                     this.removeFromMetaGrid(buildingDef);
-                    this.discardBuilding(buildingDef, true);
+                    if(this.apocBulk) { this.apocRetired.add(buildingDef);this.buildingToRegions.remove(buildingDef); }
+                    else this.discardBuilding(buildingDef, true);
                     removed++;
                 }
             }
@@ -458,19 +461,23 @@ public final class WorldRegionToMetaGrid {
     }
 
     private void recalculateBuildingAndRoomIDs(IsoMetaCell metaCell) {
+        if(this.apocBulk) { this.apocReindex.add(metaCell);return; }
         int cellX = metaCell.getX();
         int cellY = metaCell.getY();
         metaCell.rooms.clear();
 
         for (int i = 0; i < metaCell.roomList.size(); i++) {
             RoomDef roomDef = metaCell.roomList.get(i);
-            roomDef.id = RoomID.makeID(cellX, cellY, i);
+            long nextID=RoomID.makeID(cellX,cellY,i);
+            if(roomDef.id!=nextID) this.markRoomChunksDirty(roomDef);
+            roomDef.id = nextID;
             metaCell.rooms.put(roomDef.id, roomDef);
         }
 
         for (int i = 0; i < metaCell.buildings.size(); i++) {
             BuildingDef buildingDef = metaCell.buildings.get(i);
             buildingDef.id = BuildingID.makeID(cellX, cellY, i);
+            buildingDef.apocInvalidateRoofRoomIDs();
         }
 
         ArrayList<IsoBuilding> isoBuildings = new ArrayList<>(metaCell.isoBuildings.values());
@@ -492,13 +499,13 @@ public final class WorldRegionToMetaGrid {
         if (!rooms.isEmpty()) {
             for (int roomIndex = 0; roomIndex < rooms.size(); roomIndex++) {
                 RoomDef roomDef = rooms.get(roomIndex);
-                roomDef.id = RoomID.makeID(metaCell.getX(), metaCell.getY(), metaCell.roomList.size());
+                if(!this.apocBulk) roomDef.id = RoomID.makeID(metaCell.getX(), metaCell.getY(), metaCell.roomList.size());
                 roomDef.metaId = roomDef.calculateMetaID(metaCell.getX(), metaCell.getY());
-                if (metaCell.rooms.containsKey(roomDef.id)) {
+                if (!this.apocBulk && metaCell.rooms.containsKey(roomDef.id)) {
                     DebugType.General.error("duplicate RoomDef.ID for room at %d,%d,%d", roomDef.x, roomDef.y, roomDef.level);
                 }
 
-                metaCell.rooms.put(roomDef.id, roomDef);
+                if(!this.apocBulk) metaCell.rooms.put(roomDef.id, roomDef);
                 metaCell.roomList.add(roomDef);
                 if (metaCell.roomByMetaId.contains(roomDef.metaId)) {
                     DebugType.General.error("duplicate RoomDef.metaID for room at %d,%d,%d", roomDef.x, roomDef.y, roomDef.level);
@@ -626,7 +633,7 @@ public final class WorldRegionToMetaGrid {
             if (roomDef != null) {
                 IsoRoom room = square.getChunk().getRoom(roomDef.id);
                 square.roofHideBuilding = room == null ? null : room.building;
-            }
+            } else square.roofHideBuilding=null;
 
             IsoRoom room = square.getRoom();
             if (roomID != -1L && room != null) {
@@ -681,6 +688,13 @@ public final class WorldRegionToMetaGrid {
                     }
                 }
             }
+        }
+    }
+
+    private void markRoomChunksDirty(RoomDef room) {
+        for(RoomDef.RoomRect rect:room.rects) {
+            for(int y=Math.floorDiv(rect.y,8);y<=Math.floorDiv(rect.y+rect.h-1,8);y++)
+                for(int x=Math.floorDiv(rect.x,8);x<=Math.floorDiv(rect.x+rect.w-1,8);x++) this.markChunkDirty(x,y);
         }
     }
 

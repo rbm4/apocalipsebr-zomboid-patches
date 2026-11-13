@@ -33,7 +33,14 @@ class ClientTelemetryTest(unittest.TestCase):
             self.assertEqual(len(first['worstFrames']), 16)
             self.assertEqual(first['context'], {'loadedZombies': 224, 'movingObjects': 324,
                                                'screenWidth': 1920, 'screenHeight': 1080, 'playerZoom': 1.5})
-            self.assertEqual(first['schemaVersion'], 7)
+            self.assertEqual(first['schemaVersion'], 8)
+            self.assertEqual(first['buildings']['cells'],50)
+            self.assertEqual(first['buildings']['reindexedCells'],25)
+            self.assertEqual(first['buildings']['workerPlans'],25)
+            self.assertEqual(first['buildings']['workerPlanMs'],25)
+            self.assertEqual(first['buildings']['workerCollectMs'],10)
+            self.assertEqual(first['buildings']['workerGeometryMs'],15)
+            self.assertTrue(all(f['buildings']['cells']==2 for f in first['worstFrames']))
             network=first['network']
             self.assertEqual(network['polled'],50)
             self.assertEqual(network['ownerBacklogMax'],12)
@@ -88,6 +95,7 @@ class ClientTelemetryTest(unittest.TestCase):
             self.assertEqual(second['slowLua']['callbacks'], [])
             self.assertEqual(second['seq'], 2)
             self.assertEqual(second['network']['polled'],0)
+            self.assertEqual(second['buildings']['cells'],0)
             self.assertEqual(second['network']['ownerBacklogMax'],0)
             self.assertEqual(sum(t['dispatch']['count'] for t in second['network']['types'].values()),0)
             self.assertTrue(all(f['network']['packets']>0 for f in first['worstFrames']))

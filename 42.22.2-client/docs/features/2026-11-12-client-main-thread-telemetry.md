@@ -1,6 +1,7 @@
 # Client main-thread telemetry scaffold
 
-Current schema 7 adds [network update and packet-stage telemetry](2026-11-13-client-network-telemetry.md).
+Current schema 8 adds [worker building geometry and bulk commit measurements](2026-11-13-async-building-reconciliation.md).
+Schema 7 added [network update and packet-stage telemetry](2026-11-13-client-network-telemetry.md).
 Existing behavior: [deferred textures and asynchronous translucent ordering](2026-11-12-client-deferred-textures-and-async-translucency.md).
 See the [client network async assessment](../reports/2026-11-12-client-network-async-assessment.md) for the scope of NETWORK timings.
 Full cost review: [measured rendering/simulation costs and worker boundaries](../reports/2026-11-13-client-worker-boundaries-and-full-cost-review.md).

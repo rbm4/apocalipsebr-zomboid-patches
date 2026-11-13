@@ -214,16 +214,17 @@ public final class IsoRegions {
                 DataRoot root = dataRoot;
                 dataRoot = regionWorker.getRootBuffer();
                 regionWorker.setRootBuffer(root);
-                IsoRegionWorker.isRequestingBufferSwap.set(false);
-                if (!GameServer.server) {
-                    clientResetCachedRegionReferences();
-                    long apocProbe502 = zombie.ApocBRClientTelemetryLite.beginPhase();
-                    try {
-                        dataRoot.clientProcessBuildings();
-                    } finally {
-                        zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_PROCESS_BUILDINGS, apocProbe502);
+                try {
+                    if (!GameServer.server) {
+                        clientResetCachedRegionReferences();
+                        long apocProbe502 = zombie.ApocBRClientTelemetryLite.beginPhase();
+                        try {
+                            dataRoot.clientProcessBuildings();
+                        } finally {
+                            zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_PROCESS_BUILDINGS, apocProbe502);
+                        }
                     }
-                }
+                } finally { IsoRegionWorker.isRequestingBufferSwap.set(false); }
             }
         } finally {
             zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_SWAP, apocProbe501);
@@ -252,6 +253,9 @@ public final class IsoRegions {
             zombie.ApocBRClientTelemetryLite.endPhase(zombie.ApocBRClientTelemetryLite.Phase.REGION_LOGGER, apocProbe504);
         }
     }
+
+    /** Internal compatibility entry point for the versioned building reconciler. Owner-thread use only. */
+    public static DataRoot apocBuildingRoot() { return dataRoot; }
 
     protected static void forceRecalcSurroundingChunks() {
         if (Core.debug && !GameClient.client) {

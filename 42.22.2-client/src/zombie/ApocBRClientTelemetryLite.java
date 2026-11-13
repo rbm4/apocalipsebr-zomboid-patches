@@ -50,7 +50,9 @@ public final class ApocBRClientTelemetryLite {
         NET_DISPATCH_BATCH, NET_OUTGOING_REQUESTS, NET_PLAYER_TIMEOUTS, NET_OUTGOING_INVENTORY,
         NET_VOICE, NET_VEHICLE_CLIP, NET_STREAMING, NET_CONNECTION_MAINTENANCE, NET_CHAT, NET_STATISTICS, NET_DISCONNECT_CLEANUP,
         NET_PACKET_STATISTICS, NET_PACKET_FACTORY, NET_PACKET_PARSE, NET_PACKET_VALIDATE, NET_PACKET_LOG,
-        NET_PACKET_APPLY, NET_PACKET_POSTPONE, NET_PACKET_LEGACY
+        NET_PACKET_APPLY, NET_PACKET_POSTPONE, NET_PACKET_LEGACY,
+        REGION_BUILD_COMMIT, REGION_BUILD_SYNC_PLAN, REGION_BUILD_MATERIALIZE,
+        REGION_BUILD_REINDEX, REGION_BUILD_GLOBAL_INDEX, REGION_BUILD_RETIRE
     }
 
     public static final boolean ENABLED = Boolean.getBoolean("apocbr.clientTelemetry.enabled");
@@ -97,6 +99,24 @@ public final class ApocBRClientTelemetryLite {
     private static long networkPolled, networkOverflow, frameNetworkPackets, frameNetworkBytes;
     private static int networkPending, networkLoading, networkCoop, networkBacklogMax, frameNetworkBacklogMax;
     private static PacketSample frameLargestPacket;
+    private static final long[] buildingCounts = new long[7];
+    private static final long[] frameBuildingCounts = new long[7];
+    private static final java.util.concurrent.atomic.LongAdder buildingPlans = new java.util.concurrent.atomic.LongAdder();
+    private static final java.util.concurrent.atomic.LongAdder buildingPlanNanos = new java.util.concurrent.atomic.LongAdder();
+    private static final java.util.concurrent.atomic.LongAdder buildingPlanFailures = new java.util.concurrent.atomic.LongAdder();
+    private static final java.util.concurrent.atomic.LongAdder buildingCollectNanos = new java.util.concurrent.atomic.LongAdder();
+    private static final java.util.concurrent.atomic.LongAdder buildingGeometryNanos = new java.util.concurrent.atomic.LongAdder();
+    public static void buildingWorker(long nanos,long collect,long geometry) {
+        if(ENABLED) { buildingPlans.increment();buildingPlanNanos.add(nanos);buildingCollectNanos.add(collect);buildingGeometryNanos.add(geometry); }
+    }
+    public static void buildingWorkerFailure() { if(ENABLED) buildingPlanFailures.increment(); }
+    public static void buildingCommit(int cells,int regions,int rectangles,int removed,int added,int reindexed,int dirty) {
+        if(!isCapturing()) return;
+        buildingCounts[0]+=cells;buildingCounts[1]+=regions;buildingCounts[2]+=rectangles;
+        buildingCounts[3]+=removed;buildingCounts[4]+=added;buildingCounts[5]+=reindexed;buildingCounts[6]+=dirty;
+        frameBuildingCounts[0]+=cells;frameBuildingCounts[1]+=regions;frameBuildingCounts[2]+=rectangles;
+        frameBuildingCounts[3]+=removed;frameBuildingCounts[4]+=added;frameBuildingCounts[5]+=reindexed;frameBuildingCounts[6]+=dirty;
+    }
     public enum WorkerTexture { PREPROCESSED, FALLBACK, WORK_NANOS, INPUT_PIXELS, OUTPUT_PIXELS, FAILED, CANCELLED_RESULTS, SETTINGS_RELOADS,
         UNSUPPORTED, OVERSIZED, CAPACITY_WAIT_NANOS, QUEUED }
     public enum TranslucentWorker { SUBMITTED, COMPLETED, REUSED, PENDING, QUEUE_FULL, FAILED, WORK_NANOS,
@@ -150,6 +170,7 @@ public final class ApocBRClientTelemetryLite {
         frameLargestTexture = null;
         frameNetworkPackets = frameNetworkBytes = 0L;
         frameNetworkBacklogMax = 0; frameLargestPacket = null;
+        Arrays.fill(frameBuildingCounts,0L);
         capturing = true;
     }
 
@@ -317,7 +338,7 @@ public final class ApocBRClientTelemetryLite {
             if (slowSize < SLOW_LIMIT || elapsed > slow[slot].nanos) {
                 slow[slot] = new SlowFrame(frameNumber, System.currentTimeMillis(), elapsed,
                     frameCadence, zombies, movingObjects, framePhases.clone(), frameFileMaxType, frameFileMaxNanos, cpuNanos, frameLargestTexture,
-                    frameNetworkPackets, frameNetworkBytes, frameNetworkBacklogMax, frameLargestPacket);
+                    frameNetworkPackets, frameNetworkBytes, frameNetworkBacklogMax, frameLargestPacket,frameBuildingCounts.clone());
                 if (slowSize < SLOW_LIMIT) slowSize++;
             }
         }
@@ -336,7 +357,8 @@ public final class ApocBRClientTelemetryLite {
             zombies, movingObjects, owner.getName(), tasks, fileCompletions, fileSubmissions,
             filesInProgress, filesPending, filesAdded, filesBacklogMax, fileTaskOverflow, frameCpu.take(), screenWidth, screenHeight, zoom,
             textureLimitCalls, texturesScaled, textureInputPixels, textureOutputPixels, largestTexture,
-            slowLuaCount, Arrays.copyOf(slowLua, slowLuaSize), takeNetwork());
+            slowLuaCount, Arrays.copyOf(slowLua, slowLuaSize), takeNetwork(),buildingCounts.clone());
+        Arrays.fill(buildingCounts,0L);
         slowLuaCount = 0L; slowLuaSize = 0; Arrays.fill(slowLua, null);
         textureLimitCalls = texturesScaled = textureInputPixels = textureOutputPixels = 0L;
         largestTexture = null;
@@ -419,7 +441,7 @@ public final class ApocBRClientTelemetryLite {
 
     private static String toJson(Snapshot s, long gcCount, long gcMs, String collectors) {
         StringBuilder json = new StringBuilder(8192);
-        json.append("{\"schemaVersion\":7,\"kind\":\"client-main-thread\",\"targetBuild\":\"42.22.2\",\"seq\":")
+        json.append("{\"schemaVersion\":8,\"kind\":\"client-main-thread\",\"targetBuild\":\"42.22.2\",\"seq\":")
             .append(s.seq).append(",\"ts\":").append(s.ts).append(",\"intervalMs\":").append(ms(s.interval))
             .append(",\"thread\":\"").append(escape(s.thread)).append("\",\"frameWork\":");
         appendStats(json, s.frames);
@@ -457,6 +479,10 @@ public final class ApocBRClientTelemetryLite {
             json.append(",\"network\":{\"packets\":").append(f.networkPackets).append(",\"payloadBytes\":").append(f.networkBytes)
                 .append(",\"ownerBacklogMax\":").append(f.networkBacklogMax).append(",\"largestPacket\":");
             appendPacket(json,f.packet); json.append('}');
+            json.append(",\"buildings\":{\"cells\":").append(f.buildings[0]).append(",\"regions\":").append(f.buildings[1])
+                .append(",\"rectangles\":").append(f.buildings[2]).append(",\"removed\":").append(f.buildings[3])
+                .append(",\"added\":").append(f.buildings[4]).append(",\"reindexedCells\":").append(f.buildings[5])
+                .append(",\"dirtyChunks\":").append(f.buildings[6]).append('}');
             json.append('}');
         }
         json.append("],\"fileSystem\":{\"resultCallbacks\":").append(s.fileCompletions)
@@ -473,6 +499,14 @@ public final class ApocBRClientTelemetryLite {
         }
         json.append("}},\"network\":"); appendNetwork(json,s.network);
         Runtime rt = Runtime.getRuntime();
+        json.append(",\"buildings\":{\"cells\":").append(s.buildings[0]).append(",\"regions\":").append(s.buildings[1])
+            .append(",\"rectangles\":").append(s.buildings[2]).append(",\"removed\":").append(s.buildings[3])
+            .append(",\"added\":").append(s.buildings[4]).append(",\"reindexedCells\":").append(s.buildings[5])
+            .append(",\"dirtyChunks\":").append(s.buildings[6]).append(",\"workerPlans\":").append(buildingPlans.sumThenReset())
+            .append(",\"workerPlanMs\":").append(ms(buildingPlanNanos.sumThenReset()))
+            .append(",\"workerCollectMs\":").append(ms(buildingCollectNanos.sumThenReset()))
+            .append(",\"workerGeometryMs\":").append(ms(buildingGeometryNanos.sumThenReset()))
+            .append(",\"workerFailures\":").append(buildingPlanFailures.sumThenReset()).append('}');
         json.append(",\"textures\":{\"limitCalls\":").append(s.textureCalls)
             .append(",\"scaled\":").append(s.scaled).append(",\"inputPixels\":").append(s.inputPixels)
             .append(",\"outputPixels\":").append(s.outputPixels).append(",\"largestLimit\":");
@@ -606,11 +640,11 @@ public final class ApocBRClientTelemetryLite {
     private record LuaSample(long frame, long nanos, String file, String name, int line, int closureId) { }
     private record SlowFrame(long frame, long ts, long nanos, long cadence, int zombies, int movingObjects, long[] phases,
         String fileType, long fileNanos, long cpuNanos, TextureSample texture,
-        long networkPackets,long networkBytes,int networkBacklogMax,PacketSample packet) { }
+        long networkPackets,long networkBytes,int networkBacklogMax,PacketSample packet,long[] buildings) { }
     private record Snapshot(long seq, long ts, long interval, long[] frames, long[] cadence,
         long[][] phases, long slowCount, SlowFrame[] slow, int zombies, int movingObjects, String thread,
         TaskSnapshot[] tasks, long fileCompletions, long fileSubmissions, int inProgress, int pending, int added,
         int backlogMax, long taskOverflow, long[] cpu, int width, int height, float zoom,
         long textureCalls, long scaled, long inputPixels, long outputPixels, TextureSample texture,
-        long luaSlowCount, LuaSample[] lua,NetworkSnapshot network) { }
+        long luaSlowCount, LuaSample[] lua,NetworkSnapshot network,long[] buildings) { }
 }

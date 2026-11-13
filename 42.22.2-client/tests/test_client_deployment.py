@@ -50,7 +50,7 @@ class ClientDeploymentTest(unittest.TestCase):
                 self.assertEqual(changed['vmArgs'], settings['vmArgs'])
                 self.assertEqual(changed['mainClass'], settings['mainClass'])
                 self.assertEqual(changed['custom'], settings['custom'])
-                self.assertEqual(len(list(zombie.rglob('*.class'))), 75)
+                self.assertEqual(len(list(zombie.rglob('*.class'))), 86)
                 derived = deploy / 'projectzomboid-apocbr.jar'
                 with zipfile.ZipFile(jar) as source, zipfile.ZipFile(derived) as target:
                     self.assertEqual(source.read('zombie/GameWindow.class'), target.read('zombie/GameWindow.class'))

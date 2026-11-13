@@ -36,4 +36,5 @@ independently of telemetry enablement. For a baseline comparison, restart with
 `-Dapocbr.clientTextures.workerPreprocess=false`. See
 [worker ownership and probes](docs/features/2026-11-12-texture-workers-and-client-probes.md).
 Texture/rendering changes include [deferred resizing, async translucent ordering and building lookup optimizations](docs/features/2026-11-12-client-deferred-textures-and-async-translucency.md), with [continuous drawing during ordering refresh](docs/issues/2026-11-12-async-translucent-flicker.md).
-Current schema 7 adds [network update, per-type packet timings and slow-frame attribution](docs/features/2026-11-13-client-network-telemetry.md).
+Schema 7 adds [network update, per-type packet timings and slow-frame attribution](docs/features/2026-11-13-client-network-telemetry.md).
+Current schema 8 adds [worker building geometry, a bulk coherent commit and remaining-cost measurements](docs/features/2026-11-13-async-building-reconciliation.md).
