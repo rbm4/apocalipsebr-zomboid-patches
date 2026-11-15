@@ -271,13 +271,17 @@ public class IsoGenerator extends IsoObject {
             }
         }
 
-        if (this.updateSurrounding && this.getSquare() != null) {
-            this.setSurroundingElectricity();
-            this.updateSurrounding = false;
-        }
+        this.updateElectricityIfNeeded();
 
         if (this.emitter != null) {
             this.emitter.tick();
+        }
+    }
+
+    protected final void updateElectricityIfNeeded() {
+        if (this.updateSurrounding && this.getSquare() != null) {
+            this.setSurroundingElectricity();
+            this.updateSurrounding = false;
         }
     }
 
@@ -411,7 +415,7 @@ public class IsoGenerator extends IsoObject {
         }
     }
 
-    private void updateFridgeFreezerItems() {
+    protected final void updateFridgeFreezerItems() {
         if (this.square != null) {
             int minX = this.square.getX() - generatorRadius;
             int maxX = this.square.getX() + generatorRadius;

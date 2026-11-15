@@ -1119,6 +1119,9 @@ public final class LuaManager {
         arrayConverter.install();
         LuaEventManager.register(platform, env);
         LuaHookManager.register(platform, env);
+        if (GameServer.server) {
+            LuaHookManager.AddEvent(zombie.apocbr.power.IsoPowerBank.UPDATE_HOOK);
+        }
         CoopMaster.instance.register(platform, env);
         if (VoiceManager.instance != null) {
             VoiceManager.instance.LuaRegister(platform, env);
@@ -2122,6 +2125,9 @@ public final class LuaManager {
             this.setExposed(IsoHutch.class);
             this.setExposed(IsoHutch.NestBox.class);
             this.setExposed(IsoGenerator.class);
+            if (GameServer.server) {
+                this.setExposed(zombie.apocbr.power.IsoPowerBank.class);
+            }
             this.setExposed(IsoJukebox.class);
             this.setExposed(IsoLightSwitch.class);
             this.setExposed(IsoMannequin.class);

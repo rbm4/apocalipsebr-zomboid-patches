@@ -910,6 +910,9 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
             return null;
         } else {
             byte classID = b.get();
+            if (classID == 22 && zombie.apocbr.power.IsoPowerBank.isPowerBankPayload(b)) {
+                return new zombie.apocbr.power.IsoPowerBank(cell);
+            }
             return factoryFromFileInput(cell, classID);
         }
     }
