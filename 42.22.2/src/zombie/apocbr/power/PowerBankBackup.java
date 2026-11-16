@@ -20,7 +20,7 @@ public final class PowerBankBackup {
     public static boolean isControlled(IsoGenerator source) {
         return enabled && GameServer.server && !(source instanceof IsoPowerBank)
             && !zombie.network.ApocBRManagedGenerators.isTagged(source)
-            && source.getModData().rawget(OWNER) instanceof KahluaTable;
+            && source.getISABackupOwner() != null;
     }
 
     public static boolean claim(IsoGenerator source, KahluaTable owner) {
@@ -29,25 +29,41 @@ public final class PowerBankBackup {
             if (!(owner.rawget(key) instanceof Double coordinate) || !Double.isFinite(coordinate)
                 || coordinate != Math.rint(coordinate)) return false;
         }
-        Object previous = source.getModData().rawget(OWNER);
+        Object previous = source.getISABackupOwner();
         if (previous instanceof KahluaTable old) {
             for (String key : new String[]{"x", "y", "z"}) {
                 if (!java.util.Objects.equals(old.rawget(key), owner.rawget(key))) return false;
             }
         }
-        source.getModData().rawset(OWNER, owner);
-        source.flagForHotSave();
+        if (!(previous instanceof KahluaTable)) {
+            source.setISABackupOwner(owner);
+            stop(source);
+            source.flagForHotSave();
+            source.transmitModData();
+        }
         return true;
     }
 
     public static void release(IsoGenerator source) {
-        source.getModData().rawset(OWNER, null);
+        // Stop while the ownership guard still protects the source, then unlock it.
+        stop(source);
+        source.setISABackupOwner(null);
         source.resetISABackupClock();
         source.flagForHotSave();
+        source.transmitModData();
+    }
+
+    public static void stop(IsoGenerator source) {
+        if (isControlled(source)) source.applyISABackupState(source.getFuel(), source.getCondition(), false);
+        else source.setActivated(false);
     }
 
     public static void request(IsoGenerator source) {
-        Object owner = source.getModData().rawget(OWNER);
+        Object owner = source.getISABackupOwner();
+        if (source.getModData().rawget(OWNER) != owner) {
+            source.getModData().rawset(OWNER, owner);
+            source.transmitModData();
+        }
         LuaHookManager.TriggerHook(HOOK, source, owner, GameTime.getInstance().getWorldAgeHours());
     }
 }

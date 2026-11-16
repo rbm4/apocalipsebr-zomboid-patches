@@ -10,8 +10,10 @@ JAVAC = ROOT / "jdk/bin/javac.exe"
 JAVA = ROOT / "jdk/bin/java.exe"
 
 STUBS = {
+    "zombie/Lua/LuaManager.java": "package zombie.Lua; public class LuaManager { public static final Platform platform=new Platform(); public static class Platform { public se.krka.kahlua.vm.KahluaTable newTable() { return new zombie.iso.objects.IsoGenerator.Data(); } } }",
     "se/krka/kahlua/vm/KahluaTable.java": "package se.krka.kahlua.vm; public interface KahluaTable { Object rawget(Object key); void rawset(Object key,Object value); }",
-    "zombie/network/ApocBRManagedGenerators.java": "package zombie.network; public class ApocBRManagedGenerators { public static boolean isTagged(zombie.iso.objects.IsoGenerator gen) { return gen.tagged; } }",
+    "zombie/network/ApocBRManagedGenerators.java": "package zombie.network; public class ApocBRManagedGenerators { public static boolean isTagged(zombie.iso.objects.IsoGenerator gen) { return gen.tagged; } public static boolean denyChange(Object gen,String action) { return false; } }",
+    "zombie/network/GameClient.java": "package zombie.network; public class GameClient { public static boolean client; }",
     "zombie/core/logger/ExceptionLogger.java": "package zombie.core.logger; public class ExceptionLogger { public static void logException(Throwable error) {} }",
     "zombie/debug/DebugLog.java": "package zombie.debug; public class DebugLog { public static void log(String text) {} }",
     "zombie/UsedFromLua.java": "package zombie; public @interface UsedFromLua {}",
@@ -56,12 +58,20 @@ STUBS = {
         }""",
     "zombie/iso/objects/IsoGenerator.java": """package zombie.iso.objects;
         import zombie.GameTime;
+        import zombie.network.GameClient;
+        import zombie.network.GameServer;
+        import zombie.Lua.LuaEventManager;
+        import zombie.core.logger.ExceptionLogger;
+        import zombie.core.network.ByteBufferReader;
+        import zombie.core.raknet.UdpConnection;
         public class IsoGenerator {
             public float fuel;
             public int condition;
             public boolean connected,activated,tagged;
             public int clockResets;
             private int lastHour;
+            private boolean isaApplyingBackupState;
+            private se.krka.kahlua.vm.KahluaTable isaBackupOwner;
             public int syncs,foodUpdates,electricityUpdates;
             public boolean inWorld=true;
             public static class Data extends java.util.HashMap<Object,Object> implements se.krka.kahlua.vm.KahluaTable {
@@ -75,13 +85,18 @@ STUBS = {
             public int getObjectIndex() { return inWorld ? 0 : -1; }
             public void update() { throw new AssertionError("Gasoline update invoked"); }
             public void load(java.nio.ByteBuffer input,int version,boolean debug) throws java.io.IOException { data.clear(); }
-            public void setActivated(boolean value) { activated=value; }
+            public void setActivated(boolean value) { if(isISABackupActivationAllowed(value)) activated=value; else sync(); }
             public void syncIsoObjectReceive(zombie.core.network.ByteBufferReader input,zombie.core.raknet.UdpConnection source) {}
             protected final void updateElectricityIfNeeded() {}
             protected final void updateFridgeFreezerItems() { foodUpdates++; }
             public void setSurroundingElectricity() { electricityUpdates++; }
             public void flagForHotSave() {}
             public void sync() { syncs++; }
+            public void transmitModData() {}
+            public float getFuel() { return fuel; }
+            public int getCondition() { return condition; }
+            public void playGeneratorSound(String name) {}
+            public void stopAllSounds() {}
             public void resetISABackupClock() { clockResets++; }
         }""",
 }
@@ -163,14 +178,30 @@ public class PowerBankFixture {
 
         zombie.apocbr.power.PowerBankBackup.enable();
         zombie.iso.objects.IsoGenerator source=new zombie.iso.objects.IsoGenerator(new IsoCell());
+        source.connected=true;
+        source.activated=true; source.fuel=5; source.condition=90;
         zombie.iso.objects.IsoGenerator.Data owner=new zombie.iso.objects.IsoGenerator.Data();
         owner.rawset("x",1.0); owner.rawset("y",2.0); owner.rawset("z",0.0);
         check(zombie.apocbr.power.PowerBankBackup.claim(source,owner));
-        check(zombie.apocbr.power.PowerBankBackup.isControlled(source));
+        check(zombie.apocbr.power.PowerBankBackup.isControlled(source) && !source.activated);
+        owner.rawset("x",9.0);
+        check(source.getISABackupOwner().rawget("x").equals(1.0));
+        owner.rawset("x",1.0);
         source.applyISABackupState(2.5,80,true);
         check(source.fuel==2.5 && source.condition==80 && source.activated);
+        check(zombie.apocbr.power.PowerBankBackup.claim(source,owner) && source.activated);
+        source.setActivated(false); check(source.activated);
+        source.getModData().rawset(zombie.apocbr.power.PowerBankBackup.OWNER,null);
+        source.setActivated(false); check(source.activated); // Generic ModData cannot release ownership.
+        source.setConnected(false); check(source.connected);
+        source.condition=0; source.setActivated(false); check(!source.activated);
         source.applyISABackupState(0,80,true);
         check(source.fuel==0 && !source.activated);
+        source.setActivated(true); check(!source.activated);
+        source.applyISABackupState(2.5,80,false);
+        ByteBufferReader sourcePacket=new ByteBufferReader();
+        source.syncIsoObjectReceive(sourcePacket,null);
+        check(sourcePacket.fields==4 && source.fuel==2.5 && source.condition==80 && !source.activated);
         check(zombie.apocbr.power.PowerBankBackup.claim(source,owner));
         zombie.iso.objects.IsoGenerator.Data other=new zombie.iso.objects.IsoGenerator.Data();
         other.putAll(owner); other.rawset("x",9.0);
@@ -179,7 +210,14 @@ public class PowerBankFixture {
         source.tagged=true; check(!zombie.apocbr.power.PowerBankBackup.isControlled(source));
         source.tagged=false;
         zombie.apocbr.power.PowerBankBackup.release(source);
-        check(!zombie.apocbr.power.PowerBankBackup.isControlled(source) && source.clockResets==1);
+        check(!zombie.apocbr.power.PowerBankBackup.isControlled(source) && source.clockResets==1 && !source.activated);
+        source.setActivated(true); check(source.activated);
+        source.setConnected(false); check(!source.connected);
+        source.syncIsoObjectReceive(new ByteBufferReader(),null);
+        check(source.activated && source.fuel==10 && source.condition==100);
+        zombie.iso.objects.IsoGenerator ordinary=new zombie.iso.objects.IsoGenerator(new IsoCell());
+        ordinary.getModData().rawset(zombie.apocbr.power.PowerBankBackup.OWNER,owner);
+        check(!zombie.apocbr.power.PowerBankBackup.isControlled(ordinary));
         owner.rawset("x",Double.NaN);
         check(!zombie.apocbr.power.PowerBankBackup.claim(source,owner));
         System.out.println("Production IsoPowerBank lifecycle fixture passed");
@@ -193,12 +231,22 @@ def main():
     begin=generator_source.index('    public void applyISABackupState(')
     end=generator_source.index('    public void resetISABackupClock(',begin)
     apply_method=generator_source[begin:end]
+    begin=generator_source.index('    public boolean isISABackupActivationAllowed(')
+    guard_method=generator_source[begin:generator_source.index('    public void setActivated(',begin)]
+    begin=generator_source.index('    public void setConnected(')
+    connection_method=generator_source[begin:generator_source.index('    @Override',begin)]
+    begin=generator_source.index('    public void syncIsoObjectReceive(')
+    receive_method=generator_source[begin:generator_source.index('    private boolean touchesChunk(',begin)]
+    begin=generator_source.index('    public se.krka.kahlua.vm.KahluaTable getISABackupOwner(')
+    ownership_methods=generator_source[begin:generator_source.index('    public boolean isActivated(',begin)]
     with tempfile.TemporaryDirectory(prefix="apocbr-powerbank-") as directory:
         work = Path(directory)
         sources = []
         for relative, content in STUBS.items():
             if relative=='zombie/iso/objects/IsoGenerator.java':
                 content=content.replace('public void resetISABackupClock()',apply_method+'\npublic void resetISABackupClock()')
+                content=content.replace('public void resetISABackupClock()',ownership_methods+guard_method+connection_method+'\npublic void resetISABackupClock()')
+                content=content.replace('public void syncIsoObjectReceive(zombie.core.network.ByteBufferReader input,zombie.core.raknet.UdpConnection source) {}',receive_method)
             path = work / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")

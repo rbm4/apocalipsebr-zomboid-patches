@@ -79,6 +79,8 @@ public class IsoGenerator extends IsoObject {
     public int condition;
     private int lastHour = -1;
     private double isaBackupNextHour = Double.NEGATIVE_INFINITY;
+    private boolean isaApplyingBackupState;
+    private se.krka.kahlua.vm.KahluaTable isaBackupOwner;
     public boolean connected;
     private boolean updateSurrounding;
     private final HashMap<String, String> itemsPowered = new HashMap<>();
@@ -460,10 +462,15 @@ public class IsoGenerator extends IsoObject {
         this.condition = input.getInt();
         this.lastHour = input.getInt();
         this.updateSurrounding = true;
+        if (GameServer.server) {
+            Object owner = this.getModData().rawget(zombie.apocbr.power.PowerBankBackup.OWNER);
+            this.setISABackupOwner(owner instanceof se.krka.kahlua.vm.KahluaTable table ? table : null);
+        }
     }
 
     @Override
     public void save(ByteBuffer output, boolean isDebugSave) throws IOException {
+        if (GameServer.server) this.getModData().rawset(zombie.apocbr.power.PowerBankBackup.OWNER, this.isaBackupOwner);
         this.getModData().rawset("totalPowerDraw", (double)this.totalPowerUsing);
         super.save(output, isDebugSave);
         output.put((byte)(this.isConnected() ? 1 : 0));
@@ -555,7 +562,12 @@ public class IsoGenerator extends IsoObject {
         this.condition = health;
         this.lastHour = (int)GameTime.getInstance().getWorldAgeHours();
         boolean activationChanged = this.activated != (supply && value > 0 && health > 0);
-        this.setActivated(supply && value > 0 && health > 0);
+        this.isaApplyingBackupState = true;
+        try {
+            this.setActivated(supply && value > 0 && health > 0);
+        } finally {
+            this.isaApplyingBackupState = false;
+        }
         this.flagForHotSave();
         if (changed && !activationChanged) this.sync();
     }
@@ -565,11 +577,43 @@ public class IsoGenerator extends IsoObject {
         this.isaBackupNextHour = Double.NEGATIVE_INFINITY;
     }
 
+    public se.krka.kahlua.vm.KahluaTable getISABackupOwner() {
+        return this.isaBackupOwner;
+    }
+
+    /** Private runtime ownership is never assigned by incoming ModData packets. */
+    public void setISABackupOwner(se.krka.kahlua.vm.KahluaTable owner) {
+        if (!GameServer.server) return;
+        this.isaBackupOwner = null;
+        if (owner != null) {
+            se.krka.kahlua.vm.KahluaTable copy = zombie.Lua.LuaManager.platform.newTable();
+            for (String key : new String[]{"x", "y", "z"}) {
+                if (!(owner.rawget(key) instanceof Double coordinate) || !Double.isFinite(coordinate)
+                    || coordinate != Math.rint(coordinate)) {
+                    this.getModData().rawset(zombie.apocbr.power.PowerBankBackup.OWNER, null);
+                    return;
+                }
+                copy.rawset(key, coordinate);
+            }
+            this.isaBackupOwner = copy;
+        }
+        this.getModData().rawset(zombie.apocbr.power.PowerBankBackup.OWNER, this.isaBackupOwner);
+    }
+
     public boolean isActivated() {
         return this.activated;
     }
 
+    public boolean isISABackupActivationAllowed(boolean value) {
+        return !zombie.apocbr.power.PowerBankBackup.isControlled(this) || this.isaApplyingBackupState
+            || (!value && (this.fuel <= 0 || this.condition <= 0));
+    }
+
     public void setActivated(boolean activated) {
+        if (!this.isISABackupActivationAllowed(activated)) {
+            this.sync();
+            return;
+        }
         if (!activated && zombie.network.ApocBRManagedGenerators.denyChange(this, "deactivate")) return;
         if (activated != this.activated) {
             if (!this.getSquare().getProperties().has(IsoFlagType.exterior) && this.getSquare().getBuilding() != null) {
@@ -630,6 +674,10 @@ public class IsoGenerator extends IsoObject {
     }
 
     public void setConnected(boolean connected) {
+        if (!connected && zombie.apocbr.power.PowerBankBackup.isControlled(this)) {
+            this.sync();
+            return;
+        }
         if (!connected && zombie.network.ApocBRManagedGenerators.denyChange(this, "disconnect")) return;
         this.connected = connected;
         if (GameClient.client) {
@@ -661,6 +709,11 @@ public class IsoGenerator extends IsoObject {
         int condition = bb.getInt();
         boolean activated = bb.getBoolean();
         boolean connected = bb.getBoolean();
+        if (zombie.apocbr.power.PowerBankBackup.isControlled(this)) {
+            // Consume the stock payload but retain server-owned state, including activation.
+            this.sync();
+            return;
+        }
         if (zombie.network.ApocBRManagedGenerators.denyChange(this, "remote_sync")) return;
         this.fuel = fuel;
         this.condition = condition;
