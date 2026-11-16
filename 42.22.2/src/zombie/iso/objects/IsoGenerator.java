@@ -78,6 +78,7 @@ public class IsoGenerator extends IsoObject {
     public boolean activated;
     public int condition;
     private int lastHour = -1;
+    private double isaBackupNextHour = Double.NEGATIVE_INFINITY;
     public boolean connected;
     private boolean updateSurrounding;
     private final HashMap<String, String> itemsPowered = new HashMap<>();
@@ -160,6 +161,11 @@ public class IsoGenerator extends IsoObject {
 
     @Override
     public void update() {
+        boolean isaBackup = zombie.apocbr.power.PowerBankBackup.isControlled(this);
+        if (isaBackup && GameTime.getInstance().getWorldAgeHours() >= this.isaBackupNextHour) {
+            this.isaBackupNextHour = GameTime.getInstance().getWorldAgeHours() + 1.0 / 6.0;
+            zombie.apocbr.power.PowerBankBackup.request(this);
+        }
         if (GameServer.server && zombie.network.ApocBRManagedGenerators.isTagged(this)) {
             zombie.network.ApocBRManagedGenerators.updateGenerator(this);
             if (!zombie.network.ApocBRManagedGenerators.isManagedGenerator(this)) return;
@@ -201,6 +207,7 @@ public class IsoGenerator extends IsoObject {
                 }
 
                 if (!zombie.network.ApocBRManagedGenerators.isManagedGenerator(this)) {
+                    if (!isaBackup) {
                     int elapsedHours = (int)GameTime.getInstance().getWorldAgeHours() - this.lastHour;
                     float subtractFuel = 0.0F;
                     int subtractCondition = 0;
@@ -231,6 +238,7 @@ public class IsoGenerator extends IsoObject {
                         this.condition = 0;
                     }
 
+                    }
                     boolean bBackfire = false;
                     if (this.condition <= 20) {
                         bBackfire = Rand.Next(5) == 0;
@@ -534,6 +542,27 @@ public class IsoGenerator extends IsoObject {
         if (GameClient.client) {
             this.sync();
         }
+    }
+
+    /** ISA owns fuel/wear catch-up; commit once, leaving activation lifecycle native. */
+    public void applyISABackupState(double nextFuel, int nextCondition, boolean supply) {
+        if (!zombie.apocbr.power.PowerBankBackup.isControlled(this)
+            || !Double.isFinite(nextFuel)) throw new IllegalStateException("Unowned ISA backup");
+        float value = (float)Math.max(0, Math.min(10, nextFuel));
+        int health = Math.max(0, Math.min(100, nextCondition));
+        boolean changed = this.fuel != value || this.condition != health;
+        this.fuel = value;
+        this.condition = health;
+        this.lastHour = (int)GameTime.getInstance().getWorldAgeHours();
+        boolean activationChanged = this.activated != (supply && value > 0 && health > 0);
+        this.setActivated(supply && value > 0 && health > 0);
+        this.flagForHotSave();
+        if (changed && !activationChanged) this.sync();
+    }
+
+    public void resetISABackupClock() {
+        this.lastHour = (int)GameTime.getInstance().getWorldAgeHours();
+        this.isaBackupNextHour = Double.NEGATIVE_INFINITY;
     }
 
     public boolean isActivated() {

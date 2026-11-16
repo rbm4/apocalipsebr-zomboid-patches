@@ -27,6 +27,7 @@ public final class IsoPowerBank extends IsoGenerator {
     private boolean updating;
     private boolean acknowledged;
     private boolean callbackWarning;
+    private boolean deferred;
 
     public IsoPowerBank(IsoCell cell) {
         super(cell);
@@ -49,7 +50,7 @@ public final class IsoPowerBank extends IsoGenerator {
     @Override
     public void update() {
         if (!GameServer.server || getSquare() == null || getObjectIndex() < 0 || updating) return;
-        updateElectricityIfNeeded();
+        if (deferred) return;
         double now = GameTime.getInstance().getWorldAgeHours();
         if (now >= nextUpdateHour) {
             updating = true;
@@ -74,7 +75,7 @@ public final class IsoPowerBank extends IsoGenerator {
 
     /** A successful Lua callback acknowledges its processed game-time boundary. */
     public void completeUpdate(double processedHour, double intervalHours) {
-        if (!GameServer.server || !updating || !Double.isFinite(processedHour)
+        if (!GameServer.server || !(updating || deferred) || !Double.isFinite(processedHour)
             || !Double.isFinite(intervalHours) || intervalHours <= 0 || intervalHours > 24) {
             throw new IllegalStateException("Invalid power-bank simulation acknowledgement");
         }
@@ -86,7 +87,36 @@ public final class IsoPowerBank extends IsoGenerator {
         getModData().rawset(SIMULATION_HOUR, processedHour);
         nextUpdateHour = processedHour + intervalHours;
         acknowledged = true;
+        deferred = false;
         flagForHotSave();
+    }
+
+    /** Transfer work to ISA's owning-thread budgeted queue without losing supply. */
+    public void deferUpdate() {
+        if (!GameServer.server || !updating) throw new IllegalStateException("Not in bank callback");
+        deferred = true;
+        acknowledged = true;
+    }
+
+    public void prepareSimulationUpdate() {
+        if (!GameServer.server) throw new IllegalStateException("Server only");
+        deferred = true;
+        updateElectricityIfNeeded();
+    }
+
+    public void checkpointUpdate(double hour) {
+        if (!GameServer.server || !deferred || !Double.isFinite(hour)
+            || hour > GameTime.getInstance().getWorldAgeHours()) throw new IllegalStateException("Invalid checkpoint");
+        Object old = getModData().rawget(SIMULATION_HOUR);
+        if (old instanceof Double previous && hour < previous) throw new IllegalArgumentException("Regressing checkpoint");
+        getModData().rawset(SIMULATION_HOUR, hour);
+        flagForHotSave();
+    }
+
+    public void failScheduledUpdate() {
+        deferred = false;
+        nextUpdateHour = GameTime.getInstance().getWorldAgeHours() + RETRY_HOURS;
+        setActivated(false);
     }
 
     public void requestSimulationUpdate() {

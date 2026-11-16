@@ -10,6 +10,8 @@ JAVAC = ROOT / "jdk/bin/javac.exe"
 JAVA = ROOT / "jdk/bin/java.exe"
 
 STUBS = {
+    "se/krka/kahlua/vm/KahluaTable.java": "package se.krka.kahlua.vm; public interface KahluaTable { Object rawget(Object key); void rawset(Object key,Object value); }",
+    "zombie/network/ApocBRManagedGenerators.java": "package zombie.network; public class ApocBRManagedGenerators { public static boolean isTagged(zombie.iso.objects.IsoGenerator gen) { return gen.tagged; } }",
     "zombie/core/logger/ExceptionLogger.java": "package zombie.core.logger; public class ExceptionLogger { public static void logException(Throwable error) {} }",
     "zombie/debug/DebugLog.java": "package zombie.debug; public class DebugLog { public static void log(String text) {} }",
     "zombie/UsedFromLua.java": "package zombie; public @interface UsedFromLua {}",
@@ -46,22 +48,25 @@ STUBS = {
         public class LuaHookManager {
             public static java.util.function.BiConsumer<Object,Double> callback;
             public static int calls;
-            public static boolean TriggerHook(String name,Object bank,Object hour) {
+            public static boolean TriggerHook(String name,Object... args) {
                 calls++;
-                if(callback!=null) callback.accept(bank,(Double)hour);
+                if(callback!=null) callback.accept(args[0],(Double)args[args.length-1]);
                 return callback!=null;
             }
         }""",
     "zombie/iso/objects/IsoGenerator.java": """package zombie.iso.objects;
+        import zombie.GameTime;
         public class IsoGenerator {
             public float fuel;
             public int condition;
-            public boolean connected,activated;
+            public boolean connected,activated,tagged;
+            public int clockResets;
+            private int lastHour;
             public int syncs,foodUpdates,electricityUpdates;
             public boolean inWorld=true;
-            public static class Data extends java.util.HashMap<String,Object> {
-                public Object rawget(String key) { return get(key); }
-                public void rawset(String key,Object value) { put(key,value); }
+            public static class Data extends java.util.HashMap<Object,Object> implements se.krka.kahlua.vm.KahluaTable {
+                public Object rawget(Object key) { return get(key); }
+                public void rawset(Object key,Object value) { put(key,value); }
             }
             private final Data data=new Data();
             public IsoGenerator(zombie.iso.IsoCell cell) {}
@@ -77,6 +82,7 @@ STUBS = {
             public void setSurroundingElectricity() { electricityUpdates++; }
             public void flagForHotSave() {}
             public void sync() { syncs++; }
+            public void resetISABackupClock() { clockResets++; }
         }""",
 }
 
@@ -142,6 +148,40 @@ public class PowerBankFixture {
         bank.requestSimulationUpdate(); bank.update();
         check(LuaHookManager.calls==6);
         try { bank.completeUpdate(0,1); throw new AssertionError(); } catch(IllegalStateException expected) {}
+        // Deferred scheduling keeps supply and cannot be dispatched again per frame.
+        LuaHookManager.callback=(object,hour)->((IsoPowerBank)object).deferUpdate();
+        bank.applyPowerState(true,0.5);
+        bank.requestSimulationUpdate(); bank.update();
+        int calls=LuaHookManager.calls;
+        GameTime.instance.hour=3;
+        bank.update(); check(LuaHookManager.calls==calls && bank.activated);
+        bank.prepareSimulationUpdate(); bank.checkpointUpdate(2);
+        bank.update(); check(LuaHookManager.calls==calls);
+        bank.completeUpdate(3,1);
+        bank.update(); check(LuaHookManager.calls==calls);
+        bank.failScheduledUpdate(); check(!bank.activated);
+
+        zombie.apocbr.power.PowerBankBackup.enable();
+        zombie.iso.objects.IsoGenerator source=new zombie.iso.objects.IsoGenerator(new IsoCell());
+        zombie.iso.objects.IsoGenerator.Data owner=new zombie.iso.objects.IsoGenerator.Data();
+        owner.rawset("x",1.0); owner.rawset("y",2.0); owner.rawset("z",0.0);
+        check(zombie.apocbr.power.PowerBankBackup.claim(source,owner));
+        check(zombie.apocbr.power.PowerBankBackup.isControlled(source));
+        source.applyISABackupState(2.5,80,true);
+        check(source.fuel==2.5 && source.condition==80 && source.activated);
+        source.applyISABackupState(0,80,true);
+        check(source.fuel==0 && !source.activated);
+        check(zombie.apocbr.power.PowerBankBackup.claim(source,owner));
+        zombie.iso.objects.IsoGenerator.Data other=new zombie.iso.objects.IsoGenerator.Data();
+        other.putAll(owner); other.rawset("x",9.0);
+        check(!zombie.apocbr.power.PowerBankBackup.claim(source,other));
+        check(!zombie.apocbr.power.PowerBankBackup.claim(bank,owner));
+        source.tagged=true; check(!zombie.apocbr.power.PowerBankBackup.isControlled(source));
+        source.tagged=false;
+        zombie.apocbr.power.PowerBankBackup.release(source);
+        check(!zombie.apocbr.power.PowerBankBackup.isControlled(source) && source.clockResets==1);
+        owner.rawset("x",Double.NaN);
+        check(!zombie.apocbr.power.PowerBankBackup.claim(source,owner));
         System.out.println("Production IsoPowerBank lifecycle fixture passed");
     }
 }
@@ -149,17 +189,23 @@ public class PowerBankFixture {
 
 
 def main():
+    generator_source=(TARGET / 'iso/objects/IsoGenerator.java').read_text(encoding='utf-8')
+    begin=generator_source.index('    public void applyISABackupState(')
+    end=generator_source.index('    public void resetISABackupClock(',begin)
+    apply_method=generator_source[begin:end]
     with tempfile.TemporaryDirectory(prefix="apocbr-powerbank-") as directory:
         work = Path(directory)
         sources = []
         for relative, content in STUBS.items():
+            if relative=='zombie/iso/objects/IsoGenerator.java':
+                content=content.replace('public void resetISABackupClock()',apply_method+'\npublic void resetISABackupClock()')
             path = work / relative
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(content, encoding="utf-8")
             sources.append(str(path))
         harness = work / "PowerBankFixture.java"
         harness.write_text(HARNESS, encoding="utf-8")
-        sources += [str(harness), str(TARGET / "apocbr/power/IsoPowerBank.java")]
+        sources += [str(harness), str(TARGET / "apocbr/power/IsoPowerBank.java"), str(TARGET / "apocbr/power/PowerBankBackup.java")]
         subprocess.run([str(JAVAC), "-d", str(work), *sources], check=True)
         subprocess.run([str(JAVA), "-cp", str(work), "PowerBankFixture"], check=True)
 
