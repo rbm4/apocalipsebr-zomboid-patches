@@ -1,12 +1,9 @@
 package cloud.apocalipse.pz.agent.features.workshop;
 
 import com.google.gson.JsonParser;
+import cloud.apocalipse.pz.agent.features.http.JsonHttpTransport;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
 /** Matches the publishing workflow's restart contract; separate from the Lua API worker. */
@@ -18,21 +15,15 @@ interface RestartHttpClient {
 
     static RestartHttpClient create() {
         return (endpoint, token) -> {
-            HttpClient client = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(5)).followRedirects(HttpClient.Redirect.NEVER).build();
-            try {
-                HttpRequest request = HttpRequest.newBuilder(endpoint)
-                    .timeout(Duration.ofSeconds(30))
-                    .header("Content-Type", "application/json")
-                    .header("Accept", "application/json")
-                    .header("X-API-Key", token)
-                    .POST(HttpRequest.BodyPublishers.ofString("{\"message\":\"Atualização de mod detectada! Iniciando Restart\"}"))
-                    .build();
-                HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.limiting(
-                    HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), 4096));
+            try (JsonHttpTransport transport = new JsonHttpTransport(Duration.ofSeconds(5))) {
+                JsonHttpTransport.Response response = transport.post(
+                    endpoint,
+                    token,
+                    "application/json",
+                    "{\"message\":\"Restart para update de mods\"}",
+                    Duration.ofSeconds(30)
+                );
                 return decode(response.statusCode(), response.body());
-            } finally {
-                client.shutdownNow();
             }
         };
     }

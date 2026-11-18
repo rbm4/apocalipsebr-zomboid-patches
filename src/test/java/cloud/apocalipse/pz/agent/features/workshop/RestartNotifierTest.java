@@ -25,6 +25,13 @@ class RestartNotifierTest {
             assertThrows(IllegalArgumentException.class,
                 () -> ModUpdateRestartNotifier.validatedEndpoint(url, "test-token"));
         }
+        assertEquals(
+            URI.create("http://localhost:800/api/server/mod-update/restart"),
+            ModUpdateRestartNotifier.validatedEndpoint(
+                "http://localhost:800/api/server/mod-update/restart",
+                "test-token"
+            )
+        );
         assertThrows(IllegalArgumentException.class,
             () -> ModUpdateRestartNotifier.validatedEndpoint(ENDPOINT.toString(), "bad\r\nkey"));
         assertThrows(IllegalArgumentException.class,

@@ -11,6 +11,24 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class TelemetryHttpClientTest {
     @Test
+    void defaultsToManagerEndpointAndBridgeCredential() {
+        var configuration = TelemetryHttpClient.Configuration.fromSettings(null, null, "bridge-api-key");
+
+        assertEquals(
+            URI.create("https://plataforma.apocalipse.cloud/api/v1/telemetry"),
+            configuration.endpoint()
+        );
+        assertEquals("bridge-api-key", configuration.apiKey());
+
+        var override = TelemetryHttpClient.Configuration.fromSettings(
+            "https://manager.example/api/v1/telemetry",
+            "telemetry-api-key",
+            "bridge-api-key"
+        );
+        assertEquals("telemetry-api-key", override.apiKey());
+    }
+
+    @Test
     void postsOneAuthenticatedSnapshotAndValidatesReceipt() throws Exception {
         HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         AtomicReference<String> request = new AtomicReference<>();

@@ -15,9 +15,24 @@ class TelemetrySnapshotPayloadTest {
         )).getAsJsonObject();
 
         assertEquals(3, payload.get("schemaVersion").getAsInt());
+        assertEquals("42.22.2", payload.get("gameVersion").getAsString());
+        assertEquals(30_000L, payload.get("intervalMs").getAsLong());
+        assertEquals(1L, payload.get("seq").getAsLong());
+        assertEquals(1_795_000_000_000L, payload.get("ts").getAsLong());
         assertEquals(3, payload.get("playersOnline").getAsInt());
         assertEquals(0, payload.getAsJsonObject("tick").get("count").getAsInt());
+        assertTrue(payload.getAsJsonObject("tick").has("rate"));
+        assertTrue(payload.getAsJsonObject("tick").has("avgMs"));
+        assertTrue(payload.getAsJsonObject("tick").has("maxMs"));
+        assertTrue(payload.getAsJsonObject("loop").has("count"));
+        assertTrue(payload.getAsJsonObject("loop").has("totalMs"));
+        assertEquals(0, payload.get("overBudgetTicks").getAsInt());
+        assertTrue(payload.get("phases").isJsonObject());
+        assertTrue(payload.get("counters").isJsonObject());
+        assertTrue(payload.get("world").isJsonObject());
+        assertTrue(payload.get("jvm").isJsonObject());
         assertTrue(payload.getAsJsonObject("lua").get("enabled").getAsBoolean());
+        assertTrue(payload.getAsJsonObject("lua").get("events").isJsonArray());
         JsonObject capturedEvent = payload.getAsJsonObject("lua").getAsJsonArray("events")
             .get(0).getAsJsonObject();
         assertEquals("OnTick", capturedEvent.get("name").getAsString());

@@ -1,0 +1,5 @@
+apocbr:
+  telemetry:
+    endpoint: "http://localhost:800/api/v1/telemetry"
+  restart:
+    endpoint: "http://localhost:800/api/server/mod-update/restart"

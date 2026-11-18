@@ -53,16 +53,20 @@ These are source configuration facts, not a live endpoint verification.
 
 | Setting | Resolution order |
 | --- | --- |
-| Enabled | `-Dapocbr.restart.enabled`, default `true` |
-| URL | `-Dapocbr.restart.url`, then `PZMANAGER_RESTART_URL`, then the URL above |
+| Profile | `-Dapocbr.profile`; defaults to `prod` |
+| Enabled | `-Dapocbr.restart.enabled`, then profile config (default `true`) |
+| URL | `-Dapocbr.restart.url`, then `PZMANAGER_RESTART_URL`, then the selected profile URL |
 | API key | `-Dapocbr.restart.apiKey`, then `PZMANAGER_MOD_UPDATE_TOKEN`, then existing `-Dapocbr.bridge.serverKey` |
 
 Explicit empty values are invalid, not requests to fall back to another key.
-Missing/invalid credentials disable the notifier with a fixed diagnostic. URL
-configuration requires HTTPS, the exact path, and no embedded credentials, query
-or fragment. The API key is sent verbatim and never logged. Restart settings are
-captured at JVM startup. No keys are embedded in source or copied from tasks.json.
-The existing Lua API worker continues to use its original configuration.
+Missing/invalid credentials disable the notifier with a fixed diagnostic. The
+default `application.yaml` contains production endpoints; `-Dapocbr.profile=local`
+selects `application-local.yaml`, which uses `http://localhost:800` for local
+backend development. URL configuration requires HTTPS except for loopback HTTP,
+the exact path, and no embedded credentials, query or fragment. The API key is
+sent verbatim and never logged. Restart settings are captured at JVM startup.
+No keys are embedded in source or copied from tasks.json. The existing Lua API
+worker continues to use its original configuration.
 
 The request has a 5-second connect timeout, 30-second request timeout, no redirect
 following and a 4096-byte response cap. Both HTTP and JSON status must match:
@@ -103,3 +107,9 @@ game classes live only in `target/test-classes` and are not packaged in the agen
 `javap -p` against the installed original game JAR confirmed the exact nested
 class and private `inform(String)` descriptor. Full PZ startup, real Steam callback
 execution and Linux deployment remain unverified. No live restart API was called.
+
+On 2026-11-18, production became the default YAML profile and
+`-Dapocbr.profile=local` was added for the local backend at `localhost:800`. Both
+restart and telemetry use the shared bounded `JsonHttpTransport`; SnakeYAML is
+shaded under the agent's private namespace. Unit tests and the packaged-agent
+smoke check passed; no live backend was contacted.

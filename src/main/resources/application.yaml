@@ -1,0 +1,6 @@
+apocbr:
+  telemetry:
+    endpoint: "https://plataforma.apocalipse.cloud/api/v1/telemetry"
+  restart:
+    enabled: true
+    endpoint: "https://plataforma.apocalipse.cloud/api/server/mod-update/restart"

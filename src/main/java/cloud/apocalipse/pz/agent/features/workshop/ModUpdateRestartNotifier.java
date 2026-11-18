@@ -1,5 +1,6 @@
 package cloud.apocalipse.pz.agent.features.workshop;
 
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import java.net.URI;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -8,7 +9,6 @@ import java.util.function.LongSupplier;
 /** Detached HTTP work only: no game objects or Lua state cross into the worker. */
 public final class ModUpdateRestartNotifier {
     private static volatile ModUpdateRestartNotifier instance;
-    private static final String DEFAULT_URL = "https://plataforma.apocalipse.cloud/api/server/mod-update/restart";
     private static final long MIN_INTERVAL_NANOS = Duration.ofSeconds(60).toNanos();
     private final RestartHttpClient transport;
     private final URI endpoint;
@@ -27,13 +27,20 @@ public final class ModUpdateRestartNotifier {
     }
 
     public static void initialize() {
-        if (!Boolean.parseBoolean(System.getProperty("apocbr.restart.enabled", "true"))) {
+        AgentConfiguration configuration = AgentConfiguration.load();
+        String enabledOverride = System.getProperty("apocbr.restart.enabled");
+        if (!Boolean.parseBoolean(enabledOverride == null
+                ? Boolean.toString(configuration.restartEnabled())
+                : enabledOverride)) {
             System.out.println("[ApocBR-Agent] Mod-update restart notifier disabled.");
             return;
         }
         try {
             String configuredUrl = System.getenv("PZMANAGER_RESTART_URL");
-            String url = System.getProperty("apocbr.restart.url", configuredUrl == null ? DEFAULT_URL : configuredUrl);
+            String url = System.getProperty(
+                "apocbr.restart.url",
+                configuredUrl == null ? configuration.restartEndpoint().toString() : configuredUrl
+            );
             String token = System.getProperty("apocbr.restart.apiKey");
             if (token == null) token = System.getenv("PZMANAGER_MOD_UPDATE_TOKEN");
             if (token == null) token = System.getProperty("apocbr.bridge.serverKey");
@@ -51,7 +58,11 @@ public final class ModUpdateRestartNotifier {
             throw new IllegalArgumentException("Invalid restart configuration");
         }
         URI endpoint = URI.create(url);
-        if (!"https".equals(endpoint.getScheme()) || endpoint.getHost() == null
+        String host = endpoint.getHost();
+        boolean loopback = "localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)
+            || "::1".equals(host) || "[::1]".equals(host);
+        if (host == null || !("https".equalsIgnoreCase(endpoint.getScheme())
+                || ("http".equalsIgnoreCase(endpoint.getScheme()) && loopback))
             || endpoint.getUserInfo() != null || endpoint.getQuery() != null || endpoint.getFragment() != null
             || !"/api/server/mod-update/restart".equals(endpoint.getRawPath())) {
             throw new IllegalArgumentException("Invalid restart configuration");

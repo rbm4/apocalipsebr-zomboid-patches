@@ -3,12 +3,10 @@ package cloud.apocalipse.pz.agent.features.telemetry;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
+import cloud.apocalipse.pz.agent.features.http.JsonHttpTransport;
 import java.io.IOException;
 import java.net.URI;
-import java.net.http.HttpClient;
-import java.net.http.HttpRequest;
-import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Objects;
 
@@ -27,7 +25,9 @@ final class TelemetryHttpClient implements AutoCloseable {
                     || !"/api/v1/telemetry".equals(endpoint.getRawPath())
                     || !("https".equalsIgnoreCase(endpoint.getScheme())
                         || ("http".equalsIgnoreCase(endpoint.getScheme()) && loopback))) {
-                throw new IllegalArgumentException("Telemetry endpoint requires HTTPS and the telemetry route");
+                throw new IllegalArgumentException(
+                    "Telemetry endpoint requires HTTPS, except for loopback HTTP, and the telemetry route"
+                );
             }
             if (apiKey == null || apiKey.isBlank() || apiKey.length() > 4_096
                     || apiKey.chars().anyMatch(value -> value < 33 || value > 126)) {
@@ -42,14 +42,36 @@ final class TelemetryHttpClient implements AutoCloseable {
         }
 
         static Configuration fromProperties() {
+            AgentConfiguration agentConfiguration = AgentConfiguration.load();
             String endpoint = setting("apocbr.telemetry.endpoint", "APOCBR_TELEMETRY_ENDPOINT");
             String apiKey = setting("apocbr.telemetry.apiKey", "APOCBR_TELEMETRY_API_KEY");
-            if (endpoint == null || apiKey == null) {
-                throw new IllegalArgumentException("Telemetry endpoint and API key are required");
-            }
-            return new Configuration(
-                URI.create(endpoint),
+            return fromSettings(
+                endpoint,
                 apiKey,
+                System.getProperty("apocbr.bridge.serverKey"),
+                agentConfiguration.telemetryEndpoint().toString()
+            );
+        }
+
+        static Configuration fromSettings(String endpoint, String apiKey, String bridgeApiKey) {
+            return fromSettings(
+                endpoint,
+                apiKey,
+                bridgeApiKey,
+                AgentConfiguration.load().telemetryEndpoint().toString()
+            );
+        }
+
+        private static Configuration fromSettings(
+                String endpoint,
+                String apiKey,
+                String bridgeApiKey,
+                String configuredEndpoint) {
+            String resolvedEndpoint = endpoint == null || endpoint.isBlank() ? configuredEndpoint : endpoint;
+            String resolvedApiKey = apiKey == null || apiKey.isBlank() ? bridgeApiKey : apiKey;
+            return new Configuration(
+                URI.create(resolvedEndpoint),
+                resolvedApiKey,
                 Duration.ofSeconds(5),
                 Duration.ofSeconds(10)
             );
@@ -67,14 +89,11 @@ final class TelemetryHttpClient implements AutoCloseable {
     }
 
     private final Configuration configuration;
-    private final HttpClient client;
+    private final JsonHttpTransport transport;
 
     TelemetryHttpClient(Configuration configuration) {
         this.configuration = Objects.requireNonNull(configuration);
-        this.client = HttpClient.newBuilder()
-            .connectTimeout(configuration.connectTimeout())
-            .followRedirects(HttpClient.Redirect.NEVER)
-            .build();
+        this.transport = new JsonHttpTransport(configuration.connectTimeout());
     }
 
     static TelemetryHttpClient configured() {
@@ -82,19 +101,12 @@ final class TelemetryHttpClient implements AutoCloseable {
     }
 
     void post(String body) throws IOException, InterruptedException {
-        HttpRequest request = HttpRequest.newBuilder(this.configuration.endpoint())
-            .timeout(this.configuration.requestTimeout())
-            .header("X-API-Key", this.configuration.apiKey())
-            .header("Content-Type", "application/json; charset=utf-8")
-            .header("Accept", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
-            .build();
-        HttpResponse<String> response = this.client.send(
-            request,
-            HttpResponse.BodyHandlers.limiting(
-                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8),
-                4_096
-            )
+        JsonHttpTransport.Response response = this.transport.post(
+            this.configuration.endpoint(),
+            this.configuration.apiKey(),
+            "application/json; charset=utf-8",
+            body,
+            this.configuration.requestTimeout()
         );
         if (response.statusCode() != 201) {
             throw new DeliveryException("HTTP_" + response.statusCode());
@@ -104,7 +116,7 @@ final class TelemetryHttpClient implements AutoCloseable {
 
     @Override
     public void close() {
-        this.client.shutdownNow();
+        this.transport.close();
     }
 
     private static void validateReceipt(String body) throws DeliveryException {
