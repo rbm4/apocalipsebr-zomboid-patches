@@ -11,6 +11,10 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
+- 2026-11-17: [Workshop update restart hook and virtual-thread API notifier](features/2026-11-17-workshop-update-restart-agent.md).
+
+- 2026-11-17: [Byte Buddy agent foundation and Linux startup coexistence](features/2026-11-17-byte-buddy-agent-foundation.md).
+
 - 2026-11-15: [Power-bank server subclass and Lua update callback](features/2026-11-15-power-bank-lua-update.md).
 
 - 2026-11-12: [Counted dictionary source pagination and failure diagnostics](features/2026-11-12-dictionary-source-pagination.md).
