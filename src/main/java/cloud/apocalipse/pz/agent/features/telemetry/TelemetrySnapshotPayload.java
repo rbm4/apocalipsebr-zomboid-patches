@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 final class TelemetrySnapshotPayload {
@@ -19,22 +20,31 @@ final class TelemetrySnapshotPayload {
             long timestampMillis,
             int playersOnline,
             long dropped,
+            TelemetryRegistry.TickSnapshot ticks,
+            TelemetryRegistry.LoopSnapshot loops,
+            Integer activeZombieCount,
             Map<String, TelemetryRegistry.EventSnapshot> luaEvents) {
         if (gameVersion == null || gameVersion.isBlank() || gameVersion.length() > 255
                 || intervalMillis < 1 || sequence < 1 || timestampMillis < 1
-                || playersOnline < 0 || dropped < 0) {
+                || playersOnline < 0 || dropped < 0 || ticks == null
+                || ticks.calls() < 0 || ticks.totalNanos() < 0 || ticks.maxNanos() < 0
+                || ticks.overBudgetCalls() < 0 || loops == null
+                || loops.calls() < 0 || loops.totalNanos() < 0
+                || (activeZombieCount != null && activeZombieCount < 0)) {
             throw new IllegalArgumentException("Invalid telemetry snapshot metadata");
         }
 
         Map<String, Object> tick = new LinkedHashMap<>();
-        tick.put("count", 0L);
-        tick.put("rate", 0.0);
-        tick.put("avgMs", 0.0);
-        tick.put("maxMs", 0.0);
+        tick.put("count", ticks.calls());
+        tick.put("rate", decimal(ticks.calls() * 1000.0 / intervalMillis));
+        tick.put("avgMs", decimal(ticks.calls() == 0L
+            ? 0.0
+            : ticks.totalNanos() / 1_000_000.0 / ticks.calls()));
+        tick.put("maxMs", decimal(ticks.maxNanos() / 1_000_000.0));
 
         Map<String, Object> loop = new LinkedHashMap<>();
-        loop.put("count", 0L);
-        loop.put("totalMs", 0.0);
+        loop.put("count", loops.calls());
+        loop.put("totalMs", decimal(loops.totalNanos() / 1_000_000.0));
 
         List<Map<String, Object>> events = new ArrayList<>(luaEvents.size());
         luaEvents.forEach((name, event) -> {
@@ -43,9 +53,9 @@ final class TelemetrySnapshotPayload {
                 item.put("name", name);
                 item.put("calls", event.calls());
                 item.put("callbacks", event.callbacks());
-                item.put("totalMs", event.totalNanos() / 1_000_000.0);
-                item.put("avgMs", event.totalNanos() / 1_000_000.0 / event.calls());
-                item.put("maxMs", event.maxNanos() / 1_000_000.0);
+                item.put("totalMs", decimal(event.totalNanos() / 1_000_000.0));
+                item.put("avgMs", decimal(event.totalNanos() / 1_000_000.0 / event.calls()));
+                item.put("maxMs", decimal(event.maxNanos() / 1_000_000.0));
                 events.add(item);
             }
         });
@@ -61,11 +71,15 @@ final class TelemetrySnapshotPayload {
         snapshot.put("seq", sequence);
         snapshot.put("ts", timestampMillis);
         snapshot.put("tick", tick);
-        snapshot.put("overBudgetTicks", 0L);
+        snapshot.put("overBudgetTicks", ticks.overBudgetCalls());
         snapshot.put("loop", loop);
         snapshot.put("phases", Map.of());
         snapshot.put("counters", Map.of());
-        snapshot.put("world", Map.of());
+        Map<String, Object> world = new LinkedHashMap<>();
+        if (activeZombieCount != null) {
+            world.put("zombies", activeZombieCount);
+        }
+        snapshot.put("world", world);
         snapshot.put("jvm", Map.of());
         snapshot.put("playersOnline", playersOnline);
         snapshot.put("dropped", dropped);
@@ -75,5 +89,9 @@ final class TelemetrySnapshotPayload {
             throw new IllegalArgumentException("Telemetry snapshot exceeds the payload limit");
         }
         return encoded;
+    }
+
+    private static double decimal(double value) {
+        return Double.parseDouble(String.format(Locale.ROOT, "%.3f", value));
     }
 }

@@ -8,10 +8,51 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public record AgentConfiguration(String profile, URI telemetryEndpoint, URI restartEndpoint, boolean restartEnabled) {
-    private static final String PROFILE_PROPERTY = "apocbr.profile";
+    /** JVM argument {@code -Dapocbr.profile}; selects the YAML profile loaded by the agent. */
+    public static final String PROFILE_PROPERTY = "apocbr.profile";
+    /** JVM argument {@code -Dapocbr.telemetry.endpoint}; overrides the telemetry endpoint. */
+    public static final String TELEMETRY_ENDPOINT_PROPERTY = "apocbr.telemetry.endpoint";
+    /** JVM argument {@code -Dapocbr.telemetry.apiKey}; supplies the telemetry API credential. */
+    public static final String TELEMETRY_API_KEY_PROPERTY = "apocbr.telemetry.apiKey";
+    /** JVM argument {@code -Dapocbr.telemetry.gameVersion}; overrides the telemetry game-version label. */
+    public static final String TELEMETRY_GAME_VERSION_PROPERTY = "apocbr.telemetry.gameVersion";
+    /** JVM argument {@code -Dapocbr.restart.enabled}; overrides the YAML restart-notifier setting. */
+    public static final String RESTART_ENABLED_PROPERTY = "apocbr.restart.enabled";
+    /** JVM argument {@code -Dapocbr.restart.apiKey}; supplies the restart API credential. */
+    public static final String RESTART_API_KEY_PROPERTY = "apocbr.restart.apiKey";
+    /** JVM argument {@code -Dapocbr.restart.url}; overrides the restart endpoint. */
+    public static final String RESTART_URL_PROPERTY = "apocbr.restart.url";
+    /** JVM argument {@code -Dapocbr.bridge.serverKey}; shared fallback credential for agent APIs. */
+    public static final String BRIDGE_SERVER_KEY_PROPERTY = "apocbr.bridge.serverKey";
+
+    /** Telemetry endpoint environment override; takes precedence over its corresponding JVM property. */
+    public static final String TELEMETRY_ENDPOINT_ENVIRONMENT = "APOCBR_TELEMETRY_ENDPOINT";
+    /** Telemetry API credential environment override; takes precedence over its corresponding JVM property. */
+    public static final String TELEMETRY_API_KEY_ENVIRONMENT = "APOCBR_TELEMETRY_API_KEY";
+    /** Restart API credential environment override, used before the shared bridge credential. */
+    public static final String RESTART_API_KEY_ENVIRONMENT = "PZMANAGER_MOD_UPDATE_TOKEN";
+    /** Restart endpoint environment fallback, overridden by the corresponding JVM property. */
+    public static final String RESTART_URL_ENVIRONMENT = "PZMANAGER_RESTART_URL";
 
     public static AgentConfiguration load() {
-        return load(System.getProperty(PROFILE_PROPERTY, "prod"));
+        return load(systemProperty(PROFILE_PROPERTY, "prod"));
+    }
+
+    public static String systemProperty(String name) {
+        return System.getProperty(name);
+    }
+
+    public static String systemProperty(String name, String defaultValue) {
+        return System.getProperty(name, defaultValue);
+    }
+
+    public static String environmentVariable(String name) {
+        return System.getenv(name);
+    }
+
+    public static String environmentOrProperty(String propertyName, String environmentName) {
+        String value = environmentVariable(environmentName);
+        return value == null || value.isBlank() ? systemProperty(propertyName) : value;
     }
 
     static AgentConfiguration load(String requestedProfile) {

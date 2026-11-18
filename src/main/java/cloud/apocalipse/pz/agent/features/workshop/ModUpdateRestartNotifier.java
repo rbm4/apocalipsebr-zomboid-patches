@@ -25,7 +25,7 @@ public final class ModUpdateRestartNotifier {
     }
 
     public static void initialize() {
-        String enabledOverride = System.getProperty("apocbr.restart.enabled");
+        String enabledOverride = AgentConfiguration.systemProperty(AgentConfiguration.RESTART_ENABLED_PROPERTY);
         if (enabledOverride != null && !Boolean.parseBoolean(enabledOverride)) {
             System.out.println("[ApocBR-Agent] Mod-update restart notifier disabled.");
             return;
@@ -35,16 +35,18 @@ public final class ModUpdateRestartNotifier {
             System.out.println("[ApocBR-Agent] Mod-update restart notifier disabled.");
             return;
         }
-        String token = System.getProperty("apocbr.restart.apiKey");
-        if (token == null) token = System.getenv("PZMANAGER_MOD_UPDATE_TOKEN");
-        if (token == null) token = System.getProperty("apocbr.bridge.serverKey");
+        String token = AgentConfiguration.systemProperty(AgentConfiguration.RESTART_API_KEY_PROPERTY);
+        if (token == null) token = AgentConfiguration.environmentVariable(
+            AgentConfiguration.RESTART_API_KEY_ENVIRONMENT
+        );
+        if (token == null) token = AgentConfiguration.systemProperty(AgentConfiguration.BRIDGE_SERVER_KEY_PROPERTY);
         if (token == null) {
             System.err.println("[ApocBR-Agent] Mod-update restart notifier disabled: configure restart URL and API key.");
             return;
         }
         try {
-            String configuredUrl = System.getenv("PZMANAGER_RESTART_URL");
-            String url = System.getProperty("apocbr.restart.url", configuredUrl);
+            String configuredUrl = AgentConfiguration.environmentVariable(AgentConfiguration.RESTART_URL_ENVIRONMENT);
+            String url = AgentConfiguration.systemProperty(AgentConfiguration.RESTART_URL_PROPERTY, configuredUrl);
             URI endpoint = validatedEndpoint(
                 url == null || url.isBlank() ? configuration.restartEndpoint().toString() : url,
                 token

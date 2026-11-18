@@ -84,3 +84,6 @@ For the future base-code migration, the [2026-11-18 source baseline and impact
 report](../reports/2026-11-18-byte-buddy-migration-baseline/2026-11-18-byte-buddy-migration-baseline.md)
 preserves vanilla comparisons, custom-class additions and migration questions.
 It is an investigation artifact, not evidence that the base migration has shipped.
+
+The first incremental game-code measurement port is the
+[vanilla-backed server telemetry baseline](2026-11-18-byte-buddy-server-telemetry-basics.md).

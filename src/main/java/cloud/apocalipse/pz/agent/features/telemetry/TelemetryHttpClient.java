@@ -45,12 +45,18 @@ final class TelemetryHttpClient implements AutoCloseable {
 
         static Configuration fromProperties() {
             AgentConfiguration agentConfiguration = AgentConfiguration.load();
-            String endpoint = setting("apocbr.telemetry.endpoint", "APOCBR_TELEMETRY_ENDPOINT");
-            String apiKey = setting("apocbr.telemetry.apiKey", "APOCBR_TELEMETRY_API_KEY");
+            String endpoint = AgentConfiguration.environmentOrProperty(
+                AgentConfiguration.TELEMETRY_ENDPOINT_PROPERTY,
+                AgentConfiguration.TELEMETRY_ENDPOINT_ENVIRONMENT
+            );
+            String apiKey = AgentConfiguration.environmentOrProperty(
+                AgentConfiguration.TELEMETRY_API_KEY_PROPERTY,
+                AgentConfiguration.TELEMETRY_API_KEY_ENVIRONMENT
+            );
             return fromSettings(
                 endpoint,
                 apiKey,
-                System.getProperty("apocbr.bridge.serverKey"),
+                AgentConfiguration.systemProperty(AgentConfiguration.BRIDGE_SERVER_KEY_PROPERTY),
                 agentConfiguration.telemetryEndpoint().toString()
             );
         }
@@ -82,11 +88,6 @@ final class TelemetryHttpClient implements AutoCloseable {
         @Override
         public String toString() {
             return "TelemetryHttpConfiguration[redacted]";
-        }
-
-        private static String setting(String property, String environment) {
-            String value = System.getenv(environment);
-            return value == null || value.isBlank() ? System.getProperty(property) : value;
         }
     }
 

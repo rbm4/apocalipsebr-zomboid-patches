@@ -11,6 +11,8 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
+- 2026-11-18: [Byte Buddy server telemetry: vanilla-backed basics](features/2026-11-18-byte-buddy-server-telemetry-basics.md).
+
 - 2026-11-17: [Workshop update restart hook and virtual-thread API notifier](features/2026-11-17-workshop-update-restart-agent.md).
 
 - 2026-11-17: [Byte Buddy agent foundation and Linux startup coexistence](features/2026-11-17-byte-buddy-agent-foundation.md).

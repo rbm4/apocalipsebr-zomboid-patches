@@ -30,9 +30,8 @@ public final class TelemetryModule implements AgentModule {
             })
             .type(named("zombie.network.GameServer"))
             .transform((dynamicBuilder, type, loader, module, domain) -> {
-                System.out.println("[ApocBR-Agent] Applying telemetry snapshot hook.");
-                return dynamicBuilder.visit(Advice.to(TelemetrySnapshotAdvice.class)
-                    .on(named("launchCommandHandler").and(takesArguments(0)).and(returns(void.class))));
+                System.out.println("[ApocBR-Agent] Applying vanilla server-loop telemetry hook.");
+                return dynamicBuilder.visit(new TelemetryServerLoopVisitor());
             });
     }
 }

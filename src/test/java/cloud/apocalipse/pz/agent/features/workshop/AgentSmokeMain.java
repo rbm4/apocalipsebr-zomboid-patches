@@ -8,6 +8,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import zombie.Lua.Event;
 import zombie.Lua.LuaManager;
 import zombie.network.GameServer;
+import zombie.worldMap.WorldMapVisitedServer;
+import zombie.ApocBRServerTelemetryLite;
 
 /** Run manually with the packaged -javaagent to verify transformation and helper linkage. */
 public class AgentSmokeMain {
@@ -44,7 +46,26 @@ public class AgentSmokeMain {
         if (metric == null || metric.calls() != 1L || metric.callbacks() != 2L || metric.totalNanos() < 0L) {
             throw new AssertionError("Lua event timing advice did not record one invocation");
         }
-        GameServer.launchCommandHandler();
+        GameServer.done = false;
+        WorldMapVisitedServer.updates = 0;
+        ApocBRServerTelemetryLite.reset();
+        GameServer.main(new String[0]);
+        TelemetryRegistry.TickSnapshot tick = TelemetryRegistry.snapshotTicksAndReset();
+        TelemetryRegistry.LoopSnapshot loops = TelemetryRegistry.snapshotLoopsAndReset();
+        if (tick.calls() != WorldMapVisitedServer.updates || tick.calls() != 3L || tick.totalNanos() < 0L) {
+            throw new AssertionError("Server-loop telemetry did not count completed simulation cycles");
+        }
+        if (tick.calls() != ApocBRServerTelemetryLite.tickCalls
+                || tick.totalNanos() != ApocBRServerTelemetryLite.tickNanos) {
+            throw new AssertionError("Tick measurements did not reuse the legacy elapsed values");
+        }
+        if (loops.calls() != 5L || loops.totalNanos() < tick.totalNanos()) {
+            throw new AssertionError("Server-loop telemetry did not include packet-only iterations");
+        }
+        if (loops.calls() != ApocBRServerTelemetryLite.loopCalls
+                || loops.totalNanos() != ApocBRServerTelemetryLite.loopNanos) {
+            throw new AssertionError("Loop measurements did not reuse the legacy elapsed values");
+        }
         System.out.println("Packaged agent smoke check passed.");
     }
 }

@@ -13,6 +13,12 @@ public final class TelemetryRegistry {
     private static final int MAX_EVENT_NAME_LENGTH = 128;
     private static final String OTHER_EVENT_NAME = "(other)";
     private static final ConcurrentHashMap<String, Accumulator> LUA_EVENTS = new ConcurrentHashMap<>();
+    private static final LongAdder TICK_CALLS = new LongAdder();
+    private static final LongAdder TICK_NANOS = new LongAdder();
+    private static final LongAdder OVER_BUDGET_TICKS = new LongAdder();
+    private static final AtomicLong TICK_MAX_NANOS = new AtomicLong();
+    private static final LongAdder LOOP_CALLS = new LongAdder();
+    private static final LongAdder LOOP_NANOS = new LongAdder();
 
     private TelemetryRegistry() {
     }
@@ -24,6 +30,41 @@ public final class TelemetryRegistry {
             name = name.substring(0, MAX_EVENT_NAME_LENGTH);
         }
         accumulator(name).record(Math.max(0, callbackCount), Math.max(0L, durationNanos));
+    }
+
+    public static void recordTick(long durationNanos) {
+        if (durationNanos < 0L) {
+            return;
+        }
+
+        TICK_CALLS.increment();
+        TICK_NANOS.add(durationNanos);
+        TICK_MAX_NANOS.accumulateAndGet(durationNanos, Math::max);
+        if (durationNanos > 100_000_000L) {
+            OVER_BUDGET_TICKS.increment();
+        }
+    }
+
+    public static TickSnapshot snapshotTicksAndReset() {
+        return new TickSnapshot(
+            TICK_CALLS.sumThenReset(),
+            TICK_NANOS.sumThenReset(),
+            TICK_MAX_NANOS.getAndSet(0L),
+            OVER_BUDGET_TICKS.sumThenReset()
+        );
+    }
+
+    public static void recordLoop(long durationNanos) {
+        if (durationNanos < 0L) {
+            return;
+        }
+
+        LOOP_CALLS.increment();
+        LOOP_NANOS.add(durationNanos);
+    }
+
+    public static LoopSnapshot snapshotLoopsAndReset() {
+        return new LoopSnapshot(LOOP_CALLS.sumThenReset(), LOOP_NANOS.sumThenReset());
     }
 
     public static Map<String, EventSnapshot> snapshot() {
@@ -61,6 +102,12 @@ public final class TelemetryRegistry {
     }
 
     public record EventSnapshot(long calls, long callbacks, long totalNanos, long maxNanos) {
+    }
+
+    public record TickSnapshot(long calls, long totalNanos, long maxNanos, long overBudgetCalls) {
+    }
+
+    public record LoopSnapshot(long calls, long totalNanos) {
     }
 
     private static final class Accumulator {

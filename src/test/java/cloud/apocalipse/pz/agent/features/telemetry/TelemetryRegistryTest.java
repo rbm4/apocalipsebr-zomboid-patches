@@ -31,4 +31,30 @@ class TelemetryRegistryTest {
         assertTrue(snapshot.size() <= 128);
         assertTrue(snapshot.get("(other)").calls() > 0);
     }
+
+    @Test
+    void tickSnapshotsAggregateDurationsAndCountOverBudgetUpdates() {
+        TelemetryRegistry.recordTick(20_000_000L);
+        TelemetryRegistry.recordTick(120_000_000L);
+
+        TelemetryRegistry.TickSnapshot snapshot = TelemetryRegistry.snapshotTicksAndReset();
+
+        assertEquals(2L, snapshot.calls());
+        assertEquals(140_000_000L, snapshot.totalNanos());
+        assertEquals(120_000_000L, snapshot.maxNanos());
+        assertEquals(1L, snapshot.overBudgetCalls());
+        assertEquals(0L, TelemetryRegistry.snapshotTicksAndReset().calls());
+    }
+
+    @Test
+    void loopSnapshotsAggregateAllIterationsAndResetPerInterval() {
+        TelemetryRegistry.recordLoop(4_000_000L);
+        TelemetryRegistry.recordLoop(6_000_000L);
+
+        TelemetryRegistry.LoopSnapshot snapshot = TelemetryRegistry.snapshotLoopsAndReset();
+
+        assertEquals(2L, snapshot.calls());
+        assertEquals(10_000_000L, snapshot.totalNanos());
+        assertEquals(0L, TelemetryRegistry.snapshotLoopsAndReset().calls());
+    }
 }

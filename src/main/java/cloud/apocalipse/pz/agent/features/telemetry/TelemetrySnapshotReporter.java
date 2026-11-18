@@ -1,5 +1,6 @@
 package cloud.apocalipse.pz.agent.features.telemetry;
 
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
@@ -11,7 +12,6 @@ import java.util.concurrent.atomic.LongAdder;
 /** Captures a detached schema-3 payload on the server thread and delivers it asynchronously. */
 public final class TelemetrySnapshotReporter {
     private static final long INTERVAL_NANOS = Duration.ofSeconds(30).toNanos();
-    private static final String DEFAULT_GAME_VERSION = "42.22.2";
     private static final int MAX_ERROR_DETAIL_LENGTH = 180;
     private static final int MAX_CAUSE_DEPTH = 8;
     private static final Pattern URL_PATTERN = Pattern.compile("(?i)https?://\\S+");
@@ -43,8 +43,8 @@ public final class TelemetrySnapshotReporter {
         System.out.println("[ApocBR-Agent][Telemetry] Schema-3 delivery enabled; snapshots every 30 seconds.");
     }
 
-    /** Called by inlined Advice on the GameServer loop after reading server-owned counts. */
-    public static void onServerLoop(int playersOnline) {
+    /** Called after the loop duration is recorded, so snapshot work is excluded from loop timing. */
+    public static void onServerLoop() {
         TelemetryHttpClient current = client;
         if (current == null) {
             return;
@@ -61,8 +61,17 @@ public final class TelemetrySnapshotReporter {
         long droppedCount = dropped.sumThenReset();
         String payload;
         try {
+            int playersOnline = TelemetryWorldSnapshot.onlinePlayers();
+            Integer activeZombieCount = TelemetryWorldSnapshot.activeZombieCount();
             Map<String, TelemetryRegistry.EventSnapshot> events = TelemetryRegistry.snapshotAndReset();
-            String gameVersion = System.getProperty("apocbr.telemetry.gameVersion", DEFAULT_GAME_VERSION);
+            TelemetryRegistry.TickSnapshot ticks = TelemetryRegistry.snapshotTicksAndReset();
+            TelemetryRegistry.LoopSnapshot loops = TelemetryRegistry.snapshotLoopsAndReset();
+            String gameVersion = AgentConfiguration.systemProperty(
+                AgentConfiguration.TELEMETRY_GAME_VERSION_PROPERTY
+            );
+            if (gameVersion == null) {
+                gameVersion = TelemetryWorldSnapshot.gameVersion();
+            }
             payload = TelemetrySnapshotPayload.encode(
                 gameVersion,
                 intervalMillis,
@@ -70,6 +79,9 @@ public final class TelemetrySnapshotReporter {
                 nowMillis,
                 playersOnline,
                 droppedCount,
+                ticks,
+                loops,
+                activeZombieCount,
                 events
             );
         } catch (RuntimeException invalidSnapshot) {

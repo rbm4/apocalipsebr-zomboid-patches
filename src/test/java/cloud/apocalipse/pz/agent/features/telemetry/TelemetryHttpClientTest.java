@@ -53,7 +53,16 @@ class TelemetryHttpClientTest {
                     java.time.Duration.ofSeconds(5),
                     java.time.Duration.ofSeconds(10)))) {
             String snapshot = TelemetrySnapshotPayload.encode(
-                "42.22.2", 30_000L, 1L, 1_795_000_000_000L, 1, 0L, java.util.Map.of()
+                "42.22.2",
+                30_000L,
+                1L,
+                1_795_000_000_000L,
+                1,
+                0L,
+                new TelemetryRegistry.TickSnapshot(0, 0L, 0L, 0L),
+                new TelemetryRegistry.LoopSnapshot(0, 0L),
+                null,
+                java.util.Map.of()
             );
             CompletableFuture<Void> delivered = new CompletableFuture<>();
             Thread worker = Thread.ofVirtual().start(() -> {
