@@ -22,7 +22,7 @@ You do **not** need to know Java or programming to use these. Just follow the st
 
 ## Java Agent (Early Migration)
 
-The Maven project under `src/main/java` is an early Byte Buddy migration path, separate from the existing loose-class patch workflow. It uses one global agent entry point with each feature owning its instrumentation registrations. The agent targets the latest supported game build; hook matchers and callback logic are updated together as vanilla changes, while older support remains available through Git history rather than runtime target selection. Telemetry currently demonstrates a Lua-event timing hook and aggregates in memory only; it does not yet replace the existing telemetry output pipeline. The game JAR is not bundled into the agent.
+The Maven project under `src/main/java` is an early Byte Buddy migration path, separate from the existing loose-class patch workflow. It uses one global agent entry point with each feature owning its instrumentation registrations. The agent targets the latest supported game build; hook matchers and callback logic are updated together as vanilla changes, while older support remains available through Git history rather than runtime target selection. Telemetry currently records Lua-event timings and posts a schema-3 snapshot every 30 seconds to `POST /api/v1/telemetry` on a virtual thread. Configure `apocbr.telemetry.endpoint` and `apocbr.telemetry.apiKey` (or `APOCBR_TELEMETRY_ENDPOINT` and `APOCBR_TELEMETRY_API_KEY`); the generated integration key must be associated with the runtime server. Tick, loop, world and JVM sections are placeholders until their measurements are ported. The game JAR is not bundled into the agent.
 
 ---
 

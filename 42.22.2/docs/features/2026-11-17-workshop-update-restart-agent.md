@@ -84,19 +84,21 @@ HTTP, request method/header/body, redirect refusal, response size and status
 validation, virtual-thread execution, admission coalescing, successful suppression
 and failure cooldown. Production configuration still requires HTTPS.
 
-A fresh JVM runs the packaged agent against a structural game-class double and
+A fresh JVM runs the packaged agent against structural game-class doubles and
 an injected fake transport, checking helper linkage, original method execution,
-ignored messages and duplicate suppression without external network calls:
+ignored messages, duplicate suppression and telemetry advice binding without
+external network calls:
 
 ```text
 mvn package
-java -Dapocbr.restart.enabled=false -javaagent:target/apocbr-agent.jar -cp "target/apocbr-agent.jar;target/test-classes" cloud.apocalipse.pz.workshop.AgentSmokeMain
+java "-Dapocbr.restart.enabled=false" -javaagent:target/apocbr-agent.jar -cp "target/apocbr-agent.jar;target/test-classes" cloud.apocalipse.pz.agent.features.workshop.AgentSmokeMain
 ```
 
 Use `:` rather than `;` in the classpath on Linux. In PowerShell, quote the complete
 `-Dapocbr.restart.enabled=false` argument. The disable setting keeps normal startup
-configuration inactive; the fixture installs its own fake notifier. Test game
-classes live only in `target/test-classes` and are not packaged in the agent JAR.
+configuration inactive; the fixture installs its own fake notifier. Telemetry
+delivery is also inactive unless its endpoint and API key are configured. Test
+game classes live only in `target/test-classes` and are not packaged in the agent JAR.
 
 `javap -p` against the installed original game JAR confirmed the exact nested
 class and private `inform(String)` descriptor. Full PZ startup, real Steam callback

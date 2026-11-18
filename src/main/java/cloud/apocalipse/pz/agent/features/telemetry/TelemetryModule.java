@@ -9,11 +9,14 @@ import static net.bytebuddy.matcher.ElementMatchers.takesArguments;
 
 /** Telemetry instrumentation registrations for game execution points. */
 public final class TelemetryModule implements AgentModule {
-    public static final String LUA_EVENT_TRIGGER_DURATION = "lua.event.trigger";
-
     @Override
     public String name() {
         return "telemetry";
+    }
+
+    @Override
+    public void initialize() {
+        TelemetrySnapshotReporter.initialize();
     }
 
     @Override
@@ -24,6 +27,12 @@ public final class TelemetryModule implements AgentModule {
                 System.out.println("[ApocBR-Agent] Applying Lua event timing telemetry hook.");
                 return dynamicBuilder.visit(Advice.to(LuaEventTimingAdvice.class)
                     .on(named("trigger").and(takesArguments(3)).and(returns(boolean.class))));
+            })
+            .type(named("zombie.network.GameServer"))
+            .transform((dynamicBuilder, type, loader, module, domain) -> {
+                System.out.println("[ApocBR-Agent] Applying telemetry snapshot hook.");
+                return dynamicBuilder.visit(Advice.to(TelemetrySnapshotAdvice.class)
+                    .on(named("launchCommandHandler").and(takesArguments(0)).and(returns(void.class))));
             });
     }
 }
