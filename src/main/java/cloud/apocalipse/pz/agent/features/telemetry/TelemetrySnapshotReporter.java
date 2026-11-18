@@ -3,6 +3,7 @@ package cloud.apocalipse.pz.agent.features.telemetry;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.Map;
+import java.util.regex.Pattern;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
@@ -11,6 +12,11 @@ import java.util.concurrent.atomic.LongAdder;
 public final class TelemetrySnapshotReporter {
     private static final long INTERVAL_NANOS = Duration.ofSeconds(30).toNanos();
     private static final String DEFAULT_GAME_VERSION = "42.22.2";
+    private static final int MAX_ERROR_DETAIL_LENGTH = 180;
+    private static final int MAX_CAUSE_DEPTH = 8;
+    private static final Pattern URL_PATTERN = Pattern.compile("(?i)https?://\\S+");
+    private static final Pattern CREDENTIAL_PATTERN =
+        Pattern.compile("(?i)(api[-_ ]?key|token|authorization)(\\s*[:=]\\s*|\\s+)[^\\s,;]+");
     private static final AtomicBoolean IN_FLIGHT = new AtomicBoolean();
     private static final LongAdder dropped = new LongAdder();
     private static volatile TelemetryHttpClient client;
@@ -96,12 +102,43 @@ public final class TelemetrySnapshotReporter {
             System.err.println("[ApocBR-Agent][Telemetry] HTTP delivery interrupted.");
         } catch (IOException failure) {
             dropped.increment();
-            String code = failure instanceof TelemetryHttpClient.DeliveryException deliveryFailure
-                ? deliveryFailure.code()
-                : "TRANSPORT_ERROR";
-            System.err.println("[ApocBR-Agent][Telemetry] HTTP delivery failed: " + code);
+            System.err.println(
+                "[ApocBR-Agent][Telemetry] HTTP delivery failed: " + formatDeliveryFailure(failure)
+            );
         } finally {
             IN_FLIGHT.set(false);
         }
+    }
+
+    static String formatDeliveryFailure(IOException failure) {
+        if (failure instanceof TelemetryHttpClient.DeliveryException deliveryFailure) {
+            return deliveryFailure.code();
+        }
+
+        Throwable cause = failure;
+        for (int depth = 0; depth < MAX_CAUSE_DEPTH; depth++) {
+            Throwable next = cause.getCause();
+            if (next == null || next == cause) {
+                break;
+            }
+            cause = next;
+        }
+        String detail = cause.getClass().getSimpleName();
+        String message = cause.getMessage();
+        if (message == null || message.isBlank()) {
+            message = failure.getMessage();
+        }
+        if (message != null && !message.isBlank()) {
+            message = URL_PATTERN.matcher(message).replaceAll("<url>");
+            message = CREDENTIAL_PATTERN.matcher(message).replaceAll("$1$2<redacted>");
+            message = message.replaceAll("[\\p{Cntrl}]+", " ").trim();
+            if (message.length() > MAX_ERROR_DETAIL_LENGTH) {
+                message = message.substring(0, MAX_ERROR_DETAIL_LENGTH - 3) + "...";
+            }
+            if (!message.isBlank()) {
+                detail += ": " + message;
+            }
+        }
+        return "TRANSPORT_ERROR (" + detail + ")";
     }
 }

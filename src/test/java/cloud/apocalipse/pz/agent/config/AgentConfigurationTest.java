@@ -24,9 +24,9 @@ class AgentConfigurationTest {
 
             AgentConfiguration local = AgentConfiguration.load("local");
             assertEquals("local", local.profile());
-            assertEquals(URI.create("http://localhost:800/api/v1/telemetry"), local.telemetryEndpoint());
+            assertEquals(URI.create("http://localhost:8080/api/v1/telemetry"), local.telemetryEndpoint());
             assertEquals(
-                URI.create("http://localhost:800/api/server/mod-update/restart"),
+                URI.create("http://localhost:8080/api/server/mod-update/restart"),
                 local.restartEndpoint()
             );
             assertTrue(local.restartEnabled());
