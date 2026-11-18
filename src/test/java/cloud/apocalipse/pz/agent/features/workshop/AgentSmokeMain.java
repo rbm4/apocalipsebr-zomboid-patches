@@ -1,10 +1,13 @@
-package cloud.apocalipse.pz.workshop;
+package cloud.apocalipse.pz.agent.features.workshop;
 
+import cloud.apocalipse.pz.agent.features.telemetry.TelemetryModule;
+import cloud.apocalipse.pz.agent.features.telemetry.TelemetryRegistry;
 import java.net.URI;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import zombie.Lua.Event;
 import zombie.Lua.LuaManager;
 
 /** Run manually with the packaged -javaagent to verify transformation and helper linkage. */
@@ -33,6 +36,13 @@ public class AgentSmokeMain {
         LuaManager.GlobalObject.inform("CheckModsNeedUpdate: Mods need update");
         if (calls.get() != 1) throw new AssertionError("Duplicate request");
         if (LuaManager.informCalls != 4) throw new AssertionError("Original method did not run for every message");
+
+        new Event().trigger(null, null, new Object[0]);
+        TelemetryRegistry.MetricSnapshot metric = TelemetryRegistry.snapshot()
+            .get(TelemetryModule.LUA_EVENT_TRIGGER_DURATION);
+        if (metric == null || metric.calls() != 1L || metric.totalNanos() < 0L) {
+            throw new AssertionError("Lua event timing advice did not record one invocation");
+        }
         System.out.println("Packaged agent smoke check passed.");
     }
 }

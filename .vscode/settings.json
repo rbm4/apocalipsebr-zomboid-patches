@@ -34,5 +34,6 @@
             "environmentVariable": "JAVA_HOME",
             "value": "Z:/git/Github/apocalipsebr-zomboid-patches/jdk"
         }
-    ]
+    ],
+    "java.dependency.packagePresentation": "hierarchical"
 }

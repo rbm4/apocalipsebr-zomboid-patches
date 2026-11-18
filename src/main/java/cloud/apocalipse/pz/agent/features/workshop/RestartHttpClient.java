@@ -1,4 +1,4 @@
-package cloud.apocalipse.pz.workshop;
+package cloud.apocalipse.pz.agent.features.workshop;
 
 import com.google.gson.JsonParser;
 import java.io.IOException;

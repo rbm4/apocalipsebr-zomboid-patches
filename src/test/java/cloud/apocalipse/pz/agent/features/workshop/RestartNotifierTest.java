@@ -1,4 +1,4 @@
-package cloud.apocalipse.pz.workshop;
+package cloud.apocalipse.pz.agent.features.workshop;
 
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
