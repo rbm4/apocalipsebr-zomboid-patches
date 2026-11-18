@@ -1,7 +1,9 @@
 package cloud.apocalipse.pz.agent.features.workshop;
 
 import com.google.gson.JsonParser;
-import cloud.apocalipse.pz.agent.features.http.JsonHttpTransport;
+import cloud.apocalipse.pz.agent.features.http.FeignClientFactory;
+import cloud.apocalipse.pz.agent.features.http.FeignClientFactory.HttpStatusException;
+import feign.FeignException;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -11,19 +13,27 @@ import java.time.Duration;
 interface RestartHttpClient {
     enum Result { ACCEPTED, ALREADY_IN_PROGRESS }
 
-    Result post(URI endpoint, String token) throws Exception;
+    Result post(String token) throws Exception;
 
-    static RestartHttpClient create() {
-        return (endpoint, token) -> {
-            try (JsonHttpTransport transport = new JsonHttpTransport(Duration.ofSeconds(5))) {
-                JsonHttpTransport.Response response = transport.post(
+    static RestartHttpClient create(URI endpoint) {
+        return token -> {
+            try (FeignClientFactory.ManagedClient<RestartApi> client = FeignClientFactory.create(
+                    RestartApi.class,
                     endpoint,
-                    token,
-                    "application/json",
-                    "{\"message\":\"Restart para update de mods\"}",
-                    Duration.ofSeconds(30)
-                );
-                return decode(response.statusCode(), response.body());
+                    Duration.ofSeconds(5),
+                    Duration.ofSeconds(30))) {
+                try (feign.Response response = client.api().post(
+                        token,
+                        "{\"message\":\"Restart para update de mods\"}")) {
+                    return decode(response.status(), FeignClientFactory.readBoundedBody(response));
+                }
+            } catch (HttpStatusException failure) {
+                throw failure;
+            } catch (FeignException failure) {
+                if (FeignClientFactory.restoreInterruptIfInterrupted(failure)) {
+                    throw new InterruptedException("Restart request interrupted");
+                }
+                throw new IOException("Restart request failed", failure);
             }
         };
     }

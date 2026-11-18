@@ -1,7 +1,6 @@
 package cloud.apocalipse.pz.agent.features.workshop;
 
 import cloud.apocalipse.pz.agent.features.telemetry.TelemetryRegistry;
-import java.net.URI;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -17,7 +16,7 @@ public class AgentSmokeMain {
         AtomicReference<Thread> worker = new AtomicReference<>();
         CountDownLatch called = new CountDownLatch(1);
         ModUpdateRestartNotifier notifier = new ModUpdateRestartNotifier(
-            URI.create("https://example.invalid/api/server/mod-update/restart"), "test-token", (url, token) -> {
+            "test-token", token -> {
                 if (!Thread.currentThread().isVirtual()) throw new AssertionError("Expected virtual worker");
                 worker.set(Thread.currentThread());
                 calls.incrementAndGet();

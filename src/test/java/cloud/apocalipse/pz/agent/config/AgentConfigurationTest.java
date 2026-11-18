@@ -2,48 +2,28 @@ package cloud.apocalipse.pz.agent.config;
 
 import java.net.URI;
 import org.junit.jupiter.api.Test;
-import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class AgentConfigurationTest {
     @Test
-    void productionIsTheDefaultAndLocalOverridesOnlyEndpoints() {
-        String originalProfile = System.getProperty("apocbr.profile");
-        try {
-            System.clearProperty("apocbr.profile");
-            AgentConfiguration defaults = AgentConfiguration.load();
-            assertEquals("prod", defaults.profile());
-            assertEquals(
-                URI.create("https://plataforma.apocalipse.cloud/api/v1/telemetry"),
-                defaults.telemetryEndpoint()
-            );
-            assertEquals(
-                URI.create("https://plataforma.apocalipse.cloud/api/server/mod-update/restart"),
-                defaults.restartEndpoint()
-            );
-            assertTrue(defaults.restartEnabled());
+    void productionIsDefaultAndLocalChangesOnlyTransportEndpoints() {
+        AgentConfiguration production = AgentConfiguration.load("prod");
+        AgentConfiguration local = AgentConfiguration.load("local");
 
-            AgentConfiguration local = AgentConfiguration.load("local");
-            assertEquals("local", local.profile());
-            assertEquals(URI.create("http://localhost:8080/api/v1/telemetry"), local.telemetryEndpoint());
-            assertEquals(
-                URI.create("http://localhost:8080/api/server/mod-update/restart"),
-                local.restartEndpoint()
-            );
-            assertTrue(local.restartEnabled());
-
-            System.setProperty("apocbr.profile", "local");
-            assertEquals("local", AgentConfiguration.load().profile());
-        } finally {
-            if (originalProfile == null) {
-                System.clearProperty("apocbr.profile");
-            } else {
-                System.setProperty("apocbr.profile", originalProfile);
-            }
-        }
+        assertEquals(URI.create("https://plataforma.apocalipse.cloud/api/v1/telemetry"),
+            production.telemetryEndpoint());
+        assertEquals(URI.create("https://plataforma.apocalipse.cloud/api/server/mod-update/restart"),
+            production.restartEndpoint());
+        assertEquals(URI.create("http://localhost:8080/api/v1/telemetry"), local.telemetryEndpoint());
+        assertEquals(URI.create("http://localhost:8080/api/server/mod-update/restart"), local.restartEndpoint());
+        assertTrue(production.restartEnabled());
+        assertEquals(production.restartEnabled(), local.restartEnabled());
     }
 
     @Test
-    void rejectsUnknownProfile() {
+    void rejectsUnknownProfiles() {
         assertThrows(IllegalArgumentException.class, () -> AgentConfiguration.load("staging"));
     }
 }

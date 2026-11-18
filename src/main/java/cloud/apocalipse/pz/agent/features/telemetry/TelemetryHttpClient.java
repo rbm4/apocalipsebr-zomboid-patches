@@ -4,7 +4,9 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
-import cloud.apocalipse.pz.agent.features.http.JsonHttpTransport;
+import cloud.apocalipse.pz.agent.features.http.FeignClientFactory;
+import cloud.apocalipse.pz.agent.features.http.FeignClientFactory.HttpStatusException;
+import feign.FeignException;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
@@ -89,11 +91,16 @@ final class TelemetryHttpClient implements AutoCloseable {
     }
 
     private final Configuration configuration;
-    private final JsonHttpTransport transport;
+    private final FeignClientFactory.ManagedClient<TelemetryApi> client;
 
     TelemetryHttpClient(Configuration configuration) {
         this.configuration = Objects.requireNonNull(configuration);
-        this.transport = new JsonHttpTransport(configuration.connectTimeout());
+        this.client = FeignClientFactory.create(
+            TelemetryApi.class,
+            configuration.endpoint(),
+            configuration.connectTimeout(),
+            configuration.requestTimeout()
+        );
     }
 
     static TelemetryHttpClient configured() {
@@ -101,22 +108,24 @@ final class TelemetryHttpClient implements AutoCloseable {
     }
 
     void post(String body) throws IOException, InterruptedException {
-        JsonHttpTransport.Response response = this.transport.post(
-            this.configuration.endpoint(),
-            this.configuration.apiKey(),
-            "application/json; charset=utf-8",
-            body,
-            this.configuration.requestTimeout()
-        );
-        if (response.statusCode() != 201) {
-            throw new DeliveryException("HTTP_" + response.statusCode());
+        try (feign.Response response = this.client.api().post(this.configuration.apiKey(), body)) {
+            if (response.status() != 201) {
+                throw new DeliveryException("HTTP_" + response.status());
+            }
+            validateReceipt(FeignClientFactory.readBoundedBody(response));
+        } catch (HttpStatusException failure) {
+            throw new DeliveryException("HTTP_" + failure.statusCode());
+        } catch (FeignException failure) {
+            if (FeignClientFactory.restoreInterruptIfInterrupted(failure)) {
+                throw new InterruptedException("Telemetry request interrupted");
+            }
+            throw new IOException("Telemetry request failed", failure);
         }
-        validateReceipt(response.body());
     }
 
     @Override
     public void close() {
-        this.transport.close();
+        this.client.close();
     }
 
     private static void validateReceipt(String body) throws DeliveryException {

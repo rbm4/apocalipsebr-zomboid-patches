@@ -5,6 +5,7 @@ import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -45,7 +46,7 @@ class RestartNotifierTest {
         AtomicReference<Thread> worker = new AtomicReference<>();
         AtomicInteger calls = new AtomicInteger();
         AtomicLong clock = new AtomicLong();
-        ModUpdateRestartNotifier notifier = new ModUpdateRestartNotifier(ENDPOINT, "test-token", (url, token) -> {
+        ModUpdateRestartNotifier notifier = new ModUpdateRestartNotifier("test-token", token -> {
             worker.set(Thread.currentThread());
             calls.incrementAndGet();
             entered.countDown();
@@ -72,7 +73,7 @@ class RestartNotifierTest {
         AtomicLong clock = new AtomicLong();
         AtomicReference<Thread> worker = new AtomicReference<>();
         CountDownLatch entered = new CountDownLatch(1);
-        ModUpdateRestartNotifier notifier = new ModUpdateRestartNotifier(ENDPOINT, "test-token", (url, token) -> {
+        ModUpdateRestartNotifier notifier = new ModUpdateRestartNotifier("test-token", token -> {
             worker.set(Thread.currentThread());
             entered.countDown();
             throw new java.io.IOException("transport failure");
@@ -121,17 +122,31 @@ class RestartNotifierTest {
         });
         server.start();
         try {
-            // Loopback HTTP is used only to exercise transport; runtime configuration requires HTTPS.
-            URI local = URI.create("http://127.0.0.1:" + server.getAddress().getPort() + ENDPOINT.getPath());
-            RestartHttpClient client = RestartHttpClient.create();
-            assertEquals(RestartHttpClient.Result.ACCEPTED, client.post(local, "test-token"));
-            assertEquals("POST|test-token|application/json|{\"message\":\"Restart para update de mods\"}", observed.get());
+            // Loopback HTTP is allowed for local testing; remote runtime endpoints require HTTPS.
+            URI endpoint = URI.create(
+                "http://127.0.0.1:" + server.getAddress().getPort() + "/api/server/mod-update/restart"
+            );
+            RestartHttpClient client = RestartHttpClient.create(endpoint);
+            CompletableFuture<RestartHttpClient.Result> delivered = new CompletableFuture<>();
+            Thread worker = Thread.ofVirtual().start(() -> {
+                try {
+                    delivered.complete(client.post("test-token"));
+                } catch (Exception failure) {
+                    delivered.completeExceptionally(failure);
+                }
+            });
+            assertTrue(worker.isVirtual());
+            assertEquals(RestartHttpClient.Result.ACCEPTED, delivered.get(5, TimeUnit.SECONDS));
+            assertEquals(
+                "POST|test-token|application/json|{\"message\":\"Restart para update de mods\"}",
+                observed.get()
+            );
             status.set(302);
-            assertThrows(java.io.IOException.class, () -> client.post(local, "test-token"));
+            assertThrows(java.io.IOException.class, () -> client.post("test-token"));
             assertEquals(0, redirected.get());
             status.set(202);
             response.set("x".repeat(4097));
-            assertThrows(java.io.IOException.class, () -> client.post(local, "test-token"));
+            assertThrows(java.io.IOException.class, () -> client.post("test-token"));
         } finally {
             server.stop(0);
         }

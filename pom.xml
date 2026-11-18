@@ -16,6 +16,7 @@
         <byte-buddy.version>1.18.17</byte-buddy.version>
         <postgresql.version>42.7.14</postgresql.version>
         <hikaricp.version>7.1.0</hikaricp.version>
+        <feign.version>13.18</feign.version>
     </properties>
 
     <dependencies>
@@ -38,6 +39,16 @@
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>
             <version>${byte-buddy.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.openfeign</groupId>
+            <artifactId>feign-core</artifactId>
+            <version>${feign.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.openfeign</groupId>
+            <artifactId>feign-java11</artifactId>
+            <version>${feign.version}</version>
         </dependency>
         <dependency>
             <groupId>com.google.code.gson</groupId>
@@ -90,6 +101,10 @@
                                 <relocation>
                                     <pattern>com.google.gson</pattern>
                                     <shadedPattern>cloud.apocalipse.pz.internal.gson</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>feign</pattern>
+                                    <shadedPattern>cloud.apocalipse.pz.internal.feign</shadedPattern>
                                 </relocation>
                                 <relocation>
                                     <pattern>org.yaml.snakeyaml</pattern>

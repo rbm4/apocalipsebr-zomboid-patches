@@ -25,10 +25,14 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
         return new AgentConfiguration(
             profile,
-            URI.create(setting(local, baseline, "telemetry", "endpoint")),
-            URI.create(setting(local, baseline, "restart", "endpoint")),
+            endpoint(local, baseline, "telemetry", "base-url", "/api/v1/telemetry"),
+            endpoint(local, baseline, "restart", "base-url", "/api/server/mod-update/restart"),
             booleanSetting(local, baseline, "restart", "enabled")
         );
+    }
+
+    private static URI endpoint(Map<?, ?> override, Map<?, ?> baseline, String section, String name, String path) {
+        return URI.create(setting(override, baseline, section, name)).resolve(path);
     }
 
     private static String setting(Map<?, ?> override, Map<?, ?> baseline, String section, String name) {

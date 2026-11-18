@@ -11,7 +11,6 @@ public final class ModUpdateRestartNotifier {
     private static volatile ModUpdateRestartNotifier instance;
     private static final long MIN_INTERVAL_NANOS = Duration.ofSeconds(60).toNanos();
     private final RestartHttpClient transport;
-    private final URI endpoint;
     private final String token;
     private final LongSupplier clock;
     private final AtomicBoolean inFlight = new AtomicBoolean();
@@ -19,33 +18,42 @@ public final class ModUpdateRestartNotifier {
     private long lastAttempt;
     private boolean acknowledged;
 
-    ModUpdateRestartNotifier(URI endpoint, String token, RestartHttpClient transport, LongSupplier clock) {
-        this.endpoint = endpoint;
+    ModUpdateRestartNotifier(String token, RestartHttpClient transport, LongSupplier clock) {
         this.token = token;
         this.transport = transport;
         this.clock = clock;
     }
 
     public static void initialize() {
-        AgentConfiguration configuration = AgentConfiguration.load();
         String enabledOverride = System.getProperty("apocbr.restart.enabled");
-        if (!Boolean.parseBoolean(enabledOverride == null
-                ? Boolean.toString(configuration.restartEnabled())
-                : enabledOverride)) {
+        if (enabledOverride != null && !Boolean.parseBoolean(enabledOverride)) {
             System.out.println("[ApocBR-Agent] Mod-update restart notifier disabled.");
+            return;
+        }
+        AgentConfiguration configuration = AgentConfiguration.load();
+        if (enabledOverride == null && !configuration.restartEnabled()) {
+            System.out.println("[ApocBR-Agent] Mod-update restart notifier disabled.");
+            return;
+        }
+        String token = System.getProperty("apocbr.restart.apiKey");
+        if (token == null) token = System.getenv("PZMANAGER_MOD_UPDATE_TOKEN");
+        if (token == null) token = System.getProperty("apocbr.bridge.serverKey");
+        if (token == null) {
+            System.err.println("[ApocBR-Agent] Mod-update restart notifier disabled: configure restart URL and API key.");
             return;
         }
         try {
             String configuredUrl = System.getenv("PZMANAGER_RESTART_URL");
-            String url = System.getProperty(
-                "apocbr.restart.url",
-                configuredUrl == null ? configuration.restartEndpoint().toString() : configuredUrl
+            String url = System.getProperty("apocbr.restart.url", configuredUrl);
+            URI endpoint = validatedEndpoint(
+                url == null || url.isBlank() ? configuration.restartEndpoint().toString() : url,
+                token
             );
-            String token = System.getProperty("apocbr.restart.apiKey");
-            if (token == null) token = System.getenv("PZMANAGER_MOD_UPDATE_TOKEN");
-            if (token == null) token = System.getProperty("apocbr.bridge.serverKey");
-            URI endpoint = validatedEndpoint(url, token);
-            instance = new ModUpdateRestartNotifier(endpoint, token, RestartHttpClient.create(), System::nanoTime);
+            instance = new ModUpdateRestartNotifier(
+                token,
+                RestartHttpClient.create(endpoint),
+                System::nanoTime
+            );
             System.out.println("[ApocBR-Agent] Mod-update restart notifier enabled.");
         } catch (IllegalArgumentException failure) {
             System.err.println("[ApocBR-Agent] Mod-update restart notifier disabled: configure restart URL and API key.");
@@ -97,7 +105,7 @@ public final class ModUpdateRestartNotifier {
 
     private void send() {
         try {
-            RestartHttpClient.Result result = transport.post(endpoint, token);
+            RestartHttpClient.Result result = transport.post(token);
             acknowledged = true;
             System.out.println(result == RestartHttpClient.Result.ACCEPTED
                 ? "[ApocBR-Agent] Mod-update restart requested."
