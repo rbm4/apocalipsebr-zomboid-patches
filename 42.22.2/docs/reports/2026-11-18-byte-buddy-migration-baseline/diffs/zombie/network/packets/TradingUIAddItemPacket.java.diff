@@ -1,0 +1,30 @@
+diff --git a/zombie/network/packets/TradingUIAddItemPacket.java b/zombie/network/packets/TradingUIAddItemPacket.java
+index 4ad34fe..d9e4bad 100644
+--- a/zombie/network/packets/TradingUIAddItemPacket.java
++++ b/zombie/network/packets/TradingUIAddItemPacket.java
+@@ -47,10 +47,11 @@ public class TradingUIAddItemPacket extends PlayerRequestPacket {
+     }
+ 
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
+         super.parse(b, connection);
++        zombie.apocalipse.humans.ServerHumanTrading.resolveTarget(this.destination);
+         this.item = null;
+         if (GameServer.server) {
+             this.itemId = b.getInt();
+             IsoPlayer isoPlayer = this.sender.getPlayer();
+             if (isoPlayer != null) {
+@@ -82,10 +83,13 @@ public class TradingUIAddItemPacket extends PlayerRequestPacket {
+         LuaEventManager.triggerEvent("TradingUIAddItem", this.sender.getPlayer(), this.destination.getPlayer(), this.item);
+     }
+ 
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
++        if (zombie.apocalipse.humans.ServerHumanTrading.addItem(
++            this.sender.getPlayer(), this.destination.getPlayer(), connection, this.item
++        )) return;
+         if (!TradingManager.getInstance().isInvalid(this.sender.getPlayer(), this.destination.getPlayer())) {
+             if (TradingManager.getInstance().addItem(this.sender.getPlayer(), this.item)) {
+                 this.sendToClient(PacketTypes.PacketType.TradingUIAddItem, this.destination.getPlayer());
+             }
+         }

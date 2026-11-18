@@ -1,0 +1,36 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Agent: package",
+            "type": "shell",
+            "command": "mvn",
+            "args": ["-B", "-ntp", "clean", "package"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "JAVA_HOME": "${workspaceFolder}/jdk"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$javac"]
+        },
+        {
+            "label": "Agent: test",
+            "type": "shell",
+            "command": "mvn",
+            "args": ["-B", "-ntp", "test"],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "JAVA_HOME": "${workspaceFolder}/jdk"
+                }
+            },
+            "group": "test",
+            "problemMatcher": ["$javac"]
+        }
+    ]
+}

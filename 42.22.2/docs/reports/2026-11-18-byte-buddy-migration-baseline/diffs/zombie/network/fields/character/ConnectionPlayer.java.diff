@@ -1,0 +1,33 @@
+diff --git a/zombie/network/fields/character/ConnectionPlayer.java b/zombie/network/fields/character/ConnectionPlayer.java
+index 5b9f888..8a5be77 100644
+--- a/zombie/network/fields/character/ConnectionPlayer.java
++++ b/zombie/network/fields/character/ConnectionPlayer.java
+@@ -7,10 +7,11 @@ import zombie.characters.IsoPlayer;
+ import zombie.core.network.ByteBufferReader;
+ import zombie.debug.DebugType;
+ import zombie.network.GameClient;
+ import zombie.network.GameServer;
+ import zombie.network.IConnection;
++import zombie.network.ApocBRNetworkDiagnostics;
+ 
+ public class ConnectionPlayer extends Player {
+     @Override
+     public void set(IsoPlayer isoPlayer) {
+         this.setPlayer(isoPlayer);
+@@ -39,11 +40,15 @@ public class ConnectionPlayer extends Player {
+             }
+ 
+             this.setPlayer(GameClient.IDToPlayerMap.get(id));
+         } else {
+             if (isInvalidIndex(id)) {
+-                DebugType.Multiplayer.error("wrong player connection index (%d)", id);
++                if (GameServer.server) {
++                    ApocBRNetworkDiagnostics.error(connection, "invalid-player-slot", () -> "wrong player connection index (" + id + ")");
++                } else {
++                    DebugType.Multiplayer.error("wrong player connection index (%d)", id);
++                }
+                 return;
+             }
+ 
+             IsoPlayer isoPlayer = connection == null ? null : connection.getPlayerAt(id);
+             this.setPlayer(isoPlayer);

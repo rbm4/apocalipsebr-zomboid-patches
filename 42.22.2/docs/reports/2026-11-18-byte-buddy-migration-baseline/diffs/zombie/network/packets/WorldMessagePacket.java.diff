@@ -1,0 +1,16 @@
+diff --git a/zombie/network/packets/WorldMessagePacket.java b/zombie/network/packets/WorldMessagePacket.java
+index 62de560..9aee292 100644
+--- a/zombie/network/packets/WorldMessagePacket.java
++++ b/zombie/network/packets/WorldMessagePacket.java
+@@ -45,10 +45,11 @@ public class WorldMessagePacket implements INetworkPacket {
+                 this.message = this.message.substring(0, 256);
+             }
+ 
+             this.sendToClients(PacketTypes.PacketType.WorldMessage, null);
+             GameServer.discordBot.sendMessage(this.username, this.message);
++            zombie.network.ApocBRBackendBridgeHooks.onChat(connection, this.username, this.message, "world");
+             LoggerManager.getLogger("chat").write(connection.getIndex() + " \"" + connection.getUserName() + "\" A \"" + this.message + "\"");
+         }
+     }
+ 
+     @Override

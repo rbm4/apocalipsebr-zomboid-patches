@@ -1,0 +1,30 @@
+diff --git a/zombie/savefile/PlayerDBHelper.java b/zombie/savefile/PlayerDBHelper.java
+index f10c6a7..b6546ef 100644
+--- a/zombie/savefile/PlayerDBHelper.java
++++ b/zombie/savefile/PlayerDBHelper.java
+@@ -182,10 +182,13 @@ public final class PlayerDBHelper {
+             }
+         }
+     }
+ 
+     public static boolean containsNetworkPlayer(String saveDir, String name, String world) throws SQLException {
++        if (ApocBRPlayerDatabase.enabled()) {
++            return !Core.getInstance().isNoSave() && new ApocBRPlayerDatabase().containsUser(world,name);
++        }
+         if (Core.getInstance().isNoSave()) {
+             return false;
+         } else {
+             File dbFile = new File(saveDir + File.separator + "players.db");
+             if (!dbFile.exists()) {
+@@ -210,10 +213,11 @@ public final class PlayerDBHelper {
+             }
+         }
+     }
+ 
+     public static void removePlayer(String saveDir, String name, String world) throws SQLException {
++        if (ApocBRPlayerDatabase.enabled()) { new ApocBRPlayerDatabase().removeUser(world,name); return; }
+         File dbFile = new File(saveDir + File.separator + "players.db");
+         if (dbFile.exists()) {
+             dbFile.setReadable(true, false);
+ 
+             try (Connection connection = PZSQLUtils.getConnection(dbFile.getAbsolutePath())) {

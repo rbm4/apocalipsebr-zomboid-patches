@@ -1,0 +1,70 @@
+diff --git a/zombie/characters/BodyDamage/Thermoregulator.java b/zombie/characters/BodyDamage/Thermoregulator.java
+index de2bf9a..f2256c3 100644
+--- a/zombie/characters/BodyDamage/Thermoregulator.java
++++ b/zombie/characters/BodyDamage/Thermoregulator.java
+@@ -38,13 +38,13 @@ public final class Thermoregulator {
+     private final IsoGameCharacter character;
+     private final IsoPlayer player;
+     private final Stats stats;
+     private final Nutrition nutrition;
+     private final ClimateManager climate;
+-    private static final ItemVisuals itemVisuals = new ItemVisuals();
+-    private static final ItemVisuals itemVisualsCache = new ItemVisuals();
+-    private static final ArrayList<BloodBodyPartType> coveredParts = new ArrayList<>();
++    private final ItemVisuals itemVisuals = new ItemVisuals();
++    private final ItemVisuals itemVisualsCache = new ItemVisuals();
++    private final ArrayList<BloodBodyPartType> coveredParts = new ArrayList<>();
+     private static float simulationMultiplier = 1.0F;
+     private float setPoint = 37.0F;
+     private float metabolicRate = Metabolics.Default.getMet();
+     private float metabolicRateReal = this.metabolicRate;
+     private float metabolicTarget = Metabolics.Default.getMet();
+@@ -609,20 +609,21 @@ public final class Thermoregulator {
+     }
+ 
+     private float getSimulationMultiplier(Thermoregulator.Multiplier multiplierType) {
+         float multiplier = GameTime.instance.getMultiplier();
+ 
+-        return switch (multiplierType) {
++        return multiplier * switch (multiplierType) {
+             case MetabolicRateInc -> 0.001F;
+             case MetabolicRateDec -> 4.0E-4F;
+             case BodyHeat -> 2.5E-4F;
+             case CoreHeatExpand -> 5.0E-5F;
+             case CoreHeatContract -> 5.0E-4F;
+             case SkinCelcius, SkinCelciusExpand -> 0.0025F;
+             case SkinCelciusContract -> 0.005F;
+             case PrimaryDelta -> 5.0E-4F;
+             case SecondaryDelta -> 2.5E-4F;
++            case Default -> 1.0F;
+         } * simulationMultiplier;
+     }
+ 
+     public float getThermalDamage() {
+         return this.thermalDamage;
+@@ -668,11 +669,13 @@ public final class Thermoregulator {
+         this.airAndWindTemp = this.climate.getAirTemperatureForCharacter(this.character, true);
+         this.externalAirTemperature = this.airTemperature;
+         this.updateSetPoint();
+         this.updateCoreRateOfChange();
+         this.updateMetabolicRate();
++        long clothingStarted = zombie.network.GameServer.server ? System.nanoTime() : 0L;
+         this.updateClothing();
++        if (clothingStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.thermalClothing", System.nanoTime() - clothingStarted);
+         this.updateNodesHeatDelta();
+         this.updateHeatDeltas();
+         this.updateNodes();
+         this.updateBodyMultipliers();
+         this.updateThermalDamage(this.airAndWindTemp);
+@@ -997,10 +1000,11 @@ public final class Thermoregulator {
+                 }
+             }
+         }
+ 
+         if (doUpdate) {
++            if (zombie.network.GameServer.server) zombie.ApocBRServerTelemetryLite.count("players.thermal.clothingRebuilt", 1);
+             for (int ix = 0; ix < this.nodes.length; ix++) {
+                 this.nodes[ix].clothing.clear();
+             }
+ 
+             itemVisualsCache.clear();

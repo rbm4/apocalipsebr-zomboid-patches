@@ -1,0 +1,17 @@
+diff --git a/zombie/apocalipse/humans/OperationAnnouncementProvider.java b/zombie/apocalipse/humans/OperationAnnouncementProvider.java
+new file mode 100644
+index 0000000..2d3e116
+--- /dev/null
++++ b/zombie/apocalipse/humans/OperationAnnouncementProvider.java
+@@ -0,0 +1,11 @@
++package zombie.apocalipse.humans;
++
++import java.util.List;
++import zombie.apocalipse.events.ApocBREventControl;
++import zombie.apocalipse.humans.brain.HumanAnnouncementProvider;
++
++/** Event-content adapter. Actor role selection belongs to the composition root. */
++final class OperationAnnouncementProvider implements HumanAnnouncementProvider {
++    @Override
++    public List<String> lines() { return ApocBREventControl.guideAnnouncementLines(); }
++}

@@ -1,0 +1,67 @@
+diff --git a/zombie/network/packets/connection/GoogleAuthKeyPacket.java b/zombie/network/packets/connection/GoogleAuthKeyPacket.java
+index 5cc66b1..8a7a426 100644
+--- a/zombie/network/packets/connection/GoogleAuthKeyPacket.java
++++ b/zombie/network/packets/connection/GoogleAuthKeyPacket.java
+@@ -44,10 +44,43 @@ public class GoogleAuthKeyPacket implements INetworkPacket {
+         this.message = message;
+     }
+ 
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
++        if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
++        if(zombie.savefile.ApocBRServerDatabase.enabled()) {
++            final String user=this.username,pass=this.password,secret=this.key,version=this.clientVersion;
++            final int type=this.authType;
++            if(!Core.getInstance().getVersionNumber().equals(version)) {
++                INetworkPacket.send(connection,PacketTypes.PacketType.AccessDenied,"ClientVersionMismatch##"+version+"##"+Core.getInstance().getVersionNumber());
++                connection.forceDisconnect("access-denied-client-version");return;
++            }
++            final String ip=connection.getInetSocketAddress().getHostString();final long steam=connection.getSteamId(),owner=connection.getOwnerId();
++            final boolean steamMode=zombie.core.znet.SteamUtils.isSteamModeEnabled(),steamCoop=zombie.network.CoopSlave.instance!=null;
++            zombie.savefile.ApocBRAsyncLogin.submit(connection,"google-key",()->{
++                ServerWorldDatabase db=ServerWorldDatabase.instance;
++                if(steamMode&&!steamCoop&&(steam<=0||!db.authSteamClient(steam).authorized||!db.authSteamOwner(steam,owner).authorized))throw new IllegalStateException("Steam admission denied");
++                if(!db.authClient(user,pass,ip,steam,type).authorized)throw new IllegalStateException("Authentication denied");
++                if(!db.containsUser(user))db.addUser(user,pass,type);
++                String saved=db.getUserGoogleKey(user);
++                if(saved!=null&&!saved.isEmpty())return "Registration failed. Google key already exists";
++                if(!db.setUserGoogleKey(user,secret))throw new IllegalStateException("Google key persistence failed");
++                return "QR key registered successfully";
++            },message->{
++                INetworkPacket.send(connection,PacketTypes.PacketType.GoogleAuthKey,message);
++                connection.forceDisconnect("google-key-saved");
++            });return;
++        }
++        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
++            processServerDatabase(packetType,connection);
++        }catch(RuntimeException failure) {
++            if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
++            zombie.savefile.ApocBRLoginGuard.deny(connection);
++        }
++    }
++
++    private void processServerDatabase(PacketTypes.PacketType packetType, UdpConnection connection) {
+         ConnectionManager.log("receive-packet", "GoogleAuthKey", connection);
+         String serverVersion = Core.getInstance().getVersionNumber();
+         if (!this.clientVersion.equals(serverVersion)) {
+             LoggerManager.getLogger("user")
+                 .write(
+@@ -80,16 +113,18 @@ public class GoogleAuthKeyPacket implements INetworkPacket {
+                     connection.forceDisconnect("google-key-already-exists");
+                 } else {
+                     if (ServerWorldDatabase.instance.setUserGoogleKey(this.username, this.key)) {
+                         INetworkPacket.send(connection, PacketTypes.PacketType.GoogleAuthKey, "QR key registered successfully");
+                     } else {
++                        if(!zombie.savefile.ApocBRLoginGuard.continueRequest(connection))return;
+                         INetworkPacket.send(connection, PacketTypes.PacketType.GoogleAuthKey, "The user " + this.username + " is not in whitelist");
+                     }
+ 
+                     connection.forceDisconnect("google-key-saved");
+                 }
+             } catch (Exception var6) {
++                if(zombie.savefile.ApocBRLoginGuard.enabled()){zombie.savefile.ApocBRLoginGuard.deny(connection);return;}
+                 DebugType.General.printException(var6, LogSeverity.Error);
+             }
+         } else {
+             if (!r.role.hasCapability(Capability.LoginOnServer)) {
+                 LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" is banned");

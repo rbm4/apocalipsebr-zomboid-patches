@@ -1,0 +1,134 @@
+diff --git a/zombie/iso/IsoGridSquare.java b/zombie/iso/IsoGridSquare.java
+index 4cbf455..d0af55b 100644
+--- a/zombie/iso/IsoGridSquare.java
++++ b/zombie/iso/IsoGridSquare.java
+@@ -217,13 +217,13 @@ public final class IsoGridSquare {
+     public static final byte PCF_NONE = 0;
+     public static final byte PCF_NORTH = 1;
+     public static final byte PCF_WEST = 2;
+     private static final ThreadLocal<ArrayList<Zone>> threadLocalZones = ThreadLocal.withInitial(ArrayList::new);
+     private static final IsoDirections[] DIRECTIONS = IsoDirections.values();
+-    public final IsoGridSquare.ILighting[] lighting = new IsoGridSquare.ILighting[4];
+-    private static final Vector2 tempo = new Vector2();
+-    private static final Vector2 tempo2 = new Vector2();
++    public final IsoGridSquare.ILighting[] lighting = new IsoGridSquare.ILighting[LosUtil.SLOT_COUNT];
++    private static final ThreadLocal<Vector2> tempoTL = ThreadLocal.withInitial(Vector2::new);
++    private static final ThreadLocal<Vector2> tempo2TL = ThreadLocal.withInitial(Vector2::new);
+     public static float rmod;
+     public static float gmod;
+     public static float bmod;
+     public static int idMax = -1;
+     private static int col = -1;
+@@ -4425,15 +4425,13 @@ public final class IsoGridSquare {
+         vision = 0;
+         this.collideMatrix = 134217727;
+         this.pathMatrix = 134217727;
+         this.visionMatrix = 0;
+ 
+-        for (int i = 0; i < 4; i++) {
++        for (int i = 0; i < this.lighting.length; i++) {
+             if (GameServer.server) {
+-                if (i == 0) {
+-                    this.lighting[i] = new ServerLOS.ServerLighting();
+-                }
++                this.lighting[i] = new ServerLOS.ServerLighting();
+             } else if (LightingJNI.init) {
+                 this.lighting[i] = new LightingJNI.JNILighting(i, this);
+             } else {
+                 this.lighting[i] = new IsoGridSquare.Lighting();
+             }
+@@ -5757,10 +5755,11 @@ public final class IsoGridSquare {
+         boolean chunkIsLoading = obj.getSquare() == null || !obj.getSquare().getChunk().loaded || obj.getSquare().getChunk().preventHotSave;
+         return this.RemoveTileObject(obj, !chunkIsLoading);
+     }
+ 
+     public int RemoveTileObject(IsoObject obj, boolean safelyRemove) {
++        if (zombie.network.ApocBRManagedGenerators.denyRemoval(obj)) return -1;
+         if (safelyRemove) {
+             return IsoObjectUtils.safelyRemoveTileObjectFromSquare(obj);
+         } else {
+             IsoRegions.setPreviousFlags(this);
+             int index = this.objects.indexOf(obj);
+@@ -5991,10 +5990,11 @@ public final class IsoGridSquare {
+     public int transmitRemoveItemFromSquare(IsoObject obj) {
+         return this.transmitRemoveItemFromSquare(obj, true);
+     }
+ 
+     public int transmitRemoveItemFromSquare(IsoObject obj, boolean safelyRemove) {
++        if (zombie.network.ApocBRManagedGenerators.denyRemoval(obj)) return -1;
+         if (obj == null || !this.objects.contains(obj)) {
+             return -1;
+         } else if (!GameServer.server) {
+             return this.RemoveTileObject(obj, safelyRemove);
+         } else if (safelyRemove && IsoObjectUtils.isObjectMultiSquare(obj)) {
+@@ -8965,10 +8965,12 @@ public final class IsoGridSquare {
+     public float getHoursSinceLastSeen() {
+         return (float)GameTime.instance.getWorldAgeHours() - this.hourLastSeen;
+     }
+ 
+     public void CalcVisibility(int playerIndex, IsoGameCharacter isoGameCharacter, VisibilityData visibilityData) {
++        Vector2 tempo = tempoTL.get();
++        Vector2 tempo2 = tempo2TL.get();
+         IsoGridSquare.ILighting lighting = this.lighting[playerIndex];
+         lighting.bCanSee(false);
+         lighting.bCouldSee(false);
+         if (!GameServer.server && isoGameCharacter.isDead() && isoGameCharacter.reanimatedCorpse == null) {
+             lighting.bSeen(true);
+@@ -9023,11 +9025,11 @@ public final class IsoGridSquare {
+                         playerIndex
+                     );
+                     float cone = visibilityData.getCone();
+                     if (!(dot > cone) && test != LosUtil.TestResults.Blocked) {
+                         lighting.bCouldSee(true);
+-                        if (this.room != null && this.room.def != null) {
++                        if (!GameServer.server && this.room != null && this.room.def != null) {
+                             if (!this.room.def.explored) {
+                                 int dist1 = 10;
+                                 if (lightInfo.square != null && lightInfo.square.getBuilding() == this.room.building) {
+                                     dist1 = 50;
+                                 }
+@@ -10621,27 +10623,28 @@ public final class IsoGridSquare {
+     public boolean getVisionMatrix(int dx, int dy, int dz) {
+         return getMatrixBit(this.visionMatrix, dx + 1, dy + 1, dz + 1);
+     }
+ 
+     public void checkRoomSeen(int playerIndex) {
++        this.checkRoomSeen(IsoPlayer.players[playerIndex]);
++    }
++
++    public void checkRoomSeen(IsoPlayer player) {
+         IsoRoom room = this.getRoom();
+-        if (room != null && room.def != null && !room.def.explored) {
+-            IsoPlayer player = IsoPlayer.players[playerIndex];
+-            if (player != null) {
+-                if (this.z == PZMath.fastfloor(player.getZ())) {
+-                    int dist = 10;
+-                    if (player.getBuilding() == room.building) {
+-                        dist = 50;
+-                    }
+-
+-                    if (IsoUtils.DistanceToSquared(player.getX(), player.getY(), this.x + 0.5F, this.y + 0.5F) < dist * dist) {
+-                        room.def.explored = true;
+-                        room.onSee();
+-                        room.seen = 0;
+-                        if (player.isLocalPlayer()) {
+-                            player.triggerMusicIntensityEvent("SeeUnexploredRoom");
+-                        }
++        if (room != null && room.def != null && !room.def.explored && player != null) {
++            if (this.z == PZMath.fastfloor(player.getZ())) {
++                int dist = 10;
++                if (player.getBuilding() == room.building) {
++                    dist = 50;
++                }
++
++                if (IsoUtils.DistanceToSquared(player.getX(), player.getY(), this.x + 0.5F, this.y + 0.5F) < dist * dist) {
++                    room.def.explored = true;
++                    room.onSee();
++                    room.seen = 0;
++                    if (player.isLocalPlayer()) {
++                        player.triggerMusicIntensityEvent("SeeUnexploredRoom");
+                     }
+                 }
+             }
+         }
+     }

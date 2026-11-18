@@ -79,3 +79,8 @@ absence of `zombie/` game classes. Linux service inheritance and actual PZ start
 remain unverified; no game process was launched for these smoke checks.
 
 The subsequent Workshop hook verification is recorded in its linked feature guide.
+
+For the future base-code migration, the [2026-11-18 source baseline and impact
+report](../reports/2026-11-18-byte-buddy-migration-baseline/2026-11-18-byte-buddy-migration-baseline.md)
+preserves vanilla comparisons, custom-class additions and migration questions.
+It is an investigation artifact, not evidence that the base migration has shipped.

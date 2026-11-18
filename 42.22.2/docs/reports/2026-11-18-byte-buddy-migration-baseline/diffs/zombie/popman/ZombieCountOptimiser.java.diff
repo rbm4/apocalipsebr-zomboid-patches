@@ -1,0 +1,19 @@
+diff --git a/zombie/popman/ZombieCountOptimiser.java b/zombie/popman/ZombieCountOptimiser.java
+index dac6f56..28b738d 100644
+--- a/zombie/popman/ZombieCountOptimiser.java
++++ b/zombie/popman/ZombieCountOptimiser.java
+@@ -23,12 +23,14 @@ public class ZombieCountOptimiser {
+                 for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
+                     UdpConnection connection = GameServer.udpEngine.connections.get(n);
+                     List<Short> zombiesOnlineIdList = NetworkZombiePacker.getInstance().zombiesToSend.get(connection);
+                     if (zombiesOnlineIdList != null && !zombiesOnlineIdList.isEmpty()) {
+                         int zombiesCountForDelete = Math.max(0, zombiesOnlineIdList.size() - zombiesCountBeforeDeletion);
++                        if (zombiesCountForDelete == 0) continue;
+ 
+                         for (Short zombieOnlineId : zombiesOnlineIdList) {
++                            if (zombiesCountForDelete == 0) break;
+                             IsoZombie zombie = ServerMap.instance.zombieMap.get(zombieOnlineId);
+                             if (zombie != null
+                                 && zombiesCountForDelete > 0
+                                 && Rand.Next(Rand.AdjustForFramerate(10)) == 0
+                                 && !zombie.isReanimatedPlayer()

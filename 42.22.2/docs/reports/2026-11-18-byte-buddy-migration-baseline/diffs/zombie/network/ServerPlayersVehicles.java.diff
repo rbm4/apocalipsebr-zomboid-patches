@@ -1,0 +1,55 @@
+diff --git a/zombie/network/ServerPlayersVehicles.java b/zombie/network/ServerPlayersVehicles.java
+index caf8e4d..a362f6e 100644
+--- a/zombie/network/ServerPlayersVehicles.java
++++ b/zombie/network/ServerPlayersVehicles.java
+@@ -30,29 +30,40 @@ public class ServerPlayersVehicles {
+             this.thread = null;
+         }
+     }
+ 
+     private static final class SPVThread extends Thread {
+-        boolean stop;
++        volatile boolean stop;
+ 
+         @Override
+         public void run() {
+-            while (!this.stop) {
+-                try {
+-                    this.runInner();
+-                } catch (Throwable var2) {
+-                    ExceptionLogger.logException(var2);
++            zombie.savefile.ApocBRPostgresConnector.runBackgroundDatabaseWork(this::runDatabaseLoop);
++        }
++
++        private void runDatabaseLoop() {
++            long lastFailureLog=0;boolean failed=false;
++            try {
++                while (!this.stop) {
++                    try {
++                        this.runInner();
++                        if(failed){zombie.debug.DebugLog.log("[ApocBR][Postgres] PLAYER_VEHICLE_WORKER_RECOVERED");failed=false;lastFailureLog=0;}
++                    } catch (Throwable var2) {
++                        failed=true;long now=System.nanoTime();
++                        if(lastFailureLog==0||now-lastFailureLog>=30_000_000_000L){lastFailureLog=now;ExceptionLogger.logException(var2);}
++                    } finally {
++                        // A failed initialization must not bypass the worker's normal pacing.
++                        try{Thread.sleep(500L);}catch(InterruptedException ignored){}
++                    }
+                 }
++            } finally {
++                zombie.savefile.ApocBRPostgresConnector.shutdown();
+             }
+         }
+ 
+         void runInner() {
+             ServerPlayerDB.getInstance().process();
++            zombie.savefile.ApocBRPostgresConnector.process();
+             VehiclesDB2.instance.updateWorldStreamer();
+ 
+-            try {
+-                Thread.sleep(500L);
+-            } catch (InterruptedException var2) {
+-            }
+         }
+     }
+ }

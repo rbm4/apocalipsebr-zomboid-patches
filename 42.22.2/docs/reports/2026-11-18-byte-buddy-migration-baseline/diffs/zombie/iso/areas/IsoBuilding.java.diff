@@ -1,0 +1,20 @@
+diff --git a/zombie/iso/areas/IsoBuilding.java b/zombie/iso/areas/IsoBuilding.java
+index 40eb14f..f3dbc1f 100644
+--- a/zombie/iso/areas/IsoBuilding.java
++++ b/zombie/iso/areas/IsoBuilding.java
+@@ -131,14 +131,11 @@ public final class IsoBuilding {
+             int tilecount = 0;
+ 
+             for (int n = 0; n < this.rooms.size(); n++) {
+                 IsoRoom room = this.rooms.get(n);
+                 if (room.layer == 0) {
+-                    for (int z = 0; z < room.tileList.size(); z++) {
+-                        tilecount++;
+-                        IsoGridSquare var6 = room.tileList.get(z);
+-                    }
++                    tilecount += room.tileList.size();
+                 }
+             }
+ 
+             if (tilecount == 0) {
+                 tilecount++;

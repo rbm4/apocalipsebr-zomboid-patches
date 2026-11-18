@@ -1,0 +1,17 @@
+diff --git a/zombie/network/packets/ObjectModDataPacket.java b/zombie/network/packets/ObjectModDataPacket.java
+index c2ae47b..ff28214 100644
+--- a/zombie/network/packets/ObjectModDataPacket.java
++++ b/zombie/network/packets/ObjectModDataPacket.java
+@@ -47,10 +47,12 @@ public class ObjectModDataPacket implements INetworkPacket {
+         boolean hasData = b.getBoolean();
+         IsoObject object = this.movingObject.getObject();
+         if (object == null) {
+             DebugType.Multiplayer.warn("ObjectModDataPacket.parse: object is null (%s)", this.movingObject.getDescription());
+         } else {
++            if (object instanceof zombie.iso.objects.IsoGenerator generator
++                && zombie.network.ApocBRManagedGenerators.denyChange(generator, "object_mod_data")) return;
+             if (hasData) {
+                 int waterAmount = (int)object.getFluidAmount();
+ 
+                 try {
+                     object.getModData().load(b.bb, 251);

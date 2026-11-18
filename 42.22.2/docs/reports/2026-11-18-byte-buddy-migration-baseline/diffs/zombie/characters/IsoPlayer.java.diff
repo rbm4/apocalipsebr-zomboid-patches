@@ -1,0 +1,452 @@
+diff --git a/zombie/characters/IsoPlayer.java b/zombie/characters/IsoPlayer.java
+index 6852840..dd844a9 100644
+--- a/zombie/characters/IsoPlayer.java
++++ b/zombie/characters/IsoPlayer.java
+@@ -236,10 +236,11 @@ import zombie.network.packets.INetworkPacket;
+ import zombie.network.packets.SyncPlayerStatsPacket;
+ import zombie.network.statistics.data.ConnectionQueueStatistic;
+ import zombie.pathfind.PathFindBehavior2;
+ import zombie.pathfind.Point;
+ import zombie.pathfind.PolygonalMap2;
++import zombie.popman.NetworkZombieManager;
+ import zombie.popman.animal.AnimalInstanceManager;
+ import zombie.savefile.ClientPlayerDB;
+ import zombie.savefile.PlayerDB;
+ import zombie.scripting.entity.components.crafting.CraftRecipe;
+ import zombie.scripting.objects.CharacterProfession;
+@@ -423,10 +424,12 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+     private boolean seeNonPvpZone;
+     private boolean seeDesignationZone;
+     private final ArrayList<Double> selectedZonesForHighlight = new ArrayList<>();
+     private Double selectedZoneForHighlight = 0.0;
+     private final HashMap<Long, Long> mechanicsItem = new HashMap<>();
++    private long apocbrMechanicsNextExpiry = Long.MIN_VALUE;
++    private long apocbrMechanicsLastTime = Long.MIN_VALUE;
+     private int sleepingPillsTaken;
+     private long lastPillsTaken;
+     private long heavyBreathInstance;
+     private String heavyBreathSoundName;
+     private boolean allChatMuted;
+@@ -1325,10 +1328,11 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+ 
+         int size = input.getInt();
+ 
+         for (int ix = 0; ix < size; ix++) {
+             this.mechanicsItem.put(input.getLong(), input.getLong());
++            this.apocbrMechanicsNextExpiry = Long.MIN_VALUE;
+         }
+ 
+         this.fitness.load(input, worldVersion);
+         int nb = input.getShort();
+ 
+@@ -2098,17 +2102,21 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+                 this.remote = true;
+                 this.updateRemotePlayer();
+                 this.setVariable("bMoving", this.isPlayerMoving());
+             }
+         } else {
++            long playerStarted = GameServer.server ? System.nanoTime() : 0L;
+             boolean updateBaseAndSend = this.updateInternal2();
++            if (playerStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.internal", System.nanoTime() - playerStarted);
+             if (updateBaseAndSend) {
+                 if (!this.remote) {
+                     this.updateLOS();
+                 }
+ 
++                long baseStarted = GameServer.server ? System.nanoTime() : 0L;
+                 super.update();
++                if (baseStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.base", System.nanoTime() - baseStarted);
+             }
+ 
+             GameClient.instance.sendPlayer2(this);
+         }
+     }
+@@ -2162,42 +2170,52 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+             this.setLastCollideTime(this.getLastCollideTime() - GameTime.getInstance().getThirtyFPSMultiplier());
+         }
+ 
+         this.updateDeathDragDown();
+         this.updateGodModeKey();
++        long movementStarted = GameServer.server ? System.nanoTime() : 0L;
+         PZOptional.ifPresent(this.tryGetECSComponent(NetworkComponent.class), NetworkComponent::updateNetworkAI);
+         this.doDeferredMovement();
+         if (!this.isLocal()) {
+             this.setVehicleCollision(this.vehicle4testCollision != null && this.vehicle4testCollision.updateNetworkHitByVehicle(this));
+         } else {
+             this.setVehicleCollision(this.vehicle4testCollision != null && this.testCollideWithVehicles(this.vehicle4testCollision, null));
+         }
+ 
++        if (movementStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.networkAndMovement", System.nanoTime() - movementStarted);
++        long equippedSoundsStarted = GameServer.server ? System.nanoTime() : 0L;
+         this.updateEquippedItemSounds();
++        if (equippedSoundsStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.equippedSounds", System.nanoTime() - equippedSoundsStarted);
+         if (!GameServer.server) {
+             this.updateEmitter();
+         }
+ 
+         if (!this.isAnimal()) {
+             this.updateMechanicsItems();
+             this.updateHeavyBreathing();
+             this.updateTemperatureCheck();
+             if (this.isWeaponReady()) {
++                long stanceStarted = GameServer.server ? System.nanoTime() : 0L;
+                 this.updateAimingStance();
++                if (stanceStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.aimingStance", System.nanoTime() - stanceStarted);
+             }
+ 
+             if (this.isLocal()) {
+                 IsoReticle.trySetTargetReticleMode(
+                     this.getIndex(), this.isPrecisionAimKeyDown() && this.isAimingFirearmEquipped() ? IsoReticleMode.RETICLE : IsoReticleMode.CURSOR
+                 );
+             }
+ 
+             if (SystemDisabler.doCharacterStats) {
++                long nutritionStarted = GameServer.server ? System.nanoTime() : 0L;
+                 this.nutrition.update();
++                if (nutritionStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.nutrition", System.nanoTime() - nutritionStarted);
+             }
+ 
++            long fitnessStarted = GameServer.server ? System.nanoTime() : 0L;
+             this.fitness.update();
++            if (fitnessStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.fitness", System.nanoTime() - fitnessStarted);
+             this.updateVisionEffectTargets();
+         }
+ 
+         this.updateSoundListener();
+         SafetySystemManager.update(this);
+@@ -2234,11 +2252,13 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+             this.setTimeSinceLastNetData(this.getTimeSinceLastNetData() + (int)GameTime.instance.getMultiplier());
+             this.timeSinceOpenDoor = this.timeSinceOpenDoor + GameTime.instance.getMultiplier();
+             this.timeSinceCloseDoor = this.timeSinceCloseDoor + GameTime.instance.getMultiplier();
+             this.lastTargeted = this.lastTargeted + GameTime.instance.getMultiplier();
+             this.targetedByZombie = false;
++            long actionGroupStarted = GameServer.server ? System.nanoTime() : 0L;
+             this.checkActionGroup();
++            if (actionGroupStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.actionGroup", System.nanoTime() - actionGroupStarted);
+             if (this.isJustMoved() && !this.isNpc() && !this.hasPath() && !this.isCurrentActionPathfinding()) {
+                 if (!GameServer.server && UIManager.getSpeedControls().getCurrentGameSpeed() > 1) {
+                     UIManager.getSpeedControls().SetCurrentGameSpeed(1);
+                 }
+             } else if (!GameClient.client
+@@ -2263,32 +2283,48 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+                 if (!GameClient.client && !GameServer.server) {
+                     LuaEventManager.triggerEvent("OnPlayerMove", this);
+                 }
+             }
+ 
+-            if (this.updateRemotePlayer()) {
++            long remoteStarted = GameServer.server ? System.nanoTime() : 0L;
++            boolean remoteUpdated = this.updateRemotePlayer();
++            if (remoteStarted != 0L) {
++                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote", System.nanoTime() - remoteStarted);
++                zombie.ApocBRServerTelemetryLite.count("players.remote.inVehicle", this.isSeatedInVehicle() ? 1L : 0L);
++            }
++            if (remoteUpdated) {
+                 if (this.updateWhileDead()) {
+                     return true;
+                 } else {
++                    long remoteSoundsStarted = GameServer.server ? System.nanoTime() : 0L;
+                     this.updateAttackLoopSound();
+                     this.updateBringToBearSound();
+                     this.updateHeartSound();
+                     this.updateDraggingCorpseSounds();
++                    if (remoteSoundsStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remoteSounds", System.nanoTime() - remoteSoundsStarted);
+                     this.checkIsNearWall();
+-                    this.checkIsNearVehicle();
++                    if (!GameServer.server || this.isSneaking()) {
++                        long proximityStarted = GameServer.server ? System.nanoTime() : 0L;
++                        this.checkIsNearVehicle();
++                        if (proximityStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.nearVehicle", System.nanoTime() - proximityStarted);
++                    }
++                    long idleStarted = GameServer.server ? System.nanoTime() : 0L;
+                     this.updateExt();
+                     this.setBeenMovingSprinting();
+                     this.updateAimingDelay();
++                    if (idleStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.idleAndAimingDelay", System.nanoTime() - idleStarted);
+                     if (GameServer.server) {
+                         this.updateMovementRates();
+                     }
+ 
++                    long enduranceStarted = GameServer.server ? System.nanoTime() : 0L;
+                     if (this.getVehicle() != null) {
+                         this.updateEnduranceWhileInVehicle();
+                     } else {
+                         this.updateEndurance();
+                     }
++                    if (enduranceStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.endurance", System.nanoTime() - enduranceStarted);
+ 
+                     return true;
+                 }
+             } else {
+                 assert !GameServer.server;
+@@ -3042,11 +3078,20 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+                 && weapon.getFluidContainer().getRainCatcher() > 0.0F
+                 && !weapon.getFluidContainer().isEmpty()) {
+                 weapon.getFluidContainer().Empty();
+             }
+ 
+-            CombatManager.getInstance().calcValidTargets(this, weapon, s_targetsProne, s_targetsStanding);
++            long targetsStarted = GameServer.server ? System.nanoTime() : 0L;
++            if (targetsStarted != 0L) {
++                zombie.ApocBRServerTelemetryLite.count("players.aiming.targetListEntriesAtStart", IsoWorld.instance.currentCell.getObjectList().size());
++                zombie.ApocBRServerTelemetryLite.count("players.aiming.inVehicle", this.isSeatedInVehicle() ? 1L : 0L);
++            }
++            try {
++                CombatManager.getInstance().calcValidTargets(this, weapon, s_targetsProne, s_targetsStanding);
++            } finally {
++                if (targetsStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.aimingTargets", System.nanoTime() - targetsStarted);
++            }
+             HitInfo bestStanding = s_targetsStanding.isEmpty() ? null : s_targetsStanding.get(0);
+             HitInfo bestProne = s_targetsProne.isEmpty() ? null : s_targetsProne.get(0);
+             if (CombatManager.getInstance().isProneTargetBetter(this, bestStanding, bestProne)) {
+                 bestStanding = null;
+             }
+@@ -3765,14 +3810,26 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+         }
+     }
+ 
+     @Override
+     public void updateMovementRates() {
+-        this.calculateWalkSpeed();
+-        this.idleSpeed = this.calculateIdleSpeed();
+-        this.updateFootInjuries();
+-        this.updateInTreesInjuries();
++        long ratesStarted = GameServer.server && !this.isAnimal() ? System.nanoTime() : 0L;
++        try {
++            long speedStarted = ratesStarted != 0L ? System.nanoTime() : 0L;
++            this.calculateWalkSpeed();
++            this.idleSpeed = this.calculateIdleSpeed();
++            if (speedStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.movementRates.speed", System.nanoTime() - speedStarted);
++            long injuriesStarted = ratesStarted != 0L ? System.nanoTime() : 0L;
++            this.updateFootInjuries();
++            this.updateInTreesInjuries();
++            if (injuriesStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.movementRates.injuries", System.nanoTime() - injuriesStarted);
++        } finally {
++            if (ratesStarted != 0L) {
++                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.movementRates", System.nanoTime() - ratesStarted);
++                zombie.ApocBRServerTelemetryLite.count("players.movementRates.inVehicle", this.isSeatedInVehicle() ? 1L : 0L);
++            }
++        }
+     }
+ 
+     @Override
+     protected void calculateWalkSpeed() {
+         if (!GameClient.client) {
+@@ -4183,25 +4240,24 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+             return this.getSecondaryHandItem() instanceof HandWeapon ? (HandWeapon)this.getSecondaryHandItem() : InventoryItemFactory.CreateItem("BareHands");
+         }
+     }
+ 
+     private void updateMechanicsItems() {
+-        if (!this.mechanicsItem.isEmpty()) {
+-            Iterator<Long> it = this.mechanicsItem.keySet().iterator();
+-            ArrayList<Long> toremove = new ArrayList<>();
+-
+-            while (it.hasNext()) {
+-                Long item = it.next();
+-                Long milli = this.mechanicsItem.get(item);
+-                if (GameTime.getInstance().getCalender().getTimeInMillis() > milli + 86400000L) {
+-                    toremove.add(item);
+-                }
+-            }
+-
+-            for (int i = 0; i < toremove.size(); i++) {
+-                this.mechanicsItem.remove(toremove.get(i));
+-            }
++        if (this.mechanicsItem.isEmpty()) return;
++        long now = GameTime.getInstance().getCalender().getTimeInMillis();
++        if (now >= this.apocbrMechanicsLastTime && now <= this.apocbrMechanicsNextExpiry) {
++            this.apocbrMechanicsLastTime = now;
++            return;
++        }
++        this.apocbrMechanicsLastTime = now;
++        this.apocbrMechanicsNextExpiry = Long.MAX_VALUE;
++        Iterator<java.util.Map.Entry<Long, Long>> iterator = this.mechanicsItem.entrySet().iterator();
++        while (iterator.hasNext()) {
++            java.util.Map.Entry<Long, Long> entry = iterator.next();
++            long expiry = entry.getValue() + 86400000L;
++            if (now > expiry) iterator.remove();
++            else this.apocbrMechanicsNextExpiry = Math.min(this.apocbrMechanicsNextExpiry, expiry);
+         }
+     }
+ 
+     private void enterExitVehicle() {
+         boolean interact = this.isInteractButtonClicked();
+@@ -5756,10 +5812,15 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+             return false;
+         }
+     }
+ 
+     public void updateLOS() {
++        if (GameServer.server) {
++            this.updateServerZombieAuthorityLOS();
++            return;
++        }
++
+         this.spottedList.clear();
+         this.stats.numVisibleZombies = 0;
+         if (!GameServer.server) {
+             this.stats.setLastNumberChasingZombies(this.stats.numChasingZombies);
+             this.stats.numChasingZombies = 0;
+@@ -5975,10 +6036,73 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+             this.stats.lastNumVisibleZombies = this.stats.numVisibleZombies;
+             this.stats.lastVeryCloseZombies = vclose;
+         }
+     }
+ 
++    private void updateServerZombieAuthorityLOS() {
++        this.spottedList.clear();
++        this.lastSpotted.clear();
++        this.stats.numVisibleZombies = 0;
++        // Server chasing counts are owned by the native scheduler frame pass.
++        this.stats.musicZombiesTargetingDistantNotMoving = 0;
++        this.stats.musicZombiesTargetingNearbyNotMoving = 0;
++        this.stats.musicZombiesTargetingDistantMoving = 0;
++        this.stats.musicZombiesTargetingNearbyMoving = 0;
++        this.stats.musicZombiesVisible = 0;
++        this.numSurvivorsInVicinity = 0;
++        this.closestZombie = 1000000.0F;
++        this.stats.lastNumVisibleZombies = 0;
++        this.stats.lastVeryCloseZombies = 0;
++        IsoGridSquare currentSquare = this.getCurrentSquare();
++        IsoCell cell = this.getCell();
++        if (currentSquare == null || cell == null) {
++            return;
++        }
++
++        float playerX = this.getX();
++        float playerY = this.getY();
++        int playerZ = PZMath.fastfloor(this.getZ());
++        float maxDistance = Math.max(20.0F, GameTime.getInstance().getViewDist());
++        float maxDistanceSquared = maxDistance * maxDistance;
++        ArrayList<IsoZombie> zombies = new ArrayList<>();
++        cell.getPlayerSpatialQueries().queryZombies(cell, playerX, playerY, maxDistance, zombies);
++        for (IsoZombie zombie : zombies) {
++            if (zombie == null || zombie.isDead() || zombie.isFakeDead() || zombie.isUseless() || zombie.isReanimatedForGrappleOnly()) {
++                continue;
++            }
++
++            IsoGridSquare zombieSquare = zombie.getCurrentSquare();
++            if (zombieSquare == null || PZMath.fastfloor(zombie.getZ()) != playerZ) {
++                continue;
++            }
++
++            float distanceSquared = IsoUtils.DistanceToSquared(zombie.getX(), zombie.getY(), playerX, playerY);
++            if (distanceSquared > maxDistanceSquared) {
++                continue;
++            }
++
++            boolean targetsPlayer = zombie.getTarget() == this;
++            boolean leadAggro = !targetsPlayer && zombie.isLeadAggro(this);
++            if (!leadAggro && !targetsPlayer && !NetworkZombieManager.canSpotted(zombie)) {
++                continue;
++            }
++
++            if (!ServerLOS.instance.isCouldSee(this, zombieSquare)) {
++                continue;
++            }
++
++            if (leadAggro) {
++                INetworkPacket.send(zombie.getOwner(), PacketTypes.PacketType.ZombieControl, zombie, this);
++            } else {
++                zombie.spotted(this, false);
++                if (distanceSquared < this.closestZombie * this.closestZombie && !zombie.isOnFloor()) {
++                    this.closestZombie = (float)Math.sqrt(distanceSquared);
++                }
++            }
++        }
++    }
++
+     private boolean checkSpottedPLayerTimer(IsoPlayer remoteChr) {
+         if (!remoteChr.spottedByPlayer) {
+             return false;
+         } else {
+             if (this.spottedPlayerTimer.containsKey(remoteChr.getRemoteID())) {
+@@ -6802,16 +6926,20 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+     protected boolean updateRemotePlayer() {
+         if (!this.remote) {
+             return false;
+         } else {
+             if (this.isSeatedInVehicle()) {
++                long vehicleSyncStarted = GameServer.server && !this.isAnimal() ? System.nanoTime() : 0L;
+                 this.updateRemotePlayerInVehicle();
++                if (vehicleSyncStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.vehicleSync", System.nanoTime() - vehicleSyncStarted);
+             }
+ 
+             if (GameServer.server) {
++                long losStarted = System.nanoTime();
+                 ServerLOS.instance.doServerZombieLOS(this);
+                 ServerLOS.instance.updateLOS(this);
++                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.los", System.nanoTime() - losStarted);
+                 if (this.isDead()) {
+                     return true;
+                 }
+ 
+                 NetworkPlayerAI networkAi = this.getNetworkCharacterAI();
+@@ -6834,17 +6962,35 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+ 
+                 if (this.isJustMoved() && !this.isNpc()) {
+                     LuaEventManager.triggerEvent("OnPlayerMove", this);
+                 }
+ 
+-                this.removeFromSquare();
+-                this.setForceX(this.realx);
+-                this.setForceY(this.realy);
+-                this.setZ(this.realz);
+-                this.setLastZ(this.realz);
+-                this.ensureOnTile();
+-                this.setMovingSquareNow();
++                long squareStarted = !this.isAnimal() ? System.nanoTime() : 0L;
++                IsoGridSquare previousSquare = squareStarted != 0L ? this.getCurrentSquare() : null;
++                boolean unchangedPosition = squareStarted != 0L && this.getX() == this.realx && this.getY() == this.realy && this.getZ() == this.realz;
++                try {
++                    long detachStarted = squareStarted != 0L ? System.nanoTime() : 0L;
++                    this.removeFromSquare();
++                    if (detachStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.square.detach", System.nanoTime() - detachStarted);
++                    this.setForceX(this.realx);
++                    this.setForceY(this.realy);
++                    this.setZ(this.realz);
++                    this.setLastZ(this.realz);
++                    long ensureStarted = squareStarted != 0L ? System.nanoTime() : 0L;
++                    this.ensureOnTile();
++                    if (ensureStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.square.ensureOnTile", System.nanoTime() - ensureStarted);
++                    long membershipStarted = squareStarted != 0L ? System.nanoTime() : 0L;
++                    this.setMovingSquareNow();
++                    if (membershipStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.square.membership", System.nanoTime() - membershipStarted);
++                    if (squareStarted != 0L) {
++                        zombie.ApocBRServerTelemetryLite.count("players.remote.square.unchangedPosition", unchangedPosition ? 1L : 0L);
++                        zombie.ApocBRServerTelemetryLite.count("players.remote.square.sameSquare", previousSquare != null && previousSquare == this.getCurrentSquare() ? 1L : 0L);
++                        zombie.ApocBRServerTelemetryLite.count("players.remote.square.missingSquare", this.getCurrentSquare() == null ? 1L : 0L);
++                    }
++                } finally {
++                    if (squareStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.remote.square", System.nanoTime() - squareStarted);
++                }
+                 if (this.slowTimer > 0.0F) {
+                     this.slowTimer = this.slowTimer - GameTime.instance.getRealworldSecondsSinceLastUpdate();
+                     this.slowFactor = this.slowFactor - GameTime.instance.getMultiplier() / 100.0F;
+                     if (this.slowFactor < 0.0F) {
+                         this.slowFactor = 0.0F;
+@@ -7684,10 +7830,11 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+                 this.getXp().AddXP(PerkFactory.Perks.Mechanics, (float)Rand.Next(minExp, maxExp));
+             }
+         }
+ 
+         this.mechanicsItem.put(Long.parseLong(itemid), milli);
++        this.apocbrMechanicsNextExpiry = Long.MIN_VALUE;
+     }
+ 
+     private void updateTemperatureCheck() {
+         int hypo = this.moodles.getMoodleLevel(MoodleType.HYPOTHERMIA);
+         if (this.hypothermiaCache == -1 || this.hypothermiaCache != hypo) {
+@@ -8463,10 +8610,11 @@ public class IsoPlayer extends IsoLivingCharacter implements IAnimalVisual, IHum
+         if (killer == null) {
+             this.DoDeath(null, null, isGory);
+         } else {
+             this.DoDeath(killer.getUseHandWeapon(), killer, isGory);
+         }
++        zombie.network.ApocBRBackendBridgeHooks.onDeath(this, killer);
+     }
+ 
+     private void onDied(IsoGameCharacter sender, IsoDeadBody body) {
+         if (!GameClient.client && this.shouldBecomeZombieAfterDeath()) {
+             body.reanimateLater();

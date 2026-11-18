@@ -1,0 +1,32 @@
+diff --git a/zombie/network/packets/character/PlayerDamagePacket.java b/zombie/network/packets/character/PlayerDamagePacket.java
+index 909a4ed..2a7aa02 100644
+--- a/zombie/network/packets/character/PlayerDamagePacket.java
++++ b/zombie/network/packets/character/PlayerDamagePacket.java
+@@ -8,10 +8,11 @@ import zombie.core.network.ByteBufferReader;
+ import zombie.core.network.ByteBufferWriter;
+ import zombie.debug.DebugType;
+ import zombie.debug.LogSeverity;
+ import zombie.iso.IsoWorld;
+ import zombie.network.IConnection;
++import zombie.network.ApocBRPacketOwnershipGuard;
+ import zombie.network.JSONField;
+ import zombie.network.PacketSetting;
+ import zombie.network.fields.character.ConnectionPlayer;
+ import zombie.network.packets.INetworkPacket;
+ 
+@@ -40,11 +41,14 @@ public class PlayerDamagePacket implements INetworkPacket {
+     }
+ 
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
+         this.player.parse(b, connection);
+-        if (this.isConsistent(connection)) {
++        if (ApocBRPacketOwnershipGuard.validate(
++                "PlayerDamage", connection, this.player.getId(), (byte)-1, this.player.getPlayer()
++            )
++            && this.isConsistent(connection)) {
+             try {
+                 IsoPlayer isoPlayer = this.player.getPlayer();
+                 isoPlayer.setMaxWeight(b.getInt());
+                 isoPlayer.setCorpseSicknessRate(b.getFloat());
+                 isoPlayer.getBodyDamage().load(b.bb, IsoWorld.getWorldVersion());

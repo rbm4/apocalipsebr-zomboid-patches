@@ -1,0 +1,52 @@
+diff --git a/zombie/vehicles/VehiclePart.java b/zombie/vehicles/VehiclePart.java
+index e82d558..49c7a38 100644
+--- a/zombie/vehicles/VehiclePart.java
++++ b/zombie/vehicles/VehiclePart.java
+@@ -638,10 +638,11 @@ public final class VehiclePart extends GameEntity implements ChatElementOwner, W
+         }
+ 
+         if (input.get() != 0) {
+             if (this.light == null) {
+                 this.light = new VehicleLight();
++                this.getOwner().getParts().invalidateIdleDeviceParts();
+             }
+ 
+             this.light.load(input, worldVersion);
+         }
+ 
+@@ -690,10 +691,11 @@ public final class VehiclePart extends GameEntity implements ChatElementOwner, W
+             return -1;
+         }
+     }
+ 
+     public void createSpotLight(float xOffset, float yOffset, float dist, float intensity, float dot, int focusing) {
++        if (this.light == null) this.getOwner().getParts().invalidateIdleDeviceParts();
+         this.light = this.light == null ? new VehicleLight() : this.light;
+         this.light.offset.set(xOffset, yOffset, 0.0F);
+         this.light.dist = dist;
+         this.light.intensity = intensity;
+         this.light.dot = dot;
+@@ -731,10 +733,11 @@ public final class VehiclePart extends GameEntity implements ChatElementOwner, W
+     }
+ 
+     public DeviceData createSignalDevice() {
+         if (this.deviceData == null) {
+             this.deviceData = new DeviceData(this);
++            this.getOwner().getParts().invalidateIdleDeviceParts();
+         }
+ 
+         if (this.chatElement == null) {
+             this.chatElement = new ChatElement(this, 5, "device");
+         }
+@@ -760,10 +763,11 @@ public final class VehiclePart extends GameEntity implements ChatElementOwner, W
+         if (this.deviceData != null) {
+             this.deviceData.cleanSoundsAndEmitter();
+         }
+ 
+         this.deviceData = data;
++        this.getOwner().getParts().invalidateIdleDeviceParts();
+         this.deviceData.setParent(this);
+     }
+ 
+     @Override
+     public float getDelta() {

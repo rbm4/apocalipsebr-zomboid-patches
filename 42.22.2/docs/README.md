@@ -42,6 +42,8 @@ implementation contracts and historical verification.
 
 ## Reports
 
+- 2026-11-18 - [Byte Buddy migration baseline and impact report](reports/2026-11-18-byte-buddy-migration-baseline/2026-11-18-byte-buddy-migration-baseline.md), [per-source inventory](reports/2026-11-18-byte-buddy-migration-baseline/2026-11-18-class-inventory.md), [snapshot manifest](reports/2026-11-18-byte-buddy-migration-baseline/manifest.json) and [custom-class reference map](reports/2026-11-18-byte-buddy-migration-baseline/custom-class-references.json). The report folder contains all 375 source diffs and its capture/verifier tool.
+
 - 2026-11-12 - [PZO-Launcher optimization and threading source audit](reports/2026-11-12-pzo-launcher-optimization-audit.md)
 
 - 2026-11-11 - [Fixed power: stock-client chunk-streaming audit](reports/2026-11-11-fixed-power-stock-client-streaming-audit.md)

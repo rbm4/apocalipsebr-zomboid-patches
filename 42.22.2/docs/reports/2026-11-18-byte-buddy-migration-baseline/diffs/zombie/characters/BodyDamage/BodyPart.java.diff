@@ -1,0 +1,16 @@
+diff --git a/zombie/characters/BodyDamage/BodyPart.java b/zombie/characters/BodyDamage/BodyPart.java
+index 8243323..1dbf8c2 100644
+--- a/zombie/characters/BodyDamage/BodyPart.java
++++ b/zombie/characters/BodyDamage/BodyPart.java
+@@ -513,10 +513,11 @@ public final class BodyPart {
+     public void AddHealth(float val) {
+         this.health = PZMath.clamp(this.health + val, 0.0F, 100.0F);
+     }
+ 
+     public void ReduceHealth(float val) {
++        val=zombie.apocalipse.humans.ServerHumanPlayerDamage.nativeDamage(this.parentChar,val);
+         this.health = PZMath.clamp(this.health - val, 0.0F, 100.0F);
+     }
+ 
+     public boolean HasInjury() {
+         return this.bitten

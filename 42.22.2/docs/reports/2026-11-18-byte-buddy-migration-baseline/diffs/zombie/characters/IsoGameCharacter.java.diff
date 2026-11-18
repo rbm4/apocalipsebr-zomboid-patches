@@ -1,0 +1,143 @@
+diff --git a/zombie/characters/IsoGameCharacter.java b/zombie/characters/IsoGameCharacter.java
+index fd6fb07..ae521fe 100644
+--- a/zombie/characters/IsoGameCharacter.java
++++ b/zombie/characters/IsoGameCharacter.java
+@@ -1,7 +1,8 @@
+ // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
+ package zombie.characters;
++import zombie.apocalipse.zombies.ServerZombieController;
+ 
+ import fmod.fmod.FMOD_STUDIO_PARAMETER_DESCRIPTION;
+ import fmod.fmod.IFMODParameterUpdater;
+ import gnu.trove.map.hash.THashMap;
+ import java.io.IOException;
+@@ -5538,10 +5539,11 @@ public abstract class IsoGameCharacter
+         if (perk == PerkFactory.Perks.MAX) {
+             throw new IllegalArgumentException("perk == Perks.MAX");
+         } else {
+             IsoPlayer player = Type.tryCastTo(this, IsoPlayer.class);
+             IsoGameCharacter.PerkInfo info = this.getPerkInfo(perk);
++            int previousLevel = info == null ? 0 : info.level;
+             if (info != null) {
+                 info.level++;
+                 if (player != null && !Core.getInstance().isTutorial() && this.getHoursSurvived() > 0.016666666666666666) {
+                     HaloTextHelper.addTextWithArrow(player, "+1 " + perk.getName(), "[br/]", true, HaloTextHelper.getGoodColor());
+                 }
+@@ -5567,10 +5569,11 @@ public abstract class IsoGameCharacter
+                     HaloTextHelper.addTextWithArrow(player, "+1 " + perk.getName(), "[br/]", true, HaloTextHelper.getGoodColor());
+                 }
+ 
+                 LuaEventManager.triggerEvent("LevelPerk", this, perk, info.level, true);
+             }
++            zombie.network.ApocBRBackendBridgeHooks.onLevelUp(this, perk, previousLevel, info.level, false);
+         }
+     }
+ 
+     /**
+      * Level up a perk (max lvl 5)
+@@ -6960,10 +6963,12 @@ public abstract class IsoGameCharacter
+             return CombatManager.getInstance().applyOneHandedDamagePenalty(wielder, weapon, damage);
+         }
+     }
+ 
+     public void hitConsequences(HandWeapon weapon, IsoGameCharacter wielder, boolean bIgnoreDamage, float damage, boolean bRemote) {
++        if (GameServer.server && this instanceof IsoZombie zombie)
++            ServerZombieController.getInstance().hit(zombie);
+         if (!bIgnoreDamage) {
+             damage = CombatManager.getInstance().applyGlobalDamageReductionMultipliers(weapon, damage);
+             CombatManager.getInstance().applyDamage(this, damage);
+         }
+ 
+@@ -9951,16 +9956,20 @@ public abstract class IsoGameCharacter
+                         }
+                     }
+                 }
+ 
+                 if (SystemDisabler.doCharacterStats && this.getBodyDamage() != null) {
++                    long healthStarted = GameServer.server && this instanceof IsoPlayer && !this.isAnimal() ? System.nanoTime() : 0L;
+                     this.getBodyDamage().Update();
+                     this.updateBandages();
++                    if (healthStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.health", System.nanoTime() - healthStarted);
+                 }
+ 
+                 if (SystemDisabler.doCharacterStats) {
++                    long statsStarted = GameServer.server && this instanceof IsoPlayer && !this.isAnimal() ? System.nanoTime() : 0L;
+                     this.calculateStats();
++                    if (statsStarted != 0L) zombie.ApocBRServerTelemetryLite.recordPhase("simulation.players.stats", System.nanoTime() - statsStarted);
+                 }
+ 
+                 if (this.asleep && this instanceof IsoPlayer && !(this instanceof IsoAnimal)) {
+                     ((IsoPlayer)this).processWakingUp();
+                 }
+@@ -10015,11 +10024,17 @@ public abstract class IsoGameCharacter
+                         this.bloodImpactY = this.getY();
+                         this.bloodImpactZ = this.getZ();
+                     }
+ 
+                     if (!this.isZombie()) {
+-                        this.recursiveItemUpdater(this.inventory);
++                        if (GameServer.server && this instanceof IsoPlayer && !this.isAnimal()) {
++                            try (zombie.ApocBRServerTelemetryLite.Scope timing = zombie.ApocBRServerTelemetryLite.phase("simulation.players.inventory")) {
++                                zombie.inventory.ServerInventoryUpdateIndex.update(this.inventory);
++                            }
++                        } else {
++                            this.recursiveItemUpdater(this.inventory);
++                        }
+                     }
+ 
+                     this.lastZombieKills = this.zombieKills;
+                     if (this.attachedAnimSprite != null) {
+                         int n = this.attachedAnimSprite.size();
+@@ -10513,13 +10528,21 @@ public abstract class IsoGameCharacter
+ 
+         return result / count;
+     }
+ 
+     private float calcRunSpeedModByBag(InventoryContainer bag) {
+-        float runBagMod = bag.getScriptItem().runSpeedModifier - 1.0F;
+-        float deltaWeight = bag.getContentsWeight() / bag.getEffectiveCapacity(this);
+-        return runBagMod * (1.0F + deltaWeight / 2.0F);
++        long bagStarted = GameServer.server ? System.nanoTime() : 0L;
++        try {
++            float runBagMod = bag.getScriptItem().runSpeedModifier - 1.0F;
++            float deltaWeight = bag.getContentsWeight() / bag.getEffectiveCapacity(this);
++            return runBagMod * (1.0F + deltaWeight / 2.0F);
++        } finally {
++            if (bagStarted != 0L) {
++                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.movement.bagModifier", System.nanoTime() - bagStarted);
++                zombie.ApocBRServerTelemetryLite.count("movement.bagModifier.queries", 1L);
++            }
++        }
+     }
+ 
+     public float calculateCombatSpeed() {
+         float combatSpeed = 0.8F;
+         HandWeapon weapon = null;
+@@ -14488,10 +14511,15 @@ public abstract class IsoGameCharacter
+             return count;
+         }
+     }
+ 
+     public boolean checkIsNearVehicle() {
++        if (GameServer.server) {
++            boolean near = IsoWorld.instance.currentCell.getPlayerSpatialQueries().nearVehicle(IsoWorld.instance.currentCell, this);
++            if (near && this.sneaking) this.setNearWallCrouching(true);
++            return near;
++        }
+         for (BaseVehicle vehicle : IsoWorld.instance.currentCell.getVehicles()) {
+             if (vehicle.DistTo(this) < 3.5F) {
+                 if (this.sneaking) {
+                     this.setNearWallCrouching(true);
+                 }
+@@ -18843,10 +18871,11 @@ public abstract class IsoGameCharacter
+             if (this.totalXp > IsoGameCharacter.this.getXpForLevel(this.getLevel() + 1)) {
+                 this.setTotalXP(this.chr.getXpForLevel(this.getLevel()));
+             }
+ 
+             IsoGameCharacter.this.getNetworkCharacterAI().updateXpChecker();
++            zombie.network.ApocBRBackendBridgeHooks.onPerksLoaded(IsoGameCharacter.this, oldPerkLevels);
+         }
+ 
+         public void save(ByteBuffer output) throws IOException {
+             this.chr.characterTraits.save(output);
+             output.putFloat(this.totalXp);

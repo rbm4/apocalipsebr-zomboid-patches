@@ -1,0 +1,38 @@
+diff --git a/zombie/entity/GameEntityManager.java b/zombie/entity/GameEntityManager.java
+index 4d1a397..6efec17 100644
+--- a/zombie/entity/GameEntityManager.java
++++ b/zombie/entity/GameEntityManager.java
+@@ -93,15 +93,17 @@ public class GameEntityManager {
+     public static void Update() {
+         if (debugger != null) {
+             debugger.beginUpdate();
+         }
+ 
+-        engine.update();
++        try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.frame")) {
++            engine.update();
++        }
+         EntitySimulation.update();
+         int simulationTicks = GameClient.client ? 0 : EntitySimulation.getSimulationTicksThisFrame();
+         if (simulationTicks > 0) {
+-            for (int i = 0; i < simulationTicks; i++) {
++            try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.entities.simulation")) {
+                 engine.updateSimulation();
+             }
+         }
+ 
+         MetaEntity m;
+@@ -147,10 +149,13 @@ public class GameEntityManager {
+ 
+             return stored;
+         }
+     }
+ 
++
++
++
+     static void RegisterEntity(GameEntity gameEntity) {
+         if (gameEntity != null && gameEntity.hasComponents()) {
+             if (gameEntity.componentSize() != 1 || !gameEntity.hasComponent(ComponentType.Script)) {
+                 if (GameClient.client) {
+                     long entityNetID = gameEntity.getEntityNetID();

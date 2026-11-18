@@ -1,0 +1,66 @@
+diff --git a/zombie/entity/components/fluids/FluidContainerUpdateSystem.java b/zombie/entity/components/fluids/FluidContainerUpdateSystem.java
+index 0b6f7d3..676cebb 100644
+--- a/zombie/entity/components/fluids/FluidContainerUpdateSystem.java
++++ b/zombie/entity/components/fluids/FluidContainerUpdateSystem.java
+@@ -8,10 +8,11 @@ import zombie.entity.Engine;
+ import zombie.entity.EngineSystem;
+ import zombie.entity.EntityBucket;
+ import zombie.entity.EntitySimulation;
+ import zombie.entity.Family;
+ import zombie.entity.GameEntity;
++import zombie.entity.MetaSimulationThrottle;
+ import zombie.entity.util.ImmutableArray;
+ import zombie.iso.IsoObject;
+ import zombie.iso.weather.ClimateManager;
+ import zombie.network.GameClient;
+ 
+@@ -34,17 +35,17 @@ public class FluidContainerUpdateSystem extends EngineSystem {
+ 
+     @Override
+     public void updateSimulation() {
+         if (!GameClient.client) {
+             boolean doSync = this.objectSyncLimiter.Check();
+-            ImmutableArray<GameEntity> entities = this.fluidContainerEntities.getEntities();
++            ImmutableArray<GameEntity> entities = this.fluidContainerEntities.getSimulationEntities();
+             if (entities.size() != 0) {
+                 for (int i = 0; i < entities.size(); i++) {
+                     GameEntity entity = entities.get(i);
+-                    if (this.isValidEntity(entity)) {
++                    if (this.isValidEntity(entity) && !MetaSimulationThrottle.shouldSkip(entity)) {
+                         FluidContainer fluidContainer = entity.getComponent(ComponentType.FluidContainer);
+-                        if (fluidContainer.isValid() && (entity.isMeta() || fluidContainer.isQualifiesForMetaStorage())) {
++                        if (fluidContainer != null && fluidContainer.isValid() && (entity.isMeta() || fluidContainer.isQualifiesForMetaStorage())) {
+                             this.updateEntity(entity, fluidContainer, doSync);
+                         }
+                     }
+                 }
+             }
+@@ -54,11 +55,14 @@ public class FluidContainerUpdateSystem extends EngineSystem {
+     private void updateEntity(GameEntity entity, FluidContainer fluidContainer, boolean doSync) {
+         if (fluidContainer.canPlayerEmpty()
+             && fluidContainer.getRainCatcher() > 0.0F
+             && !fluidContainer.isEmpty()
+             && fluidContainer.getPrimaryFluid().getFluidTypeString().equals("Petrol")) {
+-            float amount = 1.0E-4F * fluidContainer.getRainCatcher() / (SandboxOptions.getInstance().getDayLengthMinutes() * 24 / 60);
++            float amount = 1.0E-4F
++                * fluidContainer.getRainCatcher()
++                * EntitySimulation.getEffectiveSimulationTicksThisFrame()
++                / (SandboxOptions.getInstance().getDayLengthMinutes() * 24 / 60);
+             if (fluidContainer.getAmount() < amount) {
+                 amount = fluidContainer.getAmount();
+             }
+ 
+             fluidContainer.adjustAmount(fluidContainer.getAmount() - amount);
+@@ -85,11 +89,11 @@ public class FluidContainerUpdateSystem extends EngineSystem {
+             if (fluidContainer.canAddFluid(Fluid.Get(waterType))) {
+                 float rainAmount = 0.005F
+                     * ClimateManager.getInstance().getPrecipitationIntensity()
+                     * snowModifier
+                     * fluidContainer.getRainCatcher()
+-                    * (float)EntitySimulation.getGameSecondsPerTick();
++                    * (float)EntitySimulation.getEffectiveGameSecondsThisFrame();
+                 if (fluidContainer.getFreeCapacity() < rainAmount) {
+                     fluidContainer.adjustAmount(fluidContainer.getCapacity() - rainAmount);
+                 }
+ 
+                 fluidContainer.addFluid(waterType, rainAmount);

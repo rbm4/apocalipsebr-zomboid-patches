@@ -1,0 +1,16 @@
+diff --git a/zombie/network/packets/hit/PlayerHitSquarePacket.java b/zombie/network/packets/hit/PlayerHitSquarePacket.java
+index d07e419..19e0bd3 100644
+--- a/zombie/network/packets/hit/PlayerHitSquarePacket.java
++++ b/zombie/network/packets/hit/PlayerHitSquarePacket.java
+@@ -48,10 +48,11 @@ public class PlayerHitSquarePacket extends PlayerHit implements AntiCheatHitLong
+         this.square.set(wielder);
+     }
+ 
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
++        zombie.apocalipse.humans.ServerHumanPlayerAttacks.missed();
+         super.parse(b, connection);
+         this.square.parse(b, connection);
+     }
+ 
+     @Override

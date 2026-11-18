@@ -26,7 +26,7 @@ interface RestartHttpClient {
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
                     .header("X-API-Key", token)
-                    .POST(HttpRequest.BodyPublishers.ofString("{\"message\":\"Restart para update de mods\"}"))
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"message\":\"Atualização de mod detectada! Iniciando Restart\"}"))
                     .build();
                 HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.limiting(
                     HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8), 4096));

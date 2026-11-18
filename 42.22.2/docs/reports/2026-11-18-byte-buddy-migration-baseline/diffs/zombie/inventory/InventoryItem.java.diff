@@ -1,0 +1,115 @@
+diff --git a/zombie/inventory/InventoryItem.java b/zombie/inventory/InventoryItem.java
+index 3289eb8..35cb813 100644
+--- a/zombie/inventory/InventoryItem.java
++++ b/zombie/inventory/InventoryItem.java
+@@ -442,10 +442,11 @@ public class InventoryItem extends GameEntity {
+ 
+         return this.table;
+     }
+ 
+     public void storeInByteData(IsoObject o) {
++        var encodingOrigin=zombie.savefile.ApocBRPayloadProvenance.localEncoding();
+         tempBuffer.clear();
+ 
+         try {
+             o.save(tempBuffer, false);
+         } catch (IOException var3) {
+@@ -465,10 +466,12 @@ public class InventoryItem extends GameEntity {
+         this.byteData.put((byte)69);
+         this.byteData.put((byte)82);
+         this.byteData.putInt(251);
+         this.byteData.put(tempBuffer);
+         this.byteData.flip();
++        zombie.savefile.ApocBRPayloadProvenance.remember(this.byteData,
++            new zombie.savefile.ApocBRPayloadProvenance.Metadata(encodingOrigin,251));
+     }
+ 
+     public ByteBuffer getByteData() {
+         return this.byteData;
+     }
+@@ -1888,10 +1891,11 @@ public class InventoryItem extends GameEntity {
+     public static InventoryItem loadItem(ByteBuffer input, int worldVersion, boolean doSaveTypeCheck) throws IOException {
+         return loadItem(input, worldVersion, doSaveTypeCheck, null);
+     }
+ 
+     public static InventoryItem loadItem(ByteBuffer input, int worldVersion, boolean doSaveTypeCheck, InventoryItem i) throws IOException {
++        try(var dictionary=zombie.world.ApocBRWorldDictionaryDecode.enter(input)) {
+         int dataLen = input.getInt();
+         if (dataLen > 0 && dataLen <= input.remaining()) {
+             int position = input.position();
+             short registryID = input.getShort();
+             byte saveType = input.get();
+@@ -1902,18 +1906,21 @@ public class InventoryItem extends GameEntity {
+ 
+             if (item != null) {
+                 try {
+                     item.load(input, worldVersion);
+                 } catch (Exception var10) {
++                    if(var10 instanceof zombie.world.ApocBRWorldDictionaryDecode.Unavailable unavailable)throw unavailable;
++                    zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_LOAD_FAILED");
+                     ExceptionLogger.logException(var10);
+                     item = null;
+                 }
+             }
+ 
+             if (item != null) {
+                 item.loadByteCount = input.position() - position;
+                 if (dataLen != item.loadByteCount) {
++                    zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_LENGTH_MISMATCH");
+                     input.position(position + dataLen);
+                     DebugLog.log(
+                         "InventoryItem.loadItem() data length not matching, resetting buffer position to '"
+                             + (position + dataLen)
+                             + "'. itemtype: "
+@@ -1926,10 +1933,11 @@ public class InventoryItem extends GameEntity {
+                     }
+                 }
+ 
+                 return item;
+             } else {
++                zombie.savefile.ApocBRPlayerLoadQuality.issue("ITEM_SKIPPED");
+                 if (input.position() >= position + dataLen) {
+                     if (input.position() >= position + dataLen) {
+                         input.position(position + dataLen);
+                         DebugLog.log(
+                             "InventoryItem.loadItem() item == null, resetting buffer position to '"
+@@ -1949,13 +1957,15 @@ public class InventoryItem extends GameEntity {
+                 return null;
+             }
+         } else {
+             throw new IOException("InventoryItem.loadItem() invalid item data length: " + dataLen);
+         }
++            }
+     }
+ 
+     public void load(ByteBuffer input, int worldVersion) throws IOException {
++        try(var dictionary=zombie.world.ApocBRWorldDictionaryDecode.enter(input)) {
+         this.id = input.getInt();
+         BitHeaderRead header = BitHeader.allocRead(BitHeader.HeaderSize.Byte, input);
+         this.setCurrentUses(1);
+         this.name = this.originalName;
+         this.condition = this.conditionMax;
+@@ -2059,10 +2069,11 @@ public class InventoryItem extends GameEntity {
+                     for (int n = 0; n < size; n++) {
+                         this.byteData.put(input.get());
+                     }
+ 
+                     this.byteData.flip();
++                    zombie.world.ApocBRWorldDictionaryDecode.inherit(this.byteData,null);
+                 }
+ 
+                 if (bits.hasFlags(32)) {
+                     int it = input.getInt();
+                     if (it > 0) {
+@@ -2198,10 +2209,11 @@ public class InventoryItem extends GameEntity {
+             }
+         }
+ 
+         this.synchWithVisual();
+         header.release();
++            }
+     }
+ 
+     public InventoryItem createCloneItem() {
+         if (Core.getInstance().getDebug()) {
+             InventoryItem newItem = InventoryItemFactory.CreateItem(this.getFullType());

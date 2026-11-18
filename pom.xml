@@ -14,9 +14,26 @@
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
         <byte-buddy.version>1.18.17</byte-buddy.version>
+        <postgresql.version>42.7.14</postgresql.version>
+        <hikaricp.version>7.1.0</hikaricp.version>
     </properties>
 
     <dependencies>
+        <!-- Already supplied by the current server's apocbr-lib classpath.
+             Resolve through Maven for compilation/IDE use without bundling
+             duplicate JDBC/pool classes into the agent. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.version}</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.zaxxer</groupId>
+            <artifactId>HikariCP</artifactId>
+            <version>${hikaricp.version}</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>net.bytebuddy</groupId>
             <artifactId>byte-buddy</artifactId>

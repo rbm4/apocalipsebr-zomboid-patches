@@ -1,0 +1,33 @@
+diff --git a/zombie/pathfind/VehicleState.java b/zombie/pathfind/VehicleState.java
+index 66f5c38..3162095 100644
+--- a/zombie/pathfind/VehicleState.java
++++ b/zombie/pathfind/VehicleState.java
+@@ -5,10 +5,12 @@ import java.util.ArrayDeque;
+ import org.joml.Vector3f;
+ import zombie.core.math.PZMath;
+ import zombie.vehicles.BaseVehicle;
+ 
+ final class VehicleState {
++    private static final float POSITION_EPSILON = 0.01F;
++    private static final float POSITION_EPSILON_SQUARED = POSITION_EPSILON * POSITION_EPSILON;
+     BaseVehicle vehicle;
+     float x;
+     float y;
+     float z;
+     final Vector3f forward = new Vector3f();
+@@ -24,11 +26,14 @@ final class VehicleState {
+         this.polyPlusRadius.init(vehicle.getPolyPlusRadius());
+         return this;
+     }
+ 
+     boolean check() {
+-        boolean changed = this.x != this.vehicle.getX() || this.y != this.vehicle.getY() || PZMath.fastfloor(this.z) != PZMath.fastfloor(this.vehicle.getZ());
++        float deltaX = this.x - this.vehicle.getX();
++        float deltaY = this.y - this.vehicle.getY();
++        boolean changed = deltaX * deltaX + deltaY * deltaY >= POSITION_EPSILON_SQUARED
++            || PZMath.fastfloor(this.z) != PZMath.fastfloor(this.vehicle.getZ());
+         if (!changed) {
+             BaseVehicle.Vector3fObjectPool pool = BaseVehicle.TL_vector3f_pool.get();
+             Vector3f forward2 = this.vehicle.getForwardVector(pool.alloc());
+             changed = this.forward.dot(forward2) < 0.999F;
+             if (changed) {

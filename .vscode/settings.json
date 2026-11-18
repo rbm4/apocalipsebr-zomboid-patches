@@ -1,0 +1,38 @@
+{
+    "java.jdt.ls.java.home": "Z:/git/Github/apocalipsebr-zomboid-patches/jdk",
+    "java.configuration.runtimes": [
+        {
+            "name": "JavaSE-25",
+            "path": "Z:/git/Github/apocalipsebr-zomboid-patches/jdk",
+            "default": true
+        }
+    ],
+    "java.server.launchMode": "Standard",
+    "java.import.maven.enabled": true,
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "java.import.exclusions": [
+        "**/node_modules/**",
+        "**/.metadata/**",
+        "**/archetype-resources/**",
+        "**/META-INF/maven/**",
+        "**/42.*/**",
+        "**/jdk/**",
+        "**/target/**",
+        "**/backups/**",
+        "**/artifacts/**"
+    ],
+    "java.project.resourceFilters": [
+        "node_modules",
+        "\\.git",
+        "\\d+\\.\\d+\\.\\d+(?:-client)?",
+        "jdk",
+        "backups",
+        "artifacts"
+    ],
+    "maven.terminal.customEnv": [
+        {
+            "environmentVariable": "JAVA_HOME",
+            "value": "Z:/git/Github/apocalipsebr-zomboid-patches/jdk"
+        }
+    ]
+}
