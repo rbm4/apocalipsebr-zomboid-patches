@@ -32,11 +32,7 @@ fi
 command -v systemctl >/dev/null
 command -v install >/dev/null
 install -d -m 755 "$DESTINATION_DIR"
-
-echo "Stopping $SERVICE..."
-systemctl stop -- "$SERVICE"
+mvn clean package
 echo "Installing agent..."
 install -m 644 "$SOURCE_JAR" "$DESTINATION_DIR/apocbr-agent.jar"
-echo "Starting $SERVICE..."
-systemctl start -- "$SERVICE"
 echo "Agent installed; $SERVICE start requested."
