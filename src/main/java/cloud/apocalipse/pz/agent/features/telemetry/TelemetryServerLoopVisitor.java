@@ -191,30 +191,36 @@ public final class TelemetryServerLoopVisitor extends AsmVisitorWrapper.Abstract
         @Override
         public void visitEnd() {
             super.visitEnd();
+            // javac duplicates a single finally call into three mutually exclusive bytecode paths.
+            boolean legacyAnchorsValid = (this.legacyTickAnchors == 0 || this.legacyTickAnchors == 1)
+                && (this.legacyLoopAnchors == 0 || this.legacyLoopAnchors == 1 || this.legacyLoopAnchors == 3);
             boolean anchorsValid = this.loopHead != null
                 && this.startAnchors == 1
                 && this.tickAnchors == 1
                 && this.loopBackEdges > 0
-                && this.legacyTickAnchors <= 1
-                && this.legacyLoopAnchors <= 1;
+                && legacyAnchorsValid;
             TelemetryServerLoopMetrics.configure(
                 anchorsValid,
-                this.legacyTickAnchors == 1,
-                this.legacyLoopAnchors == 1
+                this.legacyTickAnchors > 0,
+                this.legacyLoopAnchors > 0
             );
             if (anchorsValid) {
                 System.out.println(
                     "[ApocBR-Agent][Telemetry] GameServer loop anchors verified; "
-                        + "legacy tick="
-                        + (this.legacyTickAnchors == 1)
-                        + ", legacy loop="
-                        + (this.legacyLoopAnchors == 1)
+                        + "legacy tick call sites="
+                        + this.legacyTickAnchors
+                        + ", legacy loop call sites="
+                        + this.legacyLoopAnchors
                         + "."
                 );
             } else {
                 System.err.println(
                     "[ApocBR-Agent][Telemetry] GameServer loop anchors did not match 42.22.2; "
-                        + "server-loop telemetry is disabled."
+                        + "server-loop telemetry is disabled (legacy tick call sites="
+                        + this.legacyTickAnchors
+                        + ", legacy loop call sites="
+                        + this.legacyLoopAnchors
+                        + ")."
                 );
             }
         }
