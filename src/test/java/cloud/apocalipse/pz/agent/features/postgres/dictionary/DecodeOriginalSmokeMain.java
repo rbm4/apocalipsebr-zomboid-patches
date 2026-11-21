@@ -43,6 +43,19 @@ public final class DecodeOriginalSmokeMain {
         try { register.loadString(bytes(new DictionaryOrigin(3, UUID.randomUUID(), UUID.randomUUID()), 1), 251); throw new AssertionError("unprepared dictionary must fail"); }
         catch (DictionaryDecode.Unavailable expected) { }
         check(!DictionaryDecode.active(), "entry failure must leave no scope");
+        var scripts=zombie.world.ScriptsDictionary.spriteConfigs;
+        var scriptConstructor=Class.forName("zombie.scripting.entity.components.spriteconfig.SpriteConfigScript").getDeclaredConstructor();scriptConstructor.setAccessible(true);
+        Object script=scriptConstructor.newInstance(),info=NativeDictionaryAccess.create("DictionaryScriptInfo");
+        NativeDictionaryAccess.set(info,"script",script);NativeDictionaryAccess.set(info,"name","Base.Config");NativeDictionaryAccess.set(info,"isLoaded",true);NativeDictionaryAccess.set(info,"version",123L);NativeDictionaryAccess.set(info,"registryId",(short)99);
+        @SuppressWarnings("unchecked") var names=(Map<String,Object>)NativeDictionaryAccess.get(scripts,"namedMap");names.put("Base.Config",info);
+        for(long version:new long[]{123L,124L}){
+            var source=new DictionaryOrigin(4,UUID.randomUUID(),UUID.randomUUID());
+            DictionaryCache.install(source,new DictionarySnapshot(List.of(new DictionarySnapshot.Registry("script","SpriteConfigs",2,null)),List.of(
+                new DictionarySnapshot.Entry("script","SpriteConfigs",1,"script","Base.Config",null,null,true,null,null,null,null,null,null,version,List.of()))));
+            if(version==123L)check(scripts.loadScript(bytes(source,1),251)==script,"native script reader did not bind the matching source version");
+            else {try{scripts.loadScript(bytes(source,1),251);throw new AssertionError("changed script version must fail");}catch(DictionaryDecode.Unavailable expected){}}
+        }
+        check(!DictionaryDecode.active(),"script failure leaked dictionary scope");
         var mutable = bytes(a, 1); mutable.clear();
         check(PayloadProvenance.metadata(mutable).origin().equals(a), "metadata follows identity despite content/position changes");
         check(PayloadProvenance.metadata(mutable.duplicate()) == null, "copies require explicit propagation");

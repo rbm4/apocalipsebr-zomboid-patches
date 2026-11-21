@@ -1,8 +1,10 @@
 # Dictionary prerequisites and PostgreSQL player reconstruction
 
 Date: 2026-11-21. Status: dictionary setup is now implemented in the root agent;
-historical payload decode hooks and player reconstruction remain open. See the
-[setup contract and validation](../features/postgresql-dictionary.md).
+this report records the investigation before payload/player implementation. The
+subsequent [active player/payload guide](../features/postgresql-players.md) records
+the registered hooks and current validation limits. The candidate boundaries and
+open implementation statements below describe that earlier investigation.
 
 ## Scope and evidence
 

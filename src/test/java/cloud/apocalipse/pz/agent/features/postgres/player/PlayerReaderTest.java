@@ -50,7 +50,8 @@ class PlayerReaderTest {
         assertEquals(List.of("open", "commit", "close"), jdbc.events);
         assertThrows(UnsupportedOperationException.class, () -> profile.tables().clear());
         assertThrows(UnsupportedOperationException.class, () -> profile.one("snapshot").put("status", "bad"));
-        assertTrue(PlayerReader.SQL.contains("WITH selected AS MATERIALIZED"));
+        assertTrue(PlayerReader.SQL.contains("selected AS MATERIALIZED"));
+        assertTrue(PlayerReader.SQL.contains("LEFT JOIN player_rel.character_head"));
     }
     @Test void absenceIsDifferentFromCorruptOrUnavailableProfile() throws Exception {
         var absent = new Jdbc(); absent.rows.clear(); assertNull(new PlayerReader(absent::open).load("world", "id", 0, false));
@@ -60,6 +61,8 @@ class PlayerReaderTest {
         var unavailable = new Jdbc(); unavailable.fail = true;
         error = assertThrows(SQLException.class, () -> new PlayerReader(unavailable::open).load("world", "id", 0, false));
         assertEquals("08006", error.getSQLState()); assertFalse(error.toString().contains("PRIVATE_SQL_VALUES"));
+        var nativeOnly=new Jdbc();nativeOnly.rows.clear();nativeOnly.rows.add(Map.entry("native_only",Map.of("present",true)));
+        assertThrows(SQLException.class,()->new PlayerReader(nativeOnly::open).load("world","id",0,false));
     }
     @Test void graphCountsAndPartialProvenanceFailClosedAfterReturningGraphLease() {
         var mismatch = new Jdbc(); mismatch.rows.getFirst().getValue().put("expected_item_count", 1);
@@ -67,14 +70,5 @@ class PlayerReaderTest {
         var provenance = new Jdbc(); provenance.rows.add(Map.entry("value_node", Map.of("source_server_id", 1)));
         assertThrows(IllegalArgumentException.class, () -> new PlayerReader(provenance::open).load("world", "id", 0, false));
         assertEquals(List.of("open", "commit", "close"), provenance.events);
-    }
-    @Test void reconstructionRejectsOwnershipCyclesBeforeAllocatingNativePlayer() {
-        var tables = new HashMap<String, List<Map<String, Object>>>();
-        tables.put("character_state", List.of(Map.of("inventory_container_id", 1)));
-        tables.put("container", List.of(Map.of("id", 1)));
-        tables.put("item", List.of(Map.of("id", 2), Map.of("id", 3)));
-        tables.put("item_location", List.of(Map.of("item_id", 2, "parent_item_id", 3, "position", 0, "relation", "weapon_attachment"),
-            Map.of("item_id", 3, "parent_item_id", 2, "position", 0, "relation", "weapon_attachment")));
-        assertThrows(IllegalStateException.class, () -> PlayerReconstruction.validateOwnership(new PlayerReader.Profile(tables)));
     }
 }

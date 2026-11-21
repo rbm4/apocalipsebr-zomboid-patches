@@ -43,8 +43,9 @@ configuration and save; it does not create an isolated test world.
   Registrations include Workshop notification, telemetry, PostgreSQL and the
   [NPC actor/planner runtime](../features/npc-engine.md), plus [server Lua APIs and
   account/API workers](../features/server-lua.md).
-  PostgreSQL currently wires the account path; see its feature guide for the
-  remaining integrated persistence/NPC migration work and activation limits.
+  PostgreSQL also registers [dictionary decoding and player authority](../features/postgresql-players.md);
+  see the feature guides for configuration, validation limits and remaining
+  integrated persistence/NPC migration work.
 - Production implementation belongs in `src/main/java`, configuration defaults
   in `src/main/resources`, and focused tests in `src/test/java`.
 - Declare JVM properties and participating environment variables in

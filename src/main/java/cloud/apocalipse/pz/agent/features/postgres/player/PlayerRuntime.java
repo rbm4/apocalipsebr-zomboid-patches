@@ -25,7 +25,7 @@ import static cloud.apocalipse.pz.agent.features.postgres.player.PlayerReconstru
 
 /** Native packet and storage linkage. JDBC reads and replay run only on bounded workers. */
 public final class PlayerRuntime {
-    private static volatile boolean enabled, closed;
+    private static volatile boolean closed;
     private record Accept(UdpConnection connection, int slot, String identity, IsoPlayer player) { }
     private record Creating(CreatePlayerPacket packet, UdpConnection connection, int slot) { }
     private static final ThreadLocal<Accept> ACCEPT = new ThreadLocal<>();
@@ -40,13 +40,17 @@ public final class PlayerRuntime {
     public static void endShutdown() { TEARDOWN.remove(); NATIVE_QUIT.countDown(); }
     public static void beginProcess() { PROCESS.lock(); }
     public static void endProcess() { PROCESS.unlock(); }
-    static void initialize(boolean active) { enabled = active; closed = false; if (active) PostgresRuntime.beforeShutdown(PlayerRuntime::shutdown); }
-    public static boolean enabled() { return enabled && !closed; }
+    public static boolean enabled() { return PlayerState.enabled && !closed; }
+    public static UUID characterId(IsoPlayer player) { return enabled()&&Thread.currentThread()==GameServer.mainThread ? PlayerMutations.loginCharacterId(player) : null; }
     private static boolean coop() { return GameServer.coop && SteamUtils.isSteamModeEnabled(); }
     private static String identity(UdpConnection connection) { return coop() ? connection.getIDStr() : connection.getUserName(); }
     private static void owner() { if (Thread.currentThread() != GameServer.mainThread && !Boolean.TRUE.equals(TEARDOWN.get())) throw new IllegalStateException("Player engine work requires the server thread or native quit phase"); }
     private static boolean ready(UdpConnection connection, int slot) {
-        if (!enabled() || !PlayerJournal.journaling() || slot < 0 || slot >= 4 || connection.getPlayerAt(slot) != null) { ApocBRLoginGuard.deny(connection); return false; }
+        if (slot < 0 || slot >= 4 || connection.getPlayerAt(slot) != null) { ApocBRLoginGuard.deny(connection); return false; }
+        return admitted(connection);
+    }
+    private static boolean admitted(UdpConnection connection) {
+        if(!enabled()||!PlayerJournal.journaling()){ApocBRLoginGuard.deny(connection);return false;}
         return ApocBRLoginGuard.ready(connection);
     }
     public static void bootstrap(Object database) {
@@ -78,13 +82,15 @@ public final class PlayerRuntime {
     }
     public static void profile(Object request, Object transport) {
         owner(); var connection = (UdpConnection) transport; int slot = number(get(request, "playerIndex"));
-        if (!ready(connection, slot)) return;
+        // Native clients request slot four to terminate a full four-character profile scan.
+        if(slot<0||slot>=4){var reply=new LoadPlayerProfilePacket();set(reply,"playerIndex",(byte)slot);set(reply,"isExist",false);var output=connection.startPacket();PacketTypes.PacketType.LoadPlayerProfile.doPacket(output);reply.write(output);PacketTypes.PacketType.LoadPlayerProfile.send(connection);return;}
+        if (!admitted(connection)) return;
         String world = Core.gameSaveWorld, identity = identity(connection), username = connection.getUserName(); boolean coop = coop();
         ApocBRAsyncLogin.submit(connection, "player-profile:" + slot, username, () -> {
             if (coop) convert(username, identity, world);
             return read(world, identity, slot, coop);
         }, profile -> {
-            if (!ready(connection, slot)) return;
+            if (!admitted(connection)) return;
             try {
                 var reply = new LoadPlayerProfilePacket(); set(reply, "playerIndex", (byte) slot); set(reply, "isExist", profile != null);
                 if (profile != null) {
@@ -110,7 +116,10 @@ public final class PlayerRuntime {
     }
     public static boolean connect(Object input, Object transport, String username, boolean initialWorld) {
         owner();
-        if (ACCEPT.get() != null) return false;
+        if (ACCEPT.get() != null) {
+            if(ACCEPT.get().connection()!=transport)throw new IllegalStateException("Nested player acceptance changed connection");
+            return false;
+        }
         if (!(transport instanceof UdpConnection connection)) { ApocBRLoginGuard.deny((IConnection) transport); return true; }
         var reader = (ByteBufferReader) input;
         if (reader.remaining() < 3 || reader.remaining() > PlayerLimits.SOURCE_BYTES) { ApocBRLoginGuard.deny(connection); return true; }
@@ -129,6 +138,7 @@ public final class PlayerRuntime {
         });
         return true;
     }
+    public static boolean connectPacket(Object input,Object connection) { return connect(input,connection,((IConnection)connection).getUserName(),true); }
     private static void accept(UdpConnection connection, int slot, String identity, String username, ByteBuffer bytes, IsoPlayer player, boolean initialWorld) {
         PlayerReconstruction.publishDescriptorIdentity(player); PlayerReconstruction.restoreEquipmentState(player, true);
         player.getCell().addMovingObject(player); player.setCurrentSquareFromPosition();
@@ -148,7 +158,7 @@ public final class PlayerRuntime {
     public static boolean create(Object request, Object transport) {
         owner(); if (CREATING.get() != null) return false;
         var connection = (UdpConnection) transport; int slot = number(get(request, "playerIndex"));
-        if (!ready(connection, slot)) return true;
+        if (!ready(connection, slot)) { discardRequestDescriptor(get(request,"survivorDescriptor"));return true; }
         var packet = new CreatePlayerPacket(); set(packet, "playerIndex", (byte) slot); set(packet, "spawnRegionName", get(request, "spawnRegionName"));
         set(packet, "survivorDescriptor", get(request, "survivorDescriptor"));
         @SuppressWarnings("unchecked") var traits = (List<Object>) get(packet, "characterTraits"); traits.addAll((Collection<?>) get(request, "characterTraits"));
@@ -157,7 +167,7 @@ public final class PlayerRuntime {
             try { packet.processServer(PacketTypes.PacketType.CreatePlayer, connection); }
             catch(RuntimeException|LinkageError failure) { failure("CREATE",failure); discard((IsoPlayer)get(packet,"player")); throw failure; }
             finally { CREATING.remove(); }
-        });
+        },()->discardRequestDescriptor(get(packet,"survivorDescriptor")));
     }
     public static boolean afterNativeCreate() {
         var creating = CREATING.get(); if (creating == null) throw new IllegalStateException("Creation outside handoff");
@@ -175,6 +185,10 @@ public final class PlayerRuntime {
         player.getCell().getAddList().remove(player); player.getCell().getObjectList().remove(player); player.removeFromSquare();
         var descriptor = player.getDescriptor(); if (descriptor != null) IsoWorld.instance.survivorDescriptors.remove(descriptor.getID(), descriptor);
         PlayerMutations.unregister(player);
+    }
+    private static void discardRequestDescriptor(Object value) {
+        if(value instanceof zombie.characters.SurvivorDesc descriptor&&descriptor.getInstance()==null)
+            IsoWorld.instance.survivorDescriptors.remove(descriptor.getID(),descriptor);
     }
     public static void shutdown() {
         if (closed) return; closed = true;

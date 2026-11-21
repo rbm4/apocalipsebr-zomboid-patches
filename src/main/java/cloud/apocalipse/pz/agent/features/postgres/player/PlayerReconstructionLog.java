@@ -5,12 +5,11 @@ import cloud.apocalipse.pz.agent.features.postgres.dictionary.*;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import java.util.*;
-import zombie.debug.DebugLog;
 
 /** Bounded reconstruction diagnostics. Never logs identities, SQL, row values or opaque bytes. */
 final class PlayerReconstructionLog {
     private static final ThreadLocal<Attempt> current=new ThreadLocal<>();
-    private static java.util.function.Consumer<String> sink=DebugLog::log;
+    private static java.util.function.Consumer<String> sink=System.out::println;
     private static final ThreadLocal<Diagnostics> diagnostics=new ThreadLocal<>();
     private static final Set<String> AUDIT_EVENTS=Set.of("MISSING_TRAIT_SKIPPED","ITEM_TYPE_MISMATCH","MISSING_REGISTRY","ITEM_SEQUENCE_FAILED","MOVEABLE_RECONSTRUCTION_FAILED","FAILED");
     static void moveableFailure(String fullType,String sprite){var a=current.get();if(a!=null)a.event("MOVEABLE_RECONSTRUCTION_FAILED","; fullType="+token(fullType)+"; worldSprite="+token(sprite));}

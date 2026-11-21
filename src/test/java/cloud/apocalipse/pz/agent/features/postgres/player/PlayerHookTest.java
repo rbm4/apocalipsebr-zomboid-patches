@@ -15,6 +15,16 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PlayerHookTest {
     @TempDir Path directory;
+    @Test void disabledAuthorityLeavesOriginalPlayerEntryPointsUntouched()throws Exception {
+        String key=cloud.apocalipse.pz.agent.config.AgentConfiguration.PLAYER_ENABLED_PROPERTY,previous=System.getProperty(key);
+        try{
+            System.setProperty(key,"false");var module=new PlayerModule();module.initialize();assertNotNull(module.disabledReason());
+            var raw=module.configure(new net.bytebuddy.agent.builder.AgentBuilder.Default().disableClassFormatChanges()).makeRaw();
+            try(var locator=ClassFileLocator.ForJarFile.of(new File(System.getProperty("pz.game.jar","Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar")))){
+                for(String target:PlayerModule.TARGETS)assertNull(raw.transform(getClass().getClassLoader(),target.replace('.','/'),null,null,locator.locate(target).resolve()),target);
+            }
+        }finally{if(previous==null)System.clearProperty(key);else System.setProperty(key,previous);}
+    }
     @Test void registeredContractsTransformExactOriginalArchiveWithoutStructuralChanges() throws Exception {
         var calls = new HashSet<String>();
         try (var locator = new ClassFileLocator.Compound(ClassFileLocator.ForJarFile.of(new File(System.getProperty("pz.game.jar", "Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar"))), ClassFileLocator.ForClassLoader.ofPlatformLoader(), ClassFileLocator.ForClassLoader.ofSystemLoader())) {
@@ -37,7 +47,7 @@ class PlayerHookTest {
         for (var check : new PlayerModule().hookChecks()) assertTrue(calls.contains(check.targetClass() + "|" + check.method() + "|" + check.helperClass() + "|" + check.helperMethod()), check.toString());
     }
     @Test void installedModuleReconstructsOriginalPlayerWithoutPublishingTemporaryState() throws Exception {
-        String name = PlayerOriginalSmokeMain.class.getName(), resource = name.replace('.', '/') + ".class";
+        String name = "cloud.apocalipse.pz.agent.features.postgres.player.PlayerOriginalSmokeMain", resource = name.replace('.', '/') + ".class";
         Path isolated = directory.resolve("classes"), destination = isolated.resolve(resource); Files.createDirectories(destination.getParent());
         Files.copy(Path.of("target/test-classes").resolve(resource), destination);
         try (var files = Files.list(Path.of("target/test-classes").resolve(resource).getParent())) {

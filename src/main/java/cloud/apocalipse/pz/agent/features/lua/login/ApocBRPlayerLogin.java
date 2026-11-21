@@ -58,7 +58,7 @@ public final class ApocBRPlayerLogin {
             if(WAITING.size()<512)WAITING.put(event,new WeakReference<>(context));
             else DebugLog.log("[ApocBR][LoginHistory] RESULT_CAPACITY; event="+event+"; auditStillQueued=true");
             SuccessfulLoginJournal.submit(new SuccessfulLoginJournal.Login(event,System.currentTimeMillis(),current,world,identity,coop,
-                slot,username,steam,null));
+                slot,username,steam,cloud.apocalipse.pz.agent.features.postgres.player.PlayerRuntime.characterId(player)));
             DebugLog.log("[ApocBR][LoginHistory] QUEUED; event="+event+"; currentServer="+current+"; slot="+slot);
         }catch(RuntimeException|LinkageError failure) {
             WAITING.remove(event);

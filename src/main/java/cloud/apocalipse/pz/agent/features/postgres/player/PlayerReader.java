@@ -54,11 +54,13 @@ public final class PlayerReader {
     }
     static String sql() {
         String prefix="""
-                WITH selected AS MATERIALIZED (
+                WITH request AS MATERIALIZED (
+                  SELECT ?::text AS world,?::text AS identity_mode,?::text AS identity_key,?::integer AS player_index
+                ), selected AS MATERIALIZED (
                   SELECT h.snapshot_id,s.*,p.split_username AS profile_split_username FROM player_rel.player_slot p
-                  JOIN player_rel.character_head h ON h.character_id=p.active_character_id
-                  JOIN player_rel.snapshot s ON s.id=h.snapshot_id
-                  WHERE p.world=? AND p.identity_mode=? AND p.identity_key=? AND p.player_index=?
+                  JOIN request r ON p.world=r.world AND p.identity_mode=r.identity_mode AND p.identity_key=r.identity_key AND p.player_index=r.player_index
+                  LEFT JOIN player_rel.character_head h ON h.character_id=p.active_character_id
+                  LEFT JOIN player_rel.snapshot s ON s.id=h.snapshot_id
                 ), refs AS MATERIALIZED (
                   SELECT id,row_number() OVER (ORDER BY id)::integer AS ordinal FROM (
                     SELECT o.id FROM player_rel.object o JOIN selected s ON s.snapshot_id=o.snapshot_id
@@ -95,6 +97,9 @@ public final class PlayerReader {
                     .append(" t JOIN selected s ON s.snapshot_id=t.snapshot_id").append(joins).append(" WHERE s.status='complete' AND s.schema_version=")
                     .append(PlayerCapture.SCHEMA_VERSION).append(" AND s.codec_version=").append(PlayerCapture.CODEC_VERSION);
         }
+        // A native-only save is not a new character. Refuse admission until its relational
+        // import is complete rather than returning an absent profile and overwriting it.
+        sql.append(" UNION ALL SELECT 'native_only',jsonb_build_object('present',true) FROM public.networkplayers n JOIN request r ON n.world=r.world AND n.playerindex=r.player_index AND ((r.identity_mode='steam_coop' AND n.steamid=r.identity_key) OR (r.identity_mode='username' AND n.username=r.identity_key)) WHERE NOT EXISTS(SELECT 1 FROM selected)");
         return sql.toString();
     }
     Profile load(String world,String identity,int slot,boolean coop) throws SQLException {

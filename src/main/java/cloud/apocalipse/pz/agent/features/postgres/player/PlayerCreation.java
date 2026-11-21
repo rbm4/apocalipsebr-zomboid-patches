@@ -27,25 +27,26 @@ public final class PlayerCreation {
         final boolean coop;
         final UUID request=UUID.randomUUID();
         Runnable create,respond;
+        final Runnable cleanup;
         IsoPlayer player;
         UUID creation;
         Phase phase=Phase.OLD_SAVE;
-        Entry(UdpConnection connection,int slot,Runnable create,long now) {
-            this.connection=connection;this.slot=slot;this.create=create;
+        Entry(UdpConnection connection,int slot,Runnable create,Runnable cleanup,long now) {
+            this.connection=connection;this.slot=slot;this.create=create;this.cleanup=cleanup;
             guid=connection.getConnectedGUID();world=Core.gameSaveWorld;
             coop=GameServer.coop&&SteamUtils.isSteamModeEnabled();identity=identity(connection,coop);
             expires=now+Math.max(1000,Math.min(120_000,AgentConfiguration.playerCreationTimeoutMillis()))*1_000_000L;
         }
     }
     /** Returns true when this packet is handled asynchronously (duplicates are coalesced). */
-    public static boolean defer(UdpConnection connection,int slot,Runnable create) {
-        if(!PlayerRuntime.enabled()||!PlayerRuntime.enabled()||!PlayerJournal.journaling())return false;
-        if(slot<0||slot>=4){ApocBRLoginGuard.deny(connection);return true;}
+    public static boolean defer(UdpConnection connection,int slot,Runnable create,Runnable cleanup) {
+        if(!PlayerRuntime.enabled())return false;
+        if(!PlayerJournal.journaling()||slot<0||slot>=4){cleanup.run();ApocBRLoginGuard.deny(connection);return true;}
         Entry[] slots=waiting.get(connection);
-        if(slots!=null&&slots[slot]!=null)return true;
-        if(count>=LIMIT){ApocBRLoginGuard.deny(connection);return true;}
-        Entry entry=new Entry(connection,slot,create,System.nanoTime());
-        if(entry.identity==null){ApocBRLoginGuard.deny(connection);return true;}
+        if(slots!=null&&slots[slot]!=null){cleanup.run();return true;}
+        if(count>=LIMIT){cleanup.run();ApocBRLoginGuard.deny(connection);return true;}
+        Entry entry=new Entry(connection,slot,create,cleanup,System.nanoTime());
+        if(entry.identity==null){cleanup.run();ApocBRLoginGuard.deny(connection);return true;}
         if(slots==null){slots=new Entry[4];waiting.put(connection,slots);}
         slots[slot]=entry;count++;log(entry,"WAIT_OLD_SAVE");return true;
     }
@@ -106,6 +107,7 @@ public final class PlayerCreation {
     }
     private static boolean current(Entry entry) {
         return entry.connection.getConnectedGUID()==entry.guid&&!GameServer.isDelayedDisconnect(entry.connection)
+            &&entry.connection.getPlayerAt(entry.slot)==null
             &&GameServer.udpEngine.connections.contains(entry.connection)&&Objects.equals(Core.gameSaveWorld,entry.world)
             &&entry.coop==(GameServer.coop&&SteamUtils.isSteamModeEnabled())
             &&Objects.equals(entry.identity,identity(entry.connection,entry.coop));
@@ -117,11 +119,12 @@ public final class PlayerCreation {
         if(slots==null||slots[entry.slot]!=entry)return;
         slots[entry.slot]=null;count--;
         PlayerRuntime.discard(entry.player);entry.player=null;
+        entry.cleanup.run();
         PlayerSync.forgetCreation(entry.creation);
         if(Arrays.stream(slots).allMatch(Objects::isNull))waiting.remove(entry.connection);
     }
     public static void shutdown() {
-        for(Entry[] slots:waiting.values())for(Entry entry:slots)if(entry!=null){PlayerRuntime.discard(entry.player);PlayerSync.forgetCreation(entry.creation);}
+        for(Entry[] slots:waiting.values())for(Entry entry:slots)if(entry!=null){PlayerRuntime.discard(entry.player);entry.cleanup.run();PlayerSync.forgetCreation(entry.creation);}
         waiting.clear();count=0;
     }
     private static void fail(Entry entry,String reason){remove(entry);log(entry,reason);ApocBRLoginGuard.deny(entry.connection);}

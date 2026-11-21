@@ -14,8 +14,8 @@ public final class PlayerAdvice {
         @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class) public static boolean enter(@Advice.This Object packet, @Advice.Argument(1) Object connection) { return PlayerRuntime.create(packet, connection); }
     }
     public static class ConnectPacket {
-        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class) public static boolean enter(@Advice.Argument(0) Object input, @Advice.Argument(1) zombie.network.IConnection connection) {
-            return PlayerRuntime.connect(input, connection, connection.getUserName(), true);
+        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class) public static boolean enter(@Advice.Argument(0) Object input, @Advice.Argument(1) Object connection) {
+            return PlayerRuntime.connectPacket(input, connection);
         }
     }
     public static class Connect {

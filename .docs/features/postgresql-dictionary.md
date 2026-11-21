@@ -1,7 +1,8 @@
 # PostgreSQL dictionary setup
 
-Status: **setup implemented; full dictionary decoding and player reconstruction
-remain in progress**. Target: original 42.22.2 JAR, root Maven agent.
+Status: **setup and native decode hooks implemented; live acceptance pending**.
+Target: original 42.22.2 JAR, root Maven agent. See the
+[player and payload port](postgresql-players.md) for the subsequently added decoder scope.
 
 ## Contract
 
@@ -105,11 +106,10 @@ foreign dictionaries, notification updates, reconnect recovery, historical cache
 retention, startup failure ordering and listener/pool cleanup. It never invokes
 GameServer.main. This is not a dedicated-server or real database test.
 
-Native payload provenance attachment, historical item/script/string/object decode
-scopes, player reconstruction and the initial client-profile round trip are not
-implemented by this setup slice. Continue with the working legacy decoding
-contracts; do not infer a need to redesign the cross-server protocol merely from
-opaque byteData copying. No deployment or live-runtime acceptance is claimed.
+The original setup slice did not implement native payload provenance or decoding.
+The subsequent [player/payload port](postgresql-players.md) adds those registered
+native hooks, reconstruction and focused initial client-profile codec checks.
+No protocol redesign, deployment or live-runtime acceptance is claimed.
 
 The optional integration suite automatically discovers the three module hook
 checks. It was not run for this change. Installation evidence alone will not prove

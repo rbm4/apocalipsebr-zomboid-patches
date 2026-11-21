@@ -1,6 +1,6 @@
 # PostgreSQL and NPC runtime migration
 
-Status: **in progress; account hooks and dictionary setup registered, complete PostgreSQL/NPC runtime port still unfinished**.
+Status: **in progress; account, dictionary decode and player authority hooks registered; complete PostgreSQL/NPC migration still unfinished**.
 Date: 2026-11-21. Target: original 42.22.2 JAR plus root Maven agent.
 
 ## Authorized feature scope and architecture
@@ -67,8 +67,10 @@ Production code is under `features/postgres`:
 the account hooks described below. The separately registered
 [`DictionaryModule`](postgresql-dictionary.md) now publishes the completed native
 dictionary and prepares paginated exact foreign views with a notification listener.
-Historical payload decoding and player reconstruction remain open, along with
-the remaining full-feature persistence/runtime contracts.
+The separately registered [player/payload port](postgresql-players.md) now adds
+native historical decoding, relational reconstruction, durable creation and
+live/final saves. Real database/client acceptance and remaining full-feature
+persistence/runtime contracts remain open.
 Setting `apocbr.postgres.enabled` does not make the complete port available yet.
 No installed game files or live database have been changed by this work.
 
@@ -80,7 +82,7 @@ No installed game files or live database have been changed by this work.
 | `ServerWorldDatabase.connect()/close()` | Connect validates a scoped lease; close skips the native shared-connection path. Pool shutdown belongs to server/JVM lifecycle. |
 | Account methods reading `ServerWorldDatabase.conn` | `AccountConnectionVisitor` redirects field reads to `PostgresRuntime.connection`. `AccountCall` advice shares a scoped lease across nested calls and releases it on normal/exceptional return. The native singleton field remains untouched and original account method bodies continue. Uncovered connection accesses reject transformation. |
 | `authClient`, `authOwner`, `googleAuthClient` | Authentication advice uses the login workflow budget and produces `AccessDenied` on acquisition failure or SQL failure caught by vanilla. Native credential, role, Steam-ban and second-factor checks otherwise continue. |
-| `isNewAccountAllowed` and the account-side player Steam-ID lookup | Agent-owned adapters perform the dependent PostgreSQL `public.networkplayers` reads. The account-limit adapter preserves count/priority policy, advances result sets correctly and fails closed. Account-side lookup avoids constructing the native SQLite player database. These reads require the existing PostgreSQL player table/data; player writes/reconstruction remain unported. |
+| `isNewAccountAllowed` and the account-side player Steam-ID lookup | Agent-owned adapters perform the dependent PostgreSQL `public.networkplayers` reads. The account-limit adapter preserves count/priority policy, advances result sets correctly and fails closed. Account-side lookup avoids constructing the native SQLite player database. Player writes/reconstruction are owned by the separately enabled player module. |
 | Native numeric `setString` account bindings | `AccountSqlTypes` narrowly binds whitelist IDs and userlog amounts as JDBC integers for PostgreSQL. Other native bindings are retained. |
 | `GameServer.main` entry/exit | Entry requires confirmed account transformation before startup proceeds; exit closes the pool on normal/exceptional return. |
 | `ServerMap.QueuedQuit` exit | Pool shutdown follows vanilla shutdown work, including role saves and vehicle reset. A JVM shutdown hook covers abnormal termination. |
@@ -131,13 +133,13 @@ Do not treat old launcher flags as proof those features exist in the agent.
 
 ## Compatibility constraints and open implementation work
 
-Player reconstruction must follow dictionary support: historical view loading,
-payload provenance, executable native decode hooks and a proven client payload
-compatibility contract are prerequisites. Native item saving copies embedded
+The player module requires dictionary support: historical view loading,
+payload provenance and executable native decode hooks. Native item saving copies embedded
 `byteData` unchanged, so re-encoding the outer player does not by itself prove
 that the initial client can decode historical nested payloads. See the
 [dictionary-first reconstruction context](../reports/2026-11-21-player-reconstruction-context.md)
-for dependency order, evidence and remaining gaps.
+for the original dependency analysis, and the [active player guide](postgresql-players.md)
+for implementation, codec coverage and remaining live/client acceptance gaps.
 
 The [source audit](../reports/2026-11-21-postgresql-vanilla-audit.md) identifies
 missing game-class APIs and the signed-JAR packaging constraint. In particular,

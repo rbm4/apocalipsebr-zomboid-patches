@@ -20,11 +20,13 @@ public final class PlayerModule implements AgentModule {
     @Override public void initialize() {
         enabled = AgentConfiguration.playerEnabled();
         if (enabled) {
-            if (!AgentConfiguration.dictionaryDecodeEnabled() || !AgentConfiguration.asyncAccountsEnabled() || !AgentConfiguration.playerMutationsEnabled() || !AgentConfiguration.playerReconcileEnabled())
+            if (!AgentConfiguration.dictionaryDecodeEnabled() || !AgentConfiguration.asyncAccountsEnabled() || !AgentConfiguration.playerRelationalEnabled() || !AgentConfiguration.playerMutationsEnabled() || !AgentConfiguration.playerReconcileEnabled())
                 throw new IllegalArgumentException("Player authority requires dictionary decode, async accounts, live mutations and graph reconciliation");
             cloud.apocalipse.pz.agent.features.lua.HookPreflight.validate(TARGETS, hookChecks(), PlayerModule::transform);
+            // A lambda owned by this native-free module defers helper linkage until shutdown.
+            cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime.beforeShutdown(() -> PlayerRuntime.shutdown());
         }
-        PlayerRuntime.initialize(enabled);
+        PlayerState.enabled=enabled;
     }
     @Override public List<HookCheck> hookChecks() {
         var checks = new ArrayList<HookCheck>(); String runtime = PlayerRuntime.class.getName();
@@ -35,7 +37,7 @@ public final class PlayerModule implements AgentModule {
             {TARGETS.get(0), "process", runtime, "beginProcess"}, {TARGETS.get(0), "process", runtime, "endProcess"},
             {TARGETS.get(0), "serverConvertNetworkCharacter", runtime, "convertNative"}, {TARGETS.get(1), "<init>", runtime, "nativeCaptured"},
             {TARGETS.get(2), "processServer", runtime, "profile"}, {TARGETS.get(3), "processServer", runtime, "create"},
-            {TARGETS.get(3), "processServer", runtime, "afterNativeCreate"}, {TARGETS.get(4), "parse", runtime, "connect"},
+            {TARGETS.get(3), "processServer", runtime, "afterNativeCreate"}, {TARGETS.get(4), "parse", runtime, "connectPacket"},
             {TARGETS.get(5), "receivePlayerConnect", runtime, "connect"}, {TARGETS.get(5), "main", runtime, "update"},
             {TARGETS.get(6), "update", PlayerMutations.class.getName(), "beginTick"}, {TARGETS.get(6), "update", PlayerMutations.class.getName(), "observe"},
             {TARGETS.get(6), "update", PlayerMutations.class.getName(), "endTick"},

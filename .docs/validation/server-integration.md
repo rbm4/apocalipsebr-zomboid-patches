@@ -186,6 +186,12 @@ Probe, transformation and server-health errors remain failures. Scenario-specifi
 not establish complete hook coverage; unobserved hooks need a later trigger or
 dedicated validation.
 
+The player/payload port also has a separate packaged-agent probe that deliberately
+loads its original-JAR targets without initialization and verifies declared helper
+invocations and class origins. That probe is not a server startup or gameplay
+scenario; it does not add forced player-class loading to this shared fixture.
+See the [player validation record](../features/postgresql-players.md#validation-and-remaining-acceptance).
+
 Each generated test checks post-transformation bytecode observed inside the child
 JVM. It verifies the target's code source is exactly the configured original JAR
 and finds the declared method-to-helper invocation. Currently enabled checks are:

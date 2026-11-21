@@ -146,6 +146,8 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String PLAYER_MUTATIONS_PROPERTY = "apocbr.postgres.playerRelational.mutations.enabled";
     /** Player authority: {@code -Dapocbr.postgres.players.enabled=true}; defaults false. */
     public static final String PLAYER_ENABLED_PROPERTY = "apocbr.postgres.players.enabled";
+    /** Player relational authority: {@code -Dapocbr.postgres.playerRelational.enabled=true}; required when player storage is enabled. */
+    public static final String PLAYER_RELATIONAL_PROPERTY = "apocbr.postgres.playerRelational.enabled";
     /** Player creation dataset: {@code -Dapocbr.postgres.playerRelational.sourceDatasetId=<uuid>}; defaults to the legacy save-path identity. */
     public static final String PLAYER_DATASET_PROPERTY = "apocbr.postgres.playerRelational.sourceDatasetId";
     /** Player durable journal: {@code -Dapocbr.postgres.playerJournal.directory=<path>}; defaults below the configured PostgreSQL journal. */
@@ -155,6 +157,7 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     public static boolean playerEnabled() { return Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY, "false")) && Boolean.parseBoolean(systemProperty(PLAYER_ENABLED_PROPERTY, "false")); }
     public static boolean playerMutationsEnabled() { return Boolean.parseBoolean(systemProperty(PLAYER_MUTATIONS_PROPERTY, "true")); }
+    public static boolean playerRelationalEnabled() { return Boolean.parseBoolean(systemProperty(PLAYER_RELATIONAL_PROPERTY, "true")); }
     public static boolean playerReconcileEnabled() { return Boolean.parseBoolean(systemProperty(PLAYER_RECONCILE_PROPERTY, "true")); }
     public static long playerMutationCacheMiB() { return integerProperty(System.getProperties(), PLAYER_MUTATION_CACHE_PROPERTY, 64); }
     public static long playerSampleMillis() { return integerProperty(System.getProperties(), PLAYER_SAMPLE_PROPERTY, 30000); }

@@ -11,12 +11,11 @@ event, radio, market/API, account-worker and successful-login dependencies.
 The matching `42.22.2/decompiled` owners establish original signatures and
 native behavior. No version-directory implementation or original archive is modified.
 
-PostgreSQL player reconstruction and its async profile/player-connect
-continuations are owned by another session, as confirmed by the user.
-They are not silently replaced with worker execution of SQLite/native actor loading.
+PostgreSQL player reconstruction and async profile/player-connect continuations
+belong to the separately registered [player module](postgresql-players.md).
 The successful-login observer runs after native player acceptance in either
-storage mode. Its optional relational character UUID enrichment is null until
-reconstruction exposes an authoritative agent-owned binding.
+storage mode. Its relational character UUID enrichment uses the authoritative
+player binding when enabled; vanilla storage leaves it null.
 
 ## Lua compatibility
 

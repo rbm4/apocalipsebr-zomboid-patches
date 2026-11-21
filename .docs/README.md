@@ -18,6 +18,7 @@ Each session selects one bounded feature; no migration queue is authorized here.
 - [Feature implementation catalog](features/README.md)
 - [PostgreSQL and NPC runtime migration](features/postgresql.md)
 - [PostgreSQL dictionary setup](features/postgresql-dictionary.md)
+- [PostgreSQL player authority and historical payload decoding](features/postgresql-players.md)
 - [Dictionary prerequisites and PostgreSQL player reconstruction](reports/2026-11-21-player-reconstruction-context.md)
 - [Bot engine vanilla dependencies before porting](reports/2026-11-21-npc-dependency-map.md)
 - [NPC actors, gameplay adapters and persistence](features/npc-engine.md)

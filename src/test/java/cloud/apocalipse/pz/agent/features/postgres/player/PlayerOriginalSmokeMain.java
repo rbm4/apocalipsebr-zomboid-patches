@@ -28,6 +28,10 @@ public final class PlayerOriginalSmokeMain {
     static volatile UUID liveCharacter, liveDataset;
     static final AtomicInteger nativeWrites = new AtomicInteger(), graphWrites = new AtomicInteger();
     static final List<String> acceptance = new ArrayList<>();
+    static volatile boolean nativeQuitQueried,poolClosed;
+    public static void nativeQuit() throws Exception {
+        try(var connection=PostgresRuntime.borrowBackground()){check(!poolClosed,"pool closed before native quit SQL");connection.rollback();nativeQuitQueried=true;}
+    }
     public static void nativeAcceptance(Object input, Object transport, String username) {
         var connection = (zombie.network.IConnection) transport; int slot = ((zombie.core.network.ByteBufferReader) input).getByte();
         var player = zombie.savefile.ServerPlayerDB.getInstance().serverLoadNetworkCharacter(slot, connection.getUserName());
@@ -106,17 +110,18 @@ public final class PlayerOriginalSmokeMain {
         // chat, RakNet, map download or world services. Original bytes are validated separately.
         instrumentation.addTransformer(new java.lang.instrument.ClassFileTransformer() {
             @Override public byte[] transform(ClassLoader loader,String name,Class<?> redefining,java.security.ProtectionDomain domain,byte[] bytes) {
-                if(!"zombie/network/GameServer".equals(name))return null;
+                if(!"zombie/network/GameServer".equals(name)&&!"zombie/network/ServerMap".equals(name))return null;
                 var writer=new net.bytebuddy.jar.asm.ClassWriter(net.bytebuddy.jar.asm.ClassWriter.COMPUTE_MAXS);
                 new net.bytebuddy.jar.asm.ClassReader(bytes).accept(new net.bytebuddy.jar.asm.ClassVisitor(net.bytebuddy.jar.asm.Opcodes.ASM9,writer){
                     @Override public net.bytebuddy.jar.asm.MethodVisitor visitMethod(int access,String method,String descriptor,String signature,String[] exceptions){
                         var target=super.visitMethod(access,method,descriptor,signature,exceptions);
                         boolean connect=method.equals("receivePlayerConnect")&&descriptor.equals("(Lzombie/core/network/ByteBufferReader;Lzombie/network/IConnection;Ljava/lang/String;)V");
                         boolean world=method.equals("sendInitialWorldState")&&descriptor.equals("(Lzombie/network/IConnection;)V");
-                        if(!connect&&!world)return target;
-                        target.visitCode();target.visitVarInsn(net.bytebuddy.jar.asm.Opcodes.ALOAD,0);
+                        boolean quit=method.equals("QueuedQuit")&&descriptor.equals("()V");
+                        if(!connect&&!world&&!quit)return target;
+                        target.visitCode();if(!quit)target.visitVarInsn(net.bytebuddy.jar.asm.Opcodes.ALOAD,0);
                         if(connect){target.visitVarInsn(net.bytebuddy.jar.asm.Opcodes.ALOAD,1);target.visitVarInsn(net.bytebuddy.jar.asm.Opcodes.ALOAD,2);}
-                        target.visitMethodInsn(net.bytebuddy.jar.asm.Opcodes.INVOKESTATIC,PlayerOriginalSmokeMain.class.getName().replace('.','/'),connect?"nativeAcceptance":"nativeWorld",connect?"(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)V":"(Ljava/lang/Object;)V",false);
+                        target.visitMethodInsn(net.bytebuddy.jar.asm.Opcodes.INVOKESTATIC,PlayerOriginalSmokeMain.class.getName().replace('.','/'),quit?"nativeQuit":connect?"nativeAcceptance":"nativeWorld",quit?"()V":connect?"(Ljava/lang/Object;Ljava/lang/Object;Ljava/lang/String;)V":"(Ljava/lang/Object;)V",false);
                         target.visitInsn(net.bytebuddy.jar.asm.Opcodes.RETURN);target.visitMaxs(0,0);target.visitEnd();return null;
                     }
                 },0);return writer.toByteArray();
@@ -142,6 +147,7 @@ public final class PlayerOriginalSmokeMain {
         zombie.SoundManager.instance = new zombie.DummySoundManager();
         zombie.characters.professions.CharacterProfessionDefinition.addCharacterProfessionDefinition(zombie.scripting.objects.CharacterProfession.UNEMPLOYED, "fixture", 0, "", null);
         var cell = new IsoCell(10, 10);
+        ownershipScenario();
         PlayerReconstruction.set(zombie.network.ServerMap.instance, "grid", new zombie.iso.IsoMetaGrid());
         var tables = new LinkedHashMap<String, List<Map<String, Object>>>();
         tables.put("snapshot", List.of(Map.of("persisted_character_id", UUID.randomUUID().toString(), "source_dataset_id", UUID.randomUUID().toString())));
@@ -169,6 +175,12 @@ public final class PlayerOriginalSmokeMain {
         packetScenario(graph, args[0]);
         PlayerRuntime.discard(player);
         System.out.println("original relational reconstruction passed");
+    }
+    static void ownershipScenario() {
+        var tables=new HashMap<String,List<Map<String,Object>>>();tables.put("character_state",List.of(Map.of("inventory_container_id",1)));
+        tables.put("container",List.of(Map.of("id",1)));tables.put("item",List.of(Map.of("id",2),Map.of("id",3)));
+        tables.put("item_location",List.of(Map.of("item_id",2,"parent_item_id",3,"position",0,"relation","weapon_attachment"),Map.of("item_id",3,"parent_item_id",2,"position",0,"relation","weapon_attachment")));
+        try{PlayerReconstruction.validateOwnership(new PlayerReader.Profile(tables));throw new AssertionError("cyclic inventory ownership accepted");}catch(IllegalStateException expected){}
     }
     @SuppressWarnings("unchecked")
     static DictionaryOrigin addHistoricalItem(IsoPlayer player) throws Exception {
@@ -239,7 +251,7 @@ public final class PlayerOriginalSmokeMain {
         for (String name : List.of("defaultForBanned", "defaultForUser", "defaultForNewUser")) { var field = roles.getDeclaredField(name); field.setAccessible(true); field.set(null, role); }
         DataSource source = (DataSource) proxy(DataSource.class, (p, m, a) -> m.getName().equals("getConnection") ? connection() : zero(m.getReturnType()));
         var constructor = PostgresConnections.class.getDeclaredConstructor(DataSource.class, AutoCloseable.class); constructor.setAccessible(true);
-        var pool = constructor.newInstance(source, (AutoCloseable) () -> { });
+        var pool = constructor.newInstance(source, (AutoCloseable) () -> { poolClosed=true; });
         var install = PostgresRuntime.class.getDeclaredMethod("installForTest", cloud.apocalipse.pz.agent.config.AgentConfiguration.PostgresSettings.class, PostgresConnections.class); install.setAccessible(true);
         install.invoke(null, new cloud.apocalipse.pz.agent.config.AgentConfiguration.PostgresSettings(true, true, "jdbc:postgresql://fixture/unused", 1, 5000, 3000), pool);
         var connection = new ConnectionFixture(); connection.setRole((zombie.characters.Role) role);
@@ -280,7 +292,19 @@ public final class PlayerOriginalSmokeMain {
             acceptanceScenario(connection, graph);
             databaseProfile = new PlayerReader.Profile(Map.of("snapshot", List.of(Map.of("status", "incomplete", "schema_version", 1, "codec_version", 4))));
             int deniedBefore=connection.denied;request.processServer(null, connection); awaitRequest(); check(connection.denied == deniedBefore+1, "corrupt profile must deny rather than report absence");
+            int sentBefore=connection.sent,readsBefore=reads.get();deniedBefore=connection.denied;PlayerReconstruction.set(request,"playerIndex",(byte)4);request.processServer(null,connection);
+            check(connection.sent==sentBefore+1&&connection.denied==deniedBefore&&reads.get()==readsBefore,"slot-four profile terminator must remain an absent reply without JDBC");
+            shutdownScenario();
         } finally { AsyncRuntime.shutdown(); PlayerRuntime.shutdown(); PostgresRuntime.shutdown(); }
+    }
+    static void shutdownScenario()throws Exception {
+        PlayerRuntime.serverMain();var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        var hook=new Thread(()->{try{PostgresRuntime.shutdown();}catch(Throwable error){failure.set(error);}},"fixture-jvm-shutdown");hook.start();
+        long deadline=System.nanoTime()+3_000_000_000L;
+        while(PostgresRuntime.acceptingAccounts()&&System.nanoTime()<deadline)Thread.sleep(5);
+        check(!poolClosed,"JVM hook closed the pool ahead of native quit");
+        zombie.network.ServerMap.instance.QueuedQuit();hook.join(5000);
+        check(!hook.isAlive()&&failure.get()==null&&nativeQuitQueried&&poolClosed,"native quit/pool shutdown coordination failed: "+failure.get());
     }
     static void acceptanceScenario(ConnectionFixture connection,PlayerCapture.Graph graph)throws Exception {
         connection.setUserName(0,"fixture");
@@ -319,6 +343,11 @@ public final class PlayerOriginalSmokeMain {
         zombie.savefile.ServerPlayerDB.getInstance().saveFinishWait();
         check(PlayerSync.readable("player-fixture", "fixture", 0, false), "final capture remained pending");
         check(nativeWrites.get() == 2, "native final snapshot did not reach persistence"); PlayerRuntime.discard(created);
+        var abandoned=new zombie.characters.SurvivorDesc();PlayerReconstruction.set(request,"survivorDescriptor",abandoned);request.processServer(null,connection);
+        @SuppressWarnings("unchecked") var connections=(List<UdpConnection>)PlayerAccess.get(GameServer.class.getField("udpEngine").get(null),"connections");connections.clear();
+        PlayerCreation.update(System.nanoTime()+1_000_000_000L);connections.add(connection);
+        var descriptors=(Map<?,?>)IsoWorld.class.getField("survivorDescriptors").get(IsoWorld.instance);
+        check(!descriptors.containsKey(abandoned.getID()),"cancelled creation retained its parsed descriptor");
     }
     static void awaitRequest() throws Exception {
         var field = ApocBRAsyncLogin.class.getDeclaredField("pending"); field.setAccessible(true);
