@@ -188,15 +188,35 @@ public final class PlayerMutations {
         return binding==null?null:binding.character();
     }
     /** Detached identity for server Lua requests; UUIDs are never inferred from client fields. */
-    record EntityContext(PlayerDatabase.Candidate candidate,UUID session,UUID character) {}
-    static EntityContext entityContext(IsoPlayer player) {
+    public static final class EntityContext {
+        private final PlayerDatabase.Candidate candidate;
+        private final UUID session;
+        private final UUID character;
+
+        private EntityContext(PlayerDatabase.Candidate candidate, UUID session, UUID character) {
+            this.candidate = candidate;
+            this.session = session;
+            this.character = character;
+        }
+
+        public String world() { return candidate.world(); }
+        public String identityMode() { return candidate.coop() ? "steam_coop" : "username"; }
+        public String identity() { return candidate.identity(); }
+        public int slot() { return candidate.slot(); }
+        public UUID session() { return session; }
+        public UUID character() { return character; }
+    }
+
+    /** Called on the game thread. The returned context contains no native objects. */
+    public static EntityContext entityContext(IsoPlayer player) {
         Cursor cursor=TRACKED.get(player);
         if(cursor==null||player.isDead())return null;
         var binding=DIRTY.binding(cursor.candidate.key(),cursor.session);
         return binding==null||binding.character()==null?null:new EntityContext(cursor.candidate,cursor.session,binding.character());
     }
-    static boolean entityContextCurrent(EntityContext context) {
-        var binding=DIRTY.binding(context.candidate().key(),context.session());
+    /** Worker-side revalidation against the synchronized binding store. */
+    public static boolean entityContextCurrent(EntityContext context) {
+        var binding=DIRTY.binding(context.candidate.key(),context.session());
         return binding!=null&&context.character().equals(binding.character());
     }
     private static void capacityLog(){long now=System.nanoTime();if(now-lastCapacityLog>=30_000_000_000L){lastCapacityLog=now;log("LIVE_TRACK_LIMIT; retryOnNextLoad=true");}}

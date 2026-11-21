@@ -13,6 +13,7 @@ No runtime performance improvement is established by this catalog.
 | Legacy engine optimizations and other patches | None declared complete here | Require separately selected feature ports and validation against the original JAR. |
 | [NPC actors, gameplay and persistence](npc-engine.md) | `features/npc`, `features/postgres/NpcPersistence` | Factory/actor graph and original-game hooks connected; scoped durable NPC SQL/sales coordinator added. Full behavioral, database and live-client acceptance remains open. |
 | [Server Lua APIs and service workers](server-lua.md) | `features/lua` | Registered Lua/solar/generator/streaming/event/radio/API/login-audit hooks and async account/2FA/admin workers; original-JAR execution checks present, full live acceptance pending. |
+| [Server Lua entity persistence](lua-mod-entities.md) | `features/lua/entities` | Wallet documents, generic and scoped repositories, character-backed entities and append-only messages. Exercised with original Lua and isolated PostgreSQL. |
 
 ## Adding a feature
 

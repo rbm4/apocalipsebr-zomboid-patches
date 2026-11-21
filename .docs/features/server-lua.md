@@ -13,6 +13,8 @@ native behavior. No version-directory implementation or original archive is modi
 
 PostgreSQL player reconstruction and async profile/player-connect continuations
 belong to the separately registered [player module](postgresql-players.md).
+The [Lua entity bridge](lua-mod-entities.md) connects the pack's Lua repository
+facade to that player authority and to the shared PostgreSQL pool.
 The successful-login observer runs after native player acceptance in either
 storage mode. Its relational character UUID enrichment uses the authoritative
 player binding when enabled; vanilla storage leaves it null.
@@ -30,6 +32,7 @@ The server receives these same Lua global names:
 | `ApocBrApiBridge`, its `Endpoint` enum and endpoint constants | `api` |
 | `ApocBRPlayerLogin` | `login` |
 | `IsoPowerBank`, `PowerBankBackup` | `power` |
+| `ApocBRModEntities` | `entities` |
 
 Classes live outside the signed native `zombie.*` packages. Mods using these
 Lua globals retain their names. Hardcoded Java class-name strings must use the

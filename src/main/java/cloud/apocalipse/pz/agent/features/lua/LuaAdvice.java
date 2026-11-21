@@ -8,7 +8,10 @@ public final class LuaAdvice {
         @Advice.OnMethodExit public static void exit() { LuaRuntime.exposed(); }
     }
     public static class Init {
-        @Advice.OnMethodExit public static void exit() { LuaRuntime.luaInitialized(); }
+        @Advice.OnMethodExit public static void exit() {
+            LuaRuntime.luaInitialized();
+            cloud.apocalipse.pz.agent.features.lua.entities.ApocBRModEntities.install();
+        }
     }
     public static class Startup {
         @Advice.OnMethodEnter public static void enter() { LuaRuntime.start(); }

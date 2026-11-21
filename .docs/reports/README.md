@@ -14,6 +14,7 @@ Current work: [2026-11-21 PostgreSQL and NPC vanilla compatibility audit](2026-1
 
 Implementation follow-up: [2026-11-21 PostgreSQL module and account hook registration](2026-11-21-postgresql-hook-registration.md).
 
+- [Legacy optimization patches: current-agent migration status](2026-11-21-legacy-optimization-migration-status.md): separates historical optimization implementations and remaining candidates from the root agent's current implementation.
 - [2026-11-18 migration baseline and impact inventory](../../42.22.2/docs/reports/2026-11-18-byte-buddy-migration-baseline/2026-11-18-byte-buddy-migration-baseline.md): captured 375 implementation sources, including 109 modified vanilla counterparts and 266 custom sources. This is a historical source inventory, not completed migration or current runtime proof.
 - [Per-source inventory](../../42.22.2/docs/reports/2026-11-18-byte-buddy-migration-baseline/2026-11-18-class-inventory.md): navigation into captured diffs; inspect current exact sources before implementing.
 - [Historical telemetry basics guide](../../42.22.2/docs/features/2026-11-18-byte-buddy-server-telemetry-basics.md): records the first telemetry tranche and its runtime gaps. Current active status belongs in the [feature catalog](../features/README.md).

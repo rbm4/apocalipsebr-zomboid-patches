@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent.features.lua;
 
 import cloud.apocalipse.pz.agent.features.lua.api.*;
+import cloud.apocalipse.pz.agent.features.lua.entities.ApocBRModEntities;
 import cloud.apocalipse.pz.agent.features.lua.events.ApocBREventControl;
 import cloud.apocalipse.pz.agent.features.lua.login.ApocBRPlayerLogin;
 import cloud.apocalipse.pz.agent.features.lua.power.*;
@@ -33,6 +34,8 @@ public final class LuaRuntime {
     }
     public static void luaInitialized() {
         if (!GameServer.server) return;
+        if (owner == null)
+            cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime.beforeShutdown(LuaRuntime::shutdown);
         owner=Thread.currentThread();
         PowerBankBackup.initialize(); ApocBRManagedGenerators.initialize(); ApocBRLobbyStreaming.initialize();
         LuaHookManager.AddEvent(IsoPowerBank.UPDATE_HOOK);
@@ -46,7 +49,6 @@ public final class LuaRuntime {
         if (!GameServer.server || started || closed) return;
         if (Thread.currentThread()!=owner) throw new IllegalStateException("Lua startup owner mismatch");
         started=true;
-        cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime.beforeShutdown(LuaRuntime::shutdown);
         if(ApocBRPlayerLogin.enabled()) {
             String override=cloud.apocalipse.pz.agent.config.AgentConfiguration.systemProperty("apocbr.postgres.loginHistory.journalDirectory");
             Path directory=override==null ? Path.of(zombie.ZomboidFileSystem.instance.getSaveDir(),"Multiplayer",GameServer.serverName,"login-history-agent") : Path.of(override);
@@ -60,11 +62,14 @@ public final class LuaRuntime {
         ApocBREventControl.update(); ApiBridgeLifecycle.update(); ApocBRManagedGenerators.update();
     }
     public static synchronized void shutdown() {
-        if (closed || !started) return;
+        if (closed) return;
         closed=true;
         RuntimeException failure=null;
-        for(Runnable close:new Runnable[]{ApiBridgeLifecycle::shutdown,ApocBREventControl::shutdown,
-                ApocBRBackendBridgeHooks::shutdown,SuccessfulLoginJournal::shutdown}) {
+        Runnable[] services = started
+            ? new Runnable[]{ApocBRModEntities::shutdown,ApiBridgeLifecycle::shutdown,ApocBREventControl::shutdown,
+                ApocBRBackendBridgeHooks::shutdown,SuccessfulLoginJournal::shutdown}
+            : new Runnable[]{ApocBRModEntities::shutdown};
+        for(Runnable close:services) {
             try {close.run();}catch(RuntimeException error){if(failure==null)failure=error;else failure.addSuppressed(error);}
         }
         if(failure!=null)throw failure;

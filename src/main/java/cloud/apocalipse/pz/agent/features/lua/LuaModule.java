@@ -42,6 +42,8 @@ public final class LuaModule implements AgentModule {
             {TARGETS.get(2),"RemoveItemFromMap","denyRemoval"},{TARGETS.get(2),"receivePlayerConnect","playerAccepted"},
             {TARGETS.get(0),"exposeAll","exposed"}};
         for(int i=0;i<hooks.length;i++) checks.add(new HookCheck("lua-"+i,hooks[i][0],hooks[i][1],h,hooks[i][2],false));
+        checks.add(new HookCheck("lua-mod-entities",TARGETS.get(1),"init",
+            "cloud.apocalipse.pz.agent.features.lua.entities.ApocBRModEntities","install",false));
         return List.copyOf(checks);
     }
     @Override public AgentBuilder configure(AgentBuilder builder) {

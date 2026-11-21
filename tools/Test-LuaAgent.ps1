@@ -23,7 +23,8 @@ $sources = @(
     (Join-Path $testRoot 'LuaLifecycleFixture.java'),
     (Join-Path $testRoot 'api\ApiOriginalAssertions.java'),
     (Join-Path $testRoot 'events\EventOriginalAssertions.java'),
-    (Join-Path $testRoot 'login\LoginOriginalSmokeMain.java')
+    (Join-Path $testRoot 'login\LoginOriginalSmokeMain.java'),
+    (Join-Path (Split-Path $testRoot -Parent) 'postgres\player\LuaEntityOriginalSmokeMain.java')
 )
 & $Javac -cp $classpath -d $testClasses @sources
 if ($LASTEXITCODE -ne 0) { throw 'Lua smoke fixture compilation failed' }
@@ -36,7 +37,7 @@ $classpath += [IO.Path]::PathSeparator + $testClasses
     scope = 'Original game classes with fake HTTP/JDBC/transport; no GameServer.main or real server startup'
 } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $run 'evidence.json') -Encoding UTF8
 
-function Invoke-Smoke([string]$Main, [bool]$Accounts, [string]$Marker, [string]$LogName) {
+function Invoke-Smoke([string]$Main, [bool]$Accounts, [string]$Marker, [string]$LogName, [string[]]$MainArguments = @()) {
     $start = [Diagnostics.ProcessStartInfo]::new()
     $start.FileName = $Java
     $start.WorkingDirectory = $runtimeHome
@@ -60,7 +61,7 @@ function Invoke-Smoke([string]$Main, [bool]$Accounts, [string]$Marker, [string]$
             '-Dapocbr.restart.enabled=false',
             '-Dapocbr.npc.enabled=false',
             ('-javaagent:' + $agentCopy),
-            '-cp', $classpath, $Main)
+            '-cp', $classpath, $Main) + $MainArguments
     $quoted = foreach ($argument in $arguments) {
         # Windows argv quoting; UseShellExecute=false means no shell interprets these arguments.
         $escaped = [regex]::Replace([string]$argument, '(\\*)"', '$1$1\"')
@@ -90,4 +91,5 @@ function Invoke-Smoke([string]$Main, [bool]$Accounts, [string]$Marker, [string]$
 }
 Invoke-Smoke 'cloud.apocalipse.pz.agent.features.lua.LuaOriginalSmokeMain' $false 'ORIGINAL_LUA_SMOKE_PASS' 'lua.log'
 Invoke-Smoke 'cloud.apocalipse.pz.agent.features.lua.login.LoginOriginalSmokeMain' $true 'ORIGINAL_LOGIN_SMOKE_PASS' 'login.log'
+Invoke-Smoke 'cloud.apocalipse.pz.agent.features.postgres.player.LuaEntityOriginalSmokeMain' $false 'ORIGINAL_ENTITIES_DISABLED_PASS' 'entities-disabled.log' @((Join-Path $run 'cache-entities-disabled'))
 Write-Output ('Evidence: ' + $run)

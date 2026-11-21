@@ -25,6 +25,7 @@ The [feature contract](../features/postgresql.md) tracks implementation and gaps
 | Other optimizations, networking, persistence, NPCs and integrations | Not declared migrated | Select each feature and dependency closure in its own session. |
 | [NPC actors, gameplay and persistence](../features/npc-engine.md) | Factory/actor graph, native hooks and durable NPC coordinator implemented; full port in progress | Close active-body, packet/authority semantics, isolated-database and client/runtime acceptance gaps. |
 | [Server Lua APIs and service workers](../features/server-lua.md) | Hooks and targeted original-JAR execution implemented; live acceptance pending | Validate real mods/services and integrate the separately owned player reconstruction path; legacy Lua generator calls are retained through method-table adapters. |
+| [Server Lua entity persistence](../features/lua-mod-entities.md) | Original Lua initialization and shared-pool integration exercised with isolated PostgreSQL | Validate with the full dedicated-server mod set and native player login. |
 
 The candidate above is a recommendation, not approval to execute a queue.
 
