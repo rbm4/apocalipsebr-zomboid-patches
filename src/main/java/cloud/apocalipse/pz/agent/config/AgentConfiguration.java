@@ -25,6 +25,67 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     /** JVM argument {@code -Dapocbr.bridge.serverKey}; shared fallback credential for agent APIs. */
     public static final String BRIDGE_SERVER_KEY_PROPERTY = "apocbr.bridge.serverKey";
 
+    /** PostgreSQL feature: JVM argument {@code -Dapocbr.postgres.enabled=true}. */
+    public static final String POSTGRES_ENABLED_PROPERTY = "apocbr.postgres.enabled";
+    /** PostgreSQL feature: JVM argument {@code -Dapocbr.postgres.url=jdbc:postgresql://...}. */
+    public static final String POSTGRES_URL_PROPERTY = "apocbr.postgres.url";
+    /** PostgreSQL feature: JVM argument {@code -Dapocbr.postgres.poolSize=8}; range 1..32. */
+    public static final String POSTGRES_POOL_SIZE_PROPERTY = "apocbr.postgres.poolSize";
+    /** PostgreSQL account feature: JVM argument {@code -Dapocbr.postgres.serverDatabase.enabled=true}. */
+    public static final String POSTGRES_ACCOUNTS_ENABLED_PROPERTY = "apocbr.postgres.serverDatabase.enabled";
+    /** PostgreSQL login feature: JVM argument {@code -Dapocbr.postgres.loginWorkflowTimeoutMillis=5000}. */
+    public static final String POSTGRES_LOGIN_WORKFLOW_PROPERTY = "apocbr.postgres.loginWorkflowTimeoutMillis";
+    /** PostgreSQL login feature: JVM argument {@code -Dapocbr.postgres.loginNetworkTimeoutMillis=3000}. */
+    public static final String POSTGRES_LOGIN_NETWORK_PROPERTY = "apocbr.postgres.loginNetworkTimeoutMillis";
+    /** PostgreSQL journal feature: JVM argument {@code -Dapocbr.postgres.journalDirectory=<directory>}. */
+    public static final String POSTGRES_JOURNAL_DIRECTORY_PROPERTY = "apocbr.postgres.journalDirectory";
+    /** PostgreSQL feature: JDBC URL environment override; credentials remain outside YAML. */
+    public static final String POSTGRES_URL_ENVIRONMENT = "APOCBR_POSTGRES_URL";
+
+    public static PostgresSettings postgresSettings() {
+        return postgresSettings(System.getProperties(), System.getenv());
+    }
+
+    static PostgresSettings postgresSettings(java.util.Properties properties, Map<String, String> environment) {
+        boolean enabled = Boolean.parseBoolean(properties.getProperty(POSTGRES_ENABLED_PROPERTY, "false"));
+        if (!enabled) {
+            return new PostgresSettings(false, false, null, 8, 5000, 3000);
+        }
+        String url = environment.get(POSTGRES_URL_ENVIRONMENT);
+        if (url == null || url.isBlank()) url = properties.getProperty(POSTGRES_URL_PROPERTY);
+        if (url == null || !url.startsWith("jdbc:postgresql://")) {
+            throw new IllegalArgumentException("PostgreSQL requires a JDBC PostgreSQL URL");
+        }
+        int size = integerProperty(properties, POSTGRES_POOL_SIZE_PROPERTY, 8);
+        if (size < 1 || size > 32) {
+            throw new IllegalArgumentException("PostgreSQL pool size must be between 1 and 32");
+        }
+        return new PostgresSettings(true,
+            Boolean.parseBoolean(properties.getProperty(POSTGRES_ACCOUNTS_ENABLED_PROPERTY, "true")),
+            url, size,
+            Math.clamp(integerProperty(properties, POSTGRES_LOGIN_WORKFLOW_PROPERTY, 5000), 500, 30000),
+            Math.clamp(integerProperty(properties, POSTGRES_LOGIN_NETWORK_PROPERTY, 3000), 250, 30000));
+    }
+
+    private static int integerProperty(java.util.Properties properties, String name, int fallback) {
+        String value = properties.getProperty(name);
+        if (value == null) return fallback;
+        try {
+            return Integer.parseInt(value);
+        } catch (NumberFormatException failure) {
+            throw new IllegalArgumentException("Invalid integer setting: " + name);
+        }
+    }
+
+    public record PostgresSettings(boolean enabled, boolean accountsEnabled, String jdbcUrl,
+                                   int poolSize, int loginWorkflowMillis, int loginNetworkMillis) {
+        @Override
+        public String toString() {
+            return "PostgresSettings[enabled=" + enabled + ", accountsEnabled=" + accountsEnabled
+                + ", jdbcUrl=<redacted>, poolSize=" + poolSize + "]";
+        }
+    }
+
     /** Telemetry endpoint environment override; takes precedence over its corresponding JVM property. */
     public static final String TELEMETRY_ENDPOINT_ENVIRONMENT = "APOCBR_TELEMETRY_ENDPOINT";
     /** Telemetry API credential environment override; takes precedence over its corresponding JVM property. */

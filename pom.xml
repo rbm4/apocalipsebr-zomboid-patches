@@ -20,20 +20,16 @@
     </properties>
 
     <dependencies>
-        <!-- Already supplied by the current server's apocbr-lib classpath.
-             Resolve through Maven for compilation/IDE use without bundling
-             duplicate JDBC/pool classes into the agent. -->
+        <!-- Original-JAR-only runtime: ship isolated JDBC/pool dependencies in the agent. -->
         <dependency>
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <version>${postgresql.version}</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>com.zaxxer</groupId>
             <artifactId>HikariCP</artifactId>
             <version>${hikaricp.version}</version>
-            <scope>provided</scope>
         </dependency>
         <dependency>
             <groupId>net.bytebuddy</groupId>
@@ -99,6 +95,18 @@
                             <minimizeJar>false</minimizeJar>
                             <relocations>
                                 <relocation>
+                                    <pattern>org.postgresql</pattern>
+                                    <shadedPattern>cloud.apocalipse.pz.internal.postgresql</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>com.zaxxer.hikari</pattern>
+                                    <shadedPattern>cloud.apocalipse.pz.internal.hikari</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.slf4j</pattern>
+                                    <shadedPattern>cloud.apocalipse.pz.internal.slf4j</shadedPattern>
+                                </relocation>
+                                <relocation>
                                     <pattern>com.google.gson</pattern>
                                     <shadedPattern>cloud.apocalipse.pz.internal.gson</shadedPattern>
                                 </relocation>
@@ -140,4 +148,42 @@
             </plugin>
         </plugins>
     </build>
+    <profiles>
+        <!-- Explicit opt-in: one real dedicated server shared by registered assertions. -->
+        <profile>
+            <id>server-integration</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-jar-plugin</artifactId>
+                        <version>3.4.1</version>
+                        <configuration>
+                            <!-- Repeated verify runs must not shade the previous shaded JAR. -->
+                            <forceCreation>true</forceCreation>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <version>3.5.4</version>
+                        <configuration>
+                            <includes>
+                                <include>**/integration/ServerIntegrationIT.java</include>
+                            </includes>
+                            <failIfNoTests>true</failIfNoTests>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>integration-test</goal>
+                                    <goal>verify</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
 </project>

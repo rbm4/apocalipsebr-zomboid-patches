@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent.features.telemetry;
 
 import com.sun.net.httpserver.HttpServer;
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
@@ -13,20 +14,44 @@ import static org.junit.jupiter.api.Assertions.*;
 class TelemetryHttpClientTest {
     @Test
     void defaultsToManagerEndpointAndBridgeCredential() {
-        var configuration = TelemetryHttpClient.Configuration.fromSettings(null, null, "bridge-api-key");
+        withProfile("prod", () -> {
+            var configuration = TelemetryHttpClient.Configuration.fromSettings(null, null, "bridge-api-key");
 
-        assertEquals(
-            URI.create("https://plataforma.apocalipse.cloud/api/v1/telemetry"),
-            configuration.endpoint()
-        );
-        assertEquals("bridge-api-key", configuration.apiKey());
+            assertEquals(
+                URI.create("https://plataforma.apocalipse.cloud/api/v1/telemetry"),
+                configuration.endpoint()
+            );
+            assertEquals("bridge-api-key", configuration.apiKey());
 
-        var override = TelemetryHttpClient.Configuration.fromSettings(
-            "https://manager.example/api/v1/telemetry",
-            "telemetry-api-key",
-            "bridge-api-key"
-        );
-        assertEquals("telemetry-api-key", override.apiKey());
+            var override = TelemetryHttpClient.Configuration.fromSettings(
+                "https://manager.example/api/v1/telemetry",
+                "telemetry-api-key",
+                "bridge-api-key"
+            );
+            assertEquals("telemetry-api-key", override.apiKey());
+        });
+    }
+
+    @Test
+    void explicitIntegrationEndpointOverridesLocalProfile() {
+        withProfile("local", () -> {
+            assertEquals(URI.create("http://localhost:8080/api/v1/telemetry"),
+                TelemetryHttpClient.Configuration.fromSettings(null, null, "test-key").endpoint());
+            assertEquals(URI.create("https://plataforma.apocalipse.cloud/api/v1/telemetry"),
+                TelemetryHttpClient.Configuration.fromSettings(
+                    "https://plataforma.apocalipse.cloud/api/v1/telemetry", null, "test-key").endpoint());
+        });
+    }
+
+    private static void withProfile(String profile, Runnable assertions) {
+        String previous = System.getProperty(AgentConfiguration.PROFILE_PROPERTY);
+        try {
+            System.setProperty(AgentConfiguration.PROFILE_PROPERTY, profile);
+            assertions.run();
+        } finally {
+            if (previous == null) System.clearProperty(AgentConfiguration.PROFILE_PROPERTY);
+            else System.setProperty(AgentConfiguration.PROFILE_PROPERTY, previous);
+        }
     }
 
     @Test

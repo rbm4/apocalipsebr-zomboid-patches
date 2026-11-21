@@ -1,0 +1,51 @@
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\ApocBRServerTelemetryLite.java:189: error: cannot find symbol
+        json.append(",\"pendingCells\":").append(ServerMap.instance.telemetryPendingCells());
+                                                                   ^
+  symbol:   method telemetryPendingCells()
+  location: variable instance of type ServerMap
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\apocalipse\humans\ServerHumanTransport.java:145: error: cannot find symbol
+        float range=ChatServer.getInstance().humanShoutRange();if(range<=0)return false;
+                                            ^
+  symbol:   method humanShoutRange()
+  location: class ChatServer
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\apocalipse\humans\ServerHumanTransport.java:154: error: cannot find symbol
+                sent|=ChatServer.getInstance().sendHumanShout(listener.getOnlineID(),human.player.getUsername(),text);break;
+                                              ^
+  symbol:   method sendHumanShout(short,String,String)
+  location: class ChatServer
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\apocalipse\humans\ServerHumanTransport.java:171: error: cannot find symbol
+                sent |= ChatServer.getInstance().sendHumanSay(listener.getOnlineID(), human.player.getUsername(), text);
+                                                ^
+  symbol:   method sendHumanSay(short,String,String)
+  location: class ChatServer
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\apocalipse\humans\ServerHumanFurnitureWorld.java:20: error: cannot find symbol
+            var sprite=object.getSprite();lifetime=object.getApocbrLifetimeRevision();
+                                                         ^
+  symbol:   method getApocbrLifetimeRevision()
+  location: variable object of type IsoObject
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\apocalipse\zombies\ServerZombieNativeAdapter.java:154: error: cannot find symbol
+        if(moved)IsoWorld.instance.currentCell.getPlayerSpatialQueries().invalidateZombies();
+                                              ^
+  symbol:   method getPlayerSpatialQueries()
+  location: variable currentCell of type IsoCell
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\savefile\ApocBRAsyncLogin.java:62: error: cannot find symbol
+        zombie.network.ServerWorldDatabase.LoginRoles roles=ApocBRServerDatabase.enabled()?new zombie.network.ServerWorldDatabase.LoginRoles():null;
+                                          ^
+  symbol:   class LoginRoles
+  location: class ServerWorldDatabase
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\savefile\ApocBRAsyncLogin.java:62: error: cannot find symbol
+        zombie.network.ServerWorldDatabase.LoginRoles roles=ApocBRServerDatabase.enabled()?new zombie.network.ServerWorldDatabase.LoginRoles():null;
+                                                                                                                                 ^
+  symbol:   class LoginRoles
+  location: class ServerWorldDatabase
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\savefile\ApocBRAsyncLogin.java:72: error: cannot find symbol
+                finally{worker.remove();zombie.network.ServerWorldDatabase.useLoginRoles(null);}
+                                                                          ^
+  symbol:   method useLoginRoles(<null>)
+  location: class ServerWorldDatabase
+Z:\git\Github\apocalipsebr-zomboid-patches\42.22.2\src\zombie\savefile\ApocBRPlayerMigrationVerification.java:28: error: cannot find symbol
+        var encoded=ServerPlayerDB.encodePostgresClientProfile(player,profile,slot,username);
+                                  ^
+  symbol:   method encodePostgresClientProfile(IsoPlayer,Profile,int,String)
+  location: class ServerPlayerDB
+10 errors

@@ -1,0 +1,76 @@
+source,line,text
+42.22.2/decompiled/zombie/CombatManager.java,1509,for (IsoMovingObject mov : IsoWorld.instance.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/CombatManager.java,1912,for (IsoMovingObject obj : IsoWorld.instance.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/CombatManager.java,2072,ArrayList<IsoMovingObject> objects = new ArrayList<>(IsoWorld.instance.currentCell.getObjectList());
+42.22.2/decompiled/zombie/MovingObjectUpdateScheduler.java,43,for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
+42.22.2/decompiled/zombie/ReanimatedPlayers.java,62,assert !IsoWorld.instance.currentCell.getObjectList().contains(zombie);
+42.22.2/decompiled/zombie/ReanimatedPlayers.java,66,IsoWorld.instance.currentCell.getObjectList().add(zombie);
+42.22.2/decompiled/zombie/ReanimatedPlayers.java,204,IsoWorld.instance.currentCell.getObjectList().remove(zombie);
+42.22.2/decompiled/zombie/VirtualZombieManager.java,80,assert !IsoWorld.instance.currentCell.getObjectList().contains(z);
+42.22.2/decompiled/zombie/VirtualZombieManager.java,215,IsoWorld.instance.currentCell.getObjectList().remove(zombie);
+42.22.2/decompiled/zombie/VirtualZombieManager.java,270,IsoWorld.instance.currentCell.getObjectList().add(zombie);
+42.22.2/decompiled/zombie/VirtualZombieManager.java,292,IsoWorld.instance.currentCell.getObjectList().add(zombie);
+42.22.2/decompiled/zombie/characters/IsoLivingCharacter.java,75,for (IsoMovingObject obj : this.getCell().getObjectList()) {
+42.22.2/decompiled/zombie/characters/IsoPlayer.java,1633,if ((cell.getObjectList().contains(player) || cell.getAddList().contains(player)) && !cell.getRemoveList().contains(player)) {
+42.22.2/decompiled/zombie/characters/IsoPlayer.java,2228,IsoWorld.instance.currentCell.getObjectList().remove(this);
+42.22.2/decompiled/zombie/characters/IsoPlayer.java,3428,for (IsoMovingObject obj : this.getCell().getObjectList()) {
+42.22.2/decompiled/zombie/characters/IsoPlayer.java,4090,for (IsoMovingObject obj : IsoWorld.instance.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/characters/IsoPlayer.java,5784,for (IsoMovingObject movingObject : this.getCell().getObjectList()) {
+42.22.2/decompiled/zombie/characters/NetworkPlayerAI.java,527,if (this.player.isAlive() && !IsoWorld.instance.currentCell.getObjectList().contains(this.player)) {
+42.22.2/decompiled/zombie/characters/NetworkPlayerAI.java,528,IsoWorld.instance.currentCell.getObjectList().add(this.player);
+42.22.2/decompiled/zombie/characters/NetworkPlayerAI.java,531,} else if (IsoWorld.instance.currentCell.getObjectList().contains(this.player)) {
+42.22.2/decompiled/zombie/characters/NetworkPlayerAI.java,532,IsoWorld.instance.currentCell.getObjectList().remove(this.player);
+42.22.2/decompiled/zombie/characters/NetworkPlayerAI.java,805,if (!animal.getCell().getObjectList().contains(animal) && !animal.getCell().getAddList().contains(animal)) {
+42.22.2/decompiled/zombie/characters/ThumpDamageRender.java,47,if (!IsoWorld.instance.currentCell.getObjectList().contains(chr)) {
+42.22.2/decompiled/zombie/iso/CellLoader.java,512,for (IsoMovingObject obj : cell.getObjectList()) {
+42.22.2/decompiled/zombie/iso/IsoCell.java,2163,this.objectList.remove(r);
+42.22.2/decompiled/zombie/iso/IsoCell.java,2175,this.objectList.addAll(this.addList);
+42.22.2/decompiled/zombie/iso/IsoCell.java,2179,this.objectList.add(vehicle);
+42.22.2/decompiled/zombie/iso/IsoCell.java,2681,public Set<IsoMovingObject> getObjectList() {
+42.22.2/decompiled/zombie/iso/IsoCell.java,2748,this.objectList.add(o);
+42.22.2/decompiled/zombie/iso/IsoCell.java,3249,this.objectList.clear();
+42.22.2/decompiled/zombie/iso/IsoCell.java,3380,this.objectList.clear();
+42.22.2/decompiled/zombie/iso/IsoChunkMap.java,937,if (!cell.getObjectList().contains(player) && !cell.getAddList().contains(player)) {
+42.22.2/decompiled/zombie/iso/IsoMetaGrid.java,165,if (!IsoWorld.instance.currentCell.getObjectList().contains(isoPlayer)) {
+42.22.2/decompiled/zombie/iso/IsoMetaGrid.java,166,IsoWorld.instance.currentCell.getObjectList().add(isoPlayer);
+42.22.2/decompiled/zombie/iso/IsoMovingObject.java,746,cell.getObjectList().remove(this);
+42.22.2/decompiled/zombie/iso/IsoWorld.java,2463,if (IsoPlayer.players[0] != null && !this.currentCell.getObjectList().contains(IsoPlayer.players[0])) {
+42.22.2/decompiled/zombie/iso/IsoWorld.java,2464,this.currentCell.getObjectList().add(IsoPlayer.players[0]);
+42.22.2/decompiled/zombie/iso/IsoWorld.java,2698,for (IsoMovingObject mo : this.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/iso/IsoWorld.java,3480,Iterator<IsoMovingObject> it = IsoWorld.instance.currentCell.getObjectList().iterator();
+42.22.2/decompiled/zombie/Lua/LuaManager.java,5294,for (IsoMovingObject movingObject : IsoWorld.instance.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/Lua/LuaManager.java,5670,world.currentCell.getObjectList().remove(playerObj);
+42.22.2/decompiled/zombie/Lua/LuaManager.java,5723,world.currentCell.getObjectList().remove(playerObj);
+42.22.2/decompiled/zombie/network/GameServer.java,1076,if (!IsoWorld.instance.currentCell.getObjectList().contains(p)) {
+42.22.2/decompiled/zombie/network/GameServer.java,1077,IsoWorld.instance.currentCell.getObjectList().add(p);
+42.22.2/decompiled/zombie/network/GameServer.java,1115,for (IsoMovingObject o : IsoWorld.instance.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/network/GameServer.java,1117,"DebugLog.log(""Disconnected player in CurrentCell.getObjectList() removed"");"
+42.22.2/decompiled/zombie/network/GameServer.java,1122,IsoWorld.instance.currentCell.getObjectList().removeAll(toRemove);
+42.22.2/decompiled/zombie/network/ServerGUI.java,297,for (IsoMovingObject obj : cellx.getObjectList()) {
+42.22.2/decompiled/zombie/popman/NetworkZombiePacker.java,89,if (!IsoWorld.instance.currentCell.getObjectList().contains(zombie)) {
+42.22.2/decompiled/zombie/popman/NetworkZombiePacker.java,90,IsoWorld.instance.currentCell.getObjectList().add(zombie);
+42.22.2/decompiled/zombie/popman/NetworkZombieSimulator.java,279,if (!IsoWorld.instance.currentCell.getObjectList().contains(zombie)) {
+42.22.2/decompiled/zombie/popman/NetworkZombieSimulator.java,280,IsoWorld.instance.currentCell.getObjectList().add(zombie);
+42.22.2/decompiled/zombie/characters/animals/AnimalManagerMain.java,49,for (IsoMovingObject object : IsoWorld.instance.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/characters/animals/AnimalManagerMain.java,106,assert !IsoWorld.instance.currentCell.getObjectList().contains(isoAnimal);
+42.22.2/decompiled/zombie/characters/animals/AnimalManagerMain.java,108,if (IsoWorld.instance.currentCell.getObjectList().contains(isoAnimal)) {
+42.22.2/decompiled/zombie/characters/animals/AnimalManagerMain.java,111,IsoWorld.instance.currentCell.getObjectList().add(isoAnimal);
+42.22.2/decompiled/zombie/characters/animals/AnimalZones.java,457,for (IsoMovingObject movingObject : IsoWorld.instance.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/characters/animals/IsoAnimal.java,1216,this.getCell().getObjectList().remove(this);
+42.22.2/decompiled/zombie/characters/animals/IsoAnimal.java,3636,for (IsoMovingObject movingObject : this.getCell().getObjectList()) {
+42.22.2/decompiled/zombie/characters/animals/VirtualAnimal.java,153,IsoWorld.instance.currentCell.getObjectList().remove(animal);
+42.22.2/decompiled/zombie/debug/debugWindows/ScenePanel.java,168,.getObjectList()
+42.22.2/decompiled/zombie/iso/areas/SafeHouse.java,501,for (IsoMovingObject object : cell.getObjectList()) {
+42.22.2/decompiled/zombie/iso/fboRenderChunk/FBORenderCell.java,303,for (IsoMovingObject obj : this.cell.getObjectList()) {
+42.22.2/decompiled/zombie/iso/fboRenderChunk/FBORenderCell.java,3674,if (this.cell.getObjectList().contains(player)) {
+42.22.2/decompiled/zombie/iso/fboRenderChunk/FBORenderCell.java,3703,for (IsoMovingObject isoMovingObject : IsoWorld.instance.getCell().getObjectList()) {
+42.22.2/decompiled/zombie/iso/objects/IsoDeadBody.java,2047,if (!IsoWorld.instance.currentCell.getObjectList().contains(zombie) && !IsoWorld.instance.currentCell.getAddList().contains(zombie)) {
+42.22.2/decompiled/zombie/iso/objects/IsoHutch.java,527,if (!animal.getCell().getObjectList().contains(animal) && !animal.getCell().getAddList().contains(animal)) {
+42.22.2/decompiled/zombie/iso/objects/IsoTrap.java,265,for (IsoMovingObject movingObject : IsoWorld.instance.currentCell.getObjectList()) {
+42.22.2/decompiled/zombie/network/packets/actions/StatePacket.java,102,if (IsoWorld.instance.getCell().getObjectList().contains(this.characterId.getCharacter())) {
+42.22.2/decompiled/zombie/network/packets/character/CreatePlayerPacket.java,133,IsoWorld.instance.currentCell.getObjectList().remove(this.player);
+42.22.2/decompiled/zombie/network/packets/character/PlayerPacket.java,176,if (isoPlayer.isAlive() && !IsoWorld.instance.currentCell.getObjectList().contains(isoPlayer)) {
+42.22.2/decompiled/zombie/network/packets/character/PlayerPacket.java,177,IsoWorld.instance.currentCell.getObjectList().add(isoPlayer);
+42.22.2/decompiled/zombie/network/packets/character/PlayerPacket.java,182,} else if (IsoWorld.instance.currentCell.getObjectList().contains(isoPlayer)) {
+42.22.2/decompiled/zombie/network/statistics/data/GameStatistic.java,20,"() -> IsoWorld.instance.currentCell.getObjectList().stream().filter(obj -> obj instanceof IsoAnimal).count(),"
+42.22.2/decompiled/zombie/randomizedWorld/randomizedBuilding/RandomizedBuildingBase.java,1115,cell.getObjectList().remove(this);

@@ -8,6 +8,8 @@ public final class GameServer {
     public static final ArrayList<Object> Players = new ArrayList<>();
     public static final HashMap<Short, Object> IDToPlayerMap = new HashMap<>();
     public static boolean done;
+    public static String serverName="servertest";
+    public static boolean softReset;
 
     public static void main(String[] args) {
         int remaining = 5;
