@@ -65,8 +65,10 @@ public final class DictionaryCache {
                 if (future.completeExceptionally(failure)) VIEWS.remove(origin, future);
             }
         }
-        try { future.join(); }
-        catch (CompletionException failure) {
+        try { future.get(cloud.apocalipse.pz.agent.features.postgres.ForegroundDatabase.remainingWorkflowMillis(),TimeUnit.MILLISECONDS); }
+        catch (TimeoutException failure) { throw new java.sql.SQLTimeoutException("Source dictionary preparation deadline exceeded","HYT00"); }
+        catch (InterruptedException failure) { Thread.currentThread().interrupt();throw new SQLException("Source dictionary preparation interrupted","57014"); }
+        catch (ExecutionException failure) {
             String state = failure.getCause() instanceof SQLException sql ? sql.getSQLState() : "55000";
             throw new SQLException("Source dictionary preparation failed", state != null && state.matches("[A-Z0-9]{5}") ? state : "55000");
         }

@@ -44,7 +44,7 @@ public final class PostgresConnections implements AutoCloseable {
     }
 
     public Connection borrowTransaction() throws SQLException {
-        return borrow(false, false);
+        return borrow(false, ForegroundDatabase.active());
     }
 
     /** LISTEN owns a physical session outside the bounded query pool, including poolSize=1. */

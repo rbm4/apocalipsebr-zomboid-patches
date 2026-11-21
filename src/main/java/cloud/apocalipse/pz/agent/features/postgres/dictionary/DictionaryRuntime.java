@@ -91,7 +91,7 @@ public final class DictionaryRuntime {
         }
     }
     public static void shutdown() {
-        try{stopListener();}finally{local=null;foreign=List.of();DictionaryCache.clear();}
+        try{stopListener();}finally{local=null;foreign=List.of();DictionaryCache.clear();PayloadProvenance.clear();}
     }
     public static DictionaryOrigin localEncoding() {
         var published=local;return published==null?null:new DictionaryOrigin(published.serverId(),published.namespace(),published.view());

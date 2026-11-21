@@ -20,6 +20,7 @@ public final class PostgresRuntime {
     private static PostgresConnections pool;
     private static AccountConnections accounts;
     private static boolean closed;
+    private static boolean closing;
     private static final Set<ClassLoader> TRANSFORMED = Collections.newSetFromMap(new WeakHashMap<>());
     private static final AtomicBoolean SHUTDOWN_INSTALLED = new AtomicBoolean();
     private static final java.util.List<Runnable> BEFORE_SHUTDOWN = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -64,7 +65,7 @@ public final class PostgresRuntime {
     public static Connection connection(Object ignoredNativeOwner) { return accounts().connection(); }
 
     public static synchronized boolean acceptingAccounts() {
-        return !closed && settings!=null && settings.enabled() && settings.accountsEnabled();
+        return !closed && !closing && settings!=null && settings.enabled() && settings.accountsEnabled();
     }
 
     /** Detached feature workers own and close this transaction lease. */
@@ -268,14 +269,16 @@ public final class PostgresRuntime {
     public static void shutdown() {
         PostgresConnections current;
         synchronized (PostgresRuntime.class) {
-            if (closed) return;
-            closed=true; current=pool; pool=null; accounts=null;
+            if (closed || closing) return;
+            closing=true;
         }
         RuntimeException failure=null;
-        for (Runnable callback:BEFORE_SHUTDOWN) {
+        for (Runnable callback:java.util.List.copyOf(BEFORE_SHUTDOWN).reversed()) {
             try { callback.run(); }
             catch (RuntimeException error) { if(failure==null)failure=error;else failure.addSuppressed(error); }
         }
+        // Feature callbacks may need the still-open pool to commit their final durable captures.
+        synchronized (PostgresRuntime.class) { closed=true; current=pool; pool=null; accounts=null; closing=false; }
         try { if(current!=null)current.close(); }
         catch(RuntimeException error){if(failure==null)failure=error;else failure.addSuppressed(error);}
         if(failure!=null)throw failure;
@@ -292,7 +295,7 @@ public final class PostgresRuntime {
 
     static synchronized void installForTest(PostgresSettings configuration,PostgresConnections testPool) {
         if (pool != null) pool.close();
-        settings=configuration; pool=testPool; accounts=new AccountConnections(testPool); closed=false;
+        settings=configuration; pool=testPool; accounts=new AccountConnections(testPool); closed=false; closing=false;
         TRANSFORMED.clear();
     }
 }

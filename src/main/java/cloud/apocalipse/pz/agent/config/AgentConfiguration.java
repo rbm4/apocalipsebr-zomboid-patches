@@ -109,6 +109,71 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public record DictionarySettings(boolean enabled, int serverId, String saveKey,
                                      java.util.UUID namespace, int publicationTimeoutSeconds) { }
 
+    /** Historical native decoding: {@code -Dapocbr.postgres.dictionary.decode.enabled=true}; defaults on with dictionary setup. */
+    public static final String DICTIONARY_DECODE_ENABLED_PROPERTY = "apocbr.postgres.dictionary.decode.enabled";
+
+    public static boolean dictionaryDecodeEnabled() {
+        return dictionarySettings().enabled() && Boolean.parseBoolean(systemProperty(DICTIONARY_DECODE_ENABLED_PROPERTY, "true"));
+    }
+
+    /** Player reconstruction: {@code -Dapocbr.postgres.playerRelational.maxGraphMiB=128}; range 1..512. */
+    public static final String PLAYER_GRAPH_MIB_PROPERTY = "apocbr.postgres.playerRelational.maxGraphMiB";
+    /** Player reconstruction: {@code -Dapocbr.postgres.playerRelational.maxRows=500000}; range 1..5000000. */
+    public static final String PLAYER_ROWS_PROPERTY = "apocbr.postgres.playerRelational.maxRows";
+    /** Player profile encoding: {@code -Dapocbr.postgres.playerRelational.maxSourceMiB=8}; range 1..64. */
+    public static final String PLAYER_SOURCE_MIB_PROPERTY = "apocbr.postgres.playerRelational.maxSourceMiB";
+    public static int playerGraphBytes() { return Math.clamp(integerProperty(System.getProperties(), PLAYER_GRAPH_MIB_PROPERTY, 128), 1, 512) * 1024 * 1024; }
+    public static int playerMaxRows() { return Math.clamp(integerProperty(System.getProperties(), PLAYER_ROWS_PROPERTY, 500_000), 1, 5_000_000); }
+    public static int playerSourceBytes() { return Math.clamp(integerProperty(System.getProperties(), PLAYER_SOURCE_MIB_PROPERTY, 8), 1, 64) * 1024 * 1024; }
+
+    /** Player capture: {@code -Dapocbr.postgres.playerRelational.maxSnapshotMiB=32}; range 1..128. */
+    public static final String PLAYER_SNAPSHOT_MIB_PROPERTY = "apocbr.postgres.playerRelational.maxSnapshotMiB";
+    /** Player capture queue: {@code -Dapocbr.postgres.playerRelational.queuedMiB=64}; range 1..512. */
+    public static final String PLAYER_QUEUE_MIB_PROPERTY = "apocbr.postgres.playerRelational.queuedMiB";
+    /** Player capture: {@code -Dapocbr.postgres.playerRelational.maxNodes=1000000}; range 1..5000000. */
+    public static final String PLAYER_NODES_PROPERTY = "apocbr.postgres.playerRelational.maxNodes";
+    /** Player graph transaction: {@code -Dapocbr.postgres.playerRelational.importWriteBudgetMs=60000}; range 1000..300000. */
+    public static final String PLAYER_WRITE_BUDGET_PROPERTY = "apocbr.postgres.playerRelational.importWriteBudgetMs";
+    /** Player delta cache: {@code -Dapocbr.postgres.playerRelational.mutations.cacheMiB=64}; range 1..512. */
+    public static final String PLAYER_MUTATION_CACHE_PROPERTY = "apocbr.postgres.playerRelational.mutations.cacheMiB";
+    /** Player scalar sampling: {@code -Dapocbr.postgres.playerRelational.mutations.sampleMs=30000}; range 1000..60000. */
+    public static final String PLAYER_SAMPLE_PROPERTY = "apocbr.postgres.playerRelational.mutations.sampleMs";
+    /** Player graph sampling: {@code -Dapocbr.postgres.playerRelational.mutations.reconcileMs=30000}; range 1000..60000. */
+    public static final String PLAYER_RECONCILE_MILLIS_PROPERTY = "apocbr.postgres.playerRelational.mutations.reconcileMs";
+    /** Player graph reconciliation: {@code -Dapocbr.postgres.playerRelational.mutations.reconcile=true}; required for player authority. */
+    public static final String PLAYER_RECONCILE_PROPERTY = "apocbr.postgres.playerRelational.mutations.reconcile";
+    /** Player live sampling: {@code -Dapocbr.postgres.playerRelational.mutations.enabled=true}; required for player authority. */
+    public static final String PLAYER_MUTATIONS_PROPERTY = "apocbr.postgres.playerRelational.mutations.enabled";
+    /** Player authority: {@code -Dapocbr.postgres.players.enabled=true}; defaults false. */
+    public static final String PLAYER_ENABLED_PROPERTY = "apocbr.postgres.players.enabled";
+    /** Player creation dataset: {@code -Dapocbr.postgres.playerRelational.sourceDatasetId=<uuid>}; defaults to the legacy save-path identity. */
+    public static final String PLAYER_DATASET_PROPERTY = "apocbr.postgres.playerRelational.sourceDatasetId";
+    /** Player durable journal: {@code -Dapocbr.postgres.playerJournal.directory=<path>}; defaults below the configured PostgreSQL journal. */
+    public static final String PLAYER_JOURNAL_PROPERTY = "apocbr.postgres.playerJournal.directory";
+    /** Player creation: {@code -Dapocbr.postgres.createdPlayerTimeoutMillis=30000}; range 1000..120000. */
+    public static final String PLAYER_CREATION_TIMEOUT_PROPERTY = "apocbr.postgres.createdPlayerTimeoutMillis";
+
+    public static boolean playerEnabled() { return Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY, "false")) && Boolean.parseBoolean(systemProperty(PLAYER_ENABLED_PROPERTY, "false")); }
+    public static boolean playerMutationsEnabled() { return Boolean.parseBoolean(systemProperty(PLAYER_MUTATIONS_PROPERTY, "true")); }
+    public static boolean playerReconcileEnabled() { return Boolean.parseBoolean(systemProperty(PLAYER_RECONCILE_PROPERTY, "true")); }
+    public static long playerMutationCacheMiB() { return integerProperty(System.getProperties(), PLAYER_MUTATION_CACHE_PROPERTY, 64); }
+    public static long playerSampleMillis() { return integerProperty(System.getProperties(), PLAYER_SAMPLE_PROPERTY, 30000); }
+    public static long playerReconcileMillis() { return integerProperty(System.getProperties(), PLAYER_RECONCILE_MILLIS_PROPERTY, 30000); }
+    public static int playerCreationTimeoutMillis() { return Math.clamp(integerProperty(System.getProperties(), PLAYER_CREATION_TIMEOUT_PROPERTY, 30000), 1000, 120000); }
+    public static int playerLimit(String name, int fallback) {
+        String property = switch (name) {
+            case "maxGraphMiB" -> PLAYER_GRAPH_MIB_PROPERTY;
+            case "maxSnapshotMiB" -> PLAYER_SNAPSHOT_MIB_PROPERTY;
+            case "maxSourceMiB" -> PLAYER_SOURCE_MIB_PROPERTY;
+            case "queuedMiB" -> PLAYER_QUEUE_MIB_PROPERTY;
+            case "maxRows" -> PLAYER_ROWS_PROPERTY;
+            case "maxNodes" -> PLAYER_NODES_PROPERTY;
+            case "importWriteBudgetMs" -> PLAYER_WRITE_BUDGET_PROPERTY;
+            default -> throw new IllegalArgumentException("Unknown player limit");
+        };
+        return integerProperty(System.getProperties(), property, fallback);
+    }
+
     public static DictionarySettings dictionarySettings() {
         boolean enabled = Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY, "false"))
             && Boolean.parseBoolean(systemProperty(DICTIONARY_ENABLED_PROPERTY, "true"));

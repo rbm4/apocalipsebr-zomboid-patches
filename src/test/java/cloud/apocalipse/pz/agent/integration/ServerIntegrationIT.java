@@ -39,7 +39,7 @@ class ServerIntegrationIT {
         var hooks = server.hooks().stream().map(hook -> reported(hook.name(), () -> {
             String state = inventory.getProperty("module." + hook.module());
             org.junit.jupiter.api.Assumptions.assumeTrue("ENABLED".equals(state), state);
-            server.assertHook(hook.target(), hook.method(), hook.helper(), hook.invocation());
+            server.assertStartupHook(hook.target(), hook.method(), hook.helper(), hook.invocation());
         }));
         return Stream.concat(hooks, assertions.stream()
             .map(assertion -> reported(assertion.name(), () -> assertion.verify(server))));
@@ -55,10 +55,10 @@ class ServerIntegrationIT {
                 server.assertHealthy();
                 passed++;
                 IntegrationLog.pass(name + " (" + (System.nanoTime() - start) / 1_000_000 + " ms)");
-            } catch (org.opentest4j.TestAbortedException disabled) {
+            } catch (org.opentest4j.TestAbortedException unverified) {
                 skipped++;
-                IntegrationLog.skip(name + ": " + disabled.getMessage());
-                throw disabled;
+                IntegrationLog.skip(name + ": " + unverified.getMessage());
+                throw unverified;
             } catch (Throwable failure) {
                 failed++;
                 IntegrationLog.fail(name + ": " + failure.getMessage());

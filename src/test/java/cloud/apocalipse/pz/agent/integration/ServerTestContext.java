@@ -210,7 +210,7 @@ public final class ServerTestContext implements AutoCloseable {
     }
 
     public record RuntimeHook(String module, String id, String target, String method, String helper, String invocation) {
-        public String name() { return "Hook " + module + "/" + id + " -> " + target + "." + method; }
+        public String name() { return "Startup hook " + module + "/" + id + " -> " + target + "." + method; }
     }
 
     public Properties hookInventory() throws IOException {
@@ -252,6 +252,15 @@ public final class ServerTestContext implements AutoCloseable {
                 assertTrue(targets.contains(target), "Transformed target has no active declared hook check: " + target);
             }
         }
+    }
+
+    /** Startup inventory only: absent evidence is unverified, while observed hooks remain strict. */
+    public void assertStartupHook(String className, String method, String helper, String invocation) throws Exception {
+        assertHealthy();
+        org.junit.jupiter.api.Assumptions.assumeTrue(
+            Files.isRegularFile(directory.resolve("evidence").resolve(className + ".properties")),
+            "Not observed at startup; hook installation unverified (target may load later): " + className);
+        assertHook(className, method, helper, invocation);
     }
 
     public void assertHook(String className, String method, String helper, String invocation) throws Exception {

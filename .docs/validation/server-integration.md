@@ -176,6 +176,16 @@ to maintain. The probe rejects duplicate module/hook identifiers or empty module
 check lists. The lightweight unit checks validate this inventory without starting
 a server. Declare additional contracts when adding hooks to an existing module.
 
+Generated tests are labeled `Startup hook`. Missing transformed-class evidence
+is reported as SKIP with `Not observed at startup; hook installation unverified`.
+This avoids failing startup checks for targets that load later; it does not prove
+that an absent target is lazy or correctly instrumented. Observed targets still
+fail for an incorrect original-JAR source or missing declared helper invocation.
+Probe, transformation and server-health errors remain failures. Scenario-specific
+`assertHook` calls remain strict and require evidence. This startup inventory does
+not establish complete hook coverage; unobserved hooks need a later trigger or
+dedicated validation.
+
 Each generated test checks post-transformation bytecode observed inside the child
 JVM. It verifies the target's code source is exactly the configured original JAR
 and finds the declared method-to-helper invocation. Currently enabled checks are:
@@ -280,7 +290,8 @@ Each `target/server-integration/run-*` directory retains:
 - `telemetry-*.json` when snapshots arrive at the local receiver.
 
 JUnit results are under `target/failsafe-reports/`. Keep the console/artifact
-path when reporting failures. Missing evidence means the target did not load,
+path when reporting failures. Missing evidence is reported as unverified/SKIP by
+startup inventory checks and fails strict scenario checks. It means the target did not load,
 did not receive the expected transformation, or observation failed; diagnose
 the logs rather than weakening the check. Readiness failure may instead mean a
 native dependency/resource mismatch, invalid game configuration, or occupied

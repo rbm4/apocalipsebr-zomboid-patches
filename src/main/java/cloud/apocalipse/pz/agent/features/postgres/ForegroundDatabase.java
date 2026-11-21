@@ -68,6 +68,11 @@ public final class ForegroundDatabase implements AutoCloseable {
         Workflow workflow = CURRENT.get();
         if (workflow != null && workflow.failure != null) throw workflow.failure;
     }
+    static boolean active() { return CURRENT.get()!=null; }
+    /** Bounds waiting on shared dictionary preparation as well as JDBC work in a login workflow. */
+    public static int remainingWorkflowMillis() throws SQLException {
+        var workflow=CURRENT.get();return workflow==null?Integer.MAX_VALUE:remaining(workflow,Integer.MAX_VALUE);
+    }
 
     static void failed(SQLException failure) {
         Workflow workflow=CURRENT.get();

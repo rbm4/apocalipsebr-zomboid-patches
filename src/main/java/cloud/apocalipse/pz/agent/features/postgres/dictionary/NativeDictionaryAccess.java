@@ -30,6 +30,19 @@ final class NativeDictionaryAccess {
         catch (ReflectiveOperationException error) { throw new IllegalStateException("Original dictionary type unavailable: " + name); }
     }
 
+    static void set(Object owner, String name, Object value) {
+        try { field(owner.getClass(), name).set(owner, value); }
+        catch (ReflectiveOperationException error) { throw new IllegalStateException("Original dictionary field unavailable: " + name); }
+    }
+
+    static Object invoke(Object owner, String name, Class<?> parameter, Object value) {
+        try { return owner.getClass().getMethod(name, parameter).invoke(owner, value); }
+        catch (InvocationTargetException error) {
+            if (error.getCause() instanceof RuntimeException failure) throw failure;
+            throw new IllegalStateException("Original dictionary method failed: " + name);
+        } catch (ReflectiveOperationException error) { throw new IllegalStateException("Original dictionary method unavailable: " + name); }
+    }
+
     static void load(Object owner, ByteBuffer bytes, int version, Object... lists) {
         Class<?>[] signature = lists.length == 0 ? new Class<?>[]{ByteBuffer.class, int.class}
             : new Class<?>[]{ByteBuffer.class, int.class, List.class, List.class};

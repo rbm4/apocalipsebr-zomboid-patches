@@ -74,6 +74,7 @@ final class JournalObjectInputStream extends ObjectInputStream {
     static boolean allowed(Class<?> type) {
         return type == PersistenceJournal.Entry.class || type == PersistenceOperations.Account.class
             || type == PersistenceOperations.Sql.class || type == SuccessfulLoginJournal.Login.class
-            || type == cloud.apocalipse.pz.agent.features.npc.persistence.ApocBRHumanSales.Sale.class;
+            || type == cloud.apocalipse.pz.agent.features.npc.persistence.ApocBRHumanSales.Sale.class
+            || cloud.apocalipse.pz.agent.features.postgres.player.PlayerOperations.journalType(type);
     }
 }
