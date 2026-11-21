@@ -11,8 +11,8 @@ import static java.nio.file.StandardOpenOption.*;
 
 /** Local, single-process, ordered write-ahead journal. Never holds its lock during JDBC.
  * The owner supplies versioned detached operations; no JDBC/engine objects belong here. */
-final class PersistenceJournal implements AutoCloseable {
-    interface Operation extends Serializable {
+public final class PersistenceJournal implements AutoCloseable {
+    public interface Operation extends Serializable {
         String kind(); long estimatedBytes(); default String playerKey(){return null;}
         default boolean completePlayerState(){return false;}
     }

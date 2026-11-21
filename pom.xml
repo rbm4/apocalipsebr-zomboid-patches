@@ -13,6 +13,7 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
+        <pz.game.jar>Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar</pz.game.jar>
         <byte-buddy.version>1.18.17</byte-buddy.version>
         <postgresql.version>42.7.14</postgresql.version>
         <hikaricp.version>7.1.0</hikaricp.version>
@@ -20,6 +21,11 @@
     </properties>
 
     <dependencies>
+        <!-- Original archive only; never bundled in the agent. -->
+        <dependency>
+            <groupId>local.projectzomboid</groupId><artifactId>original-game</artifactId><version>42.22.2</version>
+            <scope>system</scope><systemPath>${pz.game.jar}</systemPath>
+        </dependency>
         <!-- Original-JAR-only runtime: ship isolated JDBC/pool dependencies in the agent. -->
         <dependency>
             <groupId>org.postgresql</groupId>

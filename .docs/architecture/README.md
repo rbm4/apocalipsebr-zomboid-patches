@@ -40,7 +40,9 @@ configuration and save; it does not create an isolated test world.
   [server integration suite](../validation/server-integration.md); conditional
   modules expose their actual disabled reason. This metadata does not replace
   feature-specific behavior assertions.
-  Current registrations are Workshop notification, telemetry and PostgreSQL.
+  Registrations include Workshop notification, telemetry, PostgreSQL and the
+  [NPC actor/planner runtime](../features/npc-engine.md), plus [server Lua APIs and
+  account/API workers](../features/server-lua.md).
   PostgreSQL currently wires the account path; see its feature guide for the
   remaining integrated persistence/NPC migration work and activation limits.
 - Production implementation belongs in `src/main/java`, configuration defaults

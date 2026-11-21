@@ -1,6 +1,6 @@
 # PostgreSQL and NPC runtime migration
 
-Status: **in progress; account module/hooks registered, complete PostgreSQL/NPC runtime port still unfinished**.
+Status: **in progress; account hooks and dictionary setup registered, complete PostgreSQL/NPC runtime port still unfinished**.
 Date: 2026-11-21. Target: original 42.22.2 JAR plus root Maven agent.
 
 ## Authorized feature scope and architecture
@@ -64,8 +64,11 @@ Production code is under `features/postgres`:
   libraries. The game JAR is not bundled.
 
 `PostgresModule` is now registered by `AgentRuntime`. When enabled, it installs
-the account hooks described below. Replay coordination, player/vehicle/dictionary
-store hooks, asynchronous packet continuations and NPC gameplay are still open.
+the account hooks described below. The separately registered
+[`DictionaryModule`](postgresql-dictionary.md) now publishes the completed native
+dictionary and prepares paginated exact foreign views with a notification listener.
+Historical payload decoding and player reconstruction remain open, along with
+the remaining full-feature persistence/runtime contracts.
 Setting `apocbr.postgres.enabled` does not make the complete port available yet.
 No installed game files or live database have been changed by this work.
 
@@ -87,8 +90,10 @@ without defining game classes before the transformer is installed. All three
 instrumented original-JAR owners retain their field/method structure. No helper
 is placed in a signed native package.
 
-The current account path is synchronous, uses native autocommit semantics and
-returns failure rather than queueing writes during an outage. It is **not** the
+The account adapters use native autocommit semantics and return failure rather
+than queueing account writes during an outage. The separate [server Lua/service
+worker migration](server-lua.md) now adds async login, two-factor and admin
+user-log continuations; other native administrative calls remain synchronous. It is **not** the
 completed legacy journal/recovery/async contract. Until that coordinator and all
 operation types are migrated, bootstrap checks the legacy journal checkpoint
 read-only and refuses pending or invalid journal state before borrowing/writing.
@@ -125,6 +130,14 @@ before using the generic `HY000` fallback; raw driver details remain excluded.
 Do not treat old launcher flags as proof those features exist in the agent.
 
 ## Compatibility constraints and open implementation work
+
+Player reconstruction must follow dictionary support: historical view loading,
+payload provenance, executable native decode hooks and a proven client payload
+compatibility contract are prerequisites. Native item saving copies embedded
+`byteData` unchanged, so re-encoding the outer player does not by itself prove
+that the initial client can decode historical nested payloads. See the
+[dictionary-first reconstruction context](../reports/2026-11-21-player-reconstruction-context.md)
+for dependency order, evidence and remaining gaps.
 
 The [source audit](../reports/2026-11-21-postgresql-vanilla-audit.md) identifies
 missing game-class APIs and the signed-JAR packaging constraint. In particular,

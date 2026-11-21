@@ -12,7 +12,8 @@ final class JournalObjectInputStream extends ObjectInputStream {
     private static final Map<String, Class<?>> ALIASES = Map.of(
         "zombie.savefile.ApocBRPersistenceJournal$Entry", PersistenceJournal.Entry.class,
         "zombie.savefile.ApocBRPersistenceOperations$Account", PersistenceOperations.Account.class,
-        "zombie.savefile.ApocBRPersistenceOperations$Sql", PersistenceOperations.Sql.class
+        "zombie.savefile.ApocBRPersistenceOperations$Sql", PersistenceOperations.Sql.class,
+        "zombie.savefile.ApocBRHumanSales$Sale", cloud.apocalipse.pz.agent.features.npc.persistence.ApocBRHumanSales.Sale.class
     );
 
     JournalObjectInputStream(InputStream input) throws IOException { super(input); }
@@ -30,6 +31,20 @@ final class JournalObjectInputStream extends ObjectInputStream {
         ObjectStreamClass current = ObjectStreamClass.lookup(replacement);
         var before = old.getFields();
         var after = current.getFields();
+        if(replacement==cloud.apocalipse.pz.agent.features.npc.persistence.ApocBRHumanSales.Sale.class){
+            // Same simple record name after package relocation: resolveClass can retain Java's
+            // record field evolution, including old receipts with no bundleItemIds component.
+            if(old.getSerialVersionUID()!=current.getSerialVersionUID())throw new InvalidClassException("Legacy sale version incompatible");
+            var fields=new java.util.HashMap<String,java.io.ObjectStreamField>();
+            for(var field:after)fields.put(field.getName(),field);
+            for(var field:before){
+                var expected=fields.remove(field.getName());
+                if(expected==null||expected.getTypeCode()!=field.getTypeCode()||!java.util.Objects.equals(expected.getTypeString(),field.getTypeString()))
+                    throw new InvalidClassException("Legacy sale field incompatible");
+            }
+            if(!fields.isEmpty()&&!(fields.size()==1&&fields.containsKey("bundleItemIds")))throw new InvalidClassException("Legacy sale fields missing");
+            return old;
+        }
         if (old.getSerialVersionUID() != current.getSerialVersionUID() || before.length != after.length) {
             throw new InvalidClassException("Legacy journal descriptor is incompatible");
         }
@@ -45,6 +60,10 @@ final class JournalObjectInputStream extends ObjectInputStream {
         return current;
     }
 
+    @Override protected Class<?> resolveClass(ObjectStreamClass descriptor)throws IOException,ClassNotFoundException {
+        Class<?> alias=ALIASES.get(descriptor.getName());return alias==null?super.resolveClass(descriptor):alias;
+    }
+
     private static String normalized(String descriptor) {
         if ("Lzombie/savefile/ApocBRPersistenceJournal$Operation;".equals(descriptor)) {
             return "Lcloud/apocalipse/pz/agent/features/postgres/PersistenceJournal$Operation;";
@@ -54,6 +73,7 @@ final class JournalObjectInputStream extends ObjectInputStream {
 
     static boolean allowed(Class<?> type) {
         return type == PersistenceJournal.Entry.class || type == PersistenceOperations.Account.class
-            || type == PersistenceOperations.Sql.class;
+            || type == PersistenceOperations.Sql.class || type == SuccessfulLoginJournal.Login.class
+            || type == cloud.apocalipse.pz.agent.features.npc.persistence.ApocBRHumanSales.Sale.class;
     }
 }

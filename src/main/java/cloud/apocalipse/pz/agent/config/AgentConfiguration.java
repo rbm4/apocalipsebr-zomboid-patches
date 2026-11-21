@@ -8,6 +8,61 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public record AgentConfiguration(String profile, URI telemetryEndpoint, URI restartEndpoint, boolean restartEnabled) {
+    /** NPC engine: JVM argument {@code -Dapocbr.npc.enabled=true}; actor/planner hooks, default false. */
+    public static final String NPC_ENABLED_PROPERTY = "apocbr.npc.enabled";
+    /** NPC engine: JVM argument {@code -Dapocbr.npc.async=false}; default true, detached planning only. */
+    public static final String NPC_ASYNC_PROPERTY = "apocbr.npc.async";
+
+    public static NpcSettings npcSettings() {
+        return new NpcSettings(Boolean.parseBoolean(systemProperty(NPC_ENABLED_PROPERTY, "false")),
+            Boolean.parseBoolean(systemProperty(NPC_ASYNC_PROPERTY, "true")));
+    }
+
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.enabled=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_ENABLED = "apocbr.guide.enabled";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.facing=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_FACING = "apocbr.guide.facing";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.female=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_FEMALE = "apocbr.guide.female";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.name=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_NAME = "apocbr.guide.name";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.outfit=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_OUTFIT = "apocbr.guide.outfit";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.profile=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_PROFILE = "apocbr.guide.profile";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.trade.enabled=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_TRADE_ENABLED = "apocbr.guide.trade.enabled";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.x=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_X = "apocbr.guide.x";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.y=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_Y = "apocbr.guide.y";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.guide.z=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_GUIDE_Z = "apocbr.guide.z";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.npc.combat.testWeapon=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_NPC_COMBAT_TESTWEAPON = "apocbr.npc.combat.testWeapon";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.npc.language=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_NPC_LANGUAGE = "apocbr.npc.language";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.npc.logLevel=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_NPC_LOGLEVEL = "apocbr.npc.logLevel";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.npc.persistence.checkpointMs=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_NPC_PERSISTENCE_CHECKPOINTMS = "apocbr.npc.persistence.checkpointMs";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.npc.persistence.enabled=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_NPC_PERSISTENCE_ENABLED = "apocbr.npc.persistence.enabled";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.npc.playerHitTrace=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_NPC_PLAYERHITTRACE = "apocbr.npc.playerHitTrace";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.npc.serverKey=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_NPC_SERVERKEY = "apocbr.npc.serverKey";
+    /** NPC engine: supported JVM argument {@code -Dapocbr.npc.zombieControl=...}; legacy-compatible setting. */
+    public static final String NPC_ARG_APOCBR_NPC_ZOMBIECONTROL = "apocbr.npc.zombieControl";
+    public static boolean booleanProperty(String name) { return Boolean.parseBoolean(systemProperty(name, "false")); }
+
+    public record NpcSettings(boolean enabled, boolean asynchronous) { }
+    /** NPC persistence: JVM argument {@code -Dapocbr.npc.journalDirectory=<directory>}; server/world subdirectories are isolated. */
+    public static final String NPC_JOURNAL_DIRECTORY_PROPERTY="apocbr.npc.journalDirectory";
+    /** NPC actor runtime: JVM argument {@code -Dapocbr.npc.actors.enabled=false}; default true when NPC module is enabled. */
+    public static final String NPC_ACTORS_ENABLED_PROPERTY="apocbr.npc.actors.enabled";
+    public static boolean npcActorsEnabled(){return Boolean.parseBoolean(systemProperty(NPC_ACTORS_ENABLED_PROPERTY,"true"));}
+
     /** JVM argument {@code -Dapocbr.profile}; selects the YAML profile loaded by the agent. */
     public static final String PROFILE_PROPERTY = "apocbr.profile";
     /** JVM argument {@code -Dapocbr.telemetry.endpoint}; overrides the telemetry endpoint. */
@@ -41,6 +96,32 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String POSTGRES_JOURNAL_DIRECTORY_PROPERTY = "apocbr.postgres.journalDirectory";
     /** PostgreSQL feature: JDBC URL environment override; credentials remain outside YAML. */
     public static final String POSTGRES_URL_ENVIRONMENT = "APOCBR_POSTGRES_URL";
+
+    /** Dictionary setup: {@code -Dapocbr.postgres.dictionary.enabled=true}; defaults to the master flag. */
+    public static final String DICTIONARY_ENABLED_PROPERTY = "apocbr.postgres.dictionary.enabled";
+    /** Dictionary allocation history: {@code -Dapocbr.postgres.dictionary.saveKey=...}; defaults to gameSaveWorld. */
+    public static final String DICTIONARY_SAVE_KEY_PROPERTY = "apocbr.postgres.dictionary.saveKey";
+    /** Dictionary namespace: {@code -Dapocbr.postgres.dictionary.namespaceId=<uuid>}; optional explicit history. */
+    public static final String DICTIONARY_NAMESPACE_PROPERTY = "apocbr.postgres.dictionary.namespaceId";
+    /** Dictionary publication: {@code -Dapocbr.postgres.dictionary.publicationTimeoutSeconds=30}; range 5..300. */
+    public static final String DICTIONARY_PUBLICATION_TIMEOUT_PROPERTY = "apocbr.postgres.dictionary.publicationTimeoutSeconds";
+
+    public record DictionarySettings(boolean enabled, int serverId, String saveKey,
+                                     java.util.UUID namespace, int publicationTimeoutSeconds) { }
+
+    public static DictionarySettings dictionarySettings() {
+        boolean enabled = Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY, "false"))
+            && Boolean.parseBoolean(systemProperty(DICTIONARY_ENABLED_PROPERTY, "true"));
+        if (!enabled) return new DictionarySettings(false, 0, null, null, 30);
+        int server = integerProperty(System.getProperties(), APOCBR_POSTGRES_SERVER_ID_PROPERTY, 0);
+        int timeout = integerProperty(System.getProperties(), DICTIONARY_PUBLICATION_TIMEOUT_PROPERTY, 30);
+        if (timeout < 5 || timeout > 300) throw new IllegalArgumentException("Dictionary publication timeout must be 5..300 seconds");
+        String save = systemProperty(DICTIONARY_SAVE_KEY_PROPERTY);
+        if (save != null && (save.isBlank() || save.length() > 128)) throw new IllegalArgumentException("Dictionary save key must have 1..128 characters");
+        String namespace = systemProperty(DICTIONARY_NAMESPACE_PROPERTY);
+        return new DictionarySettings(true, server, save,
+            namespace == null ? null : java.util.UUID.fromString(namespace), timeout);
+    }
 
     public static PostgresSettings postgresSettings() {
         return postgresSettings(System.getProperties(), System.getenv());
@@ -99,6 +180,83 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
         return load(systemProperty(PROFILE_PROPERTY, "prod"));
     }
 
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.api.enabled=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_API_ENABLED_PROPERTY = "apocbr.bridge.api.enabled";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.api.requestIntervalMs=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_API_REQUEST_INTERVAL_MS_PROPERTY = "apocbr.bridge.api.requestIntervalMs";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.events.enabled=...}; startup setting. */
+    public static final String APOCBR_EVENTS_ENABLED_PROPERTY = "apocbr.events.enabled";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.events.serverKey=...}; startup setting. */
+    public static final String APOCBR_EVENTS_SERVER_KEY_PROPERTY = "apocbr.events.serverKey";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.events.pollMillis=...}; startup setting. */
+    public static final String APOCBR_EVENTS_POLL_MILLIS_PROPERTY = "apocbr.events.pollMillis";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.events.freshMillis=...}; startup setting. */
+    public static final String APOCBR_EVENTS_FRESH_MILLIS_PROPERTY = "apocbr.events.freshMillis";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.events.displayZone=...}; startup setting. */
+    public static final String APOCBR_EVENTS_DISPLAY_ZONE_PROPERTY = "apocbr.events.displayZone";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.endpoint=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_ENDPOINT_PROPERTY = "apocbr.bridge.endpoint";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.apiKey=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_API_KEY_PROPERTY = "apocbr.bridge.apiKey";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.connectTimeoutMs=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_CONNECT_TIMEOUT_MS_PROPERTY = "apocbr.bridge.connectTimeoutMs";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.requestTimeoutMs=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_REQUEST_TIMEOUT_MS_PROPERTY = "apocbr.bridge.requestTimeoutMs";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.requestIntervalMs=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_REQUEST_INTERVAL_MS_PROPERTY = "apocbr.bridge.requestIntervalMs";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.logDelivery=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_LOG_DELIVERY_PROPERTY = "apocbr.bridge.logDelivery";
+
+    /** Radio HTTP feature: endpoint environment override. */
+    public static final String BRIDGE_ENDPOINT_ENVIRONMENT = "APOCBR_BRIDGE_ENDPOINT";
+    /** Radio HTTP feature: credential environment override. */
+    public static final String BRIDGE_API_KEY_ENVIRONMENT = "APOCBR_BRIDGE_API_KEY";
+    /** Server Lua subsystem master switch; JVM argument {@code -Dapocbr.lua.enabled=false}. */
+    public static final String LUA_ENABLED_PROPERTY = "apocbr.lua.enabled";
+
+    public static boolean luaEnabled() { return Boolean.parseBoolean(systemProperty(LUA_ENABLED_PROPERTY, "true")); }
+
+    public static long longProperty(String name, long fallback) {
+        String value = systemProperty(name);
+        if (value == null) return fallback;
+        try { return Long.parseLong(value); }
+        catch (NumberFormatException failure) { throw new IllegalArgumentException("Invalid integer setting: " + name); }
+    }
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.postgres.loginHistory.journalDirectory=...}; startup setting. */
+    public static final String APOCBR_POSTGRES_LOGIN_HISTORY_JOURNAL_DIRECTORY_PROPERTY = "apocbr.postgres.loginHistory.journalDirectory";
+
+    /** Shared Lua/dictionary identity: {@code -Dapocbr.postgres.serverId=...}; registered positive player_rel.server.id. */
+    public static final String APOCBR_POSTGRES_SERVER_ID_PROPERTY = "apocbr.postgres.serverId";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.postgres.loginHistory.enabled=...}; startup setting. */
+    public static final String APOCBR_POSTGRES_LOGIN_HISTORY_ENABLED_PROPERTY = "apocbr.postgres.loginHistory.enabled";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.enabled=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_ENABLED_PROPERTY = "apocbr.bridge.enabled";
+
+    /** Server Lua feature: JVM argument {@code -Dapocbr.bridge.captureOnly=...}; startup setting. */
+    public static final String APOCBR_BRIDGE_CAPTURE_ONLY_PROPERTY = "apocbr.bridge.captureOnly";
+
+    /** Account workers: JVM argument {@code -Dapocbr.postgres.async.enabled=false}; defaults true with account hooks. */
+    public static final String ASYNC_ACCOUNTS_ENABLED_PROPERTY="apocbr.postgres.async.enabled";
+    public static boolean asyncAccountsEnabled() {
+        return Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY,"false"))
+            && Boolean.parseBoolean(systemProperty(POSTGRES_ACCOUNTS_ENABLED_PROPERTY,"true"))
+            && Boolean.parseBoolean(systemProperty(ASYNC_ACCOUNTS_ENABLED_PROPERTY,"true"));
+    }
     public static String systemProperty(String name) {
         return System.getProperty(name);
     }

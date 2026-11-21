@@ -22,11 +22,14 @@ public final class PostgresRuntime {
     private static boolean closed;
     private static final Set<ClassLoader> TRANSFORMED = Collections.newSetFromMap(new WeakHashMap<>());
     private static final AtomicBoolean SHUTDOWN_INSTALLED = new AtomicBoolean();
+    private static final java.util.List<Runnable> BEFORE_SHUTDOWN = new java.util.concurrent.CopyOnWriteArrayList<>();
+    /** Feature workers stop before their shared pool closes; callbacks must be idempotent. */
+    public static void beforeShutdown(Runnable callback) { BEFORE_SHUTDOWN.add(callback); }
     private PostgresRuntime() { }
 
     static synchronized void initialize(PostgresSettings configuration) {
         settings = configuration;
-        if (configuration.enabled() && configuration.accountsEnabled() && SHUTDOWN_INSTALLED.compareAndSet(false,true)) {
+        if (configuration.enabled() && SHUTDOWN_INSTALLED.compareAndSet(false,true)) {
             Runtime.getRuntime().addShutdownHook(new Thread(PostgresRuntime::shutdown,"ApocBR-Postgres-Shutdown"));
         }
     }
@@ -49,7 +52,7 @@ public final class PostgresRuntime {
             throw new IllegalStateException("PostgreSQL account hooks are disabled");
         }
         if (accounts == null) {
-            try { pool = new PostgresConnections(settings); }
+            try { if(pool==null) pool = new PostgresConnections(settings); }
             catch (RuntimeException | LinkageError failure) {
                 throw new IllegalStateException("PostgreSQL pool initialization failed");
             }
@@ -59,6 +62,24 @@ public final class PostgresRuntime {
     }
 
     public static Connection connection(Object ignoredNativeOwner) { return accounts().connection(); }
+
+    public static synchronized boolean acceptingAccounts() {
+        return !closed && settings!=null && settings.enabled() && settings.accountsEnabled();
+    }
+
+    /** Detached feature workers own and close this transaction lease. */
+    public static synchronized Connection borrowBackground() throws SQLException {
+        if(closed || settings==null || !settings.enabled()) throw new SQLException("PostgreSQL runtime unavailable","08003");
+        if(pool==null)pool=new PostgresConnections(settings);
+        return pool.borrowTransaction();
+    }
+
+    /** Dedicated dictionary notification session; caller must close it before pool shutdown. */
+    public static synchronized Connection openDictionaryListener() throws SQLException {
+        if(closed || settings==null || !settings.enabled()) throw new SQLException("PostgreSQL runtime unavailable","08003");
+        if(pool==null)pool=new PostgresConnections(settings);
+        return pool.openDictionaryListener();
+    }
 
     public static final class Scope {
         private final AccountConnections.Call call;
@@ -186,8 +207,11 @@ public final class PostgresRuntime {
             ClassLoader loader=owner.getClass().getClassLoader();
             Object options=type(loader,"zombie.network.ServerOptions").getField("instance").get(null);
             Object option=options.getClass().getField("maxAccountsPerUser").get(options);
-            int maximum=((Number)option.getClass().getMethod("getValue").invoke(option)).intValue();
-            boolean steam=(boolean)invokeStatic(loader,"zombie.core.znet.SteamUtils","isSteamModeEnabled",new Class<?>[0]);
+            Integer capturedMaximum=cloud.apocalipse.pz.agent.features.lua.login.WorkerContext.maximum();
+            int maximum=capturedMaximum!=null?capturedMaximum:((Number)option.getClass().getMethod("getValue").invoke(option)).intValue();
+            boolean steam=cloud.apocalipse.pz.agent.features.lua.login.WorkerContext.active()
+                ? cloud.apocalipse.pz.agent.features.lua.login.WorkerContext.steam()
+                : (boolean)invokeStatic(loader,"zombie.core.znet.SteamUtils","isSteamModeEnabled",new Class<?>[0]);
             if (maximum<=0 || !steam) allowed=true;
             else {
                 String identity=(String)invokeStatic(loader,"zombie.core.znet.SteamUtils","convertSteamIDToString",
@@ -200,7 +224,9 @@ public final class PostgresRuntime {
                         statement.setString(1,identity);
                         try (ResultSet rows=statement.executeQuery()) {
                             while (rows.next()) {
-                                Object role=invokeStatic(loader,"zombie.characters.Roles","getRoleById",new Class<?>[]{int.class},rows.getInt(1));
+                                Object role=cloud.apocalipse.pz.agent.features.lua.login.WorkerContext.active()
+                                    ? cloud.apocalipse.pz.agent.features.lua.login.WorkerContext.getRoleById(rows.getInt(1))
+                                    : invokeStatic(loader,"zombie.characters.Roles","getRoleById",new Class<?>[]{int.class},rows.getInt(1));
                                 if (role == null) throw new SQLException("Unknown persisted account role","55000");
                                 Class<?> capability=type(loader,"zombie.characters.Capability");
                                 Object priority=capability.getField("PriorityLogin").get(null);
@@ -239,10 +265,20 @@ public final class PostgresRuntime {
         }
     }
 
-    public static synchronized void shutdown() {
-        closed=true;
-        if (pool != null) { pool.close(); pool=null; }
-        accounts=null;
+    public static void shutdown() {
+        PostgresConnections current;
+        synchronized (PostgresRuntime.class) {
+            if (closed) return;
+            closed=true; current=pool; pool=null; accounts=null;
+        }
+        RuntimeException failure=null;
+        for (Runnable callback:BEFORE_SHUTDOWN) {
+            try { callback.run(); }
+            catch (RuntimeException error) { if(failure==null)failure=error;else failure.addSuppressed(error); }
+        }
+        try { if(current!=null)current.close(); }
+        catch(RuntimeException error){if(failure==null)failure=error;else failure.addSuppressed(error);}
+        if(failure!=null)throw failure;
     }
 
     public static Throwable shutdownAfter(Throwable original) {

@@ -9,6 +9,8 @@ public final class IsoWorld {
     public Cell currentCell;
 
     public static final class Cell {
+        private final java.util.Set<Object> objects=new cloud.apocalipse.pz.agent.features.npc.NpcMembershipSet<>(new java.util.HashSet<>());
+        public java.util.Set<Object> getObjectList(){return objects;}
         public final List<Object> zombies = new ArrayList<>();
 
         public List<Object> getZombieList() {

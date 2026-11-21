@@ -7,11 +7,11 @@ import java.util.List;
 import java.util.UUID;
 
 /** Detached account DTOs retain the legacy serialized field layout and receipt identity. */
-final class PersistenceOperations {
+public final class PersistenceOperations {
     private PersistenceOperations() { }
 
-    record Sql(String sql, List<Object> parameters) implements Serializable {
-        Sql {
+    public record Sql(String sql, List<Object> parameters) implements Serializable {
+        public Sql {
             for (Object value : parameters) {
                 if (value != null && !(value instanceof String || value instanceof Boolean || value instanceof Byte
                         || value instanceof Short || value instanceof Integer || value instanceof Long
@@ -23,8 +23,8 @@ final class PersistenceOperations {
         }
     }
 
-    record Account(List<Sql> statements) implements PersistenceJournal.Operation {
-        Account { statements = List.copyOf(statements); }
+    public record Account(List<Sql> statements) implements PersistenceJournal.Operation {
+        public Account { statements = List.copyOf(statements); }
         public String kind() { return "account-write-v1"; }
         public long estimatedBytes() {
             long size = 256;

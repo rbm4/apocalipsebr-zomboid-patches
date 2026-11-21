@@ -19,8 +19,11 @@ The [feature contract](../features/postgresql.md) tracks implementation and gaps
 | Agent foundation and Workshop hook | Existing implementation | Validate the new original-JAR launch in the intended runtime. |
 | Basic telemetry | Partial implementation | Preserve measured semantics as individual features add phases/counters. |
 | PostgreSQL and NPC runtime | Module and account hooks registered; integrated migration still open | Complete journal/recovery/async, player/vehicle/dictionary and NPC contracts before full cutover. |
+| [PostgreSQL dictionary setup](../features/postgresql-dictionary.md) | Publication and paginated foreign-view cache/listener wired into original startup; live acceptance pending | Port payload provenance/native decode hooks before enabling player reconstruction. |
 | Iso-object scheduling and thumpable no-work predicate | Suggested candidate, not started | Audit `IsoCell.ProcessIsoObject`, helpers and lifecycle dependencies before choosing a boundary. |
 | Other optimizations, networking, persistence, NPCs and integrations | Not declared migrated | Select each feature and dependency closure in its own session. |
+| [NPC actors, gameplay and persistence](../features/npc-engine.md) | Factory/actor graph, native hooks and durable NPC coordinator implemented; full port in progress | Close active-body, packet/authority semantics, isolated-database and client/runtime acceptance gaps. |
+| [Server Lua APIs and service workers](../features/server-lua.md) | Hooks and targeted original-JAR execution implemented; live acceptance pending | Validate real mods/services and integrate the separately owned player reconstruction path; legacy Lua generator calls are retained through method-table adapters. |
 
 The candidate above is a recommendation, not approval to execute a queue.
 

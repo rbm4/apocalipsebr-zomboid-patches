@@ -47,6 +47,23 @@ public final class PostgresConnections implements AutoCloseable {
         return borrow(false, false);
     }
 
+    /** LISTEN owns a physical session outside the bounded query pool, including poolSize=1. */
+    Connection openDictionaryListener() throws SQLException {
+        if (closed) throw new SQLException("PostgreSQL pool is closed", "08003");
+        DataSource physical = source instanceof HikariDataSource pool ? pool.getDataSource() : source;
+        Connection connection = null;
+        try {
+            connection = physical.getConnection();
+            if (closed) throw new SQLException("PostgreSQL pool is closed", "08003");
+            connection.setAutoCommit(true);
+            connection.setNetworkTimeout(Runnable::run, 10_000);
+            return connection;
+        } catch (SQLException failure) {
+            if (connection != null) try { connection.close(); } catch (SQLException ignored) { }
+            throw PostgresErrors.sanitized("dictionary listener acquisition", failure);
+        }
+    }
+
     Connection borrowAccount() throws SQLException {
         // Check the total nested workflow budget before waiting for the bounded pool.
         ForegroundDatabase.acquisitionMillis();
