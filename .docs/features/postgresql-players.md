@@ -62,7 +62,14 @@ records and blocks reads. Unknown legacy player journal descriptors still fail
 without acknowledgement; this port does not silently reinterpret or discard them.
 
 Creation, native mirrors, scalar changes and complete graph reconciliation share
-the player journal. Native mirrors preserve account-side queries, while profile
+the player journal. The first simulation observation starts each player's scalar
+and reconciliation timers and establishes the scalar baseline within the existing
+tick budget. At each scalar interval the game thread compares current fields
+with that baseline and coalesces pending values by field. Routine dispatch
+respects queue eligibility and retry backoff. The worker groups scalar updates by
+row and projects full graph captures to relational deltas. Native saves and
+shutdown can force pending captures into the journal before the dispatch deadline.
+Native mirrors preserve account-side queries, while profile
 loading reconstructs from `player_rel`. The engine issues no schema DDL. Provision
 the existing backend player/dictionary/receipt schema and the engine role grants
 described in [AGENTS.md](../../AGENTS.md). Real queries must still be accepted as
@@ -122,6 +129,10 @@ Recorded on Windows / Java 25, 2026-11-21, against original 42.22.2:
 Focused tests validate every declared transformation against the original archive
 without native structural changes. An isolated JVM executes the installed modules
 with original player/item/string/script classes, a disposable cache and fake JDBC.
+The mutation-window fixture runs the transformed player traversal with two
+different first-observation times. It verifies distinct deadlines, coalescing,
+changed-column SQL on the journal worker across successive windows, and no scalar
+write for an unchanged window.
 It exercises relational capture/reconstruction, source-ID remapping, nested opaque
 provenance, pooled item reuse, profile absence/presence/corruption, native reply
 parsing/player loading, durable creation handoff, retransmission coalescing and

@@ -2,6 +2,7 @@ package cloud.apocalipse.pz.agent.features.postgres.player;
 
 import java.io.File;
 import java.nio.file.*;
+import java.time.Instant;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.*;
@@ -15,6 +16,33 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class PlayerHookTest {
     @TempDir Path directory;
+    @Test void forcedDispatchDoesNotPoisonTheNextCoalescedBatch() {
+        var queue = new PlayerMutations.DirtyQueue();
+        var candidate = new PlayerDatabase.Candidate(UUID.randomUUID(), "fixture", "world", "player", false, 0, 0, 0, null, List.of());
+        var session = UUID.randomUUID();
+        var field = new PlayerMutations.Field("character_state", "x", null);
+        long now = -100;
+        assertTrue(queue.register(candidate.key(), session, now));
+        queue.bind(candidate.key(), session, UUID.randomUUID());
+
+        assertTrue(queue.mark(candidate, session, Map.of(field, 1f), now, Instant.EPOCH));
+        var first = queue.poll(now, false);
+        assertNotNull(first);
+        queue.finish(first, true, now);
+
+        assertTrue(queue.mark(candidate, session, Map.of(field, 2f), now + 1, Instant.EPOCH));
+        assertTrue(queue.mark(candidate, session, Map.of(field, 3f), now + 2, Instant.EPOCH));
+        assertNull(queue.poll(now + 2, false));
+        var forced = queue.poll(now + 2, true);
+        assertNotNull(forced);
+        assertEquals(3f, forced.fields().get(field).value());
+        queue.finish(forced, true, now + 2);
+
+        assertTrue(queue.mark(candidate, session, Map.of(field, 4f), now + 3, Instant.EPOCH));
+        var nextWindow = queue.poll(now + 2 + PlayerMutations.CADENCE, false);
+        assertNotNull(nextWindow);
+        assertEquals(4f, nextWindow.fields().get(field).value());
+    }
     @Test void disabledAuthorityLeavesOriginalPlayerEntryPointsUntouched()throws Exception {
         String key=cloud.apocalipse.pz.agent.config.AgentConfiguration.PLAYER_ENABLED_PROPERTY,previous=System.getProperty(key);
         try{
@@ -62,7 +90,9 @@ class PlayerHookTest {
         Path output = Path.of("target/player-original-smoke.log");
         var child = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin/java").toString(), "-Xverify:all", "-javaagent:" + agent,
             "-Dapocbr.postgres.enabled=true", "-Dapocbr.postgres.url=jdbc:postgresql://localhost/fixture", "-Dapocbr.postgres.players.enabled=true",
-            "-Dapocbr.postgres.serverId=1", "-cp", String.join(File.pathSeparator, paths), name, directory.resolve("cache").toString())
+            "-Dapocbr.postgres.serverId=1", "-Dapocbr.postgres.playerRelational.mutations.sampleMs=1000",
+            "-Dapocbr.postgres.playerRelational.mutations.reconcileMs=60000",
+            "-cp", String.join(File.pathSeparator, paths), name, directory.resolve("cache").toString())
             .directory(new File(System.getProperty("pz.game.jar", "Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar")).getParentFile())
             .redirectErrorStream(true).redirectOutput(output.toFile()).start();
         try { assertTrue(child.waitFor(45, TimeUnit.SECONDS), "player fixture timed out"); assertEquals(0, child.exitValue(), new String(Files.readAllBytes(output), java.nio.charset.StandardCharsets.UTF_8)); }

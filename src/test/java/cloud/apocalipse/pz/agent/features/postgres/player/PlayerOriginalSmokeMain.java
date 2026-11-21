@@ -27,6 +27,9 @@ public final class PlayerOriginalSmokeMain {
     static final UUID slotId = UUID.randomUUID(), headId = UUID.randomUUID();
     static volatile UUID liveCharacter, liveDataset;
     static final AtomicInteger nativeWrites = new AtomicInteger(), graphWrites = new AtomicInteger();
+    private record ScalarWrite(String sql, float x, boolean onServerThread) {}
+    private static final List<ScalarWrite> scalarWrites = new java.util.concurrent.CopyOnWriteArrayList<>();
+    private static Thread ownerThread;
     static final List<String> acceptance = new ArrayList<>();
     static volatile boolean nativeQuitQueried,poolClosed;
     public static void nativeQuit() throws Exception {
@@ -66,7 +69,12 @@ public final class PlayerOriginalSmokeMain {
                 var bindings = new HashMap<Integer, Object>(); var batch = new AtomicInteger();
                 return proxy(PreparedStatement.class, (s, method, args) -> {
                     if (method.getName().startsWith("set")) { if (!method.getName().equals("setQueryTimeout")) bindings.put((Integer) args[0], args[1]); return null; }
-                    if (method.getName().equals("addBatch")) { batch.incrementAndGet(); return null; }
+                    if (method.getName().equals("addBatch")) {
+                        if (sql.startsWith("UPDATE player_rel.character_state SET x")) {
+                            scalarWrites.add(new ScalarWrite(sql, ((Number) bindings.get(1)).floatValue(), Thread.currentThread() == ownerThread));
+                        }
+                        batch.incrementAndGet(); return null;
+                    }
                     if (method.getName().equals("executeBatch")) { var result = new int[batch.getAndSet(0)]; Arrays.fill(result, 1); return result; }
                     if (method.getName().equals("executeUpdate")) {
                         if (sql.startsWith("INSERT INTO public.networkplayers")) nativeWrites.incrementAndGet();
@@ -136,6 +144,7 @@ public final class PlayerOriginalSmokeMain {
     }
     private static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
     public static void main(String[] args) throws Exception {
+        ownerThread = Thread.currentThread();
         GameServer.class.getField("server").setBoolean(null, true); GameServer.class.getField("mainThread").set(null, Thread.currentThread()); Core.class.getField("gameSaveWorld").set(null, "player-fixture");
         zombie.ZomboidFileSystem.instance.setCacheDir(args[0]);
         zombie.core.random.RandStandard.INSTANCE.init(); zombie.core.random.RandLua.INSTANCE.init();
@@ -339,6 +348,7 @@ public final class PlayerOriginalSmokeMain {
         check(connection.sent == before + 1 && connection.denied == 0 && graphWrites.get() == 1 && nativeWrites.get() == 1, "creation handoff did not commit and coalesce retransmission");
         var created = PlayerCreation.take(connection, 0); check(created != null, "committed creation instance was not retained");
         check(PlayerCreation.take(connection, 0) == null, "creation handoff consumed twice");
+        mutationScenario(created);
         created.setX(999f); zombie.savefile.ServerPlayerDB.getInstance().serverUpdateNetworkCharacter(created, 0, connection);
         zombie.savefile.ServerPlayerDB.getInstance().saveFinishWait();
         check(PlayerSync.readable("player-fixture", "fixture", 0, false), "final capture remained pending");
@@ -348,6 +358,76 @@ public final class PlayerOriginalSmokeMain {
         PlayerCreation.update(System.nanoTime()+1_000_000_000L);connections.add(connection);
         var descriptors=(Map<?,?>)IsoWorld.class.getField("survivorDescriptors").get(IsoWorld.instance);
         check(!descriptors.containsKey(abandoned.getID()),"cancelled creation retained its parsed descriptor");
+    }
+    static void mutationScenario(IsoPlayer player) throws Exception {
+        short id = 1;
+        short secondId = 2;
+        IsoPlayer second = PlayerReconstruction.reconstruct(databaseProfile, 0);
+        PlayerSync.register(second, "player-fixture", "second-mutation-player", 0, false, databaseProfile);
+        var trackedField = PlayerMutations.class.getDeclaredField("TRACKED");
+        trackedField.setAccessible(true);
+        var tracked = (Map<?, ?>) trackedField.get(null);
+        Object cursor = tracked.get(player);
+        Object secondCursor = tracked.get(second);
+        GameServer.IDToPlayerMap.put(id, player);
+        try {
+            // Resolve the native class after premain has installed the transformer.
+            Class<?> managerType = Class.forName("zombie.network.NetworkPlayerManager");
+            Object manager = managerType.getMethod("getInstance").invoke(null);
+            Method update = managerType.getMethod("update");
+            long deadline = System.nanoTime() + 1_000_000_000L;
+            do {
+                update.invoke(manager);
+            } while (PlayerAccess.get(cursor, "observed") == null && System.nanoTime() < deadline);
+            check((boolean) PlayerAccess.get(cursor, "observing"), "transformed simulation entry point did not observe the player");
+            if (PlayerAccess.get(cursor, "observed") == null) {
+                PlayerMutations.read(player);
+                throw new AssertionError("transformed simulation entry point did not establish the scalar baseline");
+            }
+            check(!(boolean) PlayerAccess.get(secondCursor, "observing"), "registration started a simulation timer");
+            GameServer.IDToPlayerMap.put(secondId, second);
+            update.invoke(manager);
+            check((long) PlayerAccess.get(secondCursor, "nextSample") > (long) PlayerAccess.get(cursor, "nextSample"),
+                "players first observed on different ticks shared a sample deadline");
+            GameServer.IDToPlayerMap.remove(secondId, second);
+            PlayerRuntime.update();
+            check(!PlayerMutations.hasPending() && scalarWrites.isEmpty(), "initial observation queued a scalar batch");
+
+            player.setX(600f);
+            update.invoke(manager);
+            check(!PlayerMutations.hasPending(), "an intermediate value was queued before the window closed");
+            player.setX(601f);
+            awaitScalarWrite(update, manager, 1);
+
+            player.setX(602f);
+            awaitScalarWrite(update, manager, 2);
+            String sql = "UPDATE player_rel.character_state SET x=? WHERE snapshot_id=? AND character_id=?";
+            check(scalarWrites.equals(List.of(new ScalarWrite(sql, 601f, false), new ScalarWrite(sql, 602f, false))),
+                "successive windows did not replay only the latest changed field on the worker: " + scalarWrites);
+
+            long until = System.nanoTime() + 1_100_000_000L;
+            while (System.nanoTime() < until) {
+                update.invoke(manager);
+                PlayerRuntime.update();
+                Thread.sleep(10);
+            }
+            PlayerJournal.drain();
+            check(scalarWrites.size() == 2 && !PlayerMutations.hasPending(), "unchanged window queued a scalar update");
+        } finally {
+            GameServer.IDToPlayerMap.remove(id, player);
+            GameServer.IDToPlayerMap.remove(secondId, second);
+            PlayerRuntime.discard(second);
+        }
+    }
+    private static void awaitScalarWrite(Method update, Object manager, int count) throws Exception {
+        long deadline = System.nanoTime() + 4_000_000_000L;
+        while (scalarWrites.size() < count && System.nanoTime() < deadline) {
+            update.invoke(manager);
+            PlayerRuntime.update();
+            Thread.sleep(10);
+        }
+        check(scalarWrites.size() == count, "timed out waiting for scalar mutation " + count);
+        PlayerJournal.drain();
     }
     static void awaitRequest() throws Exception {
         var field = ApocBRAsyncLogin.class.getDeclaredField("pending"); field.setAccessible(true);

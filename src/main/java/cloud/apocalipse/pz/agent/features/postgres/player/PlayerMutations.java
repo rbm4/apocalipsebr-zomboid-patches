@@ -44,8 +44,10 @@ public final class PlayerMutations {
         final PlayerDatabase.Candidate candidate;
         final UUID session=UUID.randomUUID();
         final PlayerSnapshot.ItemTracker items;
-        Map<Field,Object> observed=Map.of();
+        Map<Field,Object> observed;
         long nextSample,nextGraph;
+        boolean observing;
+        boolean baselineAttempted;
         long lastSeen=System.nanoTime();
         Cursor(PlayerDatabase.Candidate candidate,IsoPlayer player){this.candidate=candidate;items=new PlayerSnapshot.ItemTracker(player);}
     }
@@ -83,17 +85,17 @@ public final class PlayerMutations {
         synchronized boolean snapshot(PlayerDatabase.Candidate c,UUID session,PlayerSnapshot.Snapshot snapshot,long now) {
             if(!canSnapshot(c.key(),session))return false;
             Pending p=pending.get(c.key());
-            if(p==null){p=new Pending(c,session,now,++nextOperation);p.nextAt=Math.max(now,bindings.get(c.key()).nextAt);pending.put(c.key(),p);}
+            if(p==null){p=new Pending(c,session,now,++nextOperation);p.nextAt=nextDispatch(now,bindings.get(c.key()));pending.put(c.key(),p);}
             if(p.snapshot!=null&&p.snapshot!=p.inFlightSnapshot)queuedBytes-=p.snapshot.bytes();
             p.snapshot=snapshot;p.snapshotRevision=++revision;queuedBytes+=snapshot.bytes();
             // This complete copy supersedes every earlier scalar mark; later scalar marks overlay it.
             p.fields.clear();p.capturedAt=snapshot.capturedAt();return true;
         }
-        synchronized boolean register(String key,UUID session) {
+        synchronized boolean register(String key,UUID session,long now) {
             if(!bindings.containsKey(key)&&bindings.size()>=MAX_PLAYERS)return false;
             Pending old=pending.get(key);
             if(old!=null)return old.session.equals(session); // Never replace uncommitted work.
-            bindings.put(key,new Binding(session,null,0,Map.of()));return true;
+            bindings.put(key,new Binding(session,null,now,Map.of()));return true;
         }
         synchronized void bind(String key,UUID session,UUID character) {
             Binding binding=bindings.get(key);bind(key,session,character,binding==null?Map.of():binding.aliases);
@@ -114,15 +116,18 @@ public final class PlayerMutations {
             if(p==null||!p.session.equals(session)) {
                 if(p==null&&pending.size()>=MAX_PLAYERS)return false;
                 p=new Pending(c,session,now,++nextOperation);pending.put(c.key(),p);
-                Binding binding=bindings.get(c.key());if(binding!=null&&binding.session.equals(session))p.nextAt=Math.max(now,binding.nextAt);
+                p.nextAt=nextDispatch(now,current);
             }
             Set<Field> combined=new HashSet<>(p.fields.keySet());combined.addAll(changes.keySet());
             if(combined.size()>MAX_FIELDS)throw new IllegalStateException("LIVE_FIELD_LIMIT");
             for(var e:changes.entrySet())p.fields.put(e.getKey(),new Value(++revision,e.getValue()));
             p.capturedAt=capturedAt;return true;
         }
-        synchronized Batch poll(long now) {
-            for(Pending p:pending.values())if((!p.fields.isEmpty()||p.snapshot!=null)&&!p.inFlight&&now>=p.nextAt) {
+        private static long nextDispatch(long now,Binding binding) {
+            return binding.nextAt-now>0?binding.nextAt:now;
+        }
+        synchronized Batch poll(long now,boolean force) {
+            for(Pending p:pending.values())if((!p.fields.isEmpty()||p.snapshot!=null)&&!p.inFlight&&(force||now-p.nextAt>=0)) {
                 Binding binding=bindings.get(p.candidate.key());
                 if(binding==null||binding.character==null||!binding.session.equals(p.session))continue;
                 p.nextAt=now+CADENCE;p.inFlight=true;p.inFlightSnapshot=p.snapshot;
@@ -174,10 +179,11 @@ public final class PlayerMutations {
             TRACKED.entrySet().removeIf(entry->{var c=entry.getValue().candidate;return c.world().equals(candidate.world())&&c.identity().equals(candidate.identity())&&c.coop()==candidate.coop()&&c.slot()==candidate.slot();});
             if(graphPlayer!=null&&!TRACKED.containsKey(graphPlayer)){graphPlayer=null;graphTurn=null;}
         }
-        cleanup(System.nanoTime());
+        long now=System.nanoTime();
+        cleanup(now);
         if(TRACKED.size()>=MAX_PLAYERS){capacityLog();return null;}
         Cursor cursor=new Cursor(candidate,player);
-        if(!DIRTY.register(candidate.key(),cursor.session)){capacityLog();return null;}
+        if(!DIRTY.register(candidate.key(),cursor.session,now)){capacityLog();return null;}
         TRACKED.put(player,cursor);active=true;return cursor.session;
     }
     /** Optional audit enrichment. Never wait for import/capture to establish an identity. */
@@ -240,8 +246,14 @@ public final class PlayerMutations {
         if(!active)return;
         long now=System.nanoTime();Cursor cursor=TRACKED.get(player);
         if(cursor==null)return;cursor.lastSeen=now;
-        if(now>=cursor.nextSample&&samples<16&&now<tickDeadline)sample(player,cursor,now);
-        if(RECONCILE&&now>=cursor.nextGraph&&(graphTurn==null||cursor.nextGraph<graphTurn.nextGraph)&&DIRTY.canSnapshot(cursor.candidate.key(),cursor.session)) {graphTurn=cursor;graphPlayer=player;}
+        if(!cursor.observing) {
+            cursor.observing=true;
+            cursor.nextSample=now+SAMPLE_CADENCE;
+            cursor.nextGraph=now+GRAPH_CADENCE;
+        }
+        boolean sampleDue=now-cursor.nextSample>=0;
+        if((sampleDue||!cursor.baselineAttempted)&&samples<16&&tickDeadline-now>0)sample(player,cursor,now,sampleDue);
+        if(RECONCILE&&now-cursor.nextGraph>=0&&(graphTurn==null||cursor.nextGraph-graphTurn.nextGraph<0)&&DIRTY.canSnapshot(cursor.candidate.key(),cursor.session)) {graphTurn=cursor;graphPlayer=player;}
     }
     /** Native saves/disconnects may request a final sample regardless of cadence. */
     public static void finalSample(IsoPlayer player) {
@@ -266,16 +278,18 @@ public final class PlayerMutations {
         }catch(RuntimeException|LinkageError failure){graphCaptureFailures.incrementAndGet();cursor.nextGraph=now+GRAPH_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_GRAPH_CAPTURE_FAILED; "+writeFailure(failure));}}
         finally {long elapsed=System.nanoTime()-started;graphSamples.incrementAndGet();graphNanos.addAndGet(elapsed);graphMaxNanos.accumulateAndGet(elapsed,Math::max);}
     }
-    private static void sample(Object player,Cursor cursor,long now) {
+    private static void sample(Object player,Cursor cursor,long now,boolean due) {
+        cursor.baselineAttempted=true;
         try {
             samples++;long started=System.nanoTime();Map<Field,Object> values=read(player);
             Map<Field,Object> changed=new LinkedHashMap<>();
-            for(var e:values.entrySet())if(!cursor.observed.containsKey(e.getKey())||!Objects.equals(cursor.observed.get(e.getKey()),e.getValue()))changed.put(e.getKey(),e.getValue());
+            if(cursor.observed!=null)for(var e:values.entrySet())if(!cursor.observed.containsKey(e.getKey())||!Objects.equals(cursor.observed.get(e.getKey()),e.getValue()))changed.put(e.getKey(),e.getValue());
             if(changed.isEmpty()||DIRTY.mark(cursor.candidate,cursor.session,changed,now,Instant.now())) {
-                cursor.observed=values;cursor.nextSample=now+SAMPLE_CADENCE;
+                cursor.observed=values;
+                if(due)cursor.nextSample=now+SAMPLE_CADENCE;
             }
             long elapsed=System.nanoTime()-started;measuredSamples.incrementAndGet();measuredFields.addAndGet(changed.size());sampleNanos.addAndGet(elapsed);maxSampleNanos.accumulateAndGet(elapsed,Math::max);
-        }catch(RuntimeException|LinkageError failure){scalarCaptureFailures.incrementAndGet();cursor.nextSample=now+SAMPLE_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_SAMPLE_FAILED; "+writeFailure(failure));}}
+        }catch(RuntimeException|LinkageError failure){scalarCaptureFailures.incrementAndGet();if(due)cursor.nextSample=now+SAMPLE_CADENCE;if(now-lastSampleFailure>=30_000_000_000L){lastSampleFailure=now;log("LIVE_SAMPLE_FAILED; "+writeFailure(failure));}}
     }
     private record Plan(Field field,String path,String type,boolean required) {}
     private record Group(String table,String source,List<Plan> plans) {}
@@ -319,7 +333,7 @@ public final class PlayerMutations {
     private static long writes,journaledPatches,writeNanos,lastMeasuredWriteNanos,failedPatches,deferredPatches;
     static boolean flushOne(PlayerDatabase database) {
         if(!ENABLED)return false;
-        long now=System.nanoTime();Batch batch=DIRTY.poll(now);if(batch==null){metrics(now,database);return false;}
+        long now=System.nanoTime();Batch batch=DIRTY.poll(now,false);if(batch==null){metrics(now,database);return false;}
         boolean committed=false;
         String stage="graph_projection";
         String graphIssues="none";
@@ -385,15 +399,21 @@ public final class PlayerMutations {
     private static void log(String text){DebugLog.log("[ApocBR][PlayerRelational] "+text);}
     public static boolean hasPending(){return ENABLED&&DIRTY.size()>0;}
     static boolean hasPending(String world,String identity,int slot,boolean coop){return ENABLED&&DIRTY.contains(world,identity,slot,coop);}
-    static void journalPending(){
+    static void journalPending(boolean force){
         if(!PlayerJournal.journaling())return;
         Batch batch;
-        while((batch=DIRTY.poll(Long.MAX_VALUE-CADENCE))!=null) {
+        while((batch=DIRTY.poll(System.nanoTime(),force))!=null) {
             boolean submitted=false;
             try{PlayerJournal.submit(new PlayerOperations.Live(batch));journaledPatches++;submitted=true;}
+            catch(RuntimeException failure) {
+                if(force)throw failure;
+                String context=DIRTY.failureContext(batch,System.nanoTime());
+                if(context!=null)log("LIVE_WRITE_FAILED; "+context+"; stage=journal_submit; "+writeFailure(failure));
+                return;
+            }
             finally{DIRTY.finish(batch,submitted,System.nanoTime());}
         }
-        if(DIRTY.size()!=0)throw new IllegalStateException("Unbound or in-flight player mutations remain");
+        if(force&&DIRTY.size()!=0)throw new IllegalStateException("Unbound or in-flight player mutations remain");
     }
     static void shutdown(){active=false;graphPlayer=null;graphTurn=null;DIRTY.clear();TRACKED.clear();}
     private PlayerMutations() {}

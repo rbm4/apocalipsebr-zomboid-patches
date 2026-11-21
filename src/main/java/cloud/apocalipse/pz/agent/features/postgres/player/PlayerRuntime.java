@@ -178,8 +178,8 @@ public final class PlayerRuntime {
         });
     }
     public static void update() { if (enabled()) { PlayerCreation.update(); PlayerSync.flush(); } }
-    public static void finalSave(Object player) { owner(); PlayerMutations.finalSample((IsoPlayer) player); PlayerSync.flush(); }
-    public static void drain() { var database = ServerPlayerDB.isAvailable() ? ServerPlayerDB.getInstance() : null; if (database != null) database.process(); PlayerSync.flush(); PlayerJournal.drain(); }
+    public static void finalSave(Object player) { owner(); PlayerMutations.finalSample((IsoPlayer) player); PlayerSync.forceFlush(); }
+    public static void drain() { var database = ServerPlayerDB.isAvailable() ? ServerPlayerDB.getInstance() : null; if (database != null) database.process(); PlayerSync.forceFlush(); PlayerJournal.drain(); }
     public static void discard(IsoPlayer player) {
         if (player == null) return;
         player.getCell().getAddList().remove(player); player.getCell().getObjectList().remove(player); player.removeFromSquare();
@@ -201,7 +201,7 @@ public final class PlayerRuntime {
         }
         PlayerCreation.shutdown();
         var database=ServerPlayerDB.isAvailable()?ServerPlayerDB.getInstance():null;if(database!=null)database.process();
-        PlayerSync.flush(); PlayerJournal.drain();
+        PlayerSync.forceFlush(); PlayerJournal.drain();
         }
         finally { try { PlayerJournal.shutdown(); } finally { PlayerSync.shutdown(); NATIVE.clear(); } }
     }

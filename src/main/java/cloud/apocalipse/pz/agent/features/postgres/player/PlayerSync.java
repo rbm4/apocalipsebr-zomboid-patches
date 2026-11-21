@@ -40,7 +40,8 @@ final class PlayerSync {
     static boolean readable(String world, String identity, int slot, boolean coop) {
         return PlayerJournal.readable(PlayerOperations.key(world, identity, slot, coop)) && !PlayerMutations.hasPending(world, identity, slot, coop);
     }
-    static void flush() { PlayerMutations.journalPending(); }
+    static void flush() { PlayerMutations.journalPending(false); }
+    static void forceFlush() { PlayerMutations.journalPending(true); }
     static void shutdown() { CREATIONS.clear(); PlayerMutations.shutdown(); }
     private PlayerSync() { }
 }
