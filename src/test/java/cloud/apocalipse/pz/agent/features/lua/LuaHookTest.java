@@ -31,6 +31,13 @@ class LuaHookTest {
                 Set<String> calls=calls(transformed);
                 for(var check:hooks) if(check.targetClass().equals(name))
                     assertTrue(calls.contains(check.method()+":"+check.helperClass()+":"+check.helperMethod()),check.toString());
+                if(name.equals("zombie.network.GameServer")) {
+                    List<String> mainCalls=callsInOrder(transformed,"main");
+                    int preupdate=mainCalls.indexOf("zombie.network.ServerMap.preupdate()V");
+                    assertTrue(preupdate>=0,"ServerMap.preupdate anchor missing from GameServer.main");
+                    assertEquals("cloud.apocalipse.pz.agent.features.lua.LuaRuntime.renewGeneratorPrewarms()V",
+                        mainCalls.get(preupdate+1),"pre-warm relevance must be renewed after preupdate");
+                }
             }
         }
     }
@@ -41,6 +48,19 @@ class LuaHookTest {
                 return new MethodVisitor(Opcodes.ASM9) {
                     @Override public void visitMethodInsn(int opcode,String owner,String target,String desc,boolean itf) {
                         values.add(name+":"+owner.replace('/','.')+":"+target);
+                    }
+                };
+            }
+        },0);return values;
+    }
+    private static List<String> callsInOrder(byte[] bytes,String methodName) {
+        List<String> values=new ArrayList<>();
+        new ClassReader(bytes).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override public MethodVisitor visitMethod(int access,String name,String descriptor,String signature,String[] exceptions) {
+                if(!name.equals(methodName))return null;
+                return new MethodVisitor(Opcodes.ASM9) {
+                    @Override public void visitMethodInsn(int opcode,String owner,String target,String desc,boolean itf) {
+                        values.add(owner.replace('/','.')+"."+target+desc);
                     }
                 };
             }

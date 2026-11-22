@@ -81,6 +81,7 @@ before the transformer exists.
 | `LuaManager.init()` normal exit | Initializes server-owned generator/backup/streaming state and registers `OnPowerBankUpdate`, `OnPowerBankBackupUpdate`, `OnApocBRLobbyEventDue`. Original initialization runs first. |
 | `GameServer.startServer()` entry | Starts configured event polling, API dispatch, radio delivery and login-audit journal before native `OnServerStarted`. Native socket/startup work continues. |
 | `GameServer.main`, immediately before native `LoginQueue.update()` | Drains API callbacks, installs event snapshots, dispatches due events and reconciles managed generators even on empty/paused servers. A separate registered hook drains account/admin continuations. |
+| `GameServer.main`, immediately after `ServerMap.preupdate()` | Renews active managed-generator cell requests after native pre-update clears the frame relevance set and before `ServerMap.postupdate()` can cancel out-of-range loading. |
 | `LoadedAreas.set()`, before `compareWithPrev()` | Adds the temporary lobby population area only to the non-server-cell view. Native change detection includes the added area. |
 | `IsoObject.factoryFromFileInput(IsoCell, ByteBuffer)` exit | Reconstructs the server solar subtype for native generator payloads with the solar sprite. Keeps the input at the native sprite boundary; ordinary generators and other factory results continue unchanged. |
 | `IsoGenerator.update()` entry | Runs backup scheduling; tagged managed generators without an admitted/materialized source skip simulation. Ordinary generators retain vanilla execution. |
@@ -174,9 +175,11 @@ The original archive used on Windows / Java 25 has SHA-256:
 
 `3C4A7C5F149D784758C6FB5F8FA85F3A21D572E38BC081400E89035F8120D287`.
 
-Seven focused tests cover all declared original-bytecode hook invocations and
+Focused tests cover all declared original-bytecode hook invocations and
 unchanged native members, API endpoint validation/queue bounds/cooldown/cleanup,
 event freshness/revisions and durable audit identity/reopening/prepared bindings.
+The Lua hook test also verifies the pre-warm renewal is inserted immediately
+after the original `ServerMap.preupdate()` invocation in `GameServer.main`.
 Earlier root `mvn test` and packaging passed during implementation. Concurrent
 sessions subsequently changed shared build inputs; the latest Lua sources were
 compiled/tested in isolated output against the last packaged agent, without

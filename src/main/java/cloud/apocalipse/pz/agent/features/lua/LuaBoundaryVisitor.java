@@ -17,7 +17,7 @@ public final class LuaBoundaryVisitor extends AsmVisitorWrapper.AbstractBase {
     @Override public ClassVisitor wrap(TypeDescription type,ClassVisitor visitor,Implementation.Context context,
             TypePool pool,FieldList<FieldDescription.InDefinedShape> fields,MethodList<?> methods,int writer,int reader) {
         return new ClassVisitor(Opcodes.ASM9,visitor) {
-            int anchors;
+            int anchors,prewarmAnchors;
             @Override public MethodVisitor visitMethod(int access,String name,String descriptor,String signature,String[] exceptions) {
                 MethodVisitor delegate=super.visitMethod(access,name,descriptor,signature,exceptions);
                 boolean loop=target.equals("zombie.network.GameServer") && name.equals("main") && descriptor.equals("([Ljava/lang/String;)V");
@@ -51,6 +51,10 @@ public final class LuaBoundaryVisitor extends AsmVisitorWrapper.AbstractBase {
                             if(clocks==3)super.visitLabel(skipDepletion);
                         }
                         super.visitMethodInsn(opcode,owner,method,desc,itf);
+                        if(loop && owner.equals("zombie/network/ServerMap") && method.equals("preupdate") && desc.equals("()V")) {
+                            super.visitMethodInsn(Opcodes.INVOKESTATIC,HELPER,"renewGeneratorPrewarms","()V",false);
+                            prewarmAnchors++;
+                        }
                     }
                     @Override public void visitEnd() {
                         if(generator && clocks!=3)throw new IllegalStateException("Generator depletion anchors changed");
@@ -59,7 +63,8 @@ public final class LuaBoundaryVisitor extends AsmVisitorWrapper.AbstractBase {
                 };
             }
             @Override public void visitEnd() {
-                if (anchors!=1) throw new IllegalStateException("Lua subsystem boundary changed: "+type.getName());
+                if (anchors!=1 || target.equals("zombie.network.GameServer") && prewarmAnchors!=1)
+                    throw new IllegalStateException("Lua subsystem boundary changed: "+type.getName());
                 super.visitEnd();
             }
         };

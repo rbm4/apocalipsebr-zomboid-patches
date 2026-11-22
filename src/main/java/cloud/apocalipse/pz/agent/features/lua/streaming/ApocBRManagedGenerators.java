@@ -205,6 +205,14 @@ public final class ApocBRManagedGenerators {
             log("FAILURE_DETAIL id="+label(s.id)+" tile="+s.x+","+s.y+","+s.z+" detail="+label(failure.getMessage()));
         }
     }
+    /** Renew cell relevance after ServerMap.preupdate clears it and before postupdate can cancel loading. */
+    public static void renewPrewarms() {
+        guard();
+        for(Source s:new ArrayList<>(warming)) {
+            runSafely(s,true);
+            if(s.denied || s.prewarmed) warming.remove(s);
+        }
+    }
     /** Bounded reconciliation, including paused/empty servers; no permanent chunk loading lease. */
     public static void update() {
         guard();
@@ -219,12 +227,6 @@ public final class ApocBRManagedGenerators {
                 else if(startupFinished) retire(g,"absent_or_moved_definition"); else suspend(g);
             }
         }
-        // Renew every active request every server frame, exactly as the cleanup pre-warm does.
-        // At most four distinct source jobs own these frame-local loading requests.
-        for(Source s:new ArrayList<>(warming)) {
-            runSafely(s,true);
-            if(s.denied || s.prewarmed) warming.remove(s);
-        }
         List<Source> batch=new ArrayList<>(sources.values());
         for(int i=0;i<Math.min(4,batch.size());i++) {
             if(cursor>=batch.size()) cursor=0;
@@ -234,6 +236,8 @@ public final class ApocBRManagedGenerators {
                 if(warming.size()<4 && warming.add(s)) {
                     s.deadline=System.nanoTime()+120_000_000_000L;
                     state(s,"PREWARM_BEGIN");
+                    runSafely(s,true);
+                    if(s.denied || s.prewarmed) warming.remove(s);
                 }
             } else runSafely(s,false);
         }

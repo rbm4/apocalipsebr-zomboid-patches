@@ -61,6 +61,9 @@ public final class LuaRuntime {
         if (Thread.currentThread()!=owner) throw new IllegalStateException("Lua update owner mismatch");
         ApocBREventControl.update(); ApiBridgeLifecycle.update(); ApocBRManagedGenerators.update();
     }
+    public static void renewGeneratorPrewarms() {
+        if (GameServer.server && started && !closed) ApocBRManagedGenerators.renewPrewarms();
+    }
     public static synchronized void shutdown() {
         if (closed) return;
         closed=true;
