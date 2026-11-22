@@ -25,14 +25,16 @@ public final class PlayerCreation {
         final long guid,expires;
         final String world,identity;
         final boolean coop;
+        final IsoPlayer previous;
         final UUID request=UUID.randomUUID();
         Runnable create,respond;
         final Runnable cleanup;
         IsoPlayer player;
         UUID creation;
         Phase phase=Phase.OLD_SAVE;
-        Entry(UdpConnection connection,int slot,Runnable create,Runnable cleanup,long now) {
+        Entry(UdpConnection connection,int slot,IsoPlayer previous,Runnable create,Runnable cleanup,long now) {
             this.connection=connection;this.slot=slot;this.create=create;this.cleanup=cleanup;
+            this.previous=previous;
             guid=connection.getConnectedGUID();world=Core.gameSaveWorld;
             coop=GameServer.coop&&SteamUtils.isSteamModeEnabled();identity=identity(connection,coop);
             expires=now+Math.max(1000,Math.min(120_000,AgentConfiguration.playerCreationTimeoutMillis()))*1_000_000L;
@@ -45,10 +47,17 @@ public final class PlayerCreation {
         Entry[] slots=waiting.get(connection);
         if(slots!=null&&slots[slot]!=null){cleanup.run();return true;}
         if(count>=LIMIT){cleanup.run();ApocBRLoginGuard.deny(connection);return true;}
-        Entry entry=new Entry(connection,slot,create,cleanup,System.nanoTime());
+        IsoPlayer previous=connection.getPlayerAt(slot);
+        if(previous!=null&&!previous.isDead()){cleanup.run();ApocBRLoginGuard.deny(connection);return true;}
+        Entry entry=new Entry(connection,slot,previous,create,cleanup,System.nanoTime());
         if(entry.identity==null){cleanup.run();ApocBRLoginGuard.deny(connection);return true;}
         if(slots==null){slots=new Entry[4];waiting.put(connection,slots);}
-        slots[slot]=entry;count++;log(entry,"WAIT_OLD_SAVE");return true;
+        slots[slot]=entry;count++;
+        try {
+            if(previous!=null)PlayerRuntime.finalizeDead(previous,slot,connection);
+            log(entry,"WAIT_OLD_SAVE");
+        }catch(RuntimeException|LinkageError failure){PlayerRuntime.failure("OLD_SAVE",failure);fail(entry,"OLD_SAVE_FAILED");}
+        return true;
     }
     /** Called after vanilla creation/native-save enqueue, before the CreatePlayer response. */
     public static boolean created(UdpConnection connection,int slot,IsoPlayer player,Runnable respond) {
@@ -106,8 +115,9 @@ public final class PlayerCreation {
         entry.player=null;remove(entry);log(entry,"ATTACHED");return player;
     }
     private static boolean current(Entry entry) {
+        IsoPlayer occupant=entry.connection.getPlayerAt(entry.slot);
         return entry.connection.getConnectedGUID()==entry.guid&&!GameServer.isDelayedDisconnect(entry.connection)
-            &&entry.connection.getPlayerAt(entry.slot)==null
+            &&(occupant==null||occupant==entry.previous&&occupant.isDead())
             &&GameServer.udpEngine.connections.contains(entry.connection)&&Objects.equals(Core.gameSaveWorld,entry.world)
             &&entry.coop==(GameServer.coop&&SteamUtils.isSteamModeEnabled())
             &&Objects.equals(entry.identity,identity(entry.connection,entry.coop));

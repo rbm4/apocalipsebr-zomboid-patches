@@ -4,10 +4,14 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.*;
 import java.util.UUID;
+import org.postgresql.util.PSQLException;
 
 /** Ordered player WAL and transactional receipt owner. No native objects cross this boundary. */
 public final class PlayerJournal {
     public interface ReplayOperation extends PersistenceJournal.Operation { void apply() throws SQLException; }
+    public static final class StaleLife extends SQLException {
+        public StaleLife() { super("Live character life changed", "40001"); }
+    }
     private static final ThreadLocal<UUID> OPERATION = new ThreadLocal<>();
     private static volatile PlayerJournal instance;
     private final PersistenceJournal journal;
@@ -51,9 +55,7 @@ public final class PlayerJournal {
                     reachable = true; Thread.sleep(250); continue;
                 }
                 if (!(entry.operation() instanceof ReplayOperation operation)) throw new SQLException("Unknown player journal operation", "0A000");
-                OPERATION.set(entry.id());
-                try { operation.apply(); } finally { OPERATION.remove(); }
-                journal.acknowledgeCommitted(entry.id());
+                replay(entry, operation);
             } catch (InterruptedException stopped) { Thread.currentThread().interrupt(); break; }
             catch (Exception | LinkageError failure) {
                 reachable = false;
@@ -63,6 +65,52 @@ public final class PlayerJournal {
             }
         }
         reachable = false;
+    }
+
+    private void replay(PersistenceJournal.Entry entry, ReplayOperation operation) throws IOException, SQLException {
+        // An interrupted checkpoint may leave an already archived operation at the head.
+        if (journal.quarantined(entry.id())) {
+            journal.quarantine(entry.id());
+            return;
+        }
+        OPERATION.set(entry.id());
+        try {
+            operation.apply();
+        } catch (SQLException failure) {
+            SQLException rejected = rejectedData(failure);
+            if (rejected == null) throw failure;
+            journal.quarantine(entry.id());
+            log("Replay quarantined; operation=" + entry.id() + "; kind=" + operation.kind()
+                + "; issue=" + rejected.getSQLState() + constraintDetails(rejected));
+            return;
+        } finally {
+            OPERATION.remove();
+        }
+        journal.acknowledgeCommitted(entry.id());
+    }
+
+    private static SQLException rejectedData(SQLException failure) {
+        SQLException rejected = null;
+        for (int depth = 0; failure != null && depth < 16; depth++, failure = failure.getNextException()) {
+            String state = failure.getSQLState();
+            if (failure instanceof SQLTransientConnectionException || failure instanceof SQLRecoverableException
+                || state != null && (state.startsWith("08") || state.startsWith("57P"))) return null;
+            if (failure instanceof StaleLife || state != null && (state.startsWith("22") || state.startsWith("23"))) {
+                if (rejected == null || failure instanceof PSQLException) rejected = failure;
+            }
+        }
+        return rejected;
+    }
+
+    private static String constraintDetails(SQLException failure) {
+        if (!(failure instanceof PSQLException postgres) || postgres.getServerErrorMessage() == null) return "";
+        var error = postgres.getServerErrorMessage();
+        return identifier("schema", error.getSchema()) + identifier("table", error.getTable())
+            + identifier("constraint", error.getConstraint());
+    }
+
+    private static String identifier(String field, String value) {
+        return value != null && value.matches("[A-Za-z_][A-Za-z0-9_]{0,62}") ? "; " + field + "=" + value : "";
     }
     public static void drain() {
         var current = instance; if (current == null) return;

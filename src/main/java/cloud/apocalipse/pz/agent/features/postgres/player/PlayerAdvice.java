@@ -37,7 +37,11 @@ public final class PlayerAdvice {
         @Advice.OnMethodExit public static void exit(@Advice.This Object data) { PlayerRuntime.nativeCaptured(data, false); }
     }
     public static class FinalSave {
-        @Advice.OnMethodExit public static void exit(@Advice.Argument(0) Object player) { PlayerRuntime.finalSave(player); }
+        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
+        public static boolean enter(@Advice.Argument(0) Object player) { return PlayerRuntime.finalizedDead(player); }
+        @Advice.OnMethodExit public static void exit(@Advice.Argument(0) Object player, @Advice.Enter boolean skipped) {
+            if (!skipped) PlayerRuntime.finalSave(player);
+        }
     }
     public static class Drain {
         @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class) public static boolean enter() { PlayerRuntime.drain(); return true; }

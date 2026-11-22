@@ -32,6 +32,7 @@ public final class PlayerRuntime {
     private static final ThreadLocal<Creating> CREATING = new ThreadLocal<>();
     private static final java.util.concurrent.locks.ReentrantLock PROCESS = new java.util.concurrent.locks.ReentrantLock();
     private static final Map<Object, PlayerNativeSave> NATIVE = Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Set<IsoPlayer> FINALIZED_DEAD = Collections.newSetFromMap(Collections.synchronizedMap(new WeakHashMap<>()));
     private static final ThreadLocal<Boolean> TEARDOWN = new ThreadLocal<>();
     public static void beginShutdown() { TEARDOWN.set(true); }
     public static void endShutdown() { TEARDOWN.remove(); }
@@ -155,7 +156,11 @@ public final class PlayerRuntime {
     public static boolean create(Object request, Object transport) {
         owner(); if (CREATING.get() != null) return false;
         var connection = (UdpConnection) transport; int slot = number(get(request, "playerIndex"));
-        if (!ready(connection, slot)) { discardRequestDescriptor(get(request,"survivorDescriptor"));return true; }
+        if (slot < 0 || slot >= 4 || !admitted(connection)) {
+            if (slot < 0 || slot >= 4) ApocBRLoginGuard.deny(connection);
+            discardRequestDescriptor(get(request,"survivorDescriptor"));
+            return true;
+        }
         var packet = new CreatePlayerPacket(); set(packet, "playerIndex", (byte) slot); set(packet, "spawnRegionName", get(request, "spawnRegionName"));
         set(packet, "survivorDescriptor", get(request, "survivorDescriptor"));
         @SuppressWarnings("unchecked") var traits = (List<Object>) get(packet, "characterTraits"); traits.addAll((Collection<?>) get(request, "characterTraits"));
@@ -176,6 +181,16 @@ public final class PlayerRuntime {
     }
     public static void update() { if (enabled()) { PlayerCreation.update(); PlayerSync.flush(); } }
     public static void finalSave(Object player) { owner(); PlayerMutations.finalSample((IsoPlayer) player); PlayerSync.forceFlush(); }
+    public static boolean finalizedDead(Object player) { return FINALIZED_DEAD.contains(player); }
+    static void finalizeDead(IsoPlayer player, int slot, UdpConnection connection) {
+        if (finalizedDead(player)) return;
+        var database = ServerPlayerDB.getInstance();
+        database.serverUpdateNetworkCharacter(player, slot, connection);
+        database.process();
+        // Co-op removes the old occupant after the creation reply. Stop its saves before publishing a new life.
+        FINALIZED_DEAD.add(player);
+        PlayerMutations.unregister(player);
+    }
     public static void drain() { var database = ServerPlayerDB.isAvailable() ? ServerPlayerDB.getInstance() : null; if (database != null) database.process(); PlayerSync.forceFlush(); PlayerJournal.drain(); }
     public static void discard(IsoPlayer player) {
         if (player == null) return;
@@ -196,10 +211,10 @@ public final class PlayerRuntime {
             PlayerSync.forceFlush();
             PlayerJournal.drain();
         }
-        finally { try { PlayerJournal.shutdown(); } finally { PlayerSync.shutdown(); NATIVE.clear(); } }
+        finally { try { PlayerJournal.shutdown(); } finally { PlayerSync.shutdown(); NATIVE.clear(); FINALIZED_DEAD.clear(); } }
     }
     public static void closeDatabase() { if (Boolean.TRUE.equals(TEARDOWN.get())) drain(); else shutdown(); }
-    private static void failure(String stage,Throwable failure) { System.err.println("[ApocBR-Agent][Players] "+stage+"_FAILED; "+PlayerMutations.writeFailure(failure)); }
+    static void failure(String stage,Throwable failure) { System.err.println("[ApocBR-Agent][Players] "+stage+"_FAILED; "+PlayerMutations.writeFailure(failure)); }
     private static void convert(String username, String steamid, String world) throws java.sql.SQLException {
         try (var connection = PostgresRuntime.borrowBackground()) {
             try (var query = connection.prepareStatement("UPDATE public.networkplayers SET steamid=? WHERE username=? AND world=? AND (steamid IS NULL OR steamid='')")) {

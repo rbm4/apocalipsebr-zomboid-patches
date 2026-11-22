@@ -3,6 +3,7 @@ package cloud.apocalipse.pz.agent.features.postgres;
 import cloud.apocalipse.pz.agent.config.AgentConfiguration.PostgresSettings;
 import cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryOrigin;
 import java.lang.reflect.*;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.*;
 import java.util.*;
@@ -31,6 +32,7 @@ class PlayerJournalTest {
         final Set<UUID> receipts = java.util.concurrent.ConcurrentHashMap.newKeySet();
         final AtomicInteger writes = new AtomicInteger();
         final AtomicBoolean loseCommit = new AtomicBoolean(true);
+        final AtomicReference<SQLException> rejectWrite = new AtomicReference<>();
         Connection open() throws SQLException {
             if (!online) throw new SQLException("fixture offline", "08006");
             UUID[] receipt = {null}; boolean[] wrote = {false};
@@ -42,6 +44,8 @@ class PlayerJournalTest {
                         if (method.getName().equals("executeQuery")) return Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{ResultSet.class}, (rows, read, args) -> zero(read.getReturnType()));
                         if (method.getName().equals("executeUpdate")) {
                             if (sql.contains("apocbr_persistence_receipt")) { receipt[0] = (UUID) bindings.get(1); return receipts.contains(receipt[0]) ? 0 : 1; }
+                            SQLException failure = rejectWrite.getAndSet(null);
+                            if (failure != null) throw failure;
                             wrote[0] = true; return 1;
                         }
                         return zero(method.getReturnType());
@@ -80,5 +84,37 @@ class PlayerJournalTest {
             assertTrue(PlayerJournal.readable(operation.playerKey())); assertEquals(Set.of(id), jdbc.receipts);
             assertEquals(1, jdbc.writes.get(), "receipt must suppress the retry after a committed-but-unacknowledged transaction");
         } finally { PlayerJournal.shutdown(); PostgresRuntime.shutdown(); }
+    }
+
+    @Test void duplicateKeyArchivesTheRejectedSaveAndReplaysTheNextSave() throws Exception {
+        var jdbc = new Jdbc();
+        jdbc.online = true;
+        jdbc.loseCommit.set(false);
+        var batch = new BatchUpdateException("private bind values", "23505", new int[0]);
+        batch.setNextException(new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage(
+            "C23505\0Dprivate key value\0spublic\0tnetworkplayers\0nnetworkplayers_pkey\0")));
+        jdbc.rejectWrite.set(batch);
+        DataSource source = (DataSource) Proxy.newProxyInstance(getClass().getClassLoader(), new Class<?>[]{DataSource.class},
+            (p, method, args) -> method.getName().equals("getConnection") ? jdbc.open() : zero(method.getReturnType()));
+        PostgresRuntime.installForTest(new PostgresSettings(true, true, "jdbc:postgresql://fixture/unused", 1, 5000, 3000),
+            new PostgresConnections(source, () -> { }));
+        var operation = snapshot();
+        UUID rejected, successor;
+        try {
+            PlayerJournal.start(directory);
+            rejected = PlayerJournal.submit(operation);
+            successor = PlayerJournal.submit(operation);
+            PlayerJournal.drain();
+            long deadline = System.nanoTime() + 3_000_000_000L;
+            while (!PlayerJournal.readable(operation.playerKey()) && System.nanoTime() < deadline) Thread.sleep(10);
+            assertTrue(PlayerJournal.readable(operation.playerKey()));
+            assertEquals(Set.of(successor), jdbc.receipts);
+            assertEquals(1, jdbc.writes.get());
+            assertTrue(Files.isRegularFile(directory.resolve("quarantine").resolve(rejected + ".record")));
+        } finally { PlayerJournal.shutdown(); PostgresRuntime.shutdown(); }
+        try (var journal = new PersistenceJournal(directory, 1024, value -> { })) {
+            assertNull(journal.head());
+            assertTrue(journal.quarantined(rejected));
+        }
     }
 }

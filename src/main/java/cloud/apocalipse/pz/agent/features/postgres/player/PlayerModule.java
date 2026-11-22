@@ -45,7 +45,8 @@ public final class PlayerModule implements AgentModule {
             {TARGETS.get(7), "addToProcessItems", PlayerConstruction.class.getName(), "active"},
             {TARGETS.get(8), "triggerEvent", PlayerConstruction.class.getName(), "active"},
             {TARGETS.get(9), "QueuedQuit", runtime, "beginShutdown"},
-            {TARGETS.get(9), "QueuedQuit", runtime, "endShutdown"}
+            {TARGETS.get(9), "QueuedQuit", runtime, "endShutdown"},
+            {TARGETS.get(0), "serverUpdateNetworkCharacter", runtime, "finalizedDead"}
         };
         for (int i = 0; i < contracts.length; i++) { var c = contracts[i]; checks.add(new HookCheck("player-" + i, c[0], c[1], c[2], c[3], false)); }
         return List.copyOf(checks);

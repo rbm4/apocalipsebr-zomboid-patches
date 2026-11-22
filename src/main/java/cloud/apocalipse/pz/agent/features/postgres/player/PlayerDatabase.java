@@ -263,7 +263,7 @@ final class PlayerDatabase {
                         if(!candidate.dataset().equals(rows.getObject(7,UUID.class)))throw new SQLException("Live source dataset mismatch","22023");
                         if(!"complete".equals(rows.getString(4))||rows.getInt(5)!=PlayerCapture.SCHEMA_VERSION||rows.getInt(6)!=PlayerCapture.CODEC_VERSION){connection.rollback();return false;}
                         character=rows.getObject(1,UUID.class);head=rows.getObject(2,UUID.class);revision=rows.getLong(3);reason=rows.getString(8);
-                        if(!Objects.equals(character,batch.character()))throw new SQLException("Live character life changed","40001");
+                        if(!Objects.equals(character,batch.character()))throw new PlayerJournal.StaleLife();
                         if(rows.next())throw new SQLException("Ambiguous live player slot","21000");
                     }
                 }

@@ -27,6 +27,7 @@ public final class PlayerOriginalSmokeMain {
     static final UUID slotId = UUID.randomUUID(), headId = UUID.randomUUID();
     static volatile UUID liveCharacter, liveDataset;
     static final AtomicInteger nativeWrites = new AtomicInteger(), graphWrites = new AtomicInteger();
+    static final List<String> respawnWrites = new java.util.concurrent.CopyOnWriteArrayList<>();
     private record ScalarWrite(String sql, float x, boolean onServerThread) {}
     private static final List<ScalarWrite> scalarWrites = new java.util.concurrent.CopyOnWriteArrayList<>();
     private static Thread ownerThread;
@@ -77,11 +78,15 @@ public final class PlayerOriginalSmokeMain {
                     }
                     if (method.getName().equals("executeBatch")) { var result = new int[batch.getAndSet(0)]; Arrays.fill(result, 1); return result; }
                     if (method.getName().equals("executeUpdate")) {
-                        if (sql.startsWith("INSERT INTO public.networkplayers")) nativeWrites.incrementAndGet();
+                        if (sql.startsWith("INSERT INTO public.networkplayers")) {
+                            nativeWrites.incrementAndGet();
+                            respawnWrites.add(Boolean.TRUE.equals(bindings.get(10)) ? "dead" : "alive");
+                        }
                         if (sql.startsWith("INSERT INTO player_rel.snapshot (") && sql.contains("VALUES")) {
                             var columns = sql.substring(sql.indexOf('(') + 1, sql.indexOf(')')).split(",");
                             for (int i = 0; i < columns.length; i++) { if (columns[i].equals("character_id")) liveCharacter = (UUID) bindings.get(i + 1); if (columns[i].equals("source_dataset_id")) liveDataset = (UUID) bindings.get(i + 1); }
                             graphWrites.incrementAndGet();
+                            respawnWrites.add("new-life");
                         }
                         return 1;
                     }
@@ -354,12 +359,48 @@ public final class PlayerOriginalSmokeMain {
         created.setX(999f); zombie.savefile.ServerPlayerDB.getInstance().serverUpdateNetworkCharacter(created, 0, connection);
         zombie.savefile.ServerPlayerDB.getInstance().saveFinishWait();
         check(PlayerSync.readable("player-fixture", "fixture", 0, false), "final capture remained pending");
-        check(nativeWrites.get() == 2, "native final snapshot did not reach persistence"); PlayerRuntime.discard(created);
+        check(nativeWrites.get() == 2, "native final snapshot did not reach persistence");
+        respawnScenario(connection, created);
         var abandoned=new zombie.characters.SurvivorDesc();PlayerReconstruction.set(request,"survivorDescriptor",abandoned);request.processServer(null,connection);
         @SuppressWarnings("unchecked") var connections=(List<UdpConnection>)PlayerAccess.get(GameServer.class.getField("udpEngine").get(null),"connections");connections.clear();
         PlayerCreation.update(System.nanoTime()+1_000_000_000L);connections.add(connection);
         var descriptors=(Map<?,?>)IsoWorld.class.getField("survivorDescriptors").get(IsoWorld.instance);
         check(!descriptors.containsKey(abandoned.getID()),"cancelled creation retained its parsed descriptor");
+    }
+
+    static void respawnScenario(ConnectionFixture connection, IsoPlayer previous) throws Exception {
+        previous.setHealth(0);
+        previous.getBodyDamage().setOverallBodyHealth(0);
+        check(previous.isDead(), "fixture did not die");
+        connection.setPlayerAt(0, previous);
+        UUID oldLife = liveCharacter;
+        respawnWrites.clear();
+        var request = new zombie.network.packets.character.CreatePlayerPacket();
+        PlayerReconstruction.set(request, "playerIndex", (byte) 0);
+        PlayerReconstruction.set(request, "survivorDescriptor", new zombie.characters.SurvivorDesc(true));
+        int before = connection.sent, denied = connection.denied;
+        request.processServer(null, connection);
+        check(connection.sent == before && connection.denied == denied, "respawn rejected or replied before replay");
+        long deadline = System.nanoTime() + 8_000_000_000L;
+        while (connection.sent == before && connection.denied == denied && System.nanoTime() < deadline) { PlayerRuntime.update(); Thread.sleep(10); }
+        check(connection.sent == before + 1 && connection.denied == denied, "respawn handoff did not send a reply");
+        check(respawnWrites.equals(List.of("dead", "alive", "new-life")) && !oldLife.equals(liveCharacter), "respawn replay order changed: " + respawnWrites);
+        check(connection.getPlayerAt(0) == previous, "creation changed the connection slot before vanilla release");
+
+        var database = zombie.savefile.ServerPlayerDB.getInstance();
+        database.serverUpdateNetworkCharacter(previous, 0, connection);
+        database.process();
+        PlayerJournal.drain();
+        check(respawnWrites.size() == 3, "late save from dead occupant reached persistence");
+
+        connection.setPlayerAt(0, null); // The native co-op exchange releases the old slot before connecting the replacement.
+        PlayerRuntime.discard(previous);
+        var packet = new zombie.network.packets.connection.ConnectPacket();
+        packet.parse(new zombie.core.network.ByteBufferReader(java.nio.ByteBuffer.wrap(new byte[]{0,12,0})), connection);
+        IsoPlayer replacement = connection.getPlayerAt(0);
+        check(replacement != null && replacement != previous && !replacement.isDead(), "replacement did not reach native acceptance");
+        connection.setPlayerAt(0, null);
+        PlayerRuntime.discard(replacement);
     }
     static void mutationScenario(IsoPlayer player) throws Exception {
         short id = 1;
