@@ -43,6 +43,14 @@ public final class PostgresConnections implements AutoCloseable {
         this.shutdown = shutdown;
     }
 
+    String metrics() {
+        if (!closed && source instanceof HikariDataSource dataSource && dataSource.getHikariPoolMXBean() instanceof HikariPool pool) {
+            return "; poolTotal=" + pool.getTotalConnections() + "; poolActive=" + pool.getActiveConnections()
+                + "; poolIdle=" + pool.getIdleConnections() + "; poolWaiting=" + pool.getThreadsAwaitingConnection();
+        }
+        return "; poolMetrics=UNAVAILABLE";
+    }
+
     public Connection borrowTransaction() throws SQLException {
         return borrow(false, ForegroundDatabase.active());
     }

@@ -32,7 +32,7 @@ not a claim that current authority reads SQLite.
 | WorldDictionary numeric lookups; string/script register readers, get and getInfoForID | Resolve IDs in the prepared exact source view. Items/entities resolve destination definitions by type; scripts also require an exact version match. Unknown IDs, missing definitions, unprepared views and native decode failures fail closed, including errors swallowed inside vanilla item loading. |
 | LoadPlayerProfilePacket.processServer | Copy request values, read the relational graph on bounded account workers, prepare exact dictionary views after releasing the graph lease, reconstruct on the server thread, and send a fresh native reply. Absence remains distinct from corruption/unavailability. Slot four preserves vanilla's absent reply that terminates a four-character scan. |
 | ConnectPacket.parse; GameServer.receivePlayerConnect; ServerPlayerDB.serverLoadNetworkCharacter | Copy pooled request bytes, defer JDBC work, recheck connection/world/identity/slot admission, bind a reconstructed player for the native load call, and resume the original acceptance method. Initial world state and metadata follow successful acceptance. Direct callers also enter this path. |
-| CreatePlayerPacket.processServer, immediately after native database process() | Detach the pooled request, coalesce retransmissions, wait for older writes, run original creation, capture the new life durably and delay its response until replay commits. Retain that exact server instance outside simulation until connect; cancellation removes it. |
+| CreatePlayerPacket.processServer, immediately after native database process() | Detach the pooled request, coalesce retransmissions, finalize an attached dead occupant, and wait for older writes before running original creation. Capture the new life durably and delay its response until replay commits. Retain that exact server instance outside simulation until connect. Cancellation removes it. |
 | ServerPlayerDB.create, snapshot constructors, process, serverUpdateNetworkCharacterInt | Skip SQLite initialization; preserve native snapshot capture and queue processing. Snapshot origin/world/identity are captured before queue handoff. Journal detached native mirror writes to public.networkplayers with transactional receipts. |
 | NetworkPlayerManager.update; ServerPlayerDB.serverUpdateNetworkCharacter(IsoPlayer,...) | Preserve native simulation/networking, observe live players with the legacy sampling budgets, capture graph reconciliation and final state, and journal scalar/graph mutations in order. A final capture that cannot be retained fails explicitly. |
 | ServerPlayerDB.saveFinishWait / close; ServerMap.QueuedQuit; GameServer$1.run | Drain captured work during the native quit phase. After vanilla shutdown, stop remaining workers and player replay before releasing dictionaries and the shared pool. |
@@ -57,9 +57,37 @@ configured PostgreSQL journal directory. It uses the existing journal framing,
 fsync, pending-player tracking and acknowledgement machinery, with an explicit
 detached-type whitelist and agent player DTOs. It preserves opaque provenance
 through snapshot serialization. Receipt claims and mutations commit together;
-lost commit acknowledgements retry the same operation UUID. Failed replay keeps
-records and blocks reads. Unknown legacy player journal descriptors still fail
-without acknowledgement; this port does not silently reinterpret or discard them.
+lost commit acknowledgements retry the same operation UUID. Data and constraint
+rejections (SQLSTATE classes `22` and `23`) and live mutations for a replaced
+character are preserved under `quarantine/<operation-id>.record`. Replay then
+advances, allowing reads of the last committed state once remaining writes for
+the slot clear. The quarantine log includes the operation UUID, kind, SQLSTATE,
+and PostgreSQL schema, table and constraint identifiers when available. Connection
+failures and other unclassified errors leave the record pending for retry.
+Unknown legacy player journal descriptors still fail without acknowledgement.
+
+On restart, use the same player journal directory and keep its checkpoint and
+generation files together. `REPLAY_OPENED` reports the durable backlog restored
+from disk. `REPLAY_PROGRESS` and `REPLAY_PENDING` report counts, byte size, oldest
+record age, pending player slots, replay totals and the operation UUID and kind.
+`AVAILABLE` confirms the worker caught up and the PostgreSQL probe passed. Compare
+`replayed` and `quarantined` to see which records were applied or already had a
+receipt and which need separate investigation. Quarantined records stay on disk
+and are excluded from automatic replay. Inspect the PostgreSQL constraint before
+retrying one against newer player state.
+
+Progress and health reports are limited to one every 30 seconds during a steady
+state. The worker also logs startup, the first retry and recovery immediately.
+Reports include shared Hikari active, idle, total and waiting counts, and reuse
+the relational player's transaction, JDBC-call and changed-row metrics. These
+relational metrics cover initial and live graph writes. The pool gauges cover all
+users of the shared pool. Gathering metrics adds no database queries. A shutdown
+drain reports its starting, completed or timed-out backlog separately.
+
+Creating a replacement while a dead character still occupies the slot first
+journals the final relational graph and the native mirror. After durable capture,
+the old object stops producing writes. The existing co-op connection flow clears
+the native slot, then the connect hook consumes the committed replacement.
 
 Creation, native mirrors, scalar changes and complete graph reconciliation share
 the player journal. The first simulation observation starts each player's scalar
@@ -109,6 +137,23 @@ remain applicable. Flags are startup settings, not hot switches.
 
 ## Validation and remaining acceptance
 
+The backlog recovery build passed 22 focused tests on Windows / Java 25. Its
+restart fixture reopened three durable records, archived a `23505` head, and
+committed both successors in order. The logs reported `durable=3` on reopen and
+`replayed=2`, `quarantined=1`, and `durable=0` after recovery. The shaded observer
+verified 45 hook contracts against the original 42.22.2 JAR. Evidence is in
+`target/player-backlog-package.log` and
+`target/player-backlog-artifact-4fa69f18f6294b48b3643b54927e6dcd/`.
+
+Recorded on Windows / Java 25, 2026-11-22, for the respawn and replay changes:
+
+- `mvn -B -ntp -Dtest=PlayerJournalTest,PersistenceJournalTest,PlayerHookTest,PlayerReaderTest package`
+  passed all 13 tests and produced the shaded agent.
+- The packaged observer verified 45 player and dictionary-decode hook contracts
+  against the original 42.22.2 archive, including the dead-occupant save guard.
+  Evidence is in `target/player-handoff-artifact-1d2e2c61db654bc283974d9d0d4be76d/`.
+  Agent SHA-256 is `b26b1cf4cf7fad8e987483de69738834ecb18036feb3a55f8d1f7f2bffebaed4`.
+
 Recorded on Windows / Java 25, 2026-11-21, against original 42.22.2:
 
 - `mvn "-Dpz.game.jar=Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar" "-Dmaven.jar.forceCreation=true" package`: 110 tests, zero failures/errors, one historical patched-runtime check skipped; shaded packaging passed.
@@ -136,13 +181,18 @@ write for an unchanged window.
 It exercises relational capture/reconstruction, source-ID remapping, nested opaque
 provenance, pooled item reuse, profile absence/presence/corruption, native reply
 parsing/player loading, durable creation handoff, retransmission coalescing and
-final saves. Request/continuation tests cover copied buffers and stale connections.
+final saves. The respawn fixture creates a replacement while the dead occupant
+still holds the slot, checks save order, and verifies that a late native save
+cannot overwrite the replacement. It releases the slot in the fixture before
+the transformed connect call. Request/continuation tests cover copied buffers
+and stale connections.
 
 The connection fixture deliberately substitutes a small native acceptance tail,
 world-state sender, metadata sink and quit tail; it proves production deferral/resumption
 and ordering, not live chat, RakNet, map download or full vanilla acceptance.
 The original unmodified acceptance bytes are separately transformed/validated.
-Journal tests cover restart, opaque metadata retention and lost commit replies.
+Journal tests cover restart, opaque metadata retention, lost commit replies,
+and duplicate-key quarantine with later replay and admission recovery.
 
 The original-player fixture reads matching installed resources (including
 stdlib.lua and hair definitions) and sets its cache to a temporary directory.

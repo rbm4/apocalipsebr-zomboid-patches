@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.sql.*;
 import java.util.UUID;
+import java.util.function.Supplier;
 import org.postgresql.util.PSQLException;
 
 /** Ordered player WAL and transactional receipt owner. No native objects cross this boundary. */
@@ -13,17 +14,22 @@ public final class PlayerJournal {
         public StaleLife() { super("Live character life changed", "40001"); }
     }
     private static final ThreadLocal<UUID> OPERATION = new ThreadLocal<>();
+    private static final long REPORT_INTERVAL_NANOS = 30_000_000_000L;
     private static volatile PlayerJournal instance;
     private final PersistenceJournal journal;
     private final Thread worker;
+    private final Supplier<String> databaseMetrics;
     private volatile boolean stopping, reachable;
-    private PlayerJournal(Path directory) throws IOException {
+    private long lastReport, replayed, quarantined, failedAttempts;
+    private PlayerJournal(Path directory, Supplier<String> databaseMetrics) throws IOException {
         journal = new PersistenceJournal(directory, 64L * 1024 * 1024, PlayerJournal::log);
+        this.databaseMetrics = databaseMetrics;
         worker = new Thread(this::run, "ApocBR-Player-Journal"); worker.setDaemon(true); worker.start();
     }
-    public static synchronized void start(Path directory) {
+    public static void start(Path directory) { start(directory, () -> ""); }
+    public static synchronized void start(Path directory, Supplier<String> databaseMetrics) {
         if (instance != null) return;
-        try { instance = new PlayerJournal(directory); }
+        try { instance = new PlayerJournal(directory, databaseMetrics); }
         catch (IOException failure) { throw new IllegalStateException("Player journal unavailable; records preserved", failure); }
     }
     public static boolean journaling() { var current = instance; return current != null && !current.stopping; }
@@ -44,23 +50,32 @@ public final class PlayerJournal {
         }
     }
     private void run() {
-        long retryLog = 0;
+        report("REPLAY_OPENED", null, "NONE", true);
+        boolean retrying = false;
         while (!stopping) {
+            PersistenceJournal.Entry entry = null;
             try {
-                var entry = journal.head();
+                entry = journal.head();
                 if (entry == null) {
                     try (var connection = PostgresRuntime.borrowBackground(); var statement = connection.prepareStatement("SELECT operation_id FROM public.apocbr_persistence_receipt WHERE false")) {
                         statement.setQueryTimeout(2); try (var ignored = statement.executeQuery()) { } connection.rollback();
                     }
-                    reachable = true; Thread.sleep(250); continue;
+                    boolean recovered = !reachable;
+                    reachable = true;
+                    retrying = false;
+                    report("AVAILABLE", null, "NONE", recovered);
+                    Thread.sleep(250); continue;
                 }
                 if (!(entry.operation() instanceof ReplayOperation operation)) throw new SQLException("Unknown player journal operation", "0A000");
                 replay(entry, operation);
+                retrying = false;
+                report("REPLAY_PROGRESS", entry, "NONE", false);
             } catch (InterruptedException stopped) { Thread.currentThread().interrupt(); break; }
             catch (Exception | LinkageError failure) {
                 reachable = false;
-                long now = System.nanoTime();
-                if (now - retryLog > 30_000_000_000L) { retryLog = now; log("Replay pending; records preserved; issue=" + (failure instanceof SQLException sql ? sql.getSQLState() : failure.getClass().getSimpleName())); }
+                failedAttempts++;
+                report("REPLAY_PENDING", entry, issue(failure), !retrying);
+                retrying = true;
                 try { Thread.sleep(500); } catch (InterruptedException stopped) { Thread.currentThread().interrupt(); break; }
             }
         }
@@ -71,6 +86,8 @@ public final class PlayerJournal {
         // An interrupted checkpoint may leave an already archived operation at the head.
         if (journal.quarantined(entry.id())) {
             journal.quarantine(entry.id());
+            quarantined++;
+            log("Replay quarantine checkpoint recovered; operation=" + entry.id() + "; kind=" + operation.kind());
             return;
         }
         OPERATION.set(entry.id());
@@ -80,6 +97,7 @@ public final class PlayerJournal {
             SQLException rejected = rejectedData(failure);
             if (rejected == null) throw failure;
             journal.quarantine(entry.id());
+            quarantined++;
             log("Replay quarantined; operation=" + entry.id() + "; kind=" + operation.kind()
                 + "; issue=" + rejected.getSQLState() + constraintDetails(rejected));
             return;
@@ -87,6 +105,35 @@ public final class PlayerJournal {
             OPERATION.remove();
         }
         journal.acknowledgeCommitted(entry.id());
+        replayed++;
+    }
+
+    private void report(String state, PersistenceJournal.Entry entry, String issue, boolean force) {
+        long now = System.nanoTime();
+        if (!force && now - lastReport < REPORT_INTERVAL_NANOS) return;
+        lastReport = now;
+        String operation = entry == null ? "" : "; operation=" + entry.id() + "; kind=" + entry.operation().kind();
+        log("state=" + state + "; playerReadsReady=" + reachable + "; issue=" + issue + operation
+            + "; replayed=" + replayed + "; quarantined=" + quarantined + "; failedAttempts=" + failedAttempts
+            + backlog(journal.status()) + connectionMetrics());
+    }
+
+    private String connectionMetrics() {
+        try { return PostgresRuntime.poolMetrics() + databaseMetrics.get(); }
+        catch (RuntimeException | LinkageError failure) { return "; connectionMetrics=UNAVAILABLE"; }
+    }
+
+    private static String issue(Throwable failure) {
+        if (failure instanceof SQLException sql && sql.getSQLState() != null && sql.getSQLState().matches("[A-Z0-9]{5}")) {
+            return sql.getSQLState();
+        }
+        return failure.getClass().getSimpleName();
+    }
+
+    private static String backlog(PersistenceJournal.Status status) {
+        return "; staged=" + status.staged() + "; stagedBytes=" + status.stagedBytes() + "; durable=" + status.durable()
+            + "; durableBytes=" + status.bytes() + "; oldestPendingMs=" + status.oldestAgeMs()
+            + "; pendingPlayers=" + status.pendingPlayers();
     }
 
     private static SQLException rejectedData(SQLException failure) {
@@ -114,11 +161,19 @@ public final class PlayerJournal {
     }
     public static void drain() {
         var current = instance; if (current == null) return;
+        var status = current.journal.status();
+        if (status.durable() == 0) return;
+        log("state=DRAINING" + backlog(status));
         long deadline = System.nanoTime() + 60_000_000_000L;
-        while (current.journal.status().durable() != 0 && System.nanoTime() < deadline) {
+        while (status.durable() != 0 && System.nanoTime() < deadline) {
             try { Thread.sleep(25); } catch (InterruptedException stopped) { Thread.currentThread().interrupt(); throw new IllegalStateException("Player drain interrupted"); }
+            status = current.journal.status();
         }
-        if (current.journal.status().durable() != 0) throw new IllegalStateException("Player writes remain durable in the journal; replay required");
+        if (status.durable() != 0) {
+            log("state=DRAIN_TIMEOUT" + backlog(status));
+            throw new IllegalStateException("Player writes remain durable in the journal; replay required");
+        }
+        log("state=DRAIN_COMPLETE" + backlog(status));
     }
     public static synchronized void shutdown() {
         var current = instance; if (current == null) return;

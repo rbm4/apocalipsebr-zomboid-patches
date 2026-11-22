@@ -16,7 +16,7 @@ import java.util.WeakHashMap;
 /** Public linkage boundary used by advice in signed native classes. All extension state belongs to the agent. */
 public final class PostgresRuntime {
     private static volatile PostgresSettings settings;
-    private static PostgresConnections pool;
+    private static volatile PostgresConnections pool;
     private static AccountConnections accounts;
     private static boolean closed;
     private static boolean closing;
@@ -74,6 +74,11 @@ public final class PostgresRuntime {
         if(closed || settings==null || !settings.enabled()) throw new SQLException("PostgreSQL runtime unavailable","08003");
         if(pool==null)pool=new PostgresConnections(settings);
         return pool.borrowTransaction(transactionIsolation);
+    }
+
+    static String poolMetrics() {
+        var current = pool;
+        return current == null ? "; poolMetrics=UNAVAILABLE" : current.metrics();
     }
 
     /** Dedicated dictionary notification session; caller must close it before pool shutdown. */

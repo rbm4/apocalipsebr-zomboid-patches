@@ -58,7 +58,7 @@ public final class PlayerRuntime {
             configured = (root == null ? Path.of(zombie.ZomboidFileSystem.instance.getSaveDir(), "Multiplayer", GameServer.serverName, "postgres-journal") : Path.of(root)).resolve("agent-players").toString();
         }
         set(database, "conn", null); set(database, "charactersToSave", new ConcurrentLinkedQueue<>());
-        PlayerJournal.start(Path.of(configured));
+        PlayerJournal.start(Path.of(configured), PlayerOperations::databaseMetrics);
     }
     public static void nativeCaptured(Object data, boolean serverEncoded) {
         Object bytes = get(data, "buffer");

@@ -8,6 +8,7 @@ import java.util.*;
 /** Agent journal format, separate from unconverted legacy player records. */
 public final class PlayerOperations {
     private static final PlayerDatabase DATABASE = new PlayerDatabase(PostgresRuntime::borrowBackground);
+    static String databaseMetrics() { return DATABASE.mutationMetrics(); }
     record Initial(PlayerDatabase.Candidate candidate, UUID session, PlayerSnapshot.Snapshot snapshot) implements PlayerJournal.ReplayOperation {
         public String kind() { return "agent-player-initial-v1"; }
         public boolean completePlayerState() { return candidate.newLife() != null; }

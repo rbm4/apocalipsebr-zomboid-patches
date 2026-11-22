@@ -30,6 +30,7 @@ class PlayerJournalTest {
     static final class Jdbc {
         volatile boolean online;
         final Set<UUID> receipts = java.util.concurrent.ConcurrentHashMap.newKeySet();
+        final List<UUID> commitOrder = new java.util.concurrent.CopyOnWriteArrayList<>();
         final AtomicInteger writes = new AtomicInteger();
         final AtomicBoolean loseCommit = new AtomicBoolean(true);
         final AtomicReference<SQLException> rejectWrite = new AtomicReference<>();
@@ -52,7 +53,7 @@ class PlayerJournalTest {
                     });
                 }
                 if (m.getName().equals("commit")) {
-                    if (receipt[0] != null) { receipts.add(receipt[0]); if (wrote[0]) writes.incrementAndGet(); receipt[0] = null; wrote[0] = false; if (loseCommit.getAndSet(false)) throw new SQLException("commit acknowledgement lost", "08006"); }
+                    if (receipt[0] != null) { receipts.add(receipt[0]); commitOrder.add(receipt[0]); if (wrote[0]) writes.incrementAndGet(); receipt[0] = null; wrote[0] = false; if (loseCommit.getAndSet(false)) throw new SQLException("commit acknowledgement lost", "08006"); }
                     return null;
                 }
                 if (m.getName().equals("rollback")) { receipt[0] = null; wrote[0] = false; return null; }
@@ -86,9 +87,8 @@ class PlayerJournalTest {
         } finally { PlayerJournal.shutdown(); PostgresRuntime.shutdown(); }
     }
 
-    @Test void duplicateKeyArchivesTheRejectedSaveAndReplaysTheNextSave() throws Exception {
+    @Test void restartArchivesTheRejectedHeadAndCommitsAllDurableSuccessorsInOrder() throws Exception {
         var jdbc = new Jdbc();
-        jdbc.online = true;
         jdbc.loseCommit.set(false);
         var batch = new BatchUpdateException("private bind values", "23505", new int[0]);
         batch.setNextException(new org.postgresql.util.PSQLException(new org.postgresql.util.ServerErrorMessage(
@@ -99,17 +99,22 @@ class PlayerJournalTest {
         PostgresRuntime.installForTest(new PostgresSettings(true, true, "jdbc:postgresql://fixture/unused", 1, 5000, 3000),
             new PostgresConnections(source, () -> { }));
         var operation = snapshot();
-        UUID rejected, successor;
+        UUID rejected, first, second;
         try {
             PlayerJournal.start(directory);
             rejected = PlayerJournal.submit(operation);
-            successor = PlayerJournal.submit(operation);
+            first = PlayerJournal.submit(operation);
+            second = PlayerJournal.submit(operation);
+            PlayerJournal.shutdown();
+            assertTrue(jdbc.receipts.isEmpty());
+            jdbc.online = true;
+            PlayerJournal.start(directory);
             PlayerJournal.drain();
             long deadline = System.nanoTime() + 3_000_000_000L;
             while (!PlayerJournal.readable(operation.playerKey()) && System.nanoTime() < deadline) Thread.sleep(10);
             assertTrue(PlayerJournal.readable(operation.playerKey()));
-            assertEquals(Set.of(successor), jdbc.receipts);
-            assertEquals(1, jdbc.writes.get());
+            assertEquals(List.of(first, second), jdbc.commitOrder);
+            assertEquals(2, jdbc.writes.get());
             assertTrue(Files.isRegularFile(directory.resolve("quarantine").resolve(rejected + ".record")));
         } finally { PlayerJournal.shutdown(); PostgresRuntime.shutdown(); }
         try (var journal = new PersistenceJournal(directory, 1024, value -> { })) {

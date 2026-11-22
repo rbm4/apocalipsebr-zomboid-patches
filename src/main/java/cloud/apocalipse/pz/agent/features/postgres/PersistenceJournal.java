@@ -17,7 +17,7 @@ public final class PersistenceJournal implements AutoCloseable {
         default boolean completePlayerState(){return false;}
     }
     record Entry(UUID id, long capturedAt, Operation operation) implements Serializable {}
-    record Status(int staged, long stagedBytes, long durable, long bytes, long oldestAgeMs) {}
+    record Status(int staged, long stagedBytes, long durable, long bytes, long oldestAgeMs, int pendingPlayers) {}
     private static final int MAGIC=0x41504f31, MAX_RECORD=256*1024*1024;
     private final Path directory;
     private final Consumer<String> log;
@@ -172,7 +172,7 @@ public final class PersistenceJournal implements AutoCloseable {
         try(var channel=FileChannel.open(temporary,CREATE,TRUNCATE_EXISTING,WRITE)){buffer.flip();while(buffer.hasRemaining())channel.write(buffer);channel.force(true);}
         Files.move(temporary,directory.resolve("checkpoint"),StandardCopyOption.ATOMIC_MOVE,StandardCopyOption.REPLACE_EXISTING);
     }
-    synchronized Status status(){long first=oldest!=0?oldest:staging.isEmpty()?0:staging.peekFirst().capturedAt();return new Status(staging.size(),stagedBytes,durable,written-acknowledged,first==0?0:Math.max(0,System.currentTimeMillis()-first));}
+    synchronized Status status(){long first=oldest!=0?oldest:staging.isEmpty()?0:staging.peekFirst().capturedAt();return new Status(staging.size(),stagedBytes,durable,written-acknowledged,first==0?0:Math.max(0,System.currentTimeMillis()-first),pendingPlayers.size());}
     synchronized boolean empty(){return staging.isEmpty()&&durable==0;}
     synchronized boolean pendingPlayer(String key){return pendingPlayers.containsKey(key);}
     synchronized int blockedPlayers(){return 0;}
