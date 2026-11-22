@@ -100,7 +100,7 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String NPC_ARG_APOCBR_NPC_SERVERKEY = "apocbr.npc.serverKey";
     /** NPC engine: supported JVM argument {@code -Dapocbr.npc.zombieControl=...}; legacy-compatible setting. */
     public static final String NPC_ARG_APOCBR_NPC_ZOMBIECONTROL = "apocbr.npc.zombieControl";
-    public static boolean booleanProperty(String name) { return Boolean.parseBoolean(systemProperty(name, "false")); }
+    public static boolean booleanProperty(String name) { return Boolean.parseBoolean(systemProperty(name, "true")); }
 
     public record NpcSettings(boolean enabled, boolean asynchronous) { }
     /** NPC persistence: JVM argument {@code -Dapocbr.npc.journalDirectory=<directory>}; server/world subdirectories are isolated. */
@@ -190,7 +190,7 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String PLAYER_RECONCILE_PROPERTY = "apocbr.postgres.playerRelational.mutations.reconcile";
     /** Player live sampling: {@code -Dapocbr.postgres.playerRelational.mutations.enabled=true}; required for player authority. */
     public static final String PLAYER_MUTATIONS_PROPERTY = "apocbr.postgres.playerRelational.mutations.enabled";
-    /** Player authority: {@code -Dapocbr.postgres.players.enabled=true}; defaults false. */
+    /** Player authority: {@code -Dapocbr.postgres.players.enabled=true}; defaults true. */
     public static final String PLAYER_ENABLED_PROPERTY = "apocbr.postgres.players.enabled";
     /** Player relational authority: {@code -Dapocbr.postgres.playerRelational.enabled=true}; required when player storage is enabled. */
     public static final String PLAYER_RELATIONAL_PROPERTY = "apocbr.postgres.playerRelational.enabled";
@@ -201,7 +201,7 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     /** Player creation: {@code -Dapocbr.postgres.createdPlayerTimeoutMillis=30000}; range 1000..120000. */
     public static final String PLAYER_CREATION_TIMEOUT_PROPERTY = "apocbr.postgres.createdPlayerTimeoutMillis";
 
-    public static boolean playerEnabled() { return Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY, "false")) && Boolean.parseBoolean(systemProperty(PLAYER_ENABLED_PROPERTY, "false")); }
+    public static boolean playerEnabled() { return Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY, "true")) && Boolean.parseBoolean(systemProperty(PLAYER_ENABLED_PROPERTY, "true")); }
     public static boolean playerMutationsEnabled() { return Boolean.parseBoolean(systemProperty(PLAYER_MUTATIONS_PROPERTY, "true")); }
     public static boolean playerRelationalEnabled() { return Boolean.parseBoolean(systemProperty(PLAYER_RELATIONAL_PROPERTY, "true")); }
     public static boolean playerReconcileEnabled() { return Boolean.parseBoolean(systemProperty(PLAYER_RECONCILE_PROPERTY, "true")); }
@@ -224,7 +224,7 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     }
 
     public static DictionarySettings dictionarySettings() {
-        boolean enabled = Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY, "false"))
+        boolean enabled = Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY, "true"))
             && Boolean.parseBoolean(systemProperty(DICTIONARY_ENABLED_PROPERTY, "true"));
         if (!enabled) return new DictionarySettings(false, 0, null, null, 30);
         int server = integerProperty(System.getProperties(), APOCBR_POSTGRES_SERVER_ID_PROPERTY, 0);
@@ -242,13 +242,17 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     }
 
     static PostgresSettings postgresSettings(java.util.Properties properties, Map<String, String> environment) {
-        boolean enabled = Boolean.parseBoolean(properties.getProperty(POSTGRES_ENABLED_PROPERTY, "false"));
+        boolean enabled = Boolean.parseBoolean(properties.getProperty(POSTGRES_ENABLED_PROPERTY, "true"));
         if (!enabled) {
             return new PostgresSettings(false, false, null, 8, 5000, 3000);
         }
         String url = environment.get(POSTGRES_URL_ENVIRONMENT);
         if (url == null || url.isBlank()) url = properties.getProperty(POSTGRES_URL_PROPERTY);
         if (url == null || !url.startsWith("jdbc:postgresql://")) {
+            if (!properties.containsKey(POSTGRES_ENABLED_PROPERTY)
+                && !environment.containsKey(POSTGRES_URL_ENVIRONMENT)) {
+                return new PostgresSettings(false, false, null, 8, 5000, 3000);
+            }
             throw new IllegalArgumentException("PostgreSQL requires a JDBC PostgreSQL URL");
         }
         int size = integerProperty(properties, POSTGRES_POOL_SIZE_PROPERTY, 8);
@@ -367,7 +371,7 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     /** Account workers: JVM argument {@code -Dapocbr.postgres.async.enabled=false}; defaults true with account hooks. */
     public static final String ASYNC_ACCOUNTS_ENABLED_PROPERTY="apocbr.postgres.async.enabled";
     public static boolean asyncAccountsEnabled() {
-        return Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY,"false"))
+        return Boolean.parseBoolean(systemProperty(POSTGRES_ENABLED_PROPERTY,"true"))
             && Boolean.parseBoolean(systemProperty(POSTGRES_ACCOUNTS_ENABLED_PROPERTY,"true"))
             && Boolean.parseBoolean(systemProperty(ASYNC_ACCOUNTS_ENABLED_PROPERTY,"true"));
     }

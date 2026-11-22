@@ -47,7 +47,8 @@ public record ServerHumanDefinition(
 
     /** Opt-in startup guide at the configured Apocalipse location, with JVM overrides. */
     static ServerHumanDefinition configuredGuide() {
-        if (!AgentConfiguration.booleanProperty(AgentConfiguration.NPC_ARG_APOCBR_GUIDE_ENABLED)) return null;
+        if (!Boolean.parseBoolean(AgentConfiguration.systemProperty(
+            AgentConfiguration.NPC_ARG_APOCBR_GUIDE_ENABLED, "false"))) return null;
         String name = AgentConfiguration.systemProperty(AgentConfiguration.NPC_ARG_APOCBR_GUIDE_NAME, "Apocalipse Guide");
         return new ServerHumanDefinition(
             "guide", name, name,

@@ -46,10 +46,13 @@ class AgentConfigurationTest {
     }
 
     @Test
-    void postgresDefaultsToDisabledAndDoesNotRequireCredentials() {
-        var settings = AgentConfiguration.postgresSettings(new Properties(), Map.of());
-        assertFalse(settings.enabled());
-        assertFalse(settings.accountsEnabled());
+    void postgresDefaultsToEnabledAndRequiresAConfiguredUrl() {
+        var defaults = AgentConfiguration.postgresSettings(new Properties(), Map.of());
+        assertFalse(defaults.enabled());
+        Properties explicit = new Properties();
+        explicit.setProperty(AgentConfiguration.POSTGRES_ENABLED_PROPERTY, "true");
+        assertThrows(IllegalArgumentException.class,
+            () -> AgentConfiguration.postgresSettings(explicit, Map.of()));
     }
 
     @Test

@@ -63,7 +63,10 @@ public final class ApocBRNpcStore {
     private long epoch;
     private volatile boolean initialized;
     private String lastIssue="";
-    public static boolean enabled(){return AgentConfiguration.booleanProperty(AgentConfiguration.NPC_ARG_APOCBR_NPC_PERSISTENCE_ENABLED);}
+    public static boolean enabled(){
+        return AgentConfiguration.booleanProperty(AgentConfiguration.NPC_ARG_APOCBR_NPC_PERSISTENCE_ENABLED)
+            && AgentConfiguration.postgresSettings().enabled();
+    }
     public static ApocBRNpcStore current(){return instance;}
     public Set<String> dialogueFlags(DialogueIdentity identity){return dialogueFlags.getOrDefault(identity,Set.of());}
     /** Capture detached facts only; JDBC and journal writes remain on the worker. */

@@ -109,7 +109,8 @@ public final class ServerHumanDialogue {
     private static KahluaTable dialogues() {
         var snapshot=cloud.apocalipse.pz.agent.features.npc.dialogue.HumanDialogueCatalog.current();
         var result=LuaManager.platform.newTable();
-        boolean database=AgentConfiguration.booleanProperty(AgentConfiguration.NPC_ARG_APOCBR_NPC_PERSISTENCE_ENABLED);
+        boolean database=AgentConfiguration.booleanProperty(AgentConfiguration.NPC_ARG_APOCBR_NPC_PERSISTENCE_ENABLED)
+            && AgentConfiguration.postgresSettings().enabled();
         result.rawset("database",database);
         result.rawset("ready",!database || snapshot!=null);
         if(database && snapshot!=null) {

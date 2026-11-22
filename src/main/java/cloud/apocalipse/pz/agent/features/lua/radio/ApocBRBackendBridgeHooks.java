@@ -13,7 +13,7 @@ public final class ApocBRBackendBridgeHooks {
     private ApocBRBackendBridgeHooks() { }
     public static void initialize() {
         if (!GameServer.server || bridge != null
-                || !Boolean.parseBoolean(AgentConfiguration.systemProperty("apocbr.bridge.enabled", "false"))) return;
+                || !Boolean.parseBoolean(AgentConfiguration.systemProperty("apocbr.bridge.enabled", "true"))) return;
         ApocBRBackendBridge created = null;
         ApocBRBackendHttpDelivery delivery = null;
         try {

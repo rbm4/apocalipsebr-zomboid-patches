@@ -11,6 +11,9 @@ public final class NpcHookSmokeMain {
     public static void main(String[] args) throws Exception {
         System.setProperty(cloud.apocalipse.pz.agent.config.AgentConfiguration.NPC_ACTORS_ENABLED_PROPERTY,Boolean.toString(args[0].equals("factory")));
         System.setProperty(cloud.apocalipse.pz.agent.config.AgentConfiguration.NPC_ARG_APOCBR_NPC_PLAYERHITTRACE,"false");
+        System.setProperty(cloud.apocalipse.pz.agent.config.AgentConfiguration.POSTGRES_ENABLED_PROPERTY,"false");
+        System.setProperty(cloud.apocalipse.pz.agent.config.AgentConfiguration.NPC_ARG_APOCBR_NPC_PERSISTENCE_ENABLED,"false");
+        System.setProperty(cloud.apocalipse.pz.agent.config.AgentConfiguration.NPC_ARG_APOCBR_GUIDE_ENABLED,"false");
         zombie.network.GameServer.server = true;
         zombie.network.GameServer.udpEngine = new Object();
         zombie.iso.IsoWorld.instance.currentCell = new zombie.iso.IsoWorld.Cell();

@@ -100,8 +100,8 @@ public final class ApocBREventControl {
     }
 
     public static synchronized void start() {
-        if (!GameServer.server || instance != null || !Boolean.parseBoolean(cloud.apocalipse.pz.agent.config.AgentConfiguration.systemProperty("apocbr.events.enabled","false"))) return;
-        if (!Boolean.parseBoolean(cloud.apocalipse.pz.agent.config.AgentConfiguration.systemProperty("apocbr.postgres.enabled","false"))) { log("POSTGRES_DISABLED; event control disabled"); return; }
+        if (!GameServer.server || instance != null || !Boolean.parseBoolean(cloud.apocalipse.pz.agent.config.AgentConfiguration.systemProperty("apocbr.events.enabled","true"))) return;
+        if (!Boolean.parseBoolean(cloud.apocalipse.pz.agent.config.AgentConfiguration.systemProperty("apocbr.postgres.enabled","true"))) { log("POSTGRES_DISABLED; event control disabled"); return; }
         try {
             var control = new ApocBREventControl(cloud.apocalipse.pz.agent.config.AgentConfiguration.systemProperty("apocbr.events.serverKey", GameServer.serverName),
                 Core.gameSaveWorld, cloud.apocalipse.pz.agent.config.AgentConfiguration.longProperty("apocbr.events.pollMillis", DEFAULT_POLL_MILLIS),

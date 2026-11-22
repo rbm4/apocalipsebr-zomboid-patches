@@ -39,7 +39,7 @@ public final class ApocBRPlayerLogin {
         return GameServer.server && Thread.currentThread()==GameServer.mainThread;
     }
     public static boolean enabled() {
-        return GameServer.server&&Boolean.parseBoolean(AgentConfiguration.systemProperty("apocbr.postgres.enabled","false"))
+        return GameServer.server&&Boolean.parseBoolean(AgentConfiguration.systemProperty("apocbr.postgres.enabled","true"))
             &&Boolean.parseBoolean(AgentConfiguration.systemProperty("apocbr.postgres.loginHistory.enabled","true"));
     }
     /** Called once after GameServer accepts a real player, for either storage mode. */
