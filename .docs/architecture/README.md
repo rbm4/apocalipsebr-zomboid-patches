@@ -51,7 +51,7 @@ configuration and save; it does not create an isolated test world.
 - Declare JVM properties and participating environment variables in
   `AgentConfiguration`; do not add direct feature-site property lookups.
 - The pipeline disables Byte Buddy rebase and class format changes by default.
-  The opt-in thermal clothing port uses an explicit first-definition ASM field
+  The thermal clothing port uses an explicit first-definition ASM field
   on `Thermoregulator` for per-instance ownership. That field keeps equipment
   references bounded to their regulator's lifetime. See [server optimization ports](../features/server-optimizations.md).
 

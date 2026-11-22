@@ -1,9 +1,9 @@
 # Server optimization ports
 
-These five opt-in modules run against the original Project Zomboid 42.22.2 JAR.
-Each is registered directly in `AgentModules`. To enable a port, pass
-`-D<property>=true` at JVM startup. Restart with that property omitted or set to
-`false` to restore vanilla execution at its hook sites.
+These five modules run by default against the original Project Zomboid 42.22.2
+JAR. Each is registered directly in `AgentModules`. Pass
+`-D<property>=false` at JVM startup to disable a port and restore vanilla
+execution at its hook sites.
 
 | Port | JVM property | Vanilla entry point and scope |
 | --- | --- | --- |
@@ -55,7 +55,8 @@ mvn "-Djar.forceCreation=true" "-Dpz.game.jar=Z:/SteamLibrary/steamapps/common/P
 
 The script launches two isolated JVMs with the packaged production agent,
 original game classes, and the existing test-only hook observer. It validates
-the declared hooks with all five switches off and on, including composition
+the declared hooks with default settings and with all five switches set to
+`false`, including composition
 with existing Lua event timing. The same fixtures execute the game methods in
 both modes. The culling fixture reads zero versus two candidates for a
 zero-quota connection, and one versus three after quota is filled. The thermal
@@ -70,5 +71,5 @@ It also checks optimization counter totals and snapshot resets.
 The fixture leaves class-origin and hook evidence, hashes, and console logs
 under `target/optimization-validation/run-*`. It does not launch
 `GameServer.main`. Deployment, a connected-client session, and representative
-live-server performance measurements remain pending. Enable ports individually
+live-server performance measurements remain pending. Toggle ports individually
 when measuring production impact.

@@ -68,9 +68,12 @@ function Invoke-OptimizationFixture([string]$State) {
         '-cp', ($classpath + [IO.Path]::PathSeparator + $classes), $smokeMain,
         $original, $State, $cache, $evidence
     )
-    $switches = @('zombieCulling', 'luaDispatch', 'playerNearVehicle', 'zombiePacket', 'thermalClothing') |
-        ForEach-Object { "-Dapocbr.optimization.$_.enabled=$State" }
-    $start.Arguments = (($switches + $arguments) | ForEach-Object { '"' + $_ + '"' }) -join ' '
+    if ($State -eq 'false') {
+        $switches = @('zombieCulling', 'luaDispatch', 'playerNearVehicle', 'zombiePacket', 'thermalClothing') |
+            ForEach-Object { "-Dapocbr.optimization.$_.enabled=false" }
+        $arguments = $switches + $arguments
+    }
+    $start.Arguments = ($arguments | ForEach-Object { '"' + $_ + '"' }) -join ' '
 
     $child = [Diagnostics.Process]::new()
     $child.StartInfo = $start
@@ -101,4 +104,4 @@ $optimizedPackets = @(Invoke-OptimizationFixture 'true')
 if ($vanillaPackets.Count -ne 2 -or ($vanillaPackets -join '|') -ne ($optimizedPackets -join '|')) {
     throw "Serialized zombie packets differ. See $run"
 }
-Write-Output 'Original-JAR optimization fixtures passed with all five switches off and on. Zombie packet bytes match.'
+Write-Output 'Original-JAR optimization fixtures passed with defaults and with all five explicit opt-outs. Zombie packet bytes match.'

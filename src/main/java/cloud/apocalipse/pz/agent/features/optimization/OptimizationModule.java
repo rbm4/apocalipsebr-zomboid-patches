@@ -20,6 +20,6 @@ public abstract class OptimizationModule implements AgentModule {
 
     @Override
     public final String disabledReason() {
-        return AgentConfiguration.booleanProperty(property) ? null : "Enable with -D" + property + "=true";
+        return AgentConfiguration.optimizationEnabled(property) ? null : "Disabled by -D" + property;
     }
 }
