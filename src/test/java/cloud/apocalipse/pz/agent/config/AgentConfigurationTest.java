@@ -38,6 +38,20 @@ class AgentConfigurationTest {
     }
 
     @Test
+    void npcEngineDefaultsToEnabledAndCanBeDisabledExplicitly() {
+        String previous = System.getProperty(AgentConfiguration.NPC_ENABLED_PROPERTY);
+        try {
+            System.clearProperty(AgentConfiguration.NPC_ENABLED_PROPERTY);
+            assertTrue(AgentConfiguration.npcSettings().enabled());
+            System.setProperty(AgentConfiguration.NPC_ENABLED_PROPERTY, "false");
+            assertFalse(AgentConfiguration.npcSettings().enabled());
+        } finally {
+            if (previous == null) System.clearProperty(AgentConfiguration.NPC_ENABLED_PROPERTY);
+            else System.setProperty(AgentConfiguration.NPC_ENABLED_PROPERTY, previous);
+        }
+    }
+
+    @Test
     void postgresEnvironmentOverridesUrlAndLoginBudgetsAreClamped() {
         Properties properties = new Properties();
         properties.setProperty(AgentConfiguration.POSTGRES_ENABLED_PROPERTY, "true");

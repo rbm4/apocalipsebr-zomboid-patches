@@ -88,12 +88,27 @@ class PlayerHookTest {
         for (String path : System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")).split(java.util.regex.Pattern.quote(File.pathSeparator)))
             if (!Path.of(path).toAbsolutePath().normalize().equals(Path.of("target/test-classes").toAbsolutePath().normalize())) paths.add(path);
         Path output = Path.of("target/player-original-smoke.log");
+        Path gameJar = Path.of(System.getProperty("pz.game.jar", "Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar")).toAbsolutePath().normalize();
+        Path gameInstall;
+        String configuredInstall = System.getProperty("pz.game.install");
+        if (configuredInstall == null || configuredInstall.isBlank()) configuredInstall = System.getProperty("pz.it.home");
+        if (configuredInstall != null && !configuredInstall.isBlank()) {
+            gameInstall = Path.of(configuredInstall).toAbsolutePath().normalize();
+        } else {
+            Path jarDirectory = gameJar.getParent();
+            gameInstall = Files.isDirectory(jarDirectory.resolve("media"))
+                ? jarDirectory
+                : jarDirectory.getParent();
+            if (!Files.isDirectory(gameInstall.resolve("media"))) {
+                throw new AssertionError("Game installation media directory required; set -Dpz.game.install or -Dpz.it.home");
+            }
+        }
         var child = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin/java").toString(), "-Xverify:all", "-javaagent:" + agent,
             "-Dapocbr.postgres.enabled=true", "-Dapocbr.postgres.url=jdbc:postgresql://localhost/fixture", "-Dapocbr.postgres.players.enabled=true",
             "-Dapocbr.postgres.serverId=1", "-Dapocbr.postgres.playerRelational.mutations.sampleMs=1000",
             "-Dapocbr.postgres.playerRelational.mutations.reconcileMs=60000",
             "-cp", String.join(File.pathSeparator, paths), name, directory.resolve("cache").toString())
-            .directory(new File(System.getProperty("pz.game.jar", "Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar")).getParentFile())
+            .directory(gameInstall.toFile())
             .redirectErrorStream(true).redirectOutput(output.toFile()).start();
         try { assertTrue(child.waitFor(45, TimeUnit.SECONDS), "player fixture timed out"); assertEquals(0, child.exitValue(), new String(Files.readAllBytes(output), java.nio.charset.StandardCharsets.UTF_8)); }
         finally { if (child.isAlive()) child.destroyForcibly(); }

@@ -28,7 +28,7 @@ public final class NpcModule implements AgentModule {
     @Override public String name() { return "npc-engine"; }
     @Override public String disabledReason() {
         if (settings == null) throw new IllegalStateException("NPC module not initialized");
-        return settings.enabled() ? null : "NPC engine disabled; enable with -Dapocbr.npc.enabled=true";
+        return settings.enabled() ? null : "NPC engine disabled with -Dapocbr.npc.enabled=false";
     }
     @Override public List<HookCheck> hookChecks() {
         String runtime = NpcRuntime.class.getName();

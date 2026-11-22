@@ -51,13 +51,13 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
         return Boolean.parseBoolean(systemProperty(FORCE_JAVA_PATHFINDING_PROPERTY, "true"));
     }
 
-    /** NPC engine: JVM argument {@code -Dapocbr.npc.enabled=true}; actor/planner hooks, default false. */
+    /** NPC engine: JVM argument {@code -Dapocbr.npc.enabled=true}; actor/planner hooks, default true. */
     public static final String NPC_ENABLED_PROPERTY = "apocbr.npc.enabled";
     /** NPC engine: JVM argument {@code -Dapocbr.npc.async=false}; default true, detached planning only. */
     public static final String NPC_ASYNC_PROPERTY = "apocbr.npc.async";
 
     public static NpcSettings npcSettings() {
-        return new NpcSettings(Boolean.parseBoolean(systemProperty(NPC_ENABLED_PROPERTY, "false")),
+        return new NpcSettings(Boolean.parseBoolean(systemProperty(NPC_ENABLED_PROPERTY, "true")),
             Boolean.parseBoolean(systemProperty(NPC_ASYNC_PROPERTY, "true")));
     }
 
