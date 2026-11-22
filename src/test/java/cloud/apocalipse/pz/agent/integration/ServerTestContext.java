@@ -76,6 +76,7 @@ public final class ServerTestContext implements AutoCloseable {
         int port = availablePort();
         int udpPort;
         do { udpPort = availablePort(); } while (udpPort == port);
+        String streamingSeed = Boolean.getBoolean("pz.it.streaming") ? "ApocBRStreamingFixture42" : "";
         Files.writeString(config.resolve("agent-integration.ini"), """
             Public=false
             UPnP=false
@@ -88,7 +89,7 @@ public final class ServerTestContext implements AutoCloseable {
             RCONPassword=
             Map=Muldraugh, KY
             MaxPlayers=2
-            """ + "DefaultPort=" + port + "\nUDPPort=" + udpPort + "\n");
+            """ + "DefaultPort=" + port + "\nUDPPort=" + udpPort + "\nSeed=" + streamingSeed + "\n");
 
         receiver = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         receiver.createContext("/api/v1/telemetry", exchange -> {
@@ -120,8 +121,8 @@ public final class ServerTestContext implements AutoCloseable {
             "--enable-native-access=ALL-UNNAMED", "--add-exports=java.base/jdk.internal.misc=ALL-UNNAMED",
             "-Djava.awt.headless=true", "-Dpz.server.gui.textures=false", "-Dzomboid.steam=0",
             "-Djava.library.path=" + nativePath));
-        IntegrationLaunchSettings.properties(System.getProperties(), directory, endpoint)
-            .forEach((key, value) -> command.add("-D" + key + "=" + value));
+        var settings = IntegrationLaunchSettings.properties(System.getProperties(), directory, endpoint);
+        settings.forEach((key, value) -> command.add("-D" + key + "=" + value));
         command.addAll(List.of(
             "-javaagent:" + agent, "-javaagent:" + probe + "=" + directory.resolve("evidence"),
             "-cp", jarClasspath(probe), PROBE,
@@ -137,6 +138,13 @@ public final class ServerTestContext implements AutoCloseable {
         manifest.setProperty("native.path", nativePath);
         manifest.setProperty("server.port", Integer.toString(port));
         manifest.setProperty("server.udpPort", Integer.toString(udpPort));
+        if (!streamingSeed.isEmpty()) {
+            manifest.setProperty("streaming.fixture", "muldraugh-165-155-2x2-v1");
+            manifest.setProperty("streaming.seed", streamingSeed);
+            settings.forEach((key, value) -> {
+                if (IntegrationLaunchSettings.isOptimizationSwitch(key)) manifest.setProperty(key, value);
+            });
+        }
         try (var out = Files.newOutputStream(directory.resolve("runtime.properties"))) {
             manifest.store(out, "Isolated original-JAR server integration runtime");
         }

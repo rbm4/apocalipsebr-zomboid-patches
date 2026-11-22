@@ -2,6 +2,7 @@ package cloud.apocalipse.pz.agent.integration;
 
 import cloud.apocalipse.pz.agent.AgentModules;
 import cloud.apocalipse.pz.agent.HookCheck;
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import java.util.HashSet;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -72,6 +73,25 @@ class IntegrationInfrastructureTest {
         assertFalse(child.containsKey("APOCBR_UNRELATED"));
     }
 
+    @Test void streamingForwardsOnlyBooleanOptimizationSwitchesInIsolation() {
+        var runner = new java.util.Properties();
+        String flag = AgentConfiguration.SERVER_LOS_OPTIMIZATION;
+        runner.setProperty("pz.it.streaming", "true");
+        runner.setProperty(flag, "false");
+        runner.setProperty(AgentConfiguration.POSTGRES_ENABLED_PROPERTY, "true");
+        var run = java.nio.file.Path.of("target/fixture");
+        var settings = IntegrationLaunchSettings.properties(runner, run, "http://127.0.0.1:1234");
+        assertEquals("true", settings.get("pz.it.streaming"));
+        assertEquals("false", settings.get(flag));
+        assertEquals("false", settings.get(AgentConfiguration.POSTGRES_ENABLED_PROPERTY));
+        runner.setProperty(flag, "invalid");
+        assertThrows(IllegalArgumentException.class, () ->
+            IntegrationLaunchSettings.properties(runner, run, "http://127.0.0.1:1234"));
+        runner.setProperty(flag, "true");
+        runner.setProperty(IntegrationLaunchSettings.TASK_CONFIGURATION, "true");
+        assertThrows(IllegalArgumentException.class, () ->
+            IntegrationLaunchSettings.properties(runner, run, "http://127.0.0.1:1234"));
+    }
     @Test void everyRegisteredModuleHasUnambiguousInstallationChecks() {
         var names = new HashSet<String>();
         for (var module : AgentModules.all()) {

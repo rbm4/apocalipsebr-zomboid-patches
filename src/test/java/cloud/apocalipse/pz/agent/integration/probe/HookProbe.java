@@ -12,7 +12,7 @@ import net.bytebuddy.jar.asm.ClassVisitor;
 import net.bytebuddy.jar.asm.MethodVisitor;
 import net.bytebuddy.jar.asm.Opcodes;
 
-/** Test-only second agent: observes bytes after the production agent without changing them. */
+/** Test-only observer with an optional, isolated streaming scenario. */
 public final class HookProbe {
     public static void premain(String evidenceDirectory, Instrumentation instrumentation) {
         Path directory = Path.of(evidenceDirectory);
@@ -53,6 +53,7 @@ public final class HookProbe {
                 return null;
             }
         });
+        if (Boolean.getBoolean("pz.it.streaming")) StreamingProbe.install(directory, instrumentation);
     }
 
     public static boolean isGameClass(String internalName) {

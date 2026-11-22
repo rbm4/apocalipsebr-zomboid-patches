@@ -1,1 +1,2 @@
 cloud.apocalipse.pz.agent.integration.assertions.HookInstallationAssertion
+cloud.apocalipse.pz.agent.integration.assertions.StreamingLifecycleAssertion

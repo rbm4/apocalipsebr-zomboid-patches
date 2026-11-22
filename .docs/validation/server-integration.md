@@ -160,6 +160,60 @@ restored; Java option injection remains removed. The game installation is
 used for runtime resources; ordinary game save/config output is redirected via
 `-cachedir`. The fixture does not deploy patches or alter the original archive.
 
+## Playerless streaming measurements
+
+Set `-Dpz.it.streaming=true` to run the streaming assertion on the same
+isolated child as the startup checks. The fixture uses a fixed world-generation
+seed and four adjacent 64×64-tile server cells in Muldraugh. It requires an empty
+server. Each of six cycles requests those cells, renews relevance for three
+fully loaded simulation frames, withdraws the requests, and waits until the
+cells have detached and the unload saves have drained. The first cycle warms
+the workload and remains in the raw evidence. The remaining five contribute
+to the reported median.
+
+The test-only agent advises the original `ServerMap.preupdate()` and
+`postupdate()` boundaries. After preupdate clears frame relevance, the driver
+calls the same native `loadOrKeepRelevent(int,int)` method as the Lua streaming
+bridge. It leaves disk load, worker recalc, cell integration, unload, chunk
+save and release to the engine. It checks that every requested cell exposes
+chunks, stays loaded during renewal, disappears after withdrawal, and that the
+native integration, detach, save enqueue, worker save and release counts agree.
+The request is a file in the run directory. The control code and its advice
+live in the probe JAR and run only when explicitly enabled.
+
+Use matched runs to evaluate a single optimization. The following example uses
+the existing LOS worker implementation because cell integration and unload call
+the LOS suspend/resume barrier:
+
+```powershell
+$env:JAVA_HOME = (Resolve-Path ./jdk).Path
+mvn verify -Pserver-integration "-Dpz.it.streaming=true" "-Dapocbr.optimization.serverLos.enabled=false"
+# Use the baseline directory printed by the first run.
+$streamingBaseline = "target/server-integration/run-..."
+mvn verify -Pserver-integration "-Dpz.it.streaming=true" "-Dapocbr.optimization.serverLos.enabled=true" "-Dpz.it.streamingBaseline=$streamingBaseline"
+```
+
+The isolated streaming fixture forwards explicit boolean
+`apocbr.optimization.<feature>.enabled` switches and records them in
+`runtime.properties`. External service settings stay isolated. The comparison
+checks the original game hash, seed, fixture ID, phase coverage and measured
+chunk workload. The agent hash is recorded for each run so the same procedure
+can also compare two builds. Change one optimization at a time and use identical
+game files, JVM settings and host conditions. Repeat runs in alternating order
+before attributing modest deltas to a patch.
+
+`streaming.csv` contains cycle numbers, warmup markers, work counts and phase
+calls, total nanoseconds and maximum call duration. The test prints the median
+cycle total and maximum individual call duration, with baseline deltas when
+requested. Phase timers are inclusive and can overlap. Map pre/post timers cover
+all calls while a cycle is active, so their totals also respond to how many
+frames a load or save takes. The three wall-time rows end at the server loop's
+first observation of loaded, detached and save-drained state. They include
+frame scheduling and wait time. The two cell handoff rows include queue wait,
+background loading or recalculation, and the next server-thread handoff.
+The save worker row separately measures worker execution. These timings are diagnostic, with correctness assertions as the
+regression gate. The empty fixture covers native streaming without player
+relevance, client downloads or live player LOS demand.
 ## Automatically discovered hook checks
 
 `AgentModules.all()` is the single production module registry. `AgentModule`

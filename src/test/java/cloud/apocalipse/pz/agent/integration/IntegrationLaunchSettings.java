@@ -14,10 +14,15 @@ final class IntegrationLaunchSettings {
 
     static Map<String, String> properties(Properties runner, Path run, String localEndpoint) {
         Map<String, String> settings = new LinkedHashMap<>();
+        boolean streaming = Boolean.parseBoolean(runner.getProperty("pz.it.streaming", "false"));
+        boolean configured = Boolean.parseBoolean(runner.getProperty(TASK_CONFIGURATION, "false"));
+        if (streaming && configured) {
+            throw new IllegalArgumentException("The streaming scenario requires the isolated server fixture");
+        }
         settings.put(AgentConfiguration.PROFILE_PROPERTY, "local");
         settings.put(AgentConfiguration.POSTGRES_ENABLED_PROPERTY, "false");
         settings.put(AgentConfiguration.RESTART_ENABLED_PROPERTY, "false");
-        if (Boolean.parseBoolean(runner.getProperty(TASK_CONFIGURATION, "false"))) {
+        if (configured) {
             runner.stringPropertyNames().stream().filter(key -> key.startsWith("apocbr.")).sorted()
                 .forEach(key -> settings.put(key, runner.getProperty(key)));
         } else {
@@ -25,9 +30,24 @@ final class IntegrationLaunchSettings {
             settings.put(AgentConfiguration.TELEMETRY_API_KEY_PROPERTY, "integration-only");
             settings.put(AgentConfiguration.RESTART_URL_PROPERTY, localEndpoint + "/restart");
         }
+        if (streaming) {
+            settings.put("pz.it.streaming", "true");
+            runner.stringPropertyNames().stream().filter(IntegrationLaunchSettings::isOptimizationSwitch).sorted()
+                .forEach(key -> {
+                    String value = runner.getProperty(key);
+                    if (!value.equals("true") && !value.equals("false")) {
+                        throw new IllegalArgumentException("Expected true or false for " + key);
+                    }
+                    settings.put(key, value);
+                });
+        }
         // Journal/replay state is owned by this run even when task service settings are reused.
         settings.put(AgentConfiguration.POSTGRES_JOURNAL_DIRECTORY_PROPERTY, run.resolve("journal").toString());
         return settings;
+    }
+
+    static boolean isOptimizationSwitch(String key) {
+        return key.matches("apocbr\\.optimization\\.[A-Za-z][A-Za-z0-9]*\\.enabled");
     }
 
     static void configureEnvironment(Map<String, String> child, Map<String, String> runner, Properties properties) {
