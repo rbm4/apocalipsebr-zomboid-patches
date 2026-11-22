@@ -16,8 +16,8 @@ The [feature contract](../features/postgresql.md) tracks implementation and gaps
 
 | Area | Status | Next bounded decision |
 | --- | --- | --- |
-| Agent foundation and Workshop hook | Existing implementation | Validate the new original-JAR launch in the intended runtime. |
-| Basic telemetry | Partial implementation | Preserve measured semantics as individual features add phases/counters. |
+| [Workshop check and restart hook](../features/server-lag-diagnostics.md) | Asynchronous query and continuation hooks verified against the original JAR and exercised with a Steam fixture | Validate actual query and restart behavior on a Steam-enabled dedicated server. |
+| [Server telemetry](../features/server-lag-diagnostics.md) | Slow-tick diagnostics and method-level phase timers wired. Legacy inner-loop instrumentation remains partial. | Capture a representative lag spike and port remaining counters at their owning feature boundaries. |
 | [First five optimization ports](../features/server-optimizations.md) | Enabled by default with original-JAR hooks and packaged behavior fixtures validated | Measure under a representative dedicated-server workload. |
 | [Server simulation, LOS and zombie transmission](../features/server-simulation-hotspots.md) | Enabled by default for the original 42.22.2 JAR | Validate gameplay and measure live-server work under representative load. |
 | [Java pathfinding lock](../features/java-pathfinding.md) | Original-JAR hooks implemented and verified in a forked JVM | Exercise routing and graceful shutdown in a running game. |

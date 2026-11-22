@@ -9,7 +9,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.LongAdder;
 
-/** Captures a detached schema-3 payload on the server thread and delivers it asynchronously. */
+/** Captures detached window data on the server thread and encodes and delivers it asynchronously. */
 public final class TelemetrySnapshotReporter {
     private static final long INTERVAL_NANOS = Duration.ofSeconds(30).toNanos();
     private static final int MAX_ERROR_DETAIL_LENGTH = 180;
@@ -40,6 +40,7 @@ public final class TelemetrySnapshotReporter {
 
         lastSnapshotNanos = System.nanoTime();
         nextSnapshotNanos = lastSnapshotNanos + INTERVAL_NANOS;
+        TelemetryJvmSnapshot.baseline();
         System.out.println("[ApocBR-Agent][Telemetry] Schema-3 delivery enabled; snapshots every 30 seconds.");
     }
 
@@ -59,10 +60,10 @@ public final class TelemetrySnapshotReporter {
         long intervalMillis = Math.max(1L, TimeUnit.NANOSECONDS.toMillis(nowNanos - lastSnapshotNanos));
         long currentSequence = ++sequence;
         long droppedCount = dropped.sumThenReset();
-        String payload;
+        Snapshot snapshot;
         try {
             int playersOnline = TelemetryWorldSnapshot.onlinePlayers();
-            Integer activeZombieCount = TelemetryWorldSnapshot.activeZombieCount();
+            Map<String, Object> world = TelemetryWorldSnapshot.capture();
             Map<String, TelemetryRegistry.EventSnapshot> events = TelemetryRegistry.snapshotAndReset();
             TelemetryRegistry.TickSnapshot ticks = TelemetryRegistry.snapshotTicksAndReset();
             TelemetryRegistry.LoopSnapshot loops = TelemetryRegistry.snapshotLoopsAndReset();
@@ -72,7 +73,7 @@ public final class TelemetrySnapshotReporter {
             if (gameVersion == null) {
                 gameVersion = TelemetryWorldSnapshot.gameVersion();
             }
-            payload = TelemetrySnapshotPayload.encode(
+            snapshot = new Snapshot(
                 gameVersion,
                 intervalMillis,
                 currentSequence,
@@ -81,9 +82,12 @@ public final class TelemetrySnapshotReporter {
                 droppedCount,
                 ticks,
                 loops,
-                activeZombieCount,
+                world,
                 events,
-                OptimizationTelemetry.snapshotAndReset()
+                OptimizationTelemetry.snapshotAndReset(),
+                TelemetryJvmSnapshot.capture(),
+                TickDiagnostics.snapshotAndReset(),
+                AgentConfiguration.booleanProperty(AgentConfiguration.TELEMETRY_LUA_PROPERTY)
             );
         } catch (RuntimeException invalidSnapshot) {
             dropped.increment();
@@ -97,7 +101,7 @@ public final class TelemetrySnapshotReporter {
         nextSnapshotNanos = nowNanos + INTERVAL_NANOS;
         try {
             Thread.ofVirtual().name("ApocBR-Telemetry-HTTP").inheritInheritableThreadLocals(false)
-                .start(() -> deliver(current, payload));
+                .start(() -> deliver(current, snapshot));
         } catch (RuntimeException workerFailure) {
             dropped.increment();
             IN_FLIGHT.set(false);
@@ -105,9 +109,9 @@ public final class TelemetrySnapshotReporter {
         }
     }
 
-    private static void deliver(TelemetryHttpClient delivery, String payload) {
+    private static void deliver(TelemetryHttpClient delivery, Snapshot snapshot) {
         try {
-            delivery.post(payload);
+            delivery.post(snapshot.encode());
             System.out.println("[ApocBR-Agent][Telemetry] Snapshot accepted by API.");
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
@@ -118,8 +122,22 @@ public final class TelemetrySnapshotReporter {
             System.err.println(
                 "[ApocBR-Agent][Telemetry] HTTP delivery failed: " + formatDeliveryFailure(failure)
             );
+        } catch (RuntimeException invalidSnapshot) {
+            dropped.increment();
+            System.err.println("[ApocBR-Agent][Telemetry] Snapshot encoding failed.");
         } finally {
             IN_FLIGHT.set(false);
+        }
+    }
+
+    private record Snapshot(String gameVersion, long intervalMillis, long sequence, long nowMillis,
+            int playersOnline, long droppedCount, TelemetryRegistry.TickSnapshot ticks,
+            TelemetryRegistry.LoopSnapshot loops, Map<String, Object> world,
+            Map<String, TelemetryRegistry.EventSnapshot> events, OptimizationTelemetry.Snapshot optimizations,
+            Map<String, Object> jvm, TickDiagnostics.Report diagnostics, boolean callbackTiming) {
+        String encode() {
+            return TelemetrySnapshotPayload.encode(gameVersion, intervalMillis, sequence, nowMillis,
+                playersOnline, droppedCount, ticks, loops, world, events, optimizations, jvm, diagnostics, callbackTiming);
         }
     }
 

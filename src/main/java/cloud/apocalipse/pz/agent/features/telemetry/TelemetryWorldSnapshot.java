@@ -5,6 +5,8 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.Collection;
 import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.TreeMap;
 
 /** Reads the current-cell zombie gauge without linking the agent to game classes. */
 final class TelemetryWorldSnapshot {
@@ -75,5 +77,39 @@ final class TelemetryWorldSnapshot {
         } catch (InvocationTargetException failure) {
             throw new IllegalStateException("IsoCell.getZombieList failed during telemetry capture", failure.getCause());
         }
+    }
+
+    static Map<String, Object> capture() {
+        Map<String, Object> world = new LinkedHashMap<>();
+        Integer zombies = activeZombieCount();
+        if (zombies != null) world.put("zombies", zombies);
+        try {
+            Class<?> mapType = Class.forName("zombie.network.ServerMap");
+            Object map = mapType.getField("instance").get(null);
+            if (map != null) {
+                world.put("loadedCells", ((Collection<?>) mapType.getField("loadedCells").get(map)).size());
+                Field pending = mapType.getDeclaredField("toLoad");
+                if (pending.trySetAccessible()) world.put("pendingCells", ((Collection<?>) pending.get(map)).size());
+            }
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            // Map gauges are optional on an incompatible runtime.
+        }
+        try {
+            Class<?> worldType = Class.forName("zombie.iso.IsoWorld");
+            Object instance = worldType.getField("instance").get(null);
+            Object cell = instance == null ? null : worldType.getField("currentCell").get(instance);
+            if (cell != null) {
+                Collection<?> objects = (Collection<?>) cell.getClass().getMethod("getObjectList").invoke(cell);
+                Map<String, Integer> classes = new TreeMap<>();
+                for (Object object : objects) {
+                    if (object != null) classes.merge(object.getClass().getName(), 1, Integer::sum);
+                }
+                world.put("movingObjects", objects.size());
+                world.put("movingObjectsByClass", classes);
+            }
+        } catch (ReflectiveOperationException | LinkageError ignored) {
+            // Loaded-object gauges are optional on an incompatible runtime.
+        }
+        return world;
     }
 }

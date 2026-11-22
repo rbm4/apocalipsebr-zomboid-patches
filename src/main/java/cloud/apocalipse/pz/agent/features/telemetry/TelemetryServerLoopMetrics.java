@@ -36,6 +36,7 @@ public final class TelemetryServerLoopMetrics {
         Iteration iteration = CURRENT.get();
         iteration.startedAtNanos = startedAtNanos;
         iteration.active = true;
+        TickDiagnostics.begin(startedAtNanos);
     }
 
     public static void recordVanillaTick() {
@@ -46,7 +47,9 @@ public final class TelemetryServerLoopMetrics {
         long endedAtNanos = System.nanoTime();
         Iteration iteration = CURRENT.get();
         if (iteration.active) {
-            TelemetryRegistry.recordTick(endedAtNanos - iteration.startedAtNanos);
+            long nanos = endedAtNanos - iteration.startedAtNanos;
+            TelemetryRegistry.recordTick(nanos);
+            TickDiagnostics.recordTick(nanos);
         }
     }
 
@@ -77,6 +80,7 @@ public final class TelemetryServerLoopMetrics {
 
         if (!(legacyTickAnchor && legacyLoopAnchor)) {
             CURRENT.get().active = false;
+            TickDiagnostics.end();
         }
         TelemetryRegistry.recordLoop(durationNanos);
         TelemetrySnapshotReporter.onServerLoop();
@@ -84,6 +88,7 @@ public final class TelemetryServerLoopMetrics {
 
     private static void finish(Iteration iteration, long durationNanos) {
         iteration.active = false;
+        TickDiagnostics.end();
         TelemetryRegistry.recordLoop(durationNanos);
         TelemetrySnapshotReporter.onServerLoop();
     }

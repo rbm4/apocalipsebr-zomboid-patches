@@ -80,7 +80,8 @@ class IntegrationInfrastructureTest {
             var ids = new HashSet<String>();
             for (var check : module.hookChecks()) {
                 assertTrue(ids.add(check.id()), "Duplicate hook id in " + module.name());
-                assertTrue(check.targetClass().startsWith("zombie."), "Expected original game class");
+                assertTrue(cloud.apocalipse.pz.agent.integration.probe.HookProbe
+                    .isGameClass(check.targetClass().replace('.', '/')), "Expected original game class");
                 assertTrue(check.helperClass().startsWith("cloud.apocalipse.pz.agent."));
             }
         }

@@ -12,6 +12,7 @@ import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Consumer;
 
 /** One FIFO lane. Each accepted request holds its reservation until Lua consumes the result. */
 final class EntityWorker implements AutoCloseable {
@@ -48,12 +49,22 @@ final class EntityWorker implements AutoCloseable {
     }
 
     synchronized Map<String, Object> submit(boolean mutates, Operation operation) {
+        return submit(mutates, operation, result -> {});
+    }
+
+    synchronized Map<String, Object> submit(
+            boolean mutates, Operation operation, Consumer<Map<String, Object>> afterTransaction) {
         if (!available()) return Map.of("accepted", false, "status", "UNAVAILABLE");
         if (outstanding >= LIMIT) return Map.of("accepted", false, "status", "BUSY");
         String id = Long.toString(++sequence);
         executor.execute(
                 () -> {
                     Map<String, Object> result = new LinkedHashMap<>(execute(mutates, operation));
+                    try {
+                        afterTransaction.accept(result);
+                    } catch (RuntimeException failure) {
+                        result = new LinkedHashMap<>(status("INVALID_DATA"));
+                    }
                     result.put("id", id);
                     completed.add(Map.copyOf(result));
                 });

@@ -117,6 +117,10 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String TELEMETRY_API_KEY_PROPERTY = "apocbr.telemetry.apiKey";
     /** JVM argument {@code -Dapocbr.telemetry.gameVersion}; overrides the telemetry game-version label. */
     public static final String TELEMETRY_GAME_VERSION_PROPERTY = "apocbr.telemetry.gameVersion";
+    /** Callback telemetry: JVM argument {@code -Dapocbr.telemetry.lua.enabled=false} disables Kahlua attribution. */
+    public static final String TELEMETRY_LUA_PROPERTY = "apocbr.telemetry.lua.enabled";
+    /** Workshop checks: JVM argument {@code -Dapocbr.workshop.asyncCheck.enabled=false} restores vanilla checking. */
+    public static final String WORKSHOP_ASYNC_CHECK_PROPERTY = "apocbr.workshop.asyncCheck.enabled";
     /** JVM argument {@code -Dapocbr.restart.enabled}; overrides the YAML restart-notifier setting. */
     public static final String RESTART_ENABLED_PROPERTY = "apocbr.restart.enabled";
     /** JVM argument {@code -Dapocbr.restart.apiKey}; supplies the restart API credential. */

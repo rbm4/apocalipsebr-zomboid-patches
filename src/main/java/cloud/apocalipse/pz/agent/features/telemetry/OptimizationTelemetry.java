@@ -42,6 +42,63 @@ public final class OptimizationTelemetry {
     }
 
     public enum Phase {
+        INCOMING("network", "incoming"),
+        WORKSHOP_CHECK("workshop", "check"),
+        MAP_PRE("map", "preupdate"),
+        MAP_POST("map", "postupdate"),
+        MAP_SAVE("map", "saveAll"),
+        MAP_CELL_LOAD("map", "cell", "integrate"),
+        MAP_CELL_UNLOAD("map", "cell", "unload"),
+        MAP_CELL_UPDATE("map", "cell", "update"),
+        MAP_CELL_VEHICLES("map", "cell", "loadVehicles"),
+        RCON("rcon", "update"),
+        COLLISION_STATE("collision", "updateGameState"),
+        SIMULATION("simulation", "update"),
+        VEHICLES("vehicles", "update"),
+        DOWNLOADS("players", "relevanceAndDownloads", "downloadUpdate"),
+        BACKUP("backup", "onPeriod"),
+        TRADING("world", "socialSystems", "trading"),
+        WAR("world", "socialSystems", "war"),
+        SAFEHOUSE("world", "socialSystems", "safehouse"),
+        NETWORK_PLAYERS("network", "players", "update"),
+        WORLD_MAP("world", "asyncAndMap", "map"),
+        ASYNC_FILES("world", "asyncAndMap", "files"),
+        STEAM_PUMP("workshop", "steamPump"),
+        WORLD("simulation", "world"),
+        CELL("simulation", "cell"),
+        MOVING("simulation", "movingObjects", "update"),
+        MAP_SAVE_COMPLETIONS("map", "saveCompletions"),
+        MOVING_POST("simulation", "movingObjects", "postupdate"),
+        SPOTTED_ROOMS("simulation", "spottedRooms"),
+        ITEMS("simulation", "items"),
+        ISO_OBJECTS("simulation", "isoObjects"),
+        GAME_TIME("simulation", "misc", "gameTime"),
+        RAIN("simulation", "misc", "rain"),
+        META("simulation", "misc", "meta"),
+        ANIMALS_SYNC("simulation", "animals", "sync"),
+        RADIO("simulation", "radio"),
+        NATIVE_PATH_MAIN("simulation", "pathfinding", "nativeMain"),
+        JAVA_PATH_MAIN("simulation", "pathfinding", "javaMain"),
+        HUTCHES("simulation", "hutches"),
+        FISHING("simulation", "fishing"),
+        CONTACTS("simulation", "contacts"),
+        WORLD_PHYSICS("simulation", "physics"),
+        BUILDINGS("simulation", "buildings"),
+        WORLD_DATABASES("simulation", "databases"),
+        WORLD_MAINTENANCE("simulation", "worldMaintenance"),
+        ENTITY("simulation", "entities"),
+        STATIC_UPDATERS("simulation", "staticUpdaters"),
+        CORPSES("simulation", "corpses"),
+        SIM_MISC("simulation", "misc"),
+        MANAGERS("simulation", "managers"),
+        FIRE("simulation", "fire"),
+        WORLD_SOUNDS("simulation", "worldSounds"),
+        SCRIPTS("simulation", "misc", "scripts"),
+        VIRTUAL_ZOMBIES("simulation", "zombies", "virtual"),
+        ZOMBIE_POPULATION("simulation", "zombies", "population"),
+        COLLISION_MAIN("simulation", "collision", "main"),
+        LOOT("simulation", "lootRespawn"),
+        CLIMATE("simulation", "climate"),
         NEAR_VEHICLE("simulation", "players", "nearVehicle"),
         PACKET_PREPARATION("zombies", "packet", "prepare"),
         THERMAL_CLOTHING("simulation", "players", "thermalClothing"),
@@ -66,7 +123,10 @@ public final class OptimizationTelemetry {
             totalNanos.add(nanos);
             maxNanos.accumulate(nanos);
             calls.increment();
+            TickDiagnostics.recordPhase(this, nanos);
         }
+
+        List<String> path() { return path; }
     }
 
     public static void count(Counter counter) {

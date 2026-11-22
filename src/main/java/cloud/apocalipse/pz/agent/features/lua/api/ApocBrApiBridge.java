@@ -91,6 +91,20 @@ public final class ApocBrApiBridge {
         return CourierItemCodec.decode(blob);
     }
 
+    /** Compare local pickup cargo with its saved intent, including custody written before provenance was added. */
+    public static boolean matchesItem(zombie.inventory.InventoryItem item, String blob) {
+        return ApiBridgeLifecycle.isOwnerThread() && CourierItemCodec.matches(item, blob);
+    }
+
+    public static boolean isPortableItem(String blob) {
+        return CourierItemCodec.origin(blob) != null;
+    }
+
+    /** Preserve the old native bytes when the world that owns custody upgrades its legacy records. */
+    public static String tagLocalItem(String blob) {
+        return ApiBridgeLifecycle.isOwnerThread() ? CourierItemCodec.tagLocal(blob) : null;
+    }
+
     /** Returns an opaque ID when accepted, or nil; rejected calls never invoke callback. */
     public static String request(Endpoint endpoint, String parametersJson, LuaClosure callback) {
         return ApiBridgeLifecycle.request(endpoint, parametersJson, callback);

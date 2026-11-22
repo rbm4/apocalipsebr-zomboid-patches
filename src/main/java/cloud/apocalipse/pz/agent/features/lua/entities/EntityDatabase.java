@@ -4,6 +4,10 @@ import static cloud.apocalipse.pz.agent.features.lua.entities.ApocBRModEntities.
 import static cloud.apocalipse.pz.agent.features.lua.entities.EntityWorker.status;
 
 import cloud.apocalipse.pz.agent.features.postgres.player.PlayerMutations;
+import cloud.apocalipse.pz.agent.features.lua.api.CourierItemCodec;
+import cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryCache;
+import cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryOrigin;
+import cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryRuntime;
 
 import java.sql.*;
 import java.util.*;
@@ -11,6 +15,44 @@ import java.util.*;
 /** Prepared statements and detached results for the existing mod_data schema. */
 final class EntityDatabase {
     private EntityDatabase() {}
+    private static final String WALLET = "ApocWallet.Couriers.v2";
+    private static final String MARKET = "ApocWallet.MarketCatalog.v1.";
+    private static final String LISTING_PREFIX = "ApocWallet.MarketListing.";
+    private static final String LISTING_SCOPE = """
+        document_id='ApocWallet.Couriers.v2' AND collection='market.listings'
+        """;
+    private static final String PUBLIC_ID = "mod_data.wallet_listing_id(server_id,world,record_id)";
+
+    static boolean isMarketListing(String document) {
+        return document.startsWith(LISTING_PREFIX);
+    }
+
+    static boolean isMarketPage(String document) {
+        return document.startsWith(MARKET);
+    }
+
+    /** Runs on the entity worker after releasing its document connection. */
+    static void prepareMarketDictionaries(Map<String, Object> result) {
+        if (!(result.get("payload") instanceof String payload)) return;
+        var listing = new org.json.JSONObject(payload).getJSONObject("value");
+        var units = listing.optJSONArray("units");
+        if (units == null) return;
+        var local = DictionaryRuntime.localEncoding();
+        Set<DictionaryOrigin> sources = new HashSet<>();
+        for (int i = 0; i < units.length(); i++) {
+            var unit = units.getJSONObject(i);
+            if (!"available".equals(unit.optString("state"))) continue;
+            var origin = CourierItemCodec.origin(unit.optString("blob"));
+            if (origin == null || local != null && origin.serverId() == local.serverId()
+                    && origin.namespaceId().equals(local.namespaceId())) continue;
+            if (sources.size() == 4 || !sources.add(origin)) continue;
+            try {
+                DictionaryCache.prepare(origin);
+            } catch (SQLException unavailable) {
+                // The destination preflight rejects cargo whose exact view was not prepared.
+            }
+        }
+    }
 
     static Map<String, Object> character(
             Connection connection,
@@ -181,7 +223,14 @@ final class EntityDatabase {
             String mutation,
             String payload)
             throws SQLException {
-        if (payload == null) return loadDocument(connection, server, world, document);
+        if (payload == null) {
+            if (isMarketPage(document)) return marketCatalog(connection, document.substring(MARKET.length()));
+            if (document.startsWith(LISTING_PREFIX))
+                return marketListing(connection, server, world, document.substring(LISTING_PREFIX.length()));
+            return loadDocument(connection, server, world, document);
+        }
+        String status;
+        String nextRevision;
         try (PreparedStatement statement =
                 prepare(
                         connection,
@@ -195,8 +244,91 @@ final class EntityDatabase {
             statement.setString(6, payload);
             try (ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) throw new SQLException("Missing mutation result", "22000");
-                return Map.of(
-                        "status", rows.getString(1), "revision", Long.toString(rows.getLong(2)));
+                status = rows.getString(1);
+                nextRevision = Long.toString(rows.getLong(2));
+            }
+        }
+        if (WALLET.equals(document) && "OK".equals(status)) {
+            return Map.of("status", status, "revision", nextRevision,
+                    "marketVersions", marketVersions(connection, server, world, payload));
+        }
+        return Map.of("status", status, "revision", nextRevision);
+    }
+
+    private static Map<String, String> marketVersions(
+            Connection connection, long server, String world, String operations) throws SQLException {
+        // Listing checksums are returned in the same transaction as the writes.
+        Map<String, String> versions = new HashMap<>();
+        var entries = new org.json.JSONArray(operations);
+        for (int i = 0; i < entries.length(); i++) {
+            var entry = entries.getJSONObject(i);
+            if (!"market.listings".equals(entry.optString("collection"))) continue;
+            String key = entry.getString("key");
+            var result = findMarketListing(connection, server, world, key, entry.getString("payload"));
+            if (result.containsKey("checksum")) versions.put(key, (String) result.get("checksum"));
+        }
+        return versions;
+    }
+
+    private static Map<String, Object> marketCatalog(Connection connection, String request) throws SQLException {
+        String[] fields = request.split(":", 4);
+        if (fields.length != 4 || !fields[0].matches("market|expired") || !fields[1].matches("[0-9]{17}")
+                || !fields[2].matches("[0-9]{1,6}") || fields[3].length() > 100
+                || fields[3].chars().anyMatch(Character::isISOControl))
+            throw new IllegalArgumentException("Invalid Wallet catalog request");
+        int page = Math.clamp(Integer.parseInt(fields[2]), 1, 100000);
+        String sql = "SELECT * FROM mod_data.wallet_market_page(?,?,?,?)";
+        var listings = new ArrayList<Map<String,Object>>();
+        long actual = 1, pages = 1;
+        try (var statement = prepare(connection, sql)) {
+            statement.setString(1, fields[0]);
+            statement.setString(2, fields[1]);
+            statement.setString(3, fields[3]);
+            statement.setInt(4, page);
+            try (var rows = statement.executeQuery()) {
+                while (rows.next()) {
+                    actual = rows.getLong(7);
+                    pages = rows.getLong(8);
+                    if (rows.getString(1) == null) continue;
+                    listings.add(Map.of("id", rows.getString(1), "type", rows.getString(2), "name", rows.getString(3),
+                            "price", rows.getLong(4), "expiresAt", rows.getLong(5), "count", rows.getLong(6)));
+                }
+            }
+        }
+        return Map.of("status", "OK", "listings", listings, "page", actual, "pages", pages);
+    }
+
+    private static Map<String, Object> marketListing(
+            Connection connection, long server, String world, String key) throws SQLException {
+        return findMarketListing(connection, server, world, key, null);
+    }
+
+    private static Map<String, Object> findMarketListing(
+            Connection connection, long server, String world, String key, String writtenPayload) throws SQLException {
+        boolean includePayload = writtenPayload == null;
+        boolean global = key.matches("market-[0-9a-f]{32}");
+        if (!global && !key.matches("[0-9]{1,16}")) return status("NOT_FOUND");
+        String sql = "SELECT md5(payload::text)" + (includePayload
+                ? ",payload::text,server_id,world,(extract(epoch FROM statement_timestamp())*1000)::bigint" : "")
+                + " FROM mod_data.entity_document_record WHERE " + LISTING_SCOPE
+                + (global ? " AND " + PUBLIC_ID + "=?" : " AND record_id=? AND server_id=? AND world=?")
+                + (includePayload ? "" : " AND payload=jsonb_set(?::jsonb,'{value,id}',to_jsonb(record_id))");
+        try (var statement = prepare(connection, sql)) {
+            statement.setString(1, key);
+            if (!global) {
+                statement.setLong(2, server);
+                statement.setString(3, world);
+            }
+            if (!includePayload) statement.setString(global ? 2 : 4, writtenPayload);
+            try (var rows = statement.executeQuery()) {
+                if (!rows.next()) return status("NOT_FOUND");
+                String checksum = rows.getString(1);
+                if (!includePayload) return Map.of("checksum", checksum);
+                String payload = rows.getString(2);
+                if (payload.length() > 33_554_432) throw new SQLException("Wallet listing limit", "54000");
+                boolean foreign = server != rows.getLong(3) || !world.equals(rows.getString(4));
+                return Map.of("status", "OK", "payload", payload, "checksum", checksum, "foreign", foreign,
+                        "now", rows.getLong(5));
             }
         }
     }
@@ -208,7 +340,8 @@ final class EntityDatabase {
                 prepare(
                         connection,
                         """
-                        SELECT h.revision,r.collection,r.record_id,r.payload::text
+                        SELECT h.revision,r.collection,r.record_id,r.payload::text,
+                               CASE WHEN r.collection='market.listings' THEN md5(r.payload::text) END
                         FROM mod_data.entity_document_state h
                         LEFT JOIN mod_data.entity_document_record r USING(server_id,world,document_id)
                         WHERE h.server_id=? AND h.world=? AND h.document_id=?
@@ -218,7 +351,7 @@ final class EntityDatabase {
             statement.setString(2, world);
             statement.setString(3, document);
             try (ResultSet rows = statement.executeQuery()) {
-                if (!rows.next()) return status("NOT_FOUND");
+                if (!rows.next()) return Map.of("status", "NOT_FOUND", "sharedMarket", WALLET.equals(document));
                 String revision = Long.toString(rows.getLong(1));
                 List<Object> records = new ArrayList<>();
                 long characters = 0;
@@ -230,10 +363,12 @@ final class EntityDatabase {
                     characters += (long) collection.length() + key.length() + payload.length();
                     if (records.size() >= 100_000 || characters > 33_554_432)
                         throw new SQLException("Document limit", "54000");
-                    records.add(Map.of("collection", collection, "key", key, "payload", payload));
+                    String checksum = WALLET.equals(document) ? rows.getString(5) : null;
+                    records.add(checksum == null ? Map.of("collection", collection, "key", key, "payload", payload)
+                            : Map.of("collection", collection, "key", key, "payload", payload, "checksum", checksum));
                 } while (rows.next());
-                return Map.of(
-                        "status", "OK", "revision", revision, "records", List.copyOf(records));
+                return Map.of("status", "OK", "revision", revision, "records", List.copyOf(records),
+                        "sharedMarket", WALLET.equals(document));
             }
         }
     }

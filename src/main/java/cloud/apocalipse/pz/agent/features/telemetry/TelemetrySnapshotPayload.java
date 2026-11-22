@@ -4,8 +4,8 @@ import com.google.gson.Gson;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
+import java.nio.charset.StandardCharsets;
 
 final class TelemetrySnapshotPayload {
     private static final Gson GSON = new Gson();
@@ -22,16 +22,18 @@ final class TelemetrySnapshotPayload {
             long dropped,
             TelemetryRegistry.TickSnapshot ticks,
             TelemetryRegistry.LoopSnapshot loops,
-            Integer activeZombieCount,
+            Map<String, Object> world,
             Map<String, TelemetryRegistry.EventSnapshot> luaEvents,
-            OptimizationTelemetry.Snapshot optimizations) {
+            OptimizationTelemetry.Snapshot optimizations,
+            Map<String, Object> jvm,
+            TickDiagnostics.Report diagnostics,
+            boolean callbackTiming) {
         if (gameVersion == null || gameVersion.isBlank() || gameVersion.length() > 255
                 || intervalMillis < 1 || sequence < 1 || timestampMillis < 1
                 || playersOnline < 0 || dropped < 0 || ticks == null
                 || ticks.calls() < 0 || ticks.totalNanos() < 0 || ticks.maxNanos() < 0
                 || ticks.overBudgetCalls() < 0 || loops == null
-                || loops.calls() < 0 || loops.totalNanos() < 0
-                || (activeZombieCount != null && activeZombieCount < 0)) {
+                || loops.calls() < 0 || loops.totalNanos() < 0) {
             throw new IllegalArgumentException("Invalid telemetry snapshot metadata");
         }
 
@@ -42,6 +44,19 @@ final class TelemetrySnapshotPayload {
             ? 0.0
             : ticks.totalNanos() / 1_000_000.0 / ticks.calls()));
         tick.put("maxMs", decimal(ticks.maxNanos() / 1_000_000.0));
+        if (diagnostics.peak() != null) {
+            var peak = diagnostics.peak();
+            Map<String, Object> slowest = new LinkedHashMap<>();
+            slowest.put("ts", peak.ts());
+            slowest.put("totalMs", decimal(peak.nanos() / 1_000_000.0));
+            slowest.put("phaseMs", peak.phases());
+            if (callbackTiming) {
+                slowest.put("luaCalls", peak.luaCalls());
+                slowest.put("luaMs", peak.luaMs());
+                slowest.put("callbacks", peak.callbacks());
+            }
+            tick.put("slowest", slowest);
+        }
 
         Map<String, Object> loop = new LinkedHashMap<>();
         loop.put("count", loops.calls());
@@ -64,6 +79,11 @@ final class TelemetrySnapshotPayload {
         Map<String, Object> lua = new LinkedHashMap<>();
         lua.put("enabled", true);
         lua.put("events", events);
+        lua.put("callbackTiming", callbackTiming);
+        if (callbackTiming) {
+            lua.put("callbacks", diagnostics.callbacks());
+            lua.put("callbackCallsOmitted", diagnostics.omittedCalls());
+        }
 
         Map<String, Object> snapshot = new LinkedHashMap<>();
         snapshot.put("schemaVersion", 3);
@@ -76,17 +96,13 @@ final class TelemetrySnapshotPayload {
         snapshot.put("loop", loop);
         snapshot.put("phases", phases(optimizations.phases()));
         snapshot.put("counters", optimizations.counters());
-        Map<String, Object> world = new LinkedHashMap<>();
-        if (activeZombieCount != null) {
-            world.put("zombies", activeZombieCount);
-        }
         snapshot.put("world", world);
-        snapshot.put("jvm", Map.of());
+        snapshot.put("jvm", jvm);
         snapshot.put("playersOnline", playersOnline);
         snapshot.put("dropped", dropped);
         snapshot.put("lua", lua);
         String encoded = GSON.toJson(snapshot);
-        if (encoded.length() > 65_536) {
+        if (encoded.getBytes(StandardCharsets.UTF_8).length > 65_536) {
             throw new IllegalArgumentException("Telemetry snapshot exceeds the payload limit");
         }
         return encoded;
@@ -110,6 +126,6 @@ final class TelemetrySnapshotPayload {
     }
 
     private static double decimal(double value) {
-        return Double.parseDouble(String.format(Locale.ROOT, "%.3f", value));
+        return Math.round(value * 1_000.0) / 1_000.0;
     }
 }

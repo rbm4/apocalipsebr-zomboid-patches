@@ -17,6 +17,8 @@ public final class TelemetryModule implements AgentModule {
             new HookCheck("loop-start", "zombie.network.GameServer", "main", loop, "beginIteration", false),
             new HookCheck("tick", "zombie.network.GameServer", "main", loop, "recordVanillaTick", false),
             new HookCheck("loop-end", "zombie.network.GameServer", "main", loop, "finishVanillaIteration", false),
+            new HookCheck("incoming-work", "zombie.network.GameServer", "main", TickDiagnostics.class.getName(),
+                "recordIncoming", false),
             new HookCheck("lua-event", "zombie.Lua.Event", "trigger",
                 "cloud.apocalipse.pz.agent.features.telemetry.TelemetryRegistry", "recordLuaEvent", false));
     }

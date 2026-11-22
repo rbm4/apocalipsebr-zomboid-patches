@@ -11,6 +11,8 @@ public final class GameServer {
     public static String serverName="servertest";
     public static boolean softReset;
     public static boolean server;
+    public static Thread mainThread;
+    public static void runShutdownHook() { shutdownHook.run(); }
     public static Object udpEngine;
     private static final Thread shutdownHook = new Thread() {
         @Override public void run() { done = true; }

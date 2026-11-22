@@ -60,6 +60,36 @@ profile reader must prepare each referenced exact view before reconstruction.
 `DictionaryCache.ready` neither waits nor opens JDBC. Merely appearing in foreign
 head metadata is not a substitute for preparing a specific payload view.
 
+## Wallet courier custody
+
+`CourierItemCodec` in the server Lua API adds a versioned envelope with the
+source namespace, exact view and server ID around the existing native item
+bytes when the local dictionary is published and decoding is enabled. The
+existing `ApocBrApiBridge.decodeItem` passes foreign provenance to the installed
+native item decoder through `PayloadProvenance`. Foreign decoding requires the
+exact source view in memory and returns no item when the view is unavailable.
+Items tagged with the current local allocation namespace and legacy untagged
+items use the native local loader.
+
+`ApocBrApiBridge.matchesItem` compares locally captured inventory state for
+pickup reconciliation. It compares the world version and native bytes so a
+header upgrade or a new view of the same namespace does not invalidate an
+otherwise unchanged pickup. Both Lua entry points run on the server owner
+thread. A shared market listing read prepares the exact dictionary views of
+its available cargo on the entity worker after releasing the listing's
+database connection. Origin worlds can tag validated legacy cargo with
+their current dictionary identity while preserving the original native bytes.
+
+Focused validation passed eight tests and built the shaded agent in an
+isolated checkout of the original-JAR target using
+`mvn "-Dtest=CourierItemCodecTest,DictionaryDecodeTest,LuaHookTest" package`
+after unrelated telemetry and Workshop compilation errors prevented the first
+build in the working checkout. The codec tests cover the header, legacy
+reads, truncation, version and size bounds, pickup state comparisons, and
+namespace matching. The dictionary and Lua tests exercise transformation and
+original-JAR entry points. Cross-server Wallet delivery still requires a
+dedicated-server test.
+
 ## Configuration and lifecycle
 
 All properties are declared/read through `AgentConfiguration`:

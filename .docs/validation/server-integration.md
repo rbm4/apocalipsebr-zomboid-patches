@@ -202,6 +202,13 @@ and finds the declared method-to-helper invocation. Currently enabled checks are
 | `Event.trigger` | `TelemetryRegistry.recordLuaEvent` |
 | `ItemQueryJava.inform` | `ModUpdateRestartNotifier.onUpdateDetected` |
 
+The lag diagnostics modules also declare checks for the original Workshop
+entry point, Steam pump, shutdown thread, event context, Kahlua VM call and
+server phase methods. Checks inspect classes observed during normal startup.
+The suite does not force these gameplay classes to initialize or enable Steam
+to trigger a Workshop query. Focused fixtures cover the query continuation and
+Lua attribution paths.
+
 This is stronger than matching a module-registration log: transformation can
 fail or match no method after registration. The observer does not transform
 bytes itself. It inspects loaded `zombie.*` classes after the production transformer

@@ -6,8 +6,8 @@ No runtime performance improvement is established by this catalog.
 | Feature | Root implementation | Current scope and limits |
 | --- | --- | --- |
 | [Server hotfixes](hotfixes.md) | `features/hotfixes` | Case-insensitive XML folder/file lookup port for the original 42.22.2 JAR, enabled by default and reversible. |
-| Workshop update restart notification | `features/workshop` | Existing notification hook and HTTP integration; not a port of the rest of the engine. |
-| Server telemetry | `features/telemetry` | Tick and loop timing, Lua event timing, population gauges, and the phases and counters emitted by the first five optimization ports. |
+| [Workshop update checks and restart notification](server-lag-diagnostics.md) | `features/workshop` | Asynchronous engine query, bounded result processing, and existing restart delivery. Live Steam validation is pending. |
+| [Server telemetry](server-lag-diagnostics.md) | `features/telemetry` | Slowest-tick phase and callback attribution, Lua event timing, JVM/world gauges, and optimization metrics. |
 | [Java pathfinding lock](java-pathfinding.md) | `features/pathfinding` | Selects the built-in Java pathfinder by default, with dedicated-server worker cleanup. |
 | [PostgreSQL and NPC runtime](postgresql.md) | `features/postgres` | Scoped account hooks and async login/admin continuations registered, with executed transformation tests. Complete journal/recovery, player/vehicle/dictionary and NPC runtime migration remains open. |
 | [PostgreSQL dictionary setup](postgresql-dictionary.md) | `features/postgres/dictionary` | Native publication, exact historical cache/listener and source-aware native decoder hooks implemented; real cross-server acceptance remains pending. |

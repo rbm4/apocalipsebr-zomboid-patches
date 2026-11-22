@@ -20,7 +20,7 @@ public final class HookProbe {
         instrumentation.addTransformer(new ClassFileTransformer() {
             @Override public byte[] transform(ClassLoader loader, String className, Class<?> redefining,
                     ProtectionDomain domain, byte[] bytes) {
-                if (className == null || !className.startsWith("zombie/")) return null;
+                if (!isGameClass(className)) return null;
                 try {
                     Properties evidence = new Properties();
                     evidence.setProperty("source", domain.getCodeSource().getLocation().toExternalForm());
@@ -53,6 +53,11 @@ public final class HookProbe {
                 return null;
             }
         });
+    }
+
+    public static boolean isGameClass(String internalName) {
+        return internalName != null
+            && (internalName.startsWith("zombie/") || internalName.startsWith("se/krka/kahlua/"));
     }
 
     private static void writeInventory(Path directory) {

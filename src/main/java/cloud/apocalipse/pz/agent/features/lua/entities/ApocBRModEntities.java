@@ -488,7 +488,8 @@ public final class ApocBRModEntities {
 
     private KahluaTable documentRequest(
             String document, String revision, String mutation, KahluaTable operations) {
-        if (!document.matches("[A-Za-z0-9_.:-]{1,128}"))
+        boolean marketPage = operations == null && EntityDatabase.isMarketPage(document);
+        if (marketPage ? document.length() > 160 : !document.matches("[A-Za-z0-9_.:-]{1,128}"))
             throw new IllegalArgumentException("Invalid document ID");
         long server = serverId();
         String world = world();
@@ -518,6 +519,11 @@ public final class ApocBRModEntities {
                 throw new IllegalArgumentException("Contiguous mutation array required");
         }
         String captured = payload;
+        if (captured == null && EntityDatabase.isMarketListing(document)) {
+            return (KahluaTable) lua(worker.submit(false,
+                    connection -> EntityDatabase.document(connection, server, world, document, null, null, null),
+                    EntityDatabase::prepareMarketDictionaries));
+        }
         return admit(
                 captured != null,
                 connection ->

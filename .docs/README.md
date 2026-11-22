@@ -13,6 +13,7 @@ Each session selects one bounded feature; no migration queue is authorized here.
 ## Index
 
 - [Server XML hotfixes](features/hotfixes.md)
+- [Server lag diagnostics and asynchronous Workshop checks](features/server-lag-diagnostics.md)
 - [Server Lua APIs, solar power and bounded service workers](features/server-lua.md)
 
 - [Agent architecture and original-JAR development](architecture/README.md)

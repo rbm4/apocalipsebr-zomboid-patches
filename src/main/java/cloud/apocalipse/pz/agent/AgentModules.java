@@ -15,14 +15,18 @@ import cloud.apocalipse.pz.agent.features.optimization.zombie.packet.ZombiePacke
 import cloud.apocalipse.pz.agent.features.optimization.zombie.transmission.ZombieAsyncSendModule;
 import cloud.apocalipse.pz.agent.features.pathfinding.JavaPathfindingModule;
 import cloud.apocalipse.pz.agent.features.telemetry.TelemetryModule;
+import cloud.apocalipse.pz.agent.features.telemetry.LuaCallbackTelemetryModule;
+import cloud.apocalipse.pz.agent.features.telemetry.ServerPhaseTelemetryModule;
 import cloud.apocalipse.pz.agent.features.workshop.WorkshopModule;
+import cloud.apocalipse.pz.agent.features.workshop.AsyncWorkshopModule;
 import java.util.List;
 
 /** Single module registry shared by runtime installation and read-only hook diagnostics. */
 public final class AgentModules {
     private static final List<AgentModule> MODULES = List.of(
         new XmlCaseModule(), new WorkshopModule(), new TelemetryModule(), new PostgresModule(), new cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryModule(), new cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryDecodeModule(), new NpcModule(), new cloud.apocalipse.pz.agent.features.lua.LuaModule(), new cloud.apocalipse.pz.agent.features.postgres.player.PlayerModule(), new cloud.apocalipse.pz.agent.features.lua.login.AsyncAccountsModule(),
-        new ServerShutdownModule(), new JavaPathfindingModule(),
+        new ServerShutdownModule(), new AsyncWorkshopModule(), new LuaCallbackTelemetryModule(),
+        new ServerPhaseTelemetryModule(), new JavaPathfindingModule(),
         new ZombieCullingModule(), new LuaDispatchModule(), new PlayerNearVehicleModule(),
         new ZombiePacketPreparationModule(), new ThermalClothingModule(),
         new EntityRemovalModule(), new EntitySimulationModule(), new ServerLosModule(), new ZombieAsyncSendModule());

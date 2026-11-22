@@ -102,6 +102,11 @@ public final class TelemetryServerLoopVisitor extends AsmVisitorWrapper.Abstract
                 && "Z".equals(descriptor);
             this.pendingLoopHead = this.pendingDoneRead ? this.lastLabel : null;
             super.visitFieldInsn(opcode, owner, name, descriptor);
+            if (startInserted && opcode == Opcodes.PUTSTATIC && gameServerOwner.equals(owner)
+                    && "droppedPackets".equals(name) && "I".equals(descriptor)) {
+                super.visitMethodInsn(Opcodes.INVOKESTATIC,
+                    "cloud/apocalipse/pz/agent/features/telemetry/TickDiagnostics", "recordIncoming", "()V", false);
+            }
         }
 
         @Override

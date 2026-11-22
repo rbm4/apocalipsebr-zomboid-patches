@@ -86,9 +86,10 @@ class TelemetryHttpClientTest {
                 0L,
                 new TelemetryRegistry.TickSnapshot(0, 0L, 0L, 0L),
                 new TelemetryRegistry.LoopSnapshot(0, 0L),
-                null,
                 java.util.Map.of(),
-                OptimizationTelemetry.Snapshot.EMPTY
+                java.util.Map.of(),
+                OptimizationTelemetry.Snapshot.EMPTY,
+                java.util.Map.of(), TickDiagnostics.Report.EMPTY, false
             );
             CompletableFuture<Void> delivered = new CompletableFuture<>();
             Thread worker = Thread.ofVirtual().start(() -> {
