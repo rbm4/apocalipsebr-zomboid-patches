@@ -1,0 +1,51 @@
+{
+  "review": 46,
+  "state": "approved-applied",
+  "path": "zombie/Lua/LuaManager.java",
+  "recommendation": "Retain the previous requested-key Lua cache reconstruction and server-only exposure of existing event/radio/login APIs on the exact target class; include only the existing typed-list/logger overload compilation repairs.",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "target_vanilla_sha256": "50f780df0d34d89c457b8a81c70792d09f39a4c6a464b485076ea649c9816670",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-46-lua-manager.diff",
+  "candidate_diff_sha256": "3005e370fa78ca676cc265dcd7392cb500de432e66109905e6db3202e64d4d49",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-46-lua-manager.md",
+  "candidate_fixture": {
+    "script": "tools/test_lua_manager_port.py",
+    "passed": true,
+    "assertions": 33,
+    "cache_assertions": 21,
+    "load_order_exposure_assertions": 12,
+    "scope": "Exact extracted target candidate RunLua wrapper/internal and LoadDirBase plus added exposure branch; Lua/filesystem/checksum/exposer marker doubles. No old-JAR bytecode check executed.",
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "applied_candidate_equivalence": true
+  },
+  "intent": [
+    "Keep normalized requested filename as loaded/loadedReturn key, physical path for IO and filenameToClosure.",
+    "Expose ApocBREventControl, ApocBRRadioBridge and ApocBRPlayerLogin only on server.",
+    "Repair decompiled File-to-List local reuse with typed modFiles and disambiguate four Logger.log null overloads."
+  ],
+  "native_retained": [
+    "All unrelated target bindings/exposures, including Hit/climb/door and action/item sync changes",
+    "Normal loading recursion guard, file IO, Lua execution, dirty flags, physical closure map and failure flow",
+    "Base game first, sorted per-mod common/version merge, checksum exclusion and onlyChecksum behavior"
+  ],
+  "scope_limits": [
+    "The target decompiled source is tested; shipped 42.22 JAR cache bytecode has not been verified. Do not claim this proves an upstream cache bug or a measured speedup.",
+    "Distinct requested aliases to the same physical path remain separate keys.",
+    "Real Kahlua reflection exposure and API implementations, JDBC/event control, radio delivery and login flow are unverified.",
+    "Full reloadLuaFile/reloadServerLuaFile path validation and Windows alias behavior are not executed; requested-key invalidation is covered."
+  ],
+  "support_followups": [
+    "Copied ApocBREventControl registration metadata still says 42.21.0/event-control-v2; review that label in its target integration rather than assuming exposure ports the implementation.",
+    "Remaining relational reconstruction/database/dictionary metadata, bootstrap and broader runtime integration remain tracked separately."
+  ],
+  "target_source_sha256": "fb9a4ec784ed38216c11e8b528ddc7a9d1d693a85ca0edef49b0a1be19e7d0a5",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "yes",
+    "date": "2026-10-28",
+    "baseline_commit": "aca4626fa0ce4c0cea8a9ace394ef19ebcb4b719",
+    "installed_files_modified": false
+  }
+}

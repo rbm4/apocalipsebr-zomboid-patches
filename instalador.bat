@@ -1,27 +1,29 @@
 @echo off
-setlocal EnableDelayedExpansion
+setlocal
 
-if /I not "%~1"=="--maximized" (
-    start "" /max cmd /c ""%~f0" --maximized %*"
-    exit /b
+if not defined APOCBR_CLIENT_MAXIMIZED (
+    set "APOCBR_CLIENT_MAXIMIZED=1"
+    start "" /max cmd /c ""%~f0" %*"
+    exit /b 0
 )
-shift /1
 
 :: ApocBR Project Zomboid Client Patch Launcher
 :: This wrapper bypasses the default PowerShell execution policy so players can
 :: run the patch by double-clicking this file instead of right-clicking a .ps1.
+:: Routes to 42.22.2-client\patchApocalipseBr.ps1 (compile and deploy).
 
 cd /d "%~dp0"
 
 powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0patch-client.ps1" %*
+set "patchExitCode=%ERRORLEVEL%"
 
-if %ERRORLEVEL% NEQ 0 (
+if not "%patchExitCode%"=="0" (
     echo.
-    echo The patch failed with code %ERRORLEVEL%.
+    echo The client telemetry build failed with code %patchExitCode%.
     echo If the window closed too fast, open PowerShell and run:
     echo   powershell -ExecutionPolicy Bypass -File "%~dp0patch-client.ps1"
     pause
-    exit /b %ERRORLEVEL%
+    exit /b %patchExitCode%
 )
 
-endlocal
+endlocal & exit /b 0

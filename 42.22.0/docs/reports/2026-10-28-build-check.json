@@ -1,0 +1,49 @@
+{
+  "jar_path": "Z:\\SteamLibrary\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+  "jar_sha256": "90c54b84ebc160ae053cbefe30c7713826ca4fdb4934fde53c9ebde0ff9892f3",
+  "jar_core_version_bytecode": "42.22",
+  "jar_world_version": 251,
+  "sources": 303,
+  "compiler_exit": 1,
+  "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_4222_compile_o84dyovj\\javac.log",
+  "installed_files_modified": false,
+  "runtime_verified": false,
+  "followup52": {
+    "state": "approved-applied",
+    "source_equals_previously_compiled_overlay": true,
+    "remaining_errors": 3
+  },
+  "candidate53": {
+    "source_count": 303,
+    "compiler_exit": 1,
+    "remaining_errors": 1,
+    "remaining_classes": [
+      "ServerZombiePath"
+    ],
+    "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_review53_compile_pzzqcuwz\\javac.log",
+    "scope": "All target sources plus only proposed53 transport overlay; build still fails on native path boolean API."
+  },
+  "followup53": {
+    "state": "approved-applied",
+    "source_equals_previously_compiled_overlay": true,
+    "post_application_checks": 773,
+    "remaining_errors": 1
+  },
+  "candidate54": {
+    "source_count": 303,
+    "compiler_exit": 0,
+    "remaining_errors": 0,
+    "compiled_class_files": 895,
+    "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_review54_compile_mjemoi9c\\javac.log",
+    "scope": "Full target-source compile with proposed54 overlay against identified42.22/world251 JAR; no deployment or runtime."
+  },
+  "applied54": {
+    "source_count": 303,
+    "compiler_exit": 0,
+    "remaining_errors": 0,
+    "compiled_class_files": 895,
+    "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_applied54_compile_g1482ajm\\javac.log",
+    "scope": "Actual approved source tree compiled against identified42.22/world251 JAR; no deployment/runtime."
+  },
+  "current_source_compile_passed": true
+}

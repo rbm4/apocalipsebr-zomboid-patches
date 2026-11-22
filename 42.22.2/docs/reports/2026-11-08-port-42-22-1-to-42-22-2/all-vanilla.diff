@@ -1,0 +1,154 @@
+--- 42.22.1/decompiled/zombie/GitVersion.java
++++ 42.22.2/decompiled/zombie/GitVersion.java
+@@ -2,5 +2,5 @@
+ package zombie;
+ 
+ public class GitVersion {
+-    public static final String REVISION = "71e8410c42";
++    public static final String REVISION = "3d39148846";
+ }
+--- 42.22.1/decompiled/zombie/core/Core.java
++++ 42.22.2/decompiled/zombie/core/Core.java
+@@ -155,8 +155,8 @@
+     public static int dirtyGlobalLightsCount;
+     private static final boolean fakefullscreen = false;
+     private static final GameVersion gameVersion = new GameVersion(42, 22, "");
+-    private static final int buildVersion = 1;
+-    private static String gitRevision = "71e8410c42";
++    private static final int buildVersion = 2;
++    private static String gitRevision = "3d39148846";
+     public String steamServerVersion = "1.0.0.0";
+     public static boolean altMoveMethod;
+     private int consoleDotTxtSizeKb = 5120;
+@@ -174,7 +174,7 @@
+     private final ArrayList<ConfigOption> fakeOptions = new ArrayList<>();
+     private final HashMap<String, ConfigOption> fakeOptionByName = new HashMap<>();
+     private String selectedMap;
+-    private static String gitSha = "71e8410c42";
++    private static String gitSha = "3d39148846";
+     private final int VERSION_BUILD_42 = 8;
+     private final IntegerConfigOption optionReticleMode = this.newOption("reticleMode", 0, 1, 0);
+     private final BooleanConfigOption optionShowAimTexture = this.newOption("showAimTexture", false);
+@@ -2470,7 +2470,7 @@
+     }
+ 
+     public String getGameAndBuildVersion() {
+-        return gameVersion + ".1";
++        return gameVersion + ".2";
+     }
+ 
+     public String getBulletVersion() {
+--- 42.22.1/decompiled/zombie/core/IntegrityReport.java
++++ 42.22.2/decompiled/zombie/core/IntegrityReport.java
+@@ -6,8 +6,6 @@
+ import java.io.InputStream;
+ import java.io.UncheckedIOException;
+ import java.lang.management.ManagementFactory;
+-import java.lang.management.ThreadInfo;
+-import java.lang.management.ThreadMXBean;
+ import java.net.URISyntaxException;
+ import java.net.URL;
+ import java.nio.file.Files;
+@@ -44,7 +42,6 @@
+         IntegrityReport.Problem.JAR_ENTRY_FOREIGN_SIGNER
+     );
+     private static final String PINNED_CERTIFICATE_SHA256 = "8f:5a:fa:34:10:48:c0:b8:b6:ac:28:2a:81:b4:e0:79:5c:98:27:aa:d4:df:4f:7e:07:2f:21:66:54:9b:27:a8";
+-    private static final String ATTACH_LISTENER_THREAD = "Attach Listener";
+     private static final HexFormat FINGERPRINT_FORMAT = HexFormat.ofDelimiter(":");
+     private static volatile IntegrityReport current;
+     private final Path jar;
+@@ -58,14 +55,12 @@
+         }
+ 
+         this.findAgents();
+-        this.findAttached();
+     }
+ 
+     private IntegrityReport(RuntimeException cause) {
+         this.jar = null;
+         this.report(IntegrityReport.Problem.ERROR, cause.toString());
+         this.findAgents();
+-        this.findAttached();
+     }
+ 
+     public static IntegrityReport current() {
+@@ -130,10 +125,6 @@
+             int agentCount = this.getProblem(IntegrityReport.Problem.AGENT).size();
+             if (agentCount > 0) {
+                 findings.add("agents=" + agentCount);
+-            }
+-
+-            if (this.problems.containsKey(IntegrityReport.Problem.ATTACHED)) {
+-                findings.add("attached");
+             }
+ 
+             return String.join(",", findings);
+@@ -245,24 +236,6 @@
+         }
+     }
+ 
+-    private void findAttached() {
+-        if (isAttached()) {
+-            this.report(IntegrityReport.Problem.ATTACHED, "Attach Listener");
+-        }
+-    }
+-
+-    private static boolean isAttached() {
+-        ThreadMXBean threads = ManagementFactory.getThreadMXBean();
+-
+-        for (ThreadInfo thread : threads.getThreadInfo(threads.getAllThreadIds(), 0)) {
+-            if (thread != null && "Attach Listener".equals(thread.getThreadName())) {
+-                return true;
+-            }
+-        }
+-
+-        return false;
+-    }
+-
+     private void findAgents() {
+         for (String argument : ManagementFactory.getRuntimeMXBean().getInputArguments()) {
+             if (argument.startsWith("-javaagent:") || argument.startsWith("-agentpath:") || argument.startsWith("-agentlib:")) {
+@@ -287,7 +260,6 @@
+         JAR_ENTRY_FOREIGN_SIGNER,
+         CLASSPATH_EXTRA,
+         AGENT,
+-        ATTACHED,
+         ERROR;
+     }
+ }
+--- 42.22.1/decompiled/zombie/gameStates/MainScreenState.java
++++ 42.22.2/decompiled/zombie/gameStates/MainScreenState.java
+@@ -319,9 +319,9 @@
+ 
+     private static synchronized void writeOutCurrentVersion() {
+         versionWrittenWhilePending = IntegrityReport.current() == null;
+-        String versionStr = "revision=%s pzbullet=%s".formatted("71e8410c42", Bullet.getPZBulletVersion());
++        String versionStr = "revision=%s pzbullet=%s".formatted("3d39148846", Bullet.getPZBulletVersion());
+         DebugType.General.println("version=" + Core.getInstance().getVersion() + " demo=false");
+-        if (!"71e8410c42".isEmpty()) {
++        if (!"3d39148846".isEmpty()) {
+             DebugType.General.println(versionStr);
+         }
+ 
+@@ -329,7 +329,7 @@
+             String versionFileName = ZomboidFileSystem.instance.getCacheDirSub("version.txt");
+             FileWriter versionFileWriter = new FileWriter(versionFileName, false);
+             versionFileWriter.write(StringConcatFactory.makeConcatWithConstants<"makeConcatWithConstants","\u0001">(Core.getInstance().getVersion()));
+-            if (!"71e8410c42".isEmpty()) {
++            if (!"3d39148846".isEmpty()) {
+                 versionFileWriter.write(10);
+                 versionFileWriter.write(versionStr);
+             }
+--- 42.22.1/decompiled/zombie/network/GameServer.java
++++ 42.22.2/decompiled/zombie/network/GameServer.java
+@@ -495,8 +495,8 @@
+         }
+ 
+         DebugType.General.println("version=%s demo=%s", Core.getInstance().getVersion(), false);
+-        if (!"71e8410c42".isEmpty()) {
+-            DebugType.General.println("revision=%s", "71e8410c42");
++        if (!"3d39148846".isEmpty()) {
++            DebugType.General.println("revision=%s", "3d39148846");
+         }
+ 
+         IntegrityReport.collectInBackground(() -> DebugType.General.println("version=%s", Core.getInstance().getVersion()));

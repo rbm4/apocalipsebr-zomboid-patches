@@ -1,0 +1,19 @@
+{
+  "source_count": 305,
+  "candidate_changes": [
+    "zombie/network/GameServer.java"
+  ],
+  "javac_version": "javac 25.0.4",
+  "exit_code": 0,
+  "class_count": 902,
+  "game_jar": "Z:\\SteamLibrary\\steamapps\\common\\ProjectZomboid\\projectzomboid.jar",
+  "game_jar_sha256": "531daad77c92dcb93534e66ff37becf86dc119f55c62345c622c52021170723e",
+  "constants": [
+    "public int version;",
+    "public int fileversion;",
+    "public static final java.lang.String REVISION = \"71e8410c42\";",
+    "public static final int WorldVersion = 251;"
+  ],
+  "deployed": false,
+  "world_version": 251
+}

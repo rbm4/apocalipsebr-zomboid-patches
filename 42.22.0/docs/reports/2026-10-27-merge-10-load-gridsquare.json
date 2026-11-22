@@ -1,0 +1,20 @@
+{
+  "review": 10,
+  "state": "approved-retired-use-target-vanilla",
+  "path": "zombie/LoadGridsquarePerformanceWorkaround.java",
+  "proposal": "Use target vanilla directly; omit a redundant Java replacement.",
+  "source_evidence": "After taking upstream List traversal in the sole conflict, the complete resolved source equals target vanilla.",
+  "target_vanilla_sha256": "d7df0fa618f480224e43a26d378e9b3153afc6b87ac7709700b9c8d2d9723509",
+  "target_source_should_exist": false,
+  "custom_behavior_remaining": false,
+  "deployment_dependency": "Ensure any older loose zombie/LoadGridsquarePerformanceWorkaround*.class overrides are removed/restored before deploying the target; leave projectzomboid.jar intact. No live action authorized or performed.",
+  "review_document": "42.22.0/docs/reports/2026-10-27-merge-10-load-gridsquare.md",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "In this case i want you to retire this one and move to the next",
+    "source_retirement_applied": true,
+    "installed_files_modified": false
+  },
+  "cleanup_manifest": "42.22.0/tools/retired-class-families.json",
+  "automatic_cleanup_implemented": false
+}

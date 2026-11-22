@@ -1,0 +1,128 @@
+{
+  "review": 38,
+  "state": "approved-applied",
+  "path": "zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+  "recommendation": "Approved coordinated NPC combat port and fixed 768..1023 NPC reservation are applied. Preserve no-reuse/process-capacity policy; full GameServer custom integrations still await review48.",
+  "target_vanilla_sha256": "5be8205b8cdfc621eff94b04e92efa6cf720a7bdd6c551e24c655501cd2235d1",
+  "old_patch_intent": [
+    "Resolve detached NPC victim after native target parsing.",
+    "Validate incoming attack ownership/equipped weapon/count/range/PvP/line and deduplicate before logical damage.",
+    "Consume native attack once and import body loss into NPC state; send presentation without attacking twice."
+  ],
+  "affected_sources": [
+    "zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+    "zombie/network/packets/hit/PlayerHitPacket.java",
+    "zombie/network/fields/hit/Hit.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+    "zombie/apocalipse/humans/ServerHuman.java",
+    "zombie/apocalipse/humans/ServerHumanAttackReplay.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerDamage.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java",
+    "zombie/apocalipse/humans/ServerHumanHitPacket.java",
+    "zombie/apocalipse/humans/ServerHumanMissPacket.java",
+    "zombie/apocalipse/humans/ServerHumanCommittedHit.java",
+    "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java",
+    "zombie/apocalipse/humans/ServerHumanCombatNetwork.java",
+    "zombie/apocalipse/humans/ServerHumanPresentationIds.java",
+    "zombie/apocalipse/humans/ServerHumanFactory.java",
+    "zombie/network/GameServer.java"
+  ],
+  "native_entry_points_to_audit": [
+    "zombie/network/packets/hit/PlayerHitPacket.java",
+    "zombie/network/packets/hit/PlayerHit.java",
+    "zombie/network/packets/hit/HitCharacter.java",
+    "zombie/network/fields/hit/Hit.java",
+    "zombie/network/fields/hit/Player.java",
+    "zombie/network/fields/character/CharacterID.java"
+  ],
+  "required_decisions": [],
+  "verification": "Candidate compiled (excluding full GameServer/factory composition) and 1,725 assertions passed with explicit doubles; no exact-JAR/runtime validation.",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.md",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-38-player-hit-player.diff",
+  "candidate_diff_sha256": "893460dbcc06e872941fb0766540d82742a7d36453991b7b2c8914869a63588b",
+  "baseline_replacements": [
+    "zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+    "zombie/network/packets/hit/PlayerHitPacket.java",
+    "zombie/network/fields/hit/Hit.java",
+    "zombie/network/GameServer.java"
+  ],
+  "source_applied": true,
+  "installed_files_modified": false,
+  "duplicate_policy": {
+    "decision": "user-selected",
+    "window_ms": 500,
+    "scope": "Exact original NPC child payload SHA-256, attacker/connection/weapon identity, per-victim incarnation, at most 128 live entries; saturation rejects. One NPC child per victim per envelope.",
+    "limitation": "Identical legitimate rapid attacks can be rejected; altered or later payloads are not prevented. No protocol nonce exists."
+  },
+  "known_gap": {
+    "factory_ids": [
+      1024,
+      32766
+    ],
+    "native_client_max_id_exclusive": 1024,
+    "reproduced": true,
+    "description": "Old IDs >=1024 remain rejected; proposed reserved IDs 768 and 1023 pass actual native client ConnectionPlayer/envelope consistency with engine doubles. Live-client validation remains pending.",
+    "status": "addressed-in-applied-source-parser-fixture"
+  },
+  "candidate_fixture": {
+    "script": "tools/test_player_hit_player_port.py",
+    "passed": true,
+    "assertions": 1725,
+    "includes_known_failure_regression": true,
+    "scope": "Native packet/Hit and field classes with engine/combat/transport/logical-state doubles; extracted candidate GameServer slot allocation and unchanged NPC ID allocator. Old-ID rejection and proposed boundary acceptance verified.",
+    "applied_candidate_equivalence": true
+  },
+  "client_policy": {
+    "decision": "user-selected-stock-clients",
+    "user_instruction": "Preserve stock clients; investigate reserved IDs below 1024",
+    "date": "2026-10-28"
+  },
+  "identity_proposal": {
+    "state": "approved-applied",
+    "npc_id_first": 768,
+    "npc_id_last": 1023,
+    "fresh_process_ids": 256,
+    "active_npc_limit": 64,
+    "real_connection_slots": 192,
+    "real_player_ids": [
+      0,
+      767
+    ],
+    "recycle": false,
+    "exhaustion": "Reject further activation; restart required. Skips and post-allocation failures consume IDs.",
+    "policy": "Fixed process-lifetime reservation, including when no NPC is active; full restart required."
+  },
+  "review48_dependency": "GameServer now has the applied native slot-reservation change only; review48 must extend it without overwriting that prerequisite.",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "thi limitation occour because we immitate players with our bots and they take online players id right? i belive we can apply it now and move to the next review",
+    "date": "2026-10-28",
+    "source_applied": true,
+    "installed_files_modified": false,
+    "baseline_commits": {
+      "zombie/network/packets/hit/PlayerHitPlayerPacket.java": "22a379e29fa2d662df7e72fe41866c39c1904be2",
+      "zombie/network/packets/hit/PlayerHitPacket.java": "499906390dd084b7359ab040ce17ae85f51e980d",
+      "zombie/network/fields/hit/Hit.java": "8a6561fb3c59dc50247b5614120b3d80d166bc08",
+      "zombie/network/GameServer.java": "a5e10000d67ce8674d477b9d6bf818c7f2540e2f"
+    },
+    "candidate_equivalence_files": 16
+  },
+  "target_source_hashes": {
+    "zombie/network/packets/hit/PlayerHitPlayerPacket.java": "b05a124893d42c2260e228e34942ab873d6cef30f2b2cd48110074e801a83d98",
+    "zombie/network/packets/hit/PlayerHitPacket.java": "0d401b6dc927903a40d67f2bed5fc9797071386d8f97f1ab46282c85b2900395",
+    "zombie/network/fields/hit/Hit.java": "3a6a3771493a44b865a01e0f562ce8db22f8a145735eb380b6872333a6faa06e",
+    "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java": "d3922d381d5c416964fe57e023fa1f0457fd0e44da3f8151ceb8dc759bf90576",
+    "zombie/apocalipse/humans/ServerHuman.java": "bbd47e3b15f49e89a42f3bef85c80af975d8fb38097853babe1eb45c8ef0fb75",
+    "zombie/apocalipse/humans/ServerHumanAttackReplay.java": "bcf9ec01344019ca4b632add177237cc06a20850c2618cb83952f2c677280d91",
+    "zombie/apocalipse/humans/ServerHumanPlayerDamage.java": "dd28b5a67cc163deb976d26108b0b64bf2c8cd4816aff2dd84855e93c6e1c766",
+    "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java": "d790a5c0fbc61493e23b4867b686bda22c1d298f5946886f78e6281974b5c0ea",
+    "zombie/apocalipse/humans/ServerHumanHitPacket.java": "38ea36faa30c043be4a1c8ae0eab9ef9f2124a755e710307ca38573aab121bed",
+    "zombie/apocalipse/humans/ServerHumanMissPacket.java": "90e0df04f82105cc41d816d3a4625cdafa32a0336a326c991ece5fec900ed613",
+    "zombie/apocalipse/humans/ServerHumanCommittedHit.java": "7d02350efa9bde164e4a38e5376c747072c1d0b5dbd7ea61f1e7a32b08ac925f",
+    "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java": "676238390afca5731ec0829af1ec1a0b920e95a33cba7f8d89a202eb4eb21e16",
+    "zombie/apocalipse/humans/ServerHumanCombatNetwork.java": "dbfd2bfa531e9c3cab188ebe0cc5cfb7419bb25c0e7e96602949186fee4102b3",
+    "zombie/apocalipse/humans/ServerHumanPresentationIds.java": "818232939dec91e2979a1ef3720f2129cf1f407ceff2d18e21326a2ed01d87c5",
+    "zombie/apocalipse/humans/ServerHumanFactory.java": "66e8a8cf7757fe2df60a44c71097c53df894422f4b85c267bf066c6bcd0fafe0",
+    "zombie/network/GameServer.java": "66eb05d5b9e6c51d50ef3554080ad3af9f133d2007aecaa5f3315548fa80b653"
+  }
+}

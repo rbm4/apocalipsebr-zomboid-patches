@@ -5,7 +5,7 @@
 .DESCRIPTION
     Interactive launcher for PZ class patches.
     - Discovers available version folders in this repository
-    - Prompts for the PZ install directory (where ProjectZomboid64.json lives)
+    - Detects the PZ install directory through Steam, with a manual path fallback
     - Detects 32 vs 64-bit layout from ProjectZomboid64.json / ProjectZomboid32.json
     - Parses the classpath field to determine the deploy base directory
     - Verifies (or installs) Java $RequiredMajor+, shared across all patches
@@ -15,7 +15,7 @@
 .PARAMETER PZDir
     Path to the PZ install directory (the folder containing ProjectZomboid64.json).
     Also accepts a direct path to ProjectZomboid64.json / ProjectZomboid32.json.
-    Prompted interactively if omitted.
+    Detected through Steam if omitted; prompted interactively if not found.
 
 .PARAMETER Version
     Pre-select a version folder (e.g. "42.17.0") to skip the prompt.
@@ -172,6 +172,59 @@ function Install-SharedJdk {
 
 # -- PZ config helpers ----------------------------------------------------------
 
+function Find-SteamPZDirectory {
+    $steamRoots = @(
+        foreach ($key in @('HKCU:\Software\Valve\Steam',
+                           'HKLM:\SOFTWARE\WOW6432Node\Valve\Steam',
+                           'HKLM:\SOFTWARE\Valve\Steam')) {
+            $entry = Get-ItemProperty -LiteralPath $key -ErrorAction SilentlyContinue
+            if ($entry.SteamPath) { $entry.SteamPath }
+            if ($entry.InstallPath) { $entry.InstallPath }
+        }
+        foreach ($base in @(${env:ProgramFiles(x86)}, $env:ProgramFiles)) {
+            if ($base) { Join-Path $base 'Steam' }
+        }
+    ) | Select-Object -Unique
+
+    $libraries = @(
+        foreach ($steamRoot in $steamRoots) {
+            $steamRoot
+            $libraryFile = Join-Path $steamRoot 'steamapps\libraryfolders.vdf'
+            if (-not (Test-Path -LiteralPath $libraryFile -PathType Leaf)) { continue }
+            try {
+                $libraryText = Get-Content -LiteralPath $libraryFile -Raw -ErrorAction Stop
+                # Read quoted VDF path values, including escaped Windows backslashes.
+                foreach ($match in [regex]::Matches($libraryText, '(?im)^\s*"path"\s+"((?:\\.|[^"\\])*)"')) {
+                    $match.Groups[1].Value.Replace('\\', '\').Replace('\"', '"')
+                }
+            } catch {
+                Write-Verbose "Unable to read Steam libraries from ${libraryFile}: $_"
+            }
+        }
+    ) | Select-Object -Unique
+
+    foreach ($library in $libraries) {
+        # Project Zomboid's Steam App ID is 108600.
+        $manifest = Join-Path $library 'steamapps\appmanifest_108600.acf'
+        if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { continue }
+        try {
+            $manifestText = Get-Content -LiteralPath $manifest -Raw -ErrorAction Stop
+            if ($manifestText -match '(?im)^\s*"installdir"\s+"((?:\\.|[^"\\])*)"') {
+                $installDir = $Matches[1].Replace('\\', '\').Replace('\"', '"')
+                $candidate = Join-Path (Join-Path $library 'steamapps\common') $installDir
+                foreach ($name in @('ProjectZomboid64.json', 'ProjectZomboid32.json')) {
+                    if (Test-Path -LiteralPath (Join-Path $candidate $name) -PathType Leaf) {
+                        return (Resolve-Path -LiteralPath $candidate).Path
+                    }
+                }
+            }
+        } catch {
+            Write-Verbose "Unable to inspect Steam manifest ${manifest}: $_"
+        }
+    }
+    return $null
+}
+
 function Get-PZJsonConfig([string]$Dir) {
     foreach ($name in @("ProjectZomboid64.json", "ProjectZomboid32.json")) {
         $path = Join-Path $Dir $name
@@ -249,14 +302,26 @@ Write-Host "Version directory: $VersionDir" -ForegroundColor Gray
 
 Write-Host ""
 $dirValid = $false
+$steamLookupAttempted = $false
 
 while (-not $dirValid) {
+    if (-not $PZDir -and -not $steamLookupAttempted) {
+        $steamLookupAttempted = $true
+        Write-Host "[*] Searching Steam libraries for Project Zomboid..." -ForegroundColor Cyan
+        $PZDir = Find-SteamPZDirectory
+        if ($PZDir) {
+            Write-Host "    Found (Steam): $PZDir" -ForegroundColor Green
+        } else {
+            Write-Host "    PZ installation not found through Steam. Enter the path manually." -ForegroundColor Yellow
+        }
+    }
     if (-not $PZDir) {
         $PZDir = Read-Host "Enter path to PZ install directory (containing ProjectZomboid64.json)"
     }
 
     # Strip surrounding quotes the user may have included
     $PZDir = $PZDir.Trim('"').Trim("'").Trim()
+    if (-not $PZDir) { continue }
 
     # Accept a direct path to the JSON file — use its parent directory
     $rawLeaf = Split-Path $PZDir -Leaf -ErrorAction SilentlyContinue

@@ -1,0 +1,22 @@
+--- a/42.22.0/src/zombie/network/packets/character/PlayerStatsPacket.java
++++ b/42.22.0/src/zombie/network/packets/character/PlayerStatsPacket.java
+@@ -10,6 +10,7 @@
+ import zombie.debug.LogSeverity;
+ import zombie.iso.IsoWorld;
+ import zombie.network.IConnection;
++import zombie.network.ApocBRPacketOwnershipGuard;
+ import zombie.network.JSONField;
+ import zombie.network.PacketSetting;
+ import zombie.network.fields.character.ConnectionPlayer;
+@@ -43,7 +44,10 @@
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
+         this.player.parse(b, connection);
+-        if (this.isConsistent(connection)) {
++        if (ApocBRPacketOwnershipGuard.validate(
++                "PlayerStats", connection, this.player.getId(), (byte)-1, this.player.getPlayer()
++            )
++            && this.isConsistent(connection)) {
+             try {
+                 IsoPlayer isoPlayer = this.player.getPlayer();
+                 isoPlayer.getStats().load(b.bb, IsoWorld.getWorldVersion());

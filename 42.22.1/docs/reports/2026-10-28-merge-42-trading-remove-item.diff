@@ -1,0 +1,20 @@
+--- a/42.22.0/src/zombie/network/packets/TradingUIRemoveItemPacket.java
++++ b/42.22.0/src/zombie/network/packets/TradingUIRemoveItemPacket.java
+@@ -32,6 +32,7 @@
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
+         super.parse(b, connection);
++        zombie.apocalipse.humans.ServerHumanTrading.resolveTarget(this.destination);
+         this.itemId = b.getInt();
+     }
+ 
+@@ -42,6 +43,9 @@
+ 
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
++        if (zombie.apocalipse.humans.ServerHumanTrading.removeItem(
++            this.sender.getPlayer(), this.destination.getPlayer(), connection, this.itemId
++        )) return;
+         if (!TradingManager.getInstance().isInvalid(this.sender.getPlayer(), this.destination.getPlayer())) {
+             if (TradingManager.getInstance().removeItem(this.sender.getPlayer(), this.itemId)) {
+                 this.sendToClient(PacketTypes.PacketType.TradingUIRemoveItem, this.destination.getPlayer());

@@ -1,0 +1,11 @@
+--- a/42.22.0/src/zombie/apocalipse/zombies/ServerZombiePath.java
++++ b/42.22.0/src/zombie/apocalipse/zombies/ServerZombiePath.java
+@@ -56,7 +56,7 @@
+             }
+             public void Failed(Mover mover){if(current(mover)){pending=false;points=List.of();diagnostic("no_path");}}
+         };
+-        if(nativeBackend)PathfindNative.instance.addRequest(callback,this,body.getX(),body.getY(),body.getZ(),x,y,body.getZ());
++        if(nativeBackend)PathfindNative.instance.addRequest(callback,this,body.getX(),body.getY(),body.getZ(),x,y,body.getZ(),false);
+         else PolygonalMap2.instance.addRequest(callback,this,body.getX(),body.getY(),body.getZ(),x,y,body.getZ());
+     }
+     private void diagnostic(String result){HumanLog.log(HumanLog.Level.DEBUG,()->"zombie route id="+onlineId

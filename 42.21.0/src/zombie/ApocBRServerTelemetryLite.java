@@ -187,8 +187,10 @@ public final class ApocBRServerTelemetryLite {
         json.append('}');
         json.append(",\"world\":{\"loadedCells\":").append(ServerMap.instance.loadedCells.size());
         json.append(",\"pendingCells\":").append(ServerMap.instance.telemetryPendingCells());
+        Integer loadedZombieCount = null;
         if (IsoWorld.instance.currentCell != null) {
-            json.append(",\"zombies\":").append(IsoWorld.instance.currentCell.getZombieList().size());
+            loadedZombieCount = IsoWorld.instance.currentCell.getZombieList().size();
+            json.append(",\"zombies\":").append(loadedZombieCount);
             json.append(",\"movingObjects\":").append(IsoWorld.instance.currentCell.getObjectList().size());
             // Once per reporting window, not per frame or per animal.
             TreeMap<String, int[]> movingObjectsByClass = new TreeMap<>();
@@ -229,6 +231,7 @@ public final class ApocBRServerTelemetryLite {
         previousGcCount = gcCount;
         previousGcMillis = gcMillis;
         json.append(",\"playersOnline\":").append(players);
+        zombie.network.ApocBRBackendBridgeHooks.onPopulation(players, loadedZombieCount);
         json.append(",\"dropped\":").append(dropped.sum());
         json.append(",\"lua\":{\"enabled\":").append(LUA_ENABLED);
         if (LUA_ENABLED) {

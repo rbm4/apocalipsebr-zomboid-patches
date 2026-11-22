@@ -1,0 +1,23 @@
+--- a/42.22.0/src/zombie/iso/IsoGridSquare.java
++++ b/42.22.0/src/zombie/iso/IsoGridSquare.java
+@@ -317,7 +317,7 @@
+     private int deferredCharacterTick = -1;
+     private final ArrayList<IsoMovingObject> staticMovingObjects = new ArrayList<>(0);
+     private final ArrayList<IsoMovingObject> movingObjects = new ArrayList<>(0);
+-    protected final List<IsoObject> objects = new ArrayList<>(2);
++    protected final List<IsoObject> objects = new zombie.util.list.MutationTrackedArrayList<>(2);
+     private final ArrayList<IsoWorldInventoryObject> worldObjects = new ArrayList<>();
+     public long hasTypes;
+     private final PropertyContainer properties = new PropertyContainer();
+--- a/42.22.0/src/zombie/util/list/MutationTrackedArrayList.java
++++ b/42.22.0/src/zombie/util/list/MutationTrackedArrayList.java
+@@ -16,6 +16,9 @@
+ /** Retains ArrayList mutation/iteration behavior, including backed sublists. */
+ public class MutationTrackedArrayList<E> extends ArrayList<E> {
+     private long replacements;
++
++    public MutationTrackedArrayList() { super(); }
++    public MutationTrackedArrayList(int initialCapacity) { super(initialCapacity); }
+ 
+     public long mutationVersion() { return ((long)this.modCount << 32) ^ this.replacements; }
+ 

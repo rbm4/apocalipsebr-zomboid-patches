@@ -1,0 +1,232 @@
+package zombie.apocalipse.humans;
+
+import java.util.*;
+import zombie.ServerMovingObjectSet;
+import zombie.apocalipse.humans.brain.*;
+import static zombie.apocalipse.humans.brain.HumanSenses.*;
+import zombie.characters.IsoGameCharacter;
+import zombie.characters.IsoPlayer;
+import zombie.characters.IsoZombie;
+import zombie.iso.IsoGridSquare;
+import zombie.iso.LosUtil;
+import zombie.network.GameServer;
+
+/** Simulation-thread world adapter: discover -> see -> retain. No target or hostility policy. */
+final class ServerHumanPerception {
+    static final int PLAYER_BUDGET=128, TILE_BUDGET=128, BODY_BUDGET=256;
+    static final int ZOMBIE_CANDIDATES=48, PLAYER_RAYS=32, ZOMBIE_RAYS=16;
+    private record Offset(int x,int y) { }
+    private record Candidate(IsoGameCharacter body,double distance) { }
+    private record Binding(IsoGameCharacter body,Object membership,Identity identity) { }
+    private static final class Cursor { int tile,body; }
+    private record Scan(int tiles,int bodies,boolean complete,boolean loaded) { }
+    private final ServerHuman human;
+    private final HumanContactMemory memory=new HumanContactMemory();
+    private final HumanContactMemory awarenessMemory=new HumanContactMemory();
+    private Frame awareness=Frame.EMPTY;
+    private final IdentityHashMap<IsoGameCharacter,Binding> bindings=new IdentityHashMap<>();
+    private final List<Offset> offsets;
+    private final double awarenessRadius;
+    private final int nearTiles;
+    private final boolean survivalEnabled;
+    private final Cursor near=new Cursor(),far=new Cursor();
+    private int playerCursor,zombieRayCursor,playerRayCursor;
+    private long generation,nextSample;
+    private boolean sampled;
+    private Frame frame=Frame.EMPTY;
+    private HumanTerritory territory=HumanTerritory.UNAVAILABLE;
+
+    ServerHumanPerception(ServerHuman human){
+        this.human=human;
+        survivalEnabled=human.profile.modules().stream().anyMatch(m->m.moduleId().equals("survival"));
+        awarenessRadius=survivalEnabled?Math.max(human.profile.perceptionRadius(),Math.min(24,human.profile.survival().retreatDistance()+human.profile.survival().crowdRadius())):human.profile.perceptionRadius();
+        int radius=(int)Math.ceil(awarenessRadius);
+        var offsets=new ArrayList<Offset>();
+        for(int x=-radius;x<=radius;x++)for(int y=-radius;y<=radius;y++)offsets.add(new Offset(x,y));
+        offsets.sort(Comparator.comparingInt((Offset o)->Math.max(Math.abs(o.x()),Math.abs(o.y())))
+            .thenComparingInt(o->o.x()*o.x()+o.y()*o.y()).thenComparingInt(Offset::x).thenComparingInt(Offset::y));
+        this.offsets=List.copyOf(offsets);nearTiles=Math.min(offsets.size(),25);far.tile=nearTiles;
+    }
+
+    Frame snapshot(){return frame;}
+    HumanObservation observe(long now){
+        update(now);
+        var visitors=frame.visible(Kind.PLAYER).stream().map(c->new HumanObservation.Visitor(
+            new HumanObservation.Identity(c.identity().onlineId(),c.identity().instanceId()),c.x(),c.y(),c.z(),c.distanceSquared()))
+            .sorted(Comparator.comparingDouble(HumanObservation.Visitor::distanceSquared)).toList();
+        return new HumanObservation(now,visitors,human.walking.available(),human.state.snapshot(),frame,territory,awareness);
+    }
+
+    void update(long suppliedNow){
+        // Death/removal must not survive until the next scheduled discovery sample.
+        var invalid=new HashSet<Identity>();
+        for(var b:bindings.values())if(!valid(b)){
+            invalid.add(b.identity());
+            HumanLog.log(HumanLog.Level.DEBUG,()->"perception invalid key="+human.definition.key()+"; contact="+b.identity()
+                +"; dead="+b.body().isDead()+"; health="+b.body().getHealth());
+        }
+        if(!invalid.isEmpty()){
+            var previous=frame;memory.invalidate(invalid);awarenessMemory.invalidate(invalid);
+            frame=without(frame,invalid);awareness=without(awareness,invalid);
+            bindings.values().removeIf(b->invalid.contains(b.identity()));
+            territory=human.territory.observe(frame);transitions(previous,frame);
+        }
+        if(sampled&&suppliedNow<nextSample)return;
+        long now=sampled?Math.max(suppliedNow,frame.sampledAtNanos()):suppliedNow;
+        sampled=true;nextSample=now+(survivalEnabled?Math.min(100,human.profile.perceptionIntervalMs()):human.profile.perceptionIntervalMs())*1_000_000L;
+        var previous=frame;
+        var players=new ArrayList<Candidate>();
+        int size=GameServer.Players.size(),checked=Math.min(size,PLAYER_BUDGET);
+        for(int n=0;n<checked;n++){
+            var player=GameServer.Players.get(Math.floorMod(playerCursor++,size));
+            if(eligible(player)&&distance(player)<=radiusSquared())players.add(new Candidate(player,distance(player)));
+        }
+        var zombies=new ArrayList<Candidate>();
+        // Refresh known in-range bodies even when discovery is visiting another ring.
+        for(var b:bindings.values())if(b.identity().kind()==Kind.ZOMBIE&&!invalid.contains(b.identity())&&distance(b.body())<=awarenessRadius*awarenessRadius)
+            zombies.add(new Candidate(b.body(),distance(b.body())));
+        Scan close=scan(near,0,nearTiles,nearTiles,64,zombies);
+        Scan outer=scan(far,nearTiles,offsets.size(),TILE_BUDGET-nearTiles,BODY_BUDGET-64,zombies);
+        boolean truncated=zombies.size()>ZOMBIE_CANDIDATES;
+        // Stable distance sorting must not let retained bodies monopolize equal-distance slots.
+        if(!zombies.isEmpty())Collections.rotate(zombies,Math.floorMod(zombieRayCursor,zombies.size()));
+        zombies.sort(Comparator.comparingDouble(Candidate::distance));
+        if(truncated)zombies.subList(ZOMBIE_CANDIDATES,zombies.size()).clear();
+        players.sort(Comparator.comparingDouble(Candidate::distance));
+        var sightings=new ArrayList<Sighting>();
+        int playerChecks=see(players,PLAYER_RAYS,playerRayCursor,sightings);
+        var visual=zombies.stream().filter(c->c.distance()<=radiusSquared()).toList();
+        int zombieChecks=see(visual,ZOMBIE_RAYS,zombieRayCursor,sightings);
+        playerRayCursor+=PLAYER_RAYS;zombieRayCursor+=ZOMBIE_RAYS;
+        Coverage pc=size>PLAYER_BUDGET||players.size()>PLAYER_RAYS?Coverage.PARTIAL:Coverage.COMPLETE;
+        boolean originLoaded=human.player.getCell().getGridSquare(human.player.getXi(),human.player.getYi(),human.player.getZi())!=null;
+        boolean indexed=human.player.getCell().getObjectList() instanceof ServerMovingObjectSet;
+        Coverage zc=!originLoaded||!indexed?Coverage.UNAVAILABLE
+            :close.complete()&&outer.complete()&&close.loaded()&&outer.loaded()&&!truncated&&zombies.size()<=ZOMBIE_RAYS?Coverage.COMPLETE:Coverage.PARTIAL;
+        var relevant=new HashSet<Identity>();
+        for(var b:bindings.values())if(!invalid.contains(b.identity())&&distance(b.body())<=awarenessRadius*awarenessRadius)relevant.add(b.identity());
+        frame=memory.update(now,sightings,invalid,relevant,originLoaded?pc:Coverage.UNAVAILABLE,zc,truncated,
+            new Work(checked,close.tiles()+outer.tiles(),close.bodies()+outer.bodies(),zombies.size(),playerChecks+zombieChecks));
+        // Local crowd awareness shares discovery budgets; attack authorization retains visual rays.
+        var nearby=new ArrayList<Sighting>();
+        for(var candidate:zombies){var body=candidate.body();var binding=bind(body);
+            nearby.add(new Sighting(binding.identity(),body.getX(),body.getY(),body.getZ(),candidate.distance()));}
+        awareness=awarenessMemory.update(now,nearby,invalid,relevant,Coverage.UNAVAILABLE,zc,truncated,frame.work());
+        // Retained positions are last-known; distances follow the observer's current position.
+        awareness=new Frame(true,now,awareness.contacts().stream().map(c->{double dx=c.x()-human.player.getX(),dy=c.y()-human.player.getY();
+            return new Contact(c.identity(),c.x(),c.y(),c.z(),dx*dx+dy*dy,c.firstSeenNanos(),c.lastSeenNanos(),c.visible());}).toList(),
+            Coverage.UNAVAILABLE,zc,awareness.contactsTruncated(),frame.work());
+        var kept=new HashSet<Identity>();for(var c:frame.contacts())kept.add(c.identity());
+        for(var c:awareness.contacts())kept.add(c.identity());
+        bindings.values().removeIf(b->!kept.contains(b.identity()));
+        territory=human.territory.observe(frame);
+        transitions(previous,frame);
+    }
+
+    private static Frame without(Frame frame,Set<Identity> invalid){
+        return new Frame(frame.sampled(),frame.sampledAtNanos(),frame.contacts().stream().filter(c->!invalid.contains(c.identity())).toList(),
+            frame.players(),frame.zombies(),frame.contactsTruncated(),frame.work());
+    }
+    Frame awareness(){return awareness;}
+
+    private Scan scan(Cursor cursor,int start,int end,int tilesLimit,int bodiesLimit,List<Candidate> candidates){
+        if(start>=end)return new Scan(0,0,true,true);
+        if(cursor.tile<start||cursor.tile>=end){cursor.tile=start;cursor.body=0;}
+        int initial=cursor.tile,tiles=0,bodies=0;boolean loaded=true,complete=false,resumed=cursor.body!=0;
+        while(tiles<tilesLimit&&bodies<bodiesLimit){
+            var offset=offsets.get(cursor.tile);tiles++;
+            var square=human.player.getCell().getGridSquare(human.player.getXi()+offset.x(),human.player.getYi()+offset.y(),human.player.getZi());
+            if(square==null)loaded=false;
+            var objects=square==null?null:square.getMovingObjects();
+            while(objects!=null&&cursor.body<objects.size()&&bodies<bodiesLimit){
+                var object=objects.get(cursor.body++);bodies++;
+                if(object instanceof IsoZombie zombie&&zombie.getCurrentSquare()==square&&eligible(zombie)){
+                    double distance=distance(zombie);
+                    if(distance<=awarenessRadius*awarenessRadius&&candidates.stream().noneMatch(c->c.body()==zombie))candidates.add(new Candidate(zombie,distance));
+                }
+            }
+            if(objects!=null&&cursor.body<objects.size())break;
+            cursor.body=0;cursor.tile++;if(cursor.tile==end)cursor.tile=start;
+            if(cursor.tile==initial){complete=!resumed;break;}
+        }
+        return new Scan(tiles,bodies,complete,loaded);
+    }
+
+    private int see(List<Candidate> candidates,int budget,int rotation,List<Sighting> sightings){
+        int checks=Math.min(budget,candidates.size());
+        // Reserve half the zombie budget for closest contacts; rotate the rest for fairness.
+        var chosen=new LinkedHashSet<Integer>();
+        int nearest=budget==ZOMBIE_RAYS?Math.min(checks,budget/2):0;
+        for(int n=0;n<nearest;n++)chosen.add(n);
+        for(int n=0;chosen.size()<checks;n++)chosen.add(Math.floorMod((long)rotation+n,candidates.size()));
+        for(int index:chosen){
+            var candidate=candidates.get(index);var body=candidate.body();
+            if(!visible(body))continue;
+            var binding=bind(body);
+            sightings.add(new Sighting(binding.identity(),body.getX(),body.getY(),body.getZ(),candidate.distance()));
+        }
+        return checks;
+    }
+    private Binding bind(IsoGameCharacter body){
+        Object member=body instanceof IsoZombie?membership(body):null;short online=online(body);var binding=bindings.get(body);
+        if(binding==null||binding.membership()!=member||binding.identity().onlineId()!=online||binding.identity().instanceId()!=body.getID()){
+            binding=new Binding(body,member,new Identity(body instanceof IsoZombie?Kind.ZOMBIE:Kind.PLAYER,online,body.getID(),++generation));bindings.put(body,binding);
+        }
+        return binding;
+    }
+    private Object membership(IsoGameCharacter body){
+        return human.player.getCell().getObjectList() instanceof ServerMovingObjectSet set?set.member(body):null;
+    }
+    private boolean valid(Binding b){
+        return b.body().getID()==b.identity().instanceId()&&online(b.body())==b.identity().onlineId()
+            &&(b.body() instanceof IsoPlayer p?eligible(p):eligible((IsoZombie)b.body())&&membership(b.body())==b.membership());
+    }
+    private static short online(IsoGameCharacter body){return body instanceof IsoPlayer p?p.getOnlineID():((IsoZombie)body).getOnlineID();}
+    boolean eligible(IsoPlayer player){
+        if(player==null||player==human.player||player.isDead()||player.isInvisible()
+            ||player.getZi()!=human.player.getZi()||GameServer.IDToPlayerMap.get(player.getOnlineID())!=player)return false;
+        var connection=GameServer.getConnectionFromPlayer(player);
+        return connection!=null&&connection.isFullyConnected()&&!GameServer.isDelayedDisconnect(player);
+    }
+    private boolean eligible(IsoZombie zombie){
+        return !zombie.isDead()&&zombie.getHealth()>0&&!zombie.isReanimatedForGrappleOnly()
+            &&Float.isFinite(zombie.getX())&&Float.isFinite(zombie.getY())&&Float.isFinite(zombie.getZ())
+            &&zombie.getZi()==human.player.getZi()&&zombie.getCurrentSquare()!=null
+            &&human.player.getCell().getGridSquare(zombie.getXi(),zombie.getYi(),zombie.getZi())==zombie.getCurrentSquare()&&membership(zombie)!=null;
+    }
+    private double distance(IsoGameCharacter body){double dx=body.getX()-human.player.getX(),dy=body.getY()-human.player.getY();return dx*dx+dy*dy;}
+    private double radiusSquared(){return human.profile.perceptionRadius()*human.profile.perceptionRadius();}
+    boolean visible(IsoGameCharacter body){
+        if(!human.profile.requireLos())return true;
+        if(body.getCurrentSquare()==null)return false;
+        var cell=human.player.getCell();int z=human.player.getZi();
+        if(cell.getGridSquare(human.player.getXi(),human.player.getYi(),z)==null)return false;
+        // Native lineClear skips absent squares. Fail closed before asking its vision rules.
+        int dx=body.getXi()-human.player.getXi(),dy=body.getYi()-human.player.getYi(),steps=Math.max(Math.abs(dx),Math.abs(dy));
+        for(int n=0;n<=steps;n++){
+            int x=human.player.getXi()+(steps==0?0:Math.round(dx*(float)n/steps));
+            int y=human.player.getYi()+(steps==0?0:Math.round(dy*(float)n/steps));
+            if(cell.getGridSquare(x,y,z)==null)return false;
+        }
+        var result=LosUtil.lineClear(cell,human.player.getXi(),human.player.getYi(),z,body.getXi(),body.getYi(),body.getZi(),false);
+        return result!=LosUtil.TestResults.Blocked&&result!=LosUtil.TestResults.ClearThroughClosedDoor;
+    }
+    private void transitions(Frame previous,Frame next){
+        if(!HumanLog.enabled(HumanLog.Level.DEBUG))return;
+        var old=new HashMap<Identity,Contact>();for(var c:previous.contacts())old.put(c.identity(),c);
+        for(var c:next.contacts()){
+            var before=old.remove(c.identity());
+            if(before==null||before.visible()!=c.visible())HumanLog.log(HumanLog.Level.DEBUG,
+                ()->"perception key="+human.definition.key()+"; contact="+c.identity()+"; state="+(c.visible()?"VISIBLE":"REMEMBERED"));
+        }
+        for(var id:old.keySet())HumanLog.log(HumanLog.Level.DEBUG,()->"perception key="+human.definition.key()+"; contact="+id+"; state=FORGOTTEN");
+    }
+    /** Revalidate a sensor-local handle against current native membership before combat uses it. */
+    IsoZombie resolveZombie(Identity identity){
+        if(identity.kind()!=Kind.ZOMBIE||frame.contacts().stream().noneMatch(c->c.identity().equals(identity)&&c.visible()))return null;
+        for(var binding:bindings.values())if(binding.identity().equals(identity)&&valid(binding)
+            &&binding.body() instanceof IsoZombie zombie&&distance(zombie)<=radiusSquared()&&visible(zombie))return zombie;
+        return null;
+    }
+    void clear(){awarenessMemory.clear();awareness=Frame.EMPTY;memory.clear();bindings.clear();frame=Frame.EMPTY;territory=HumanTerritory.UNAVAILABLE;sampled=false;near.tile=near.body=far.body=0;far.tile=nearTiles;}
+}

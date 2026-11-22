@@ -1,5 +1,6 @@
 """Differential fixtures for 42.21 removal, zone topology, expiry and no-work gates."""
 from pathlib import Path
+import argparse
 import subprocess
 import tempfile
 
@@ -151,7 +152,102 @@ public class NoWorkTest {
 }
 """
 
+def engine_only(version):
+    """Compile both complete manager classes; stub their engine collaborators."""
+    target = ROOT / version
+    files = dict(STUBS)
+    production = (target / "src/zombie/entity/GameEntity.java").read_text(encoding="utf-8")
+    predicate = "public final boolean isAddedOrScheduledForEngine()"
+    if predicate in production:
+        files["zombie/entity/GameEntity.java"] = files["zombie/entity/GameEntity.java"].rsplit("}", 1)[0] + method(production, predicate) + "}"
+    files["zombie/entity/EntityBucketManager.java"] = """package zombie.entity; public class EntityBucketManager {
+      static boolean busy; final java.util.List<String> log=new java.util.ArrayList<>();
+      EntityBucketManager(zombie.entity.util.ImmutableArray<GameEntity> e){}
+      IBucketInformer getBucketsUpdatingInformer(){return ()->busy;}
+      void updateBucketMembership(GameEntity e){log.add(e.id+":"+e.addedToEngine+":"+e.removingFromEngine+":"+e.scheduledForEngineRemoval);}
+    }"""
+    files["zombie/entity/util/SingleThreadPool.java"] = """package zombie.entity.util;
+      public abstract class SingleThreadPool<T extends SingleThreadPool.Poolable>{
+        public static int frees,reuses; private final java.util.ArrayDeque<T> idle=new java.util.ArrayDeque<>();
+        public interface Poolable {void reset();} protected abstract T newObject();
+        public T obtain(){if(idle.isEmpty())return newObject();reuses++;return idle.removeFirst();}
+        public void free(T value){value.reset();frees++;idle.addLast(value);}
+      }"""
+    extra = """
+ static void flags(GameEntity x,GameEntity y){
+   check(x.addedToEngine==y.addedToEngine);check(x.scheduledDelayedAddToEngine==y.scheduledDelayedAddToEngine);
+   check(x.scheduledForEngineRemoval==y.scheduledForEngineRemoval);check(x.removingFromEngine==y.removingFromEngine);
+ }
+ static void pendingCases(){
+  Engine ea=new Engine(),eb=new Engine();boolean[] delay={true};
+  EngineEntityManager a=new EngineEntityManager(ea,()->delay[0]);
+  VanillaEngineEntityManager b=new VanillaEngineEntityManager(eb,()->delay[0]);
+  GameEntity x=new GameEntity(700),y=new GameEntity(700);
+  a.addEntity(x);b.addEntity(y);flags(x,y);
+  check(!x.addedToEngine&&x.scheduledDelayedAddToEngine);check(a.hasPendingOperations());
+  int frees=zombie.entity.util.SingleThreadPool.frees;
+  a.removeEntity(x);b.removeEntity(y);flags(x,y);same(a,b,ea,eb);
+  check(!a.hasPendingOperations()&&!b.hasPendingOperations());check(!x.scheduledDelayedAddToEngine);
+  check(zombie.entity.util.SingleThreadPool.frees==frees+2);check(ea.log.isEmpty());
+  a.updateOperations();b.updateOperations();same(a,b,ea,eb);
+  // Reuse a canceled operation, then process and remove the actual entity.
+  a.addEntity(x);b.addEntity(y);a.updateOperations();b.updateOperations();flags(x,y);same(a,b,ea,eb);
+  check(zombie.entity.util.SingleThreadPool.reuses>=2);check(x.addedToEngine);
+  a.removeEntity(x);b.removeEntity(y);a.removeEntity(x);b.removeEntity(y);
+  a.updateOperations();b.updateOperations();flags(x,y);same(a,b,ea,eb);
+  // Absent removal must still clear the queued-removal flag.
+  x.scheduledForEngineRemoval=y.scheduledForEngineRemoval=true;delay[0]=false;
+  a.removeEntity(x);b.removeEntity(y);flags(x,y);check(!x.scheduledForEngineRemoval);
+  // Bucket iteration also defers operations, independently of the engine flag.
+  EntityBucketManager.busy=true;a.addEntity(x);b.addEntity(y);flags(x,y);
+  a.removeEntity(x);b.removeEntity(y);EntityBucketManager.busy=false;
+  a.updateOperations();b.updateOperations();flags(x,y);same(a,b,ea,eb);
+  check(ea.log.equals(java.util.List.of("add700","remove700")));
+  // Both immediate and queued RemoveAll retain tail-swap/listener/flag order.
+  for(boolean queued:new boolean[]{false,true}){
+   GameEntity[] xs=new GameEntity[40],ys=new GameEntity[40];
+   for(int i=0;i<40;i++){xs[i]=new GameEntity(i);ys[i]=new GameEntity(i);a.addEntity(xs[i]);b.addEntity(ys[i]);}
+   delay[0]=queued;a.removeAllEntities();b.removeAllEntities();a.updateOperations();b.updateOperations();
+   same(a,b,ea,eb);for(int i=0;i<40;i++){flags(xs[i],ys[i]);check(!xs[i].addedToEngine);}
+   delay[0]=false;
+  }
+  check(a.getBucketManager().log.equals(b.getBucketManager().log));
+ }
+ public static void main(String[] args){run();pendingCases();System.out.println("PASS target engine removal: "+assertions+" assertions");}
+}
+"""
+    harness = ENGINE_TEST.split(" public static void main(String[] args)")[0]
+    if version == "42.22.0":
+        harness += extra
+    else:
+        harness += ' public static void main(String[] args){run();}\n}'
+    files["zombie/entity/RemovalTest.java"] = harness
+    files["zombie/entity/VanillaEngineEntityManager.java"] = (target / "decompiled/zombie/entity/EngineEntityManager.java").read_text(encoding="utf-8").replace("EngineEntityManager", "VanillaEngineEntityManager")
+    with tempfile.TemporaryDirectory(prefix="apocbr-engine-removal-") as directory:
+        work = Path(directory)
+        sources = []
+        for name, content in files.items():
+            path = work / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+            sources.append(path)
+        sources.append(target / "src/zombie/entity/EngineEntityManager.java")
+        args = work / "javac.args"
+        args.write_text("\n".join('"'+str(p).replace("\\", "/")+'"' for p in sources), encoding="utf-8")
+        subprocess.run([str(ROOT / "jdk/bin/javac.exe"), "--release", "25", "-d", str(work / "classes"), "@"+str(args)], check=True)
+        subprocess.run([str(ROOT / "jdk/bin/java.exe"), "-ea", "-cp", str(work / "classes"), "zombie.entity.RemovalTest"], check=True)
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--version", choices=("42.21.0", "42.22.0"), default="42.21.0")
+    parser.add_argument("--engine-only", action="store_true", help="Run only entity removal, without unported world subsystems.")
+    args = parser.parse_args()
+    if args.engine_only:
+        engine_only(args.version)
+        return
+    if args.version != "42.21.0":
+        parser.error("42.22.0 currently requires --engine-only; the remaining world replacements are unported")
     vanilla_zone = (V / "decompiled/zombie/iso/areas/DesignationZoneAnimal.java").read_text()
     production_zone = (V / "src/zombie/iso/areas/DesignationZoneAnimal.java").read_text()
     zone = "package zombie.iso.areas; import java.util.*; import zombie.network.GameServer; public class DesignationZoneAnimal {\n"

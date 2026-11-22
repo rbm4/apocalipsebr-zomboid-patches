@@ -273,6 +273,14 @@ def algorithm_fixtures():
     }
 
 
+STUBS["zombie/apocalipse/zombies/ServerZombieController.java"] = """package zombie.apocalipse.zombies;
+public class ServerZombieController {private static final ServerZombieController I=new ServerZombieController();
+public static ServerZombieController getInstance(){return I;}
+public void prepare(zombie.characters.IsoZombie z,zombie.network.packets.character.ZombiePacket p){}}"""
+
+STUBS["zombie/apocalipse/zombies/ServerCorpseDragAuthority.java"] = """package zombie.apocalipse.zombies;
+public class ServerCorpseDragAuthority {public static void prepare(zombie.characters.IsoZombie z,zombie.network.packets.character.ZombiePacket p){}}"""
+
 def main():
     vanilla_packet = (ROOT / "42.21.0/decompiled/zombie/network/packets/character/ZombiePacket.java").read_text()
     patched_packet = (SRC / "zombie/network/packets/character/ZombiePacket.java").read_text()

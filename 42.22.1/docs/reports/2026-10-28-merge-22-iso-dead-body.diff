@@ -1,0 +1,55 @@
+--- a/42.22.0/src/zombie/iso/objects/IsoDeadBody.java
++++ b/42.22.0/src/zombie/iso/objects/IsoDeadBody.java
+@@ -2,6 +2,7 @@
+ package zombie.iso.objects;
+ 
+ import java.io.IOException;
++import zombie.world.ApocBRWorldDictionaryDecode;
+ import java.nio.ByteBuffer;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+@@ -750,6 +751,7 @@
+ 
+     @Override
+     public void load(ByteBuffer input, int worldVersion, boolean isDebugSave) throws IOException {
++        try(var dictionary=ApocBRWorldDictionaryDecode.enter(input)) {
+         super.load(input, worldVersion, isDebugSave);
+         this.female = input.get() != 0;
+         this.wasZombie = input.get() != 0;
+@@ -889,6 +891,7 @@
+                 }
+             }
+         }
++            }
+     }
+ 
+     @Override
+@@ -1601,6 +1604,7 @@
+                 for (IIdentifiable ii : ObjectIDType.DeadBody.getObjects()) {
+                     tempBodies.add(ii);
+                 }
++                if (GameServer.server) zombie.ApocBRServerTelemetryLite.count("corpses.checked", tempBodies.size());
+ 
+                 for (int i = 0; i < tempBodies.size(); i++) {
+                     IsoDeadBody body = (IsoDeadBody)tempBodies.get(i);
+@@ -1808,6 +1812,12 @@
+         if (GameServer.server) {
+             for (int i = 0; i < GameServer.Players.size(); i++) {
+                 IsoPlayer player = GameServer.Players.get(i);
++                // Keep per-corpse current player traversal/order; reject impossible
++                // wakeup candidates before querying LOS. All final predicates remain.
++                if (this.square == null || player == null || player.isDead() || player.isGhostMode()
++                    || player.isInvisible() || player.getVehicle() != null) continue;
++                float distanceSquared = player.DistToSquared(this);
++                if (distanceSquared < 4.0F || distanceSquared > 16.0F) continue;
+                 boolean bCanSee = this.square != null && ServerLOS.instance.isCouldSee(player, this.square);
+                 if (this.isPlayerNearby(player, bCanSee)) {
+                     return true;
+@@ -1875,6 +1885,7 @@
+                 min = 168.0F;
+                 yield 336.0F;
+             }
++            default -> 0.0F;
+         };
+         if (Core.tutorial) {
+             max = 0.25F;

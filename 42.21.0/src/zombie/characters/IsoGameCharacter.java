@@ -1,5 +1,6 @@
 // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
 package zombie.characters;
+import zombie.apocalipse.zombies.ServerZombieController;
 
 import fmod.fmod.FMOD_STUDIO_PARAMETER_DESCRIPTION;
 import fmod.fmod.IFMODParameterUpdater;
@@ -5505,6 +5506,7 @@ public abstract class IsoGameCharacter
         } else {
             IsoPlayer player = Type.tryCastTo(this, IsoPlayer.class);
             IsoGameCharacter.PerkInfo info = this.getPerkInfo(perk);
+            int previousLevel = info == null ? 0 : info.level;
             if (info != null) {
                 info.level++;
                 if (player != null && !"Tutorial".equals(Core.gameMode) && this.getHoursSurvived() > 0.016666666666666666) {
@@ -5534,6 +5536,7 @@ public abstract class IsoGameCharacter
 
                 LuaEventManager.triggerEvent("LevelPerk", this, perk, info.level, true);
             }
+            zombie.network.ApocBRBackendBridgeHooks.onLevelUp(this, perk, previousLevel, info.level, false);
         }
     }
 
@@ -6926,6 +6929,8 @@ public abstract class IsoGameCharacter
     }
 
     public void hitConsequences(HandWeapon weapon, IsoGameCharacter wielder, boolean bIgnoreDamage, float damage, boolean bRemote) {
+        if (GameServer.server && this instanceof IsoZombie zombie)
+            ServerZombieController.getInstance().hit(zombie);
         if (!bIgnoreDamage) {
             damage = CombatManager.getInstance().applyGlobalDamageReductionMultipliers(weapon, damage);
             CombatManager.getInstance().applyDamage(this, damage);
@@ -10364,9 +10369,17 @@ public abstract class IsoGameCharacter
     }
 
     private float calcRunSpeedModByBag(InventoryContainer bag) {
-        float runBagMod = bag.getScriptItem().runSpeedModifier - 1.0F;
-        float deltaWeight = bag.getContentsWeight() / bag.getEffectiveCapacity(this);
-        return runBagMod * (1.0F + deltaWeight / 2.0F);
+        long bagStarted = GameServer.server ? System.nanoTime() : 0L;
+        try {
+            float runBagMod = bag.getScriptItem().runSpeedModifier - 1.0F;
+            float deltaWeight = bag.getContentsWeight() / bag.getEffectiveCapacity(this);
+            return runBagMod * (1.0F + deltaWeight / 2.0F);
+        } finally {
+            if (bagStarted != 0L) {
+                zombie.ApocBRServerTelemetryLite.recordPhase("simulation.movement.bagModifier", System.nanoTime() - bagStarted);
+                zombie.ApocBRServerTelemetryLite.count("movement.bagModifier.queries", 1L);
+            }
+        }
     }
 
     public float calculateCombatSpeed() {
@@ -18535,6 +18548,7 @@ public abstract class IsoGameCharacter
             }
 
             IsoGameCharacter.this.getNetworkCharacterAI().updateXpChecker();
+            zombie.network.ApocBRBackendBridgeHooks.onPerksLoaded(IsoGameCharacter.this, oldPerkLevels);
         }
 
         public void save(ByteBuffer output) throws IOException {

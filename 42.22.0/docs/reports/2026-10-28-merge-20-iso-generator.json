@@ -1,0 +1,21 @@
+{
+  "review": 20,
+  "state": "approved-retired-use-target-vanilla",
+  "path": "zombie/iso/objects/IsoGenerator.java",
+  "proposal": "Retire obsolete audited raw-array reader; use target vanilla directly without source override.",
+  "source_evidence": "The only old patch changes one refrigerator/freezer square-object reader. Resolving the sole conflict to target List traversal yields the complete target vanilla file.",
+  "target_vanilla_sha256": "37336c59c87eb0ab36e377b9b92cf40e0eaac2c9b88f6389082213b600a85927",
+  "target_source_should_exist": false,
+  "custom_behavior_remaining": false,
+  "deployment_dependency": "Family recorded in retirement manifest; implement and verify stale loose-class cleanup/restore before deployment. No installed files changed.",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-20-iso-generator.md",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "yes retire and retain native",
+    "date": "2026-10-28",
+    "source_retirement_applied": true,
+    "installed_files_modified": false
+  },
+  "cleanup_manifest": "42.22.0/tools/retired-class-families.json",
+  "automatic_cleanup_implemented": false
+}

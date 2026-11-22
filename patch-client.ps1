@@ -1,29 +1,23 @@
 ﻿param(
     [switch]$DryRun,
-    [switch]$Revert
+    [switch]$Revert,
+    [switch]$BuildOnly,
+    [string]$PZDir,
+    [string]$ArtifactDir,
+    [switch]$NoPause
 )
 
 $ErrorActionPreference = "Stop"
 
 function Show-ApocalipseBanner {
-    $bannerPath = Join-Path -Path $PSScriptRoot -ChildPath "APOCALIPSE-BANNER.md"
-
-    if (Test-Path -LiteralPath $bannerPath) {
-        Write-Host ""
-        Get-Content -LiteralPath $bannerPath -Encoding UTF8 | ForEach-Object {
-            Write-Host $_ -ForegroundColor Yellow
-        }
-        Write-Host ""
-    } else {
-        Write-Host "APOCALIPSE - http://apocalipse.cloud/" -ForegroundColor Yellow
-        Write-Host "AVISO: este patch pode baixar Java e compilar classes dentro da pasta do Project Zomboid." -ForegroundColor Yellow
-        Write-Host "Para desinstalar: powershell -ExecutionPolicy Bypass -File .\patch-client.ps1 -Revert" -ForegroundColor Yellow
+    Write-Host ""
+    Write-Host "APOCALIPSE BR - Project Zomboid 42.22.2 Client Telemetry" -ForegroundColor Yellow
+    Write-Host "42.22.2-client: compila e instala classes zombie e um JAR separado; preserva o JAR original." -ForegroundColor Cyan
+    if (-not $NoPause -and -not [Console]::IsInputRedirected) {
+        Write-Host "Pressione qualquer tecla para continuar..." -ForegroundColor Green
+        [void][System.Console]::ReadKey($true)
         Write-Host ""
     }
-
-    Write-Host "Pressione qualquer tecla para continuar..." -ForegroundColor Green
-    [void][System.Console]::ReadKey($true)
-    Write-Host ""
 }
 
 function Get-SteamPath {
@@ -149,30 +143,26 @@ function Get-ProjectZomboidPath {
     throw "Project Zomboid was not found. Checked manifests:`n$checkedText"
 }
 
-Show-ApocalipseBanner
-
-$projectZomboidPath = Get-ProjectZomboidPath
-$clientToolsDir = Join-Path -Path $PSScriptRoot -ChildPath "42.20.4-client"
+$clientToolsDir = Join-Path -Path $PSScriptRoot -ChildPath "42.22.2-client"
 $clientPatch = Join-Path -Path $clientToolsDir -ChildPath "patchApocalipseBr.ps1"
 
 if (-not (Test-Path -LiteralPath $clientPatch)) {
     throw "Client patch script was not found: $clientPatch"
 }
 
+Show-ApocalipseBanner
+$projectZomboidPath = if ($PZDir) { (Resolve-Path -LiteralPath $PZDir -ErrorAction Stop).Path } else { Get-ProjectZomboidPath }
+
 Write-Host "[*] Project Zomboid: $projectZomboidPath" -ForegroundColor Cyan
 Write-Host "[*] Client tools:    $clientToolsDir" -ForegroundColor Cyan
 Write-Host "[*] Client patch:    $clientPatch" -ForegroundColor Cyan
 
-if ($DryRun -and $Revert) {
-    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -DryRun -Revert -ForceJdk
-} elseif ($DryRun) {
-    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -DryRun -ForceJdk
-} elseif ($Revert) {
-    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -Revert -ForceJdk
-} else {
-    & $clientPatch -PZDir $projectZomboidPath -ToolsDir $clientToolsDir -ForceJdk
-}
-exit $LASTEXITCODE
+if ($DryRun) { Write-Host '[*] DryRun: validate and compile without changing game files.' -ForegroundColor Cyan }
+$buildArguments = @{ PZDir = $projectZomboidPath; DryRun = $DryRun; Revert = $Revert; BuildOnly = $BuildOnly }
+if ($ArtifactDir) { $buildArguments.ArtifactDir = $ArtifactDir }
+& $clientPatch @buildArguments
+# The build script throws on failure; do not reuse a stale native LASTEXITCODE.
+exit 0
 
 
 

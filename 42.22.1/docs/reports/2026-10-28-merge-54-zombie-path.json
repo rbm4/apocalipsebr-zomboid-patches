@@ -1,0 +1,50 @@
+{
+  "review": 54,
+  "state": "approved-applied-unverified",
+  "path": "zombie/apocalipse/zombies/ServerZombiePath.java",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "preimage_sha256": "11f16f48aefd6eba73771b84e37c590cb681f2e59afb16b93684388233415849",
+  "candidate_diff_sha256": "67a5f720e0b08b08754e37efbda4106af050441ebce819b064642fafae2d4709",
+  "change": "Pass false for native PathfindNative.addRequest avoidFarmingPlants, preserving old non-player custom-Mover default.",
+  "verification": {
+    "source_contracts": true,
+    "target_runtime": false,
+    "candidate_build": {
+      "source_count": 303,
+      "compiler_exit": 0,
+      "remaining_errors": 0,
+      "compiled_class_files": 895,
+      "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_review54_compile_mjemoi9c\\javac.log",
+      "scope": "Full target-source compile with proposed54 overlay against identified42.22/world251 JAR; no deployment or runtime."
+    },
+    "applied_build": {
+      "source_count": 303,
+      "compiler_exit": 0,
+      "remaining_errors": 0,
+      "compiled_class_files": 895,
+      "log": "C:\\Users\\ricar\\AppData\\Local\\Temp\\apocbr_applied54_compile_g1482ajm\\javac.log",
+      "scope": "Actual approved source tree compiled against identified42.22/world251 JAR; no deployment/runtime."
+    },
+    "collision_threads": {
+      "script": "tools/test_pathfind_collision_threads.py --version 42.22.0",
+      "passed": true,
+      "threads": 4,
+      "pooled_queries": 80000,
+      "scope": "Actual target map/helper compiled against game JAR, helper/nested scratch identity, per-thread result isolation and pooled geometry; no live world collision or all-engine safety."
+    }
+  },
+  "scope_limits": [
+    "False matches old PathFindRequest init for this custom Mover; native42.22 PathFindBehavior2 also requests avoidance only for players initially.",
+    "Java backend, mover identity, cancellation, generation checks, callback copies and traversal policy unchanged.",
+    "No native DLL path execution, plant-route behavior or NPC movement runtime claim."
+  ],
+  "applied_sha256": "d41662353700eb7d4097408859d0cb45579e78e57095f31557517d99895a7cc2",
+  "applied_candidate_equivalence": true,
+  "equivalence_scope": "Exact candidate text modulo Git newline normalization to CRLF",
+  "approval": {
+    "date": "2026-10-28",
+    "user_instruction": "yes, and ensure thread-local pathfind vectors remain for the async bot engine",
+    "decision": "apply path argument; verify preserved async collision scratch isolation"
+  }
+}

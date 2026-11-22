@@ -5,6 +5,8 @@ import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
 import zombie.ai.State;
+import zombie.apocalipse.zombies.ServerZombieController;
+import zombie.apocalipse.zombies.ServerCorpseDragAuthority;
 import zombie.ApocBRServerTelemetryLite;
 import zombie.ai.states.GenericDefaultState;
 import zombie.ai.states.ZombieEatBodyState;
@@ -89,6 +91,11 @@ public class NetworkZombieManager {
 
     void updateAuth(IsoZombie zombie, long now) {
         if (GameServer.server) {
+            if(ServerCorpseDragAuthority.controls(zombie)){
+                if(zombie.getOwner()!=null)this.moveZombie(zombie,null,null);
+                return;
+            }
+            if (ServerZombieController.getInstance().retainOrAcquire(zombie)) return;
             if (!this.authGridBuilt) {
                 this.beginAuthUpdate();
             }
@@ -201,6 +208,7 @@ public class NetworkZombieManager {
     }
 
     public void moveZombie(IsoZombie zombie, UdpConnection to, IsoPlayer player) {
+        if (to != null && (ServerZombieController.getInstance().controls(zombie)||ServerCorpseDragAuthority.controls(zombie))) return;
         if (zombie.isDead()) {
             if (zombie.getOwner() == null && zombie.getOwnerPlayer() == null) {
                 zombie.die();
@@ -233,7 +241,7 @@ public class NetworkZombieManager {
                     if (zombie.getOwner() != null) {
                         ZombieOwnershipIndex.Group nz = this.owns.getNetworkZombie(zombie.getOwner());
                         if (nz != null && !nz.zombies.remove(zombie)) {
-                            DebugLog.log("moveZombie: There are no zombies in nz.zombies.");
+                            // DebugLog.log("moveZombie: There are no zombies in nz.zombies.");
                         }
                         if (nz != null && nz.zombies.isEmpty()) this.owns.release(zombie.getOwner());
                     }

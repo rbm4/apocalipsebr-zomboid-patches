@@ -1,0 +1,10 @@
+// Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
+package zombie.network.packets.vehicle;
+
+import zombie.characters.Capability;
+import zombie.network.PacketSetting;
+import zombie.network.anticheats.AntiCheat;
+
+@PacketSetting(ordering = 8, priority = 1, reliability = 2, requiredCapability = Capability.LoginOnServer, handlingType = 3, anticheats = AntiCheat.Speed)
+public class VehiclePhysicsReliablePacket extends VehiclePhysicsPacket {
+}

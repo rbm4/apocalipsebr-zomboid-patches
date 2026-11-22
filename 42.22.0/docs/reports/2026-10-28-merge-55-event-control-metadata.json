@@ -1,0 +1,22 @@
+{
+  "review": 55,
+  "state": "approved-applied-unverified",
+  "path": "zombie/apocalipse/events/ApocBREventControl.java",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "preimage_sha256": "9b5daef02167c7a9b315094c128d2d545a912e7aeac8d4163242520fb57e9996",
+  "candidate_diff_sha256": "ad6f93936c17dd48297a5dd1f98bfb3553cfd69f3e684cad3a1ae18746c3ab0f",
+  "change": "Report42.22.0/event-control-v2 in event-control heartbeat registration; protocol suffix unchanged.",
+  "verification": {
+    "source_contracts": true,
+    "target_runtime": false
+  },
+  "scope_limit": "One diagnostic version literal; no event behavior/schema/protocol change or live SQL.",
+  "applied_sha256": "c8bebe311efceb7b1119a9a45899099f4b50379eeb9ac6a6d43abafc06d247fe",
+  "applied_candidate_equivalence": true,
+  "approval": {
+    "date": "2026-10-28",
+    "user_instruction": "yes",
+    "decision": "apply engine build-prefix correction"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "review": 44,
+  "state": "approved-applied",
+  "path": "zombie/network/chat/ChatServer.java",
+  "recommendation": "Retain the new native chat/whisper ownership and channel checks; restore only the existing filtered-general backend callback and trusted explicit-recipient NPC say/shout APIs.",
+  "source_applied": true,
+  "installed_files_modified": false,
+  "target_vanilla_sha256": "ddadfb9b38dc683d39dac4d44baab4f88c378213fef3d8f7c08787df6d1b5830",
+  "candidate_diff": "42.22.0/docs/reports/2026-10-28-merge-44-chat-server.diff",
+  "candidate_diff_sha256": "738bf094769b57b48723e914946e5dd3f681e848bf42c155f48de4c33523c619",
+  "review_document": "42.22.0/docs/reports/2026-10-28-merge-44-chat-server.md",
+  "candidate_fixture": {
+    "script": "tools/test_chat_server_port.py",
+    "passed": true,
+    "assertions": 43,
+    "scope": "Exact extracted candidate player dispatch, whisper, sendMessage and added NPC helper bodies plus native ChatBase short-recipient method; recording chat/filter/connection/backend ports. Whole ChatServer/JAR/UI/backend not run.",
+    "full_game_jar_compile": false,
+    "target_runtime": false,
+    "applied_candidate_equivalence": true
+  },
+  "native_retained": [
+    "Unknown-chat guard before unpack",
+    "Membership and non-server-channel checks before unpack",
+    "Connection ownership of unpacked author",
+    "Disabled-channel/filter/bad-word native flow including mute null-check fix",
+    "Whisper signature includes connection and enforces author ownership",
+    "Remaining native text unchanged after removing the audited custom additions"
+  ],
+  "custom_intent": [
+    "After native send, publish only filtered general player chat through existing backend hook.",
+    "Provide trusted server NPC say/shout by explicit real recipient, without chat-account registration for NPC author.",
+    "Expose configured native shout range; existing transport retains range/relevance/floor filtering."
+  ],
+  "scope_limits": [
+    "Backend publisher/HTTP, real filters/channel fanout, network encoding and live client speech display are not executed.",
+    "NPC helper range/relevance filtering belongs to callers; helpers only gate initialization, recipient registration and enabled/default channel.",
+    "True from sendHumanSay/Shout means routing attempt; native short-recipient method can silently drop a vanished connection.",
+    "No NPC attribution or author fallback is added to untrusted incoming client messages."
+  ],
+  "target_source_sha256": "6b828ffc3581c4e4e7cd52bbd4fe7f999e24bd3bc8e716ffae9984bdc574e42a",
+  "approval": {
+    "decision": "approved",
+    "user_instruction": "yes",
+    "date": "2026-10-28",
+    "baseline_commit": "196d5da3dc6dace45ee4d76fe3f4a80a5f5ee14f",
+    "installed_files_modified": false
+  }
+}
