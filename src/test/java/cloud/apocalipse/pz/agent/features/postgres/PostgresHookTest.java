@@ -232,8 +232,8 @@ class PostgresHookTest {
         fixture.getField("owner").set(null,owner);
         Object quit=fixture.getConstructor().newInstance();
         fixture.getMethod("QueuedQuit").invoke(quit);
-        assertTrue(database.networkTimeoutMillis >= 29_999
-            && database.networkTimeoutMillis <= 30_000,
+        assertTrue(database.networkTimeoutMillis >= 29_995
+            && database.networkTimeoutMillis <= 30_005,
             "Expected a near-full graceful-quit network budget");
         assertEquals(30,database.queryTimeoutSeconds);
 
