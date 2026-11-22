@@ -32,6 +32,8 @@ public final class PostgresModule implements AgentModule {
         String runtime = "cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime";
         return List.of(
             new HookCheck("accounts-bootstrap", ACCOUNT_TYPE, "create", runtime, "bootstrap", false),
+            new HookCheck("graceful-quit-persistence", "zombie.network.ServerMap", "QueuedQuit",
+                ForegroundDatabase.class.getName(), "gracefulQuit", false),
             new HookCheck("server-lifecycle", "zombie.network.GameServer", "main", runtime, "verifyAccountHooks", false));
     }
 
@@ -53,8 +55,13 @@ public final class PostgresModule implements AgentModule {
         try (var locator=ClassFileLocator.ForClassLoader.ofSystemLoader()) {
             var type=TypePool.Default.of(locator).describe(ACCOUNT_TYPE).resolve();
             transformAccounts(new ByteBuddy().redefine(type,locator)).make();
+            var serverMap=TypePool.Default.of(locator).describe("zombie.network.ServerMap").resolve();
+            if (serverMap.getDeclaredMethods().filter(named("QueuedQuit").and(takesArguments(0)).and(returns(void.class))).size()!=1) {
+                throw new IllegalStateException("ServerMap.QueuedQuit()V is unavailable");
+            }
+            transformGracefulQuit(new ByteBuddy().redefine(serverMap,locator)).make();
         } catch (Exception | LinkageError incompatible) {
-            throw new IllegalStateException("PostgreSQL account hook preflight failed; server startup aborted");
+            throw new IllegalStateException("PostgreSQL account/quit hook preflight failed; server startup aborted");
         }
     }
 
@@ -75,7 +82,14 @@ public final class PostgresModule implements AgentModule {
             .type(named("zombie.network.GameServer"))
             .transform((dynamic, type, loader, module, domain) -> dynamic
                 .visit(Advice.to(PostgresAdvice.ServerLifecycle.class)
-                    .on(named("main").and(isStatic()).and(takesArguments(String[].class)).and(returns(void.class)))));
+                    .on(named("main").and(isStatic()).and(takesArguments(String[].class)).and(returns(void.class)))))
+            .type(named("zombie.network.ServerMap"))
+            .transform((dynamic, type, loader, module, domain) -> transformGracefulQuit(dynamic));
+    }
+
+    static DynamicType.Builder<?> transformGracefulQuit(DynamicType.Builder<?> dynamic) {
+        return dynamic.visit(Advice.to(PostgresAdvice.GracefulQuit.class)
+            .on(named("QueuedQuit").and(takesArguments(0)).and(returns(void.class))));
     }
 
     static DynamicType.Builder<?> transformAccounts(DynamicType.Builder<?> dynamic) {

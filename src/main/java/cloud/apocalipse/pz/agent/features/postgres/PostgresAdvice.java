@@ -65,4 +65,13 @@ public final class PostgresAdvice {
             thrown=PostgresRuntime.shutdownAfter(thrown);
         }
     }
+    public static final class GracefulQuit {
+        @Advice.OnMethodEnter public static ForegroundDatabase.GracefulQuit enter() {
+            return ForegroundDatabase.gracefulQuit();
+        }
+        @Advice.OnMethodExit(onThrowable=Throwable.class) public static void exit(
+                @Advice.Enter ForegroundDatabase.GracefulQuit scope) {
+            scope.close();
+        }
+    }
 }

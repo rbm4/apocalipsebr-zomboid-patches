@@ -17,24 +17,54 @@ import java.util.function.LongSupplier;
 /** One deadline and failure marker shared by nested account/login operations on one thread. */
 public final class ForegroundDatabase implements AutoCloseable {
     private static final ThreadLocal<Workflow> CURRENT = new ThreadLocal<>();
+    private static final ThreadLocal<Integer> GRACEFUL_QUIT_DEPTH = new ThreadLocal<>();
+    private static final int QUIT_WORKFLOW_MILLIS = 30_000;
+    private static final int QUIT_NETWORK_MILLIS = 30_000;
     private final Workflow workflow;
     private final boolean owner;
     private final int depth;
     private boolean closed;
+
+    public static final class GracefulQuit implements AutoCloseable {
+        private final Thread thread = Thread.currentThread();
+        private final int depth;
+        private boolean closed;
+
+        private GracefulQuit() {
+            Integer previous = GRACEFUL_QUIT_DEPTH.get();
+            depth = previous == null ? 1 : previous + 1;
+            GRACEFUL_QUIT_DEPTH.set(depth);
+        }
+
+        @Override public void close() {
+            if (Thread.currentThread() != thread) {
+                throw new IllegalStateException("Graceful PostgreSQL quit scope closed from another thread");
+            }
+            if (closed) return;
+            if (!Integer.valueOf(depth).equals(GRACEFUL_QUIT_DEPTH.get())) {
+                throw new IllegalStateException("Graceful PostgreSQL quit scopes must close in reverse order");
+            }
+            closed = true;
+            if (depth == 1) GRACEFUL_QUIT_DEPTH.remove();
+            else GRACEFUL_QUIT_DEPTH.set(depth - 1);
+        }
+    }
 
     private static final class Workflow {
         final Thread thread = Thread.currentThread();
         final LongSupplier clock;
         final long expires;
         final int networkMillis;
+        final int queryTimeoutSeconds;
         SQLException failure;
         boolean closed;
         int depth;
 
-        Workflow(int millis, int networkMillis, LongSupplier clock) {
+        Workflow(int millis, int networkMillis, int queryTimeoutSeconds, LongSupplier clock) {
             this.clock = clock;
             this.expires = clock.getAsLong() + TimeUnit.MILLISECONDS.toNanos(millis);
             this.networkMillis = networkMillis;
+            this.queryTimeoutSeconds = queryTimeoutSeconds;
         }
 
         void checkOwner() {
@@ -44,25 +74,29 @@ public final class ForegroundDatabase implements AutoCloseable {
         }
     }
 
-    private ForegroundDatabase(int millis, int networkMillis, LongSupplier clock) {
+    private ForegroundDatabase(int millis, int networkMillis, int queryTimeoutSeconds, LongSupplier clock) {
         Workflow previous = CURRENT.get();
         owner = previous == null;
-        workflow = owner ? new Workflow(millis, networkMillis, clock) : previous;
+        workflow = owner ? new Workflow(millis, networkMillis, queryTimeoutSeconds, clock) : previous;
         depth = ++workflow.depth;
         if (owner) CURRENT.set(workflow);
     }
 
     public static ForegroundDatabase begin() {
-        return new ForegroundDatabase(500, 250, System::nanoTime);
+        boolean quitting = GRACEFUL_QUIT_DEPTH.get() != null;
+        return new ForegroundDatabase(quitting ? QUIT_WORKFLOW_MILLIS : 500,
+            quitting ? QUIT_NETWORK_MILLIS : 250, quitting ? 30 : 2, System::nanoTime);
     }
 
     public static ForegroundDatabase beginLogin(PostgresSettings settings) {
-        return new ForegroundDatabase(settings.loginWorkflowMillis(), settings.loginNetworkMillis(), System::nanoTime);
+        return new ForegroundDatabase(settings.loginWorkflowMillis(), settings.loginNetworkMillis(), 2, System::nanoTime);
     }
 
     static ForegroundDatabase beginForTest(int millis, int networkMillis, LongSupplier clock) {
-        return new ForegroundDatabase(millis, networkMillis, clock);
+        return new ForegroundDatabase(millis, networkMillis, 2, clock);
     }
+
+    public static GracefulQuit gracefulQuit() { return new GracefulQuit(); }
 
     public static void verifySuccess() throws SQLException {
         Workflow workflow = CURRENT.get();
@@ -138,19 +172,19 @@ public final class ForegroundDatabase implements AutoCloseable {
                     }
                     Object result = method.invoke(target, arguments);
                     if (result instanceof CallableStatement statement) {
-                        try { statement.setQueryTimeout(2); }
+                        try { statement.setQueryTimeout(workflow.queryTimeoutSeconds); }
                         catch (SQLException failure) { try { statement.close(); } catch (SQLException ignored) { } throw failure; }
                         return proxy(CallableStatement.class, statement, connection, workflow);
                     }
                     if (result instanceof PreparedStatement statement) {
-                        try { statement.setQueryTimeout(2); }
+                        try { statement.setQueryTimeout(workflow.queryTimeoutSeconds); }
                         catch (SQLException failure) { try { statement.close(); } catch (SQLException ignored) { } throw failure; }
                         String preparedSql=arguments != null && arguments.length>0 && arguments[0] instanceof String text
                             ? AccountSqlTypes.normalized(text) : statementSql;
                         return proxy(PreparedStatement.class, statement, connection, workflow,preparedSql);
                     }
                     if (result instanceof Statement statement) {
-                        try { statement.setQueryTimeout(2); }
+                        try { statement.setQueryTimeout(workflow.queryTimeoutSeconds); }
                         catch (SQLException failure) { try { statement.close(); } catch (SQLException ignored) { } throw failure; }
                         return proxy(Statement.class, statement, connection, workflow);
                     }

@@ -60,6 +60,13 @@ public class ServerWorldDatabase {
         return "native-body-completed";
     }
 
+    public void saveRole() { saveRoleCapabilities(); }
+    public void saveRoleCapabilities() {
+        try (var statement=conn.prepareStatement("INSERT INTO capabilities (name, role) VALUES (?, ?)")) {
+            statement.setString(1,"CanModerate"); statement.setString(2,"1"); statement.executeUpdate();
+        } catch (SQLException caughtByVanilla) { }
+    }
+
     public class LogonResult {
         public boolean authorized,needSecondFactor;
         public String dcReason;

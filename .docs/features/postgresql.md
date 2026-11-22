@@ -84,13 +84,20 @@ No installed game files or live database have been changed by this work.
 | `authClient`, `authOwner`, `googleAuthClient` | Authentication advice uses the login workflow budget and produces `AccessDenied` on acquisition failure or SQL failure caught by vanilla. Native credential, role, Steam-ban and second-factor checks otherwise continue. |
 | `isNewAccountAllowed` and the account-side player Steam-ID lookup | Agent-owned adapters perform the dependent PostgreSQL `public.networkplayers` reads. The account-limit adapter preserves count/priority policy, advances result sets correctly and fails closed. Account-side lookup avoids constructing the native SQLite player database. Player writes/reconstruction are owned by the separately enabled player module. |
 | Native numeric `setString` account bindings | `AccountSqlTypes` narrowly binds whitelist IDs and userlog amounts as JDBC integers for PostgreSQL. Other native bindings are retained. |
+| `ServerMap.QueuedQuit()` entry/exit | Account operations during vanilla final saves (including `Roles.save()`) use a bounded 30 s workflow, network and statement budget. Ordinary account calls keep their 500/250 ms workflow/network limits and 2 s statement timeout. |
 | `GameServer.main` entry/exit | Entry requires confirmed account transformation before startup proceeds; exit closes the pool on normal/exceptional return. |
 | `GameServer$1.run()` exit | The agent drains registered consumers and closes the pool on the original JVM shutdown thread, after vanilla `ServerMap.QueuedQuit()` finishes its role saves and vehicle reset. Terminal cleanup also runs if the native hook skips quit or throws. |
 
+The quit budget is active only for the dynamic extent of `ServerMap.QueuedQuit()`
+and is removed on both normal and exceptional return. It lets PostgreSQL finish
+slow final role writes without weakening the short budgets used during ordinary
+server operation. The 30 s bound still fails visibly if the database cannot
+complete persistence; it does not convert failed writes into success.
+
 Enabled module initialization preflights the actual classpath's account bytes
-without defining game classes before the transformer is installed. All three
-instrumented original-JAR owners retain their field/method structure. No helper
-is placed in a signed native package.
+without defining game classes before the transformer is installed. Instrumented
+original-JAR owners retain their field/method structure. No helper is placed in
+a signed native package.
 
 The account adapters use native autocommit semantics and return failure rather
 than queueing account writes during an outage. The separate [server Lua/service
@@ -123,7 +130,8 @@ See the [hook implementation and validation report](../reports/2026-11-21-postgr
 Declare remaining settings in `AgentConfiguration` as their behaviors are ported.
 Login/bootstrap connection acquisition uses this configured network limit, not
 the ordinary foreground-call cap of 250 ms. Nested calls inherit the owning
-workflow and cannot extend its deadline or limit. This matters for cold pools:
+workflow and cannot extend its deadline or limit. Final quit persistence has
+the separate fixed 30 s budget above. This matters for cold pools:
 the first asynchronous physical connection may take longer than 250 ms even
 when the configured workflow permits it. Enabled account startup logs the
 effective workflow/acquisition limits and pool size without the JDBC URL or
@@ -159,7 +167,10 @@ The audit does not establish any new vehicle world/ID namespace contract.
 Current tests execute module-produced account bytecode with fake JDBC, including
 bootstrap, native-body continuation, nested reads, authentication failure,
 account limits, integer bindings and cutover rejection. Original-JAR account and
-server lifecycle transformation tests check unchanged member structure. The
+server lifecycle and quit transformation tests check unchanged member structure.
+The quit fixture verifies the extended budget is active in the transformed
+`QueuedQuit()` body, that ordinary budgets are restored after both success and
+failure, and that leases are returned. The
 packaged `PostgresAgentSmokeMain` exercises real premain registration, shaded
 helper linkage, telemetry coexistence and shutdown with fake JDBC and game doubles.
 Packaging checks also exercise the shaded JDBC service without loose dependency

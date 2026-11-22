@@ -47,6 +47,7 @@ class PostgresHookTest {
 
     static final class Database {
         int borrowed,returned,shutdowns;
+        int networkTimeoutMillis,queryTimeoutSeconds;
         boolean failQuery,failBorrow,failBorrowRuntime;
         boolean adminExists=true;
         int countValue;
@@ -73,6 +74,7 @@ class PostgresHookTest {
                 switch (m.getName()) {
                     case "close": returned++; return null;
                     case "prepareStatement": return statement((String)a[0]);
+                    case "setNetworkTimeout": networkTimeoutMillis=(Integer)a[1]; return null;
                     default: return zero(m.getReturnType());
                 }
             });
@@ -80,6 +82,7 @@ class PostgresHookTest {
         PreparedStatement statement(String sql) {
             var local=new HashMap<Integer,Object>();
             return (PreparedStatement)Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{PreparedStatement.class},(p,m,a) -> {
+                if (m.getName().equals("setQueryTimeout")) { queryTimeoutSeconds=(Integer)a[0]; return null; }
                 if (m.getName().equals("setInt") || m.getName().equals("setString")) {
                     parameters.put((Integer)a[0],a[1]); local.put((Integer)a[0],a[1]); return null;
                 }
@@ -114,6 +117,19 @@ class PostgresHookTest {
                 if (type==null) { byte[] bytes=definitions.get(name); type=defineClass(name,bytes,0,bytes.length); }
                 if (resolve) resolveClass(type);
                 return type;
+            }
+        }
+    }
+
+    public static final class GracefulQuitFixture {
+        public static Object owner;
+        public void QueuedQuit() {
+            try {
+                owner.getClass().getMethod("saveRole").invoke(owner);
+            } catch (InvocationTargetException failure) {
+                throw new IllegalStateException(failure.getCause());
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
             }
         }
     }
@@ -197,6 +213,34 @@ class PostgresHookTest {
         var failure=assertThrows(InvocationTargetException.class,() -> change.invoke(owner,"before","after"));
         assertInstanceOf(IllegalStateException.class,failure.getCause());
         assertFalse(failure.getCause().toString().contains("PRIVATE"));
+        assertEquals(database.borrowed,database.returned);
+    }
+
+    @Test void quitHookGivesRolePersistenceBoundedGraceAndRestoresOrdinaryBudgets() throws Exception {
+        Database database=new Database();
+        Object owner=instrument(database);
+        var saveRole=owner.getClass().getMethod("saveRole");
+        saveRole.invoke(owner);
+        assertEquals(250,database.networkTimeoutMillis);
+        assertEquals(2,database.queryTimeoutSeconds);
+
+        var transformed=PostgresModule.transformGracefulQuit(
+            new ByteBuddy().redefine(GracefulQuitFixture.class)).make();
+        Loader loader=new Loader();
+        loader.definitions.put(GracefulQuitFixture.class.getName(),transformed.getBytes());
+        Class<?> fixture=loader.loadClass(GracefulQuitFixture.class.getName());
+        fixture.getField("owner").set(null,owner);
+        Object quit=fixture.getConstructor().newInstance();
+        fixture.getMethod("QueuedQuit").invoke(quit);
+        assertEquals(30_000,database.networkTimeoutMillis);
+        assertEquals(30,database.queryTimeoutSeconds);
+
+        database.failQuery=true;
+        assertThrows(InvocationTargetException.class,() -> fixture.getMethod("QueuedQuit").invoke(quit));
+        database.failQuery=false;
+        saveRole.invoke(owner);
+        assertEquals(250,database.networkTimeoutMillis);
+        assertEquals(2,database.queryTimeoutSeconds);
         assertEquals(database.borrowed,database.returned);
     }
 
@@ -307,12 +351,15 @@ class PostgresHookTest {
         String path = System.getProperty("pz.game.jar", "Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar");
         try (var locator=new ClassFileLocator.Compound(ClassFileLocator.ForJarFile.of(new File(path)),
                 ClassFileLocator.ForClassLoader.ofPlatformLoader(),ClassFileLocator.ForClassLoader.ofSystemLoader())) {
-            for (String name:List.of("zombie.network.GameServer","zombie.network.GameServer$1")) {
+            for (String name:List.of("zombie.network.GameServer","zombie.network.GameServer$1","zombie.network.ServerMap")) {
                 var original=TypePool.Default.of(locator).describe(name).resolve();
                 var builder=new ByteBuddy().redefine(original,locator);
-                var transformed=(name.endsWith("GameServer")
-                    ? builder.visit(Advice.to(PostgresAdvice.ServerLifecycle.class).on(named("main").and(isStatic()).and(takesArguments(String[].class))))
-                    : ServerShutdownModule.transform(builder)).make();
+                var transformed=(switch (name) {
+                    case "zombie.network.GameServer" -> builder.visit(Advice.to(PostgresAdvice.ServerLifecycle.class)
+                        .on(named("main").and(isStatic()).and(takesArguments(String[].class))));
+                    case "zombie.network.ServerMap" -> PostgresModule.transformGracefulQuit(builder);
+                    default -> ServerShutdownModule.transform(builder);
+                }).make();
                 assertEquals(members(locator.locate(name).resolve()),members(transformed.getBytes()));
             }
         }

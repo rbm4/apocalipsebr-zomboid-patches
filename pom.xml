@@ -13,7 +13,6 @@
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
-        <pz.game.jar>Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar</pz.game.jar>
         <byte-buddy.version>1.18.17</byte-buddy.version>
         <postgresql.version>42.7.14</postgresql.version>
         <hikaricp.version>7.1.0</hikaricp.version>
@@ -155,6 +154,30 @@
         </plugins>
     </build>
     <profiles>
+        <!-- Default original-JAR location for the host operating system.
+             Override with -Dpz.game.jar=<absolute original JAR path>. -->
+        <profile>
+            <id>original-game-windows</id>
+            <activation>
+                <os>
+                    <family>windows</family>
+                </os>
+            </activation>
+            <properties>
+                <pz.game.jar>Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar</pz.game.jar>
+            </properties>
+        </profile>
+        <profile>
+            <id>original-game-linux</id>
+            <activation>
+                <os>
+                    <name>Linux</name>
+                </os>
+            </activation>
+            <properties>
+                <pz.game.jar>/opt/pzserver/java/projectzomboid.jar</pz.game.jar>
+            </properties>
+        </profile>
         <!-- Explicit opt-in: one real dedicated server shared by registered assertions. -->
         <profile>
             <id>server-integration</id>
