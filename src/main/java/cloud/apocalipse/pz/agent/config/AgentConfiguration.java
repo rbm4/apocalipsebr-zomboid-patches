@@ -8,6 +8,9 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public record AgentConfiguration(String profile, URI telemetryEndpoint, URI restartEndpoint, boolean restartEnabled) {
+    /** XML hotfix: {@code -Dapocbr.hotfixes.xmlCaseInsensitive.enabled=true}; defaults to enabled. */
+    public static final String XML_CASE_INSENSITIVE_HOTFIX_PROPERTY = "apocbr.hotfixes.xmlCaseInsensitive.enabled";
+
     /** Zombie culling port, defaults to enabled. Set {@code -Dapocbr.optimization.zombieCulling.enabled=false} to disable. */
     public static final String ZOMBIE_CULLING_OPTIMIZATION = "apocbr.optimization.zombieCulling.enabled";
     /** Lua dispatch port, defaults to enabled. Set {@code -Dapocbr.optimization.luaDispatch.enabled=false} to disable. */

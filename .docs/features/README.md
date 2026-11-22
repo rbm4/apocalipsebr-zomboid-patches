@@ -5,6 +5,7 @@ No runtime performance improvement is established by this catalog.
 
 | Feature | Root implementation | Current scope and limits |
 | --- | --- | --- |
+| [Server hotfixes](hotfixes.md) | `features/hotfixes` | Case-insensitive XML folder/file lookup port for the original 42.22.2 JAR, enabled by default and reversible. |
 | Workshop update restart notification | `features/workshop` | Existing notification hook and HTTP integration; not a port of the rest of the engine. |
 | Server telemetry | `features/telemetry` | Tick and loop timing, Lua event timing, population gauges, and the phases and counters emitted by the first five optimization ports. |
 | [Java pathfinding lock](java-pathfinding.md) | `features/pathfinding` | Selects the built-in Java pathfinder by default, with dedicated-server worker cleanup. |

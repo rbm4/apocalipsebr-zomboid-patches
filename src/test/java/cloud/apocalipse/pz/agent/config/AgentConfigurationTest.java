@@ -11,6 +11,21 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 
 class AgentConfigurationTest {
     @Test
+    void xmlCaseHotfixDefaultsToEnabledAndCanBeDisabled() {
+        String previous = System.getProperty(AgentConfiguration.XML_CASE_INSENSITIVE_HOTFIX_PROPERTY);
+        try {
+            System.clearProperty(AgentConfiguration.XML_CASE_INSENSITIVE_HOTFIX_PROPERTY);
+            assertTrue(AgentConfiguration.optimizationEnabled(
+                AgentConfiguration.XML_CASE_INSENSITIVE_HOTFIX_PROPERTY));
+            System.setProperty(AgentConfiguration.XML_CASE_INSENSITIVE_HOTFIX_PROPERTY, "false");
+            assertFalse(AgentConfiguration.optimizationEnabled(
+                AgentConfiguration.XML_CASE_INSENSITIVE_HOTFIX_PROPERTY));
+        } finally {
+            if (previous == null) System.clearProperty(AgentConfiguration.XML_CASE_INSENSITIVE_HOTFIX_PROPERTY);
+            else System.setProperty(AgentConfiguration.XML_CASE_INSENSITIVE_HOTFIX_PROPERTY, previous);
+        }
+    }
+    @Test
     void productionIsDefaultAndLocalChangesOnlyTransportEndpoints() {
         AgentConfiguration production = AgentConfiguration.load("prod");
         AgentConfiguration local = AgentConfiguration.load("local");

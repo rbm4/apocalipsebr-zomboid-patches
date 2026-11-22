@@ -2,6 +2,7 @@ package cloud.apocalipse.pz.agent;
 
 import cloud.apocalipse.pz.agent.features.postgres.PostgresModule;
 import cloud.apocalipse.pz.agent.features.postgres.ServerShutdownModule;
+import cloud.apocalipse.pz.agent.features.hotfixes.XmlCaseModule;
 import cloud.apocalipse.pz.agent.features.npc.NpcModule;
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntityRemovalModule;
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntitySimulationModule;
@@ -20,7 +21,7 @@ import java.util.List;
 /** Single module registry shared by runtime installation and read-only hook diagnostics. */
 public final class AgentModules {
     private static final List<AgentModule> MODULES = List.of(
-        new WorkshopModule(), new TelemetryModule(), new PostgresModule(), new cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryModule(), new cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryDecodeModule(), new NpcModule(), new cloud.apocalipse.pz.agent.features.lua.LuaModule(), new cloud.apocalipse.pz.agent.features.postgres.player.PlayerModule(), new cloud.apocalipse.pz.agent.features.lua.login.AsyncAccountsModule(),
+        new XmlCaseModule(), new WorkshopModule(), new TelemetryModule(), new PostgresModule(), new cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryModule(), new cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryDecodeModule(), new NpcModule(), new cloud.apocalipse.pz.agent.features.lua.LuaModule(), new cloud.apocalipse.pz.agent.features.postgres.player.PlayerModule(), new cloud.apocalipse.pz.agent.features.lua.login.AsyncAccountsModule(),
         new ServerShutdownModule(), new JavaPathfindingModule(),
         new ZombieCullingModule(), new LuaDispatchModule(), new PlayerNearVehicleModule(),
         new ZombiePacketPreparationModule(), new ThermalClothingModule(),
