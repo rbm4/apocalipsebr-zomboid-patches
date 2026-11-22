@@ -147,9 +147,7 @@ public final class ApocBRNpcStore {
         });
     }
     private void connect()throws SQLException {
-        connection=cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime.borrowBackground();
-        connection.setAutoCommit(false);
-        connection.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
+        connection=cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime.borrowBackground(Connection.TRANSACTION_REPEATABLE_READ);
         try(var s=statement(connection,"SELECT pg_try_advisory_lock(hashtext(?),hashtext(?))","npc-engine:"+server,world);var r=s.executeQuery()){
             if(!r.next()||!r.getBoolean(1))throw new SQLException("NPC scope already owned","55000");locked=true;
         }

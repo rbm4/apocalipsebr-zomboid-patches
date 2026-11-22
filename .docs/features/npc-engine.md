@@ -73,6 +73,14 @@ All settings are declared/read through `AgentConfiguration`.
 
 Shared PostgreSQL URL/pool/server-ID configuration remains in `AgentConfiguration`. Credentials stay outside documentation/source. These are startup settings, not hot toggles. Disabling the master switch and restarting rolls back without changing the archive or deleting journals.
 
+The ExtractionMapUtils mod sandbox does not set `-Dapocbr.guide.enabled`; the
+agent guide is a separate, opt-in server-side NPC. A successful activation logs
+`[ApocBR][ServerHumans] Spawned key=guide`. When NPC persistence is enabled, the
+guide is only loaded after the PostgreSQL NPC store has initialized successfully.
+The store requests `REPEATABLE_READ` when borrowing its lease, before schema
+selection starts a transaction; changing isolation afterward can fail with
+SQLSTATE `25001` and prevent initial NPC loading.
+
 ## Validation and remaining acceptance
 
 Focused tests cover planning bounds/cancellation/failure, transformed tick/quit/exception paths, actual factory registration/retirement, world reset/replacement, worker cleanup, set mutation paths, conditional object lifetime changes, journal restart/order, receipt retry and legacy sale descriptor evolution. Each declared actor hook is transformed against an explicit original-JAR-first locator and checked for its helper call and unchanged game structure.

@@ -19,6 +19,8 @@ class DatabaseInfrastructureTest {
         boolean fail, failSetup, failClose;
         int timeout;
         final List<String> queries = new ArrayList<>();
+        final List<String> setupCalls = new ArrayList<>();
+        boolean transactionStarted;
 
         Object zero(Class<?> type) {
             if (type == boolean.class) return false;
@@ -41,7 +43,17 @@ class DatabaseInfrastructureTest {
                     switch (m.getName()) {
                         case "toString": return "PRIVATE_JDBC_URL";
                         case "close": returned++; if (failClose) throw secret(); return null;
-                        case "setSchema": if (failSetup) throw secret(); assertEquals("public", a[0]); return null;
+                        case "setAutoCommit": setupCalls.add("autoCommit:" + a[0]); return null;
+                        case "setTransactionIsolation":
+                            setupCalls.add("isolation:" + a[0]);
+                            if (transactionStarted) throw new SQLException("Transaction already started", "25001");
+                            return null;
+                        case "setSchema":
+                            setupCalls.add("schema:" + a[0]);
+                            if (failSetup) throw secret();
+                            assertEquals("public", a[0]);
+                            transactionStarted = true;
+                            return null;
                         case "setNetworkTimeout": timeout = (int) a[1]; return null;
                         case "prepareStatement": queries.add((String) a[0]); return statement((Connection) p);
                         default: return zero(m.getReturnType());
@@ -180,6 +192,16 @@ class DatabaseInfrastructureTest {
         pool.close();
         assertEquals(1, jdbc.shutdowns);
         assertThrows(SQLException.class, pool::borrowTransaction);
+    }
+
+    @Test
+    void transactionIsolationIsSetBeforeSchemaStartsTheTransaction() throws Exception {
+        Jdbc jdbc = new Jdbc();
+        try (var pool = jdbc.pool(); var connection = pool.borrowTransaction(Connection.TRANSACTION_REPEATABLE_READ)) {
+            assertEquals(List.of("autoCommit:false", "isolation:" + Connection.TRANSACTION_REPEATABLE_READ, "schema:public"),
+                jdbc.setupCalls);
+        }
+        assertEquals(1, jdbc.returned);
     }
 
     @Test

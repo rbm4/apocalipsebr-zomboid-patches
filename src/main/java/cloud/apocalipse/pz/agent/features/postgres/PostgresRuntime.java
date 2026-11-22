@@ -70,6 +70,12 @@ public final class PostgresRuntime {
         return pool.borrowTransaction();
     }
 
+    public static synchronized Connection borrowBackground(int transactionIsolation) throws SQLException {
+        if(closed || settings==null || !settings.enabled()) throw new SQLException("PostgreSQL runtime unavailable","08003");
+        if(pool==null)pool=new PostgresConnections(settings);
+        return pool.borrowTransaction(transactionIsolation);
+    }
+
     /** Dedicated dictionary notification session; caller must close it before pool shutdown. */
     public static synchronized Connection openDictionaryListener() throws SQLException {
         if(closed || settings==null || !settings.enabled()) throw new SQLException("PostgreSQL runtime unavailable","08003");

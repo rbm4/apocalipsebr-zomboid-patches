@@ -47,6 +47,10 @@ public final class PostgresConnections implements AutoCloseable {
         return borrow(false, ForegroundDatabase.active());
     }
 
+    public Connection borrowTransaction(int transactionIsolation) throws SQLException {
+        return borrow(false, ForegroundDatabase.active(), transactionIsolation);
+    }
+
     /** LISTEN owns a physical session outside the bounded query pool, including poolSize=1. */
     Connection openDictionaryListener() throws SQLException {
         if (closed) throw new SQLException("PostgreSQL pool is closed", "08003");
@@ -71,6 +75,10 @@ public final class PostgresConnections implements AutoCloseable {
     }
 
     private Connection borrow(boolean autoCommit, boolean foreground) throws SQLException {
+        return borrow(autoCommit, foreground, null);
+    }
+
+    private Connection borrow(boolean autoCommit, boolean foreground, Integer transactionIsolation) throws SQLException {
         if (closed) throw new SQLException("PostgreSQL pool is closed", "08003");
         Connection connection = null;
         try {
@@ -80,6 +88,7 @@ public final class PostgresConnections implements AutoCloseable {
             if (closed) throw new SQLException("PostgreSQL pool is closed", "08003");
             if (foreground) connection = ForegroundDatabase.wrap(connection);
             connection.setAutoCommit(autoCommit);
+            if (transactionIsolation != null) connection.setTransactionIsolation(transactionIsolation);
             connection.setSchema("public");
             return connection;
         } catch (SQLException failure) {
