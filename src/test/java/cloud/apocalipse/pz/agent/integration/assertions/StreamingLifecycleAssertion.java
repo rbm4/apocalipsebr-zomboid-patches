@@ -59,7 +59,7 @@ public final class StreamingLifecycleAssertion implements ServerAssertion {
     private record Sample(int cycle, int chunks, long total, long max) {}
 
     private static Map<String, List<Sample>> readSamples(Path directory) throws Exception {
-        assertEquals("6", Files.readString(directory.resolve("streaming-complete")), "Completed cycle count");
+        assertTrue(Files.isRegularFile(directory.resolve("streaming-complete")), "Completed streaming run");
         List<String> lines = Files.readAllLines(directory.resolve("streaming.csv"));
         assertEquals("cycle,warmup,cells,chunks,phase,calls,totalNanos,maxNanos", lines.getFirst());
         Map<String, List<Sample>> samples = new TreeMap<>();

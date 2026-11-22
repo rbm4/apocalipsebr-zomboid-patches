@@ -214,6 +214,15 @@ background loading or recalculation, and the next server-thread handoff.
 The save worker row separately measures worker execution. These timings are diagnostic, with correctness assertions as the
 regression gate. The empty fixture covers native streaming without player
 relevance, client downloads or live player LOS demand.
+The initial Windows runs used Java 25.0.4 and original 42.22.2 JAR SHA-256
+`3C4A7C5F149D784758C6FB5F8FA85F3A21D572E38BC081400E89035F8120D287`.
+Both LOS settings passed all six cycles with 256 chunks per cycle and exited
+cleanly. With LOS disabled, the median cycle took 2.52 s from request to
+loaded, 86 ms in cell integration, 51 ms from release to detachment, and
+204 ms from release to save drain. Time from the load queue to the recalc
+queue was the largest measured load handoff. The LOS barrier was below
+0.2 ms per cycle in both runs. The comparison exercises the barrier during
+streaming with no player LOS jobs.
 ## Automatically discovered hook checks
 
 `AgentModules.all()` is the single production module registry. `AgentModule`
@@ -355,6 +364,7 @@ Each `target/server-integration/run-*` directory retains:
   and original class code sources; `evidence/inventory.properties` records module
   state and hook contracts; probe failures produce `probe-error.txt`.
 - `telemetry-*.json` when snapshots arrive at the local receiver.
+- `streaming.csv` and a completion or error marker for opt-in streaming runs.
 
 JUnit results are under `target/failsafe-reports/`. Keep the console/artifact
 path when reporting failures. Missing evidence is reported as unverified/SKIP by

@@ -243,7 +243,7 @@ public final class StreamingProbe {
             active = null;
             if (completed.size() == CYCLES) {
                 writeCsv();
-                Files.writeString(directory.resolve("streaming-complete"), Integer.toString(CYCLES));
+                Files.createFile(directory.resolve("streaming-complete"));
                 done = true;
             }
         } catch (Exception failure) {
