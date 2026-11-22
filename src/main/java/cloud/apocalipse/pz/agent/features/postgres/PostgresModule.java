@@ -32,8 +32,7 @@ public final class PostgresModule implements AgentModule {
         String runtime = "cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime";
         return List.of(
             new HookCheck("accounts-bootstrap", ACCOUNT_TYPE, "create", runtime, "bootstrap", false),
-            new HookCheck("server-lifecycle", "zombie.network.GameServer", "main", runtime, "verifyAccountHooks", false),
-            new HookCheck("shutdown", "zombie.network.ServerMap", "QueuedQuit", runtime, "shutdownAfter", false));
+            new HookCheck("server-lifecycle", "zombie.network.GameServer", "main", runtime, "verifyAccountHooks", false));
     }
 
     @Override public void initialize() {
@@ -76,11 +75,7 @@ public final class PostgresModule implements AgentModule {
             .type(named("zombie.network.GameServer"))
             .transform((dynamic, type, loader, module, domain) -> dynamic
                 .visit(Advice.to(PostgresAdvice.ServerLifecycle.class)
-                    .on(named("main").and(isStatic()).and(takesArguments(String[].class)).and(returns(void.class)))))
-            .type(named("zombie.network.ServerMap"))
-            .transform((dynamic, type, loader, module, domain) -> dynamic
-                .visit(Advice.to(PostgresAdvice.Shutdown.class)
-                    .on(named("QueuedQuit").and(takesArguments(0)).and(returns(void.class)))));
+                    .on(named("main").and(isStatic()).and(takesArguments(String[].class)).and(returns(void.class)))));
     }
 
     static DynamicType.Builder<?> transformAccounts(DynamicType.Builder<?> dynamic) {

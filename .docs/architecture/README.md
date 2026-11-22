@@ -50,9 +50,10 @@ configuration and save; it does not create an isolated test world.
   in `src/main/resources`, and focused tests in `src/test/java`.
 - Declare JVM properties and participating environment variables in
   `AgentConfiguration`; do not add direct feature-site property lookups.
-- The pipeline currently disables class format changes. Features requiring new
-  game-class fields or methods need an explicit architecture decision; prefer
-  bounded feature-owned state when its lifecycle can be maintained safely.
+- The pipeline disables Byte Buddy rebase and class format changes by default.
+  The opt-in thermal clothing port uses an explicit first-definition ASM field
+  on `Thermoregulator` for per-instance ownership. That field keeps equipment
+  references bounded to their regulator's lifetime. See [server optimization ports](../features/server-optimizations.md).
 
 Select advice, invocation instrumentation, or algorithm replacement per behavior.
 Preserve vanilla call order for additive hooks. Make intentional skip/replacement

@@ -35,6 +35,7 @@ public class NpcHookFixture {
             new NpcQuitFixture().QueuedQuit();
         }
         if (args[0].equals("quit")) new NpcQuitFixture().QueuedQuit();
+        if (args[0].equals("console")) new NpcQuitFixture().preupdate();
         if (args[0].equals("exception")) throw new IllegalArgumentException("fixture failure");
     }
 }

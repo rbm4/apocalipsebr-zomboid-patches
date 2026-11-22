@@ -304,19 +304,40 @@ class PostgresHookTest {
     }
 
     @Test void originalServerLifecycleHooksPreserveClassStructure() throws Exception {
-        String path=System.getProperty("pz.game.jar");
-        assumeTrue(path!=null&&!path.isBlank(),"Set -Dpz.game.jar for original-JAR lifecycle transformation");
+        String path = System.getProperty("pz.game.jar", "Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar");
         try (var locator=new ClassFileLocator.Compound(ClassFileLocator.ForJarFile.of(new File(path)),
                 ClassFileLocator.ForClassLoader.ofPlatformLoader(),ClassFileLocator.ForClassLoader.ofSystemLoader())) {
-            for (String name:List.of("zombie.network.GameServer","zombie.network.ServerMap")) {
+            for (String name:List.of("zombie.network.GameServer","zombie.network.GameServer$1")) {
                 var original=TypePool.Default.of(locator).describe(name).resolve();
                 var builder=new ByteBuddy().redefine(original,locator);
                 var transformed=(name.endsWith("GameServer")
                     ? builder.visit(Advice.to(PostgresAdvice.ServerLifecycle.class).on(named("main").and(isStatic()).and(takesArguments(String[].class))))
-                    : builder.visit(Advice.to(PostgresAdvice.Shutdown.class).on(named("QueuedQuit").and(takesArguments(0))))).make();
+                    : ServerShutdownModule.transform(builder)).make();
                 assertEquals(members(locator.locate(name).resolve()),members(transformed.getBytes()));
             }
         }
+    }
+
+    public static class FailedVanillaShutdown {
+        public void run() { throw new IllegalArgumentException("native save failed"); }
+    }
+
+    @Test void shutdownAdviceClosesPoolAndPreservesNativeFailure() throws Exception {
+        var database = new Database();
+        PostgresRuntime.installForTest(SETTINGS, new PostgresConnections(database.source(), () -> {
+            database.shutdowns++;
+            throw new IllegalStateException("fixture pool close failure");
+        }));
+        var fixture = FailedVanillaShutdown.class;
+        var loader = new Loader();
+        loader.definitions.put(fixture.getName(), ServerShutdownModule.transform(new ByteBuddy().redefine(fixture)).make().getBytes());
+        var hook = loader.loadClass(fixture.getName()).getConstructor().newInstance();
+        var failure = assertThrows(InvocationTargetException.class, () -> hook.getClass().getMethod("run").invoke(hook));
+        assertEquals("native save failed", failure.getCause().getMessage());
+        assertEquals(1, failure.getCause().getSuppressed().length);
+        assertEquals("PostgreSQL pool shutdown failed", failure.getCause().getSuppressed()[0].getMessage());
+        PostgresRuntime.shutdown();
+        assertEquals(1, database.shutdowns);
     }
 
     private static java.util.Set<String> members(byte[] bytes) {

@@ -18,11 +18,7 @@ public final class LuaModule implements AgentModule {
     @Override public String name() { return "server-lua"; }
     @Override public void initialize() {
         enabled=AgentConfiguration.luaEnabled();
-        if(enabled) {
-            HookPreflight.validate(TARGETS,hookChecks(),LuaModule::transform);
-            // Keep native-linked helpers unloaded until the transformer is installed.
-            Runtime.getRuntime().addShutdownHook(new Thread(() -> LuaRuntime.shutdown(),"ApocBR-Lua-Shutdown"));
-        }
+        if(enabled) HookPreflight.validate(TARGETS,hookChecks(),LuaModule::transform);
     }
     @Override public String disabledReason() { return enabled?null:"Disabled by apocbr.lua.enabled"; }
     @Override public List<HookCheck> hookChecks() {
@@ -31,7 +27,7 @@ public final class LuaModule implements AgentModule {
         String[][] hooks={
             {TARGETS.get(0),"exposeAll","expose"},{TARGETS.get(1),"init","luaInitialized"},
             {TARGETS.get(2),"startServer","start"},{TARGETS.get(2),"main","update"},
-            {TARGETS.get(2),"main","shutdown"},{TARGETS.get(3),"QueuedQuit","shutdown"},
+            {TARGETS.get(3),"QueuedQuit","shutdown"},
             {TARGETS.get(3),"QueuedQuit","cleanup"},{TARGETS.get(4),"set","populationArea"},{TARGETS.get(5),"update","beforeGeneratorUpdate"},
             {TARGETS.get(5),"update","skipGeneratorDepletion"},{TARGETS.get(5),"addToWorld","generatorAdded"},
             {TARGETS.get(5),"removeFromWorld","generatorRemoved"},{TARGETS.get(5),"load","generatorLoaded"},
@@ -58,7 +54,6 @@ public final class LuaModule implements AgentModule {
             case "zombie.Lua.LuaManager" -> dynamic.visit(Advice.to(LuaAdvice.Init.class).on(named("init").and(takesArguments(0))));
             case "zombie.network.GameServer" -> dynamic.visit(new LuaBoundaryVisitor(type))
                 .visit(Advice.to(LuaAdvice.Startup.class).on(named("startServer").and(takesArguments(0))))
-                .visit(Advice.to(LuaAdvice.MainExit.class).on(named("main").and(takesArguments(String[].class))))
                 .visit(Advice.to(LuaAdvice.PlayerAccepted.class).on(named("receivePlayerConnect").and(takesArguments(3))))
                 .visit(Advice.to(LuaAdvice.RemoveFromMap.class).on(named("RemoveItemFromMap").and(takesArguments(1))));
             case "zombie.network.ServerMap" -> dynamic.visit(Advice.to(LuaAdvice.Shutdown.class).on(named("QueuedQuit").and(takesArguments(0))));

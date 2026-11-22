@@ -59,9 +59,6 @@ public final class PostgresAdvice {
         @Advice.OnMethodEnter public static void enter(@Advice.Origin Class<?> server) {
             PostgresRuntime.verifyAccountHooks(server.getClassLoader());
         }
-        @Advice.OnMethodExit(onThrowable=Throwable.class) public static void exit(@Advice.Thrown(readOnly=false) Throwable thrown) {
-            thrown=PostgresRuntime.shutdownAfter(thrown);
-        }
     }
     public static final class Shutdown {
         @Advice.OnMethodExit(onThrowable=Throwable.class) public static void exit(@Advice.Thrown(readOnly=false) Throwable thrown) {

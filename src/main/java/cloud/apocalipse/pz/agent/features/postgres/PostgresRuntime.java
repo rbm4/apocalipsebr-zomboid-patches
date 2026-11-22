@@ -12,7 +12,6 @@ import java.sql.SQLException;
 import java.util.Collections;
 import java.util.Set;
 import java.util.WeakHashMap;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Public linkage boundary used by advice in signed native classes. All extension state belongs to the agent. */
 public final class PostgresRuntime {
@@ -22,7 +21,6 @@ public final class PostgresRuntime {
     private static boolean closed;
     private static boolean closing;
     private static final Set<ClassLoader> TRANSFORMED = Collections.newSetFromMap(new WeakHashMap<>());
-    private static final AtomicBoolean SHUTDOWN_INSTALLED = new AtomicBoolean();
     private static final java.util.List<Runnable> BEFORE_SHUTDOWN = new java.util.concurrent.CopyOnWriteArrayList<>();
     /** Feature workers stop before their shared pool closes; callbacks must be idempotent. */
     public static void beforeShutdown(Runnable callback) { BEFORE_SHUTDOWN.add(callback); }
@@ -30,9 +28,6 @@ public final class PostgresRuntime {
 
     static synchronized void initialize(PostgresSettings configuration) {
         settings = configuration;
-        if (configuration.enabled() && SHUTDOWN_INSTALLED.compareAndSet(false,true)) {
-            Runtime.getRuntime().addShutdownHook(new Thread(PostgresRuntime::shutdown,"ApocBR-Postgres-Shutdown"));
-        }
     }
 
     static synchronized void accountTransformed(ClassLoader loader) { TRANSFORMED.add(loader); }
@@ -272,24 +267,28 @@ public final class PostgresRuntime {
             if (closed || closing) return;
             closing=true;
         }
-        RuntimeException failure=null;
+        Throwable failure = null;
         for (Runnable callback:java.util.List.copyOf(BEFORE_SHUTDOWN).reversed()) {
             try { callback.run(); }
-            catch (RuntimeException error) { if(failure==null)failure=error;else failure.addSuppressed(error); }
+            catch (RuntimeException | LinkageError error) { failure = addShutdownFailure(failure, error); }
         }
         // Feature callbacks may need the still-open pool to commit their final durable captures.
         synchronized (PostgresRuntime.class) { closed=true; current=pool; pool=null; accounts=null; closing=false; }
         try { if(current!=null)current.close(); }
-        catch(RuntimeException error){if(failure==null)failure=error;else failure.addSuppressed(error);}
-        if(failure!=null)throw failure;
+        catch (RuntimeException | LinkageError error) { failure = addShutdownFailure(failure, error); }
+        if (failure instanceof RuntimeException error) throw error;
+        if (failure instanceof LinkageError error) throw error;
     }
 
     public static Throwable shutdownAfter(Throwable original) {
         try { shutdown(); }
-        catch (RuntimeException failure) {
-            if (original == null) return failure;
-            original.addSuppressed(failure);
-        }
+        catch (RuntimeException | LinkageError failure) { return addShutdownFailure(original, failure); }
+        return original;
+    }
+
+    private static Throwable addShutdownFailure(Throwable original, Throwable failure) {
+        if (original == null) return failure;
+        if (original != failure) original.addSuppressed(failure);
         return original;
     }
 

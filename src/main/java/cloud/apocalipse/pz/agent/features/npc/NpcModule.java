@@ -34,7 +34,8 @@ public final class NpcModule implements AgentModule {
         String runtime = NpcRuntime.class.getName();
         var checks=new java.util.ArrayList<>(List.of(new HookCheck("npc-tick", "zombie.network.GameServer", "main", runtime, "update", false),
             new HookCheck("npc-main-exit", "zombie.network.GameServer", "main", runtime, "shutdown", false),
-            new HookCheck("npc-quit", "zombie.network.ServerMap", "QueuedQuit", runtime, "shutdown", false)));
+            new HookCheck("npc-quit", "zombie.network.ServerMap", "QueuedQuit", runtime, "shutdown", false),
+            new HookCheck("npc-console-quit", "zombie.network.ServerMap", "preupdate", runtime, "shutdown", false)));
         if(AgentConfiguration.npcActorsEnabled()){
             String hooks=NpcGameplayHooks.class.getName();
             checks.add(new HookCheck("npc-slots","zombie.network.GameServer","getFreeSlot",hooks,"freeSlot",false));
@@ -120,9 +121,10 @@ public final class NpcModule implements AgentModule {
         return builder;
     }
     static DynamicType.Builder<?> transform(String name, DynamicType.Builder<?> builder) {
-        if (name.equals("zombie.network.GameServer")) return builder.visit(new NpcServerLoopVisitor())
+        if (name.equals("zombie.network.GameServer")) return builder.visit(new NpcServerLoopVisitor(true))
             .visit(Advice.to(NpcAdvice.MainExit.class).on(named("main").and(isStatic()).and(takesArguments(String[].class)).and(returns(void.class))));
-        return builder.visit(Advice.to(NpcAdvice.Quit.class).on(named("QueuedQuit").and(takesArguments(0)).and(returns(void.class))));
+        return builder.visit(new NpcServerLoopVisitor(false))
+            .visit(Advice.to(NpcAdvice.Quit.class).on(named("QueuedQuit").and(takesArguments(0)).and(returns(void.class))));
     }
 
     static DynamicType.Builder<?> actorTransform(String name,DynamicType.Builder<?> builder){

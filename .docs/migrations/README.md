@@ -18,6 +18,8 @@ The [feature contract](../features/postgresql.md) tracks implementation and gaps
 | --- | --- | --- |
 | Agent foundation and Workshop hook | Existing implementation | Validate the new original-JAR launch in the intended runtime. |
 | Basic telemetry | Partial implementation | Preserve measured semantics as individual features add phases/counters. |
+| [First five optimization ports](../features/server-optimizations.md) | Original-JAR hooks and packaged behavior fixtures validated | Measure under a representative dedicated-server workload before enabling by default. |
+| [Java pathfinding lock](../features/java-pathfinding.md) | Original-JAR hooks implemented and verified in a forked JVM | Exercise routing and graceful shutdown in a running game. |
 | PostgreSQL and NPC runtime | Module and account hooks registered; integrated migration still open | Complete journal/recovery/async, player/vehicle/dictionary and NPC contracts before full cutover. |
 | [PostgreSQL dictionary setup](../features/postgresql-dictionary.md) | Publication/cache/listener and native decode hooks wired; live acceptance pending | Validate mixed historical payloads with real clients and engine-role SQL. |
 | [PostgreSQL player authority](../features/postgresql-players.md) | Profile/connect, durable creation and live/final-save hooks implemented; defaults off | Complete real PostgreSQL/grant and connected-client acceptance before cutover. |

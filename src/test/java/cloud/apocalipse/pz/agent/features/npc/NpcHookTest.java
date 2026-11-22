@@ -32,7 +32,7 @@ class NpcHookTest {
     }
 
     @Test void transformedNativeEntryPointsReachProductionRuntimeAndPreserveControlFlow() throws Exception {
-        for (String scenario : List.of("normal","quit","exception","factory")) {
+        for (String scenario : List.of("normal","quit","exception","factory","console")) {
             Path log = Path.of("target", "npc-hook-"+scenario+".log");
             var process = new ProcessBuilder(Path.of(System.getProperty("java.home"),"bin","java").toString(),
                 "-Xverify:all", "-cp", System.getProperty("java.class.path"),

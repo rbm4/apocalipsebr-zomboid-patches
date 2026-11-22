@@ -20,9 +20,6 @@ public final class LuaAdvice {
         @Advice.OnMethodEnter public static void enter() { LuaRuntime.shutdown(); }
         @Advice.OnMethodExit(onThrowable=Throwable.class) public static void exit() { LuaRuntime.cleanup(); }
     }
-    public static class MainExit {
-        @Advice.OnMethodExit(onThrowable=Throwable.class) public static void exit() { try { LuaRuntime.shutdown(); } finally { LuaRuntime.cleanup(); } }
-    }
     public static class Update {
         @Advice.OnMethodEnter(skipOn=Advice.OnNonDefaultValue.class)
         public static boolean enter(@Advice.This Object source) { return LuaRuntime.beforeGeneratorUpdate(source); }

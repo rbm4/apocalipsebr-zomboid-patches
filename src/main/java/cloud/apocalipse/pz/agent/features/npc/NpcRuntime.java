@@ -14,7 +14,6 @@ public final class NpcRuntime {
         if (engine != null) throw new IllegalStateException("NPC runtime already initialized");
         engine = new NpcEngine(settings);
         actors=AgentConfiguration.npcActorsEnabled();
-        if (settings.enabled()) Runtime.getRuntime().addShutdownHook(new Thread(NpcRuntime::shutdown, "ApocBR-NPC-Shutdown"));
     }
 
     public static void update() {

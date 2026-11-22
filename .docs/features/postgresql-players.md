@@ -35,7 +35,7 @@ not a claim that current authority reads SQLite.
 | CreatePlayerPacket.processServer, immediately after native database process() | Detach the pooled request, coalesce retransmissions, wait for older writes, run original creation, capture the new life durably and delay its response until replay commits. Retain that exact server instance outside simulation until connect; cancellation removes it. |
 | ServerPlayerDB.create, snapshot constructors, process, serverUpdateNetworkCharacterInt | Skip SQLite initialization; preserve native snapshot capture and queue processing. Snapshot origin/world/identity are captured before queue handoff. Journal detached native mirror writes to public.networkplayers with transactional receipts. |
 | NetworkPlayerManager.update; ServerPlayerDB.serverUpdateNetworkCharacter(IsoPlayer,...) | Preserve native simulation/networking, observe live players with the legacy sampling budgets, capture graph reconciliation and final state, and journal scalar/graph mutations in order. A final capture that cannot be retained fails explicitly. |
-| ServerPlayerDB.saveFinishWait / close; GameServer.main; ServerMap.QueuedQuit | Drain captured work, coordinate native teardown and concurrent JVM shutdown hooks, stop account continuations and player replay, then release dictionaries and the shared pool. |
+| ServerPlayerDB.saveFinishWait / close; ServerMap.QueuedQuit; GameServer$1.run | Drain captured work during the native quit phase. After vanilla shutdown, stop remaining workers and player replay before releasing dictionaries and the shared pool. |
 
 Temporary reconstruction suppresses Lua callbacks and cell/process-item
 publication through a scoped guard. It constructs an unpublished descriptor and

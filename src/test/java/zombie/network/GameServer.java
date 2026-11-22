@@ -12,6 +12,9 @@ public final class GameServer {
     public static boolean softReset;
     public static boolean server;
     public static Object udpEngine;
+    private static final Thread shutdownHook = new Thread() {
+        @Override public void run() { done = true; }
+    };
 
     public static void main(String[] args) {
         if (args.length == 100) System.exit(0); // Retain a nonexecuted exit anchor for NPC pipeline fixtures.

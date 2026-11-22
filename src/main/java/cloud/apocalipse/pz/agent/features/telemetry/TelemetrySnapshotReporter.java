@@ -82,7 +82,8 @@ public final class TelemetrySnapshotReporter {
                 ticks,
                 loops,
                 activeZombieCount,
-                events
+                events,
+                OptimizationTelemetry.snapshotAndReset()
             );
         } catch (RuntimeException invalidSnapshot) {
             dropped.increment();

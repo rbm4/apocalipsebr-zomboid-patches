@@ -85,7 +85,7 @@ No installed game files or live database have been changed by this work.
 | `isNewAccountAllowed` and the account-side player Steam-ID lookup | Agent-owned adapters perform the dependent PostgreSQL `public.networkplayers` reads. The account-limit adapter preserves count/priority policy, advances result sets correctly and fails closed. Account-side lookup avoids constructing the native SQLite player database. Player writes/reconstruction are owned by the separately enabled player module. |
 | Native numeric `setString` account bindings | `AccountSqlTypes` narrowly binds whitelist IDs and userlog amounts as JDBC integers for PostgreSQL. Other native bindings are retained. |
 | `GameServer.main` entry/exit | Entry requires confirmed account transformation before startup proceeds; exit closes the pool on normal/exceptional return. |
-| `ServerMap.QueuedQuit` exit | Pool shutdown follows vanilla shutdown work, including role saves and vehicle reset. A JVM shutdown hook covers abnormal termination. |
+| `GameServer$1.run()` exit | The agent drains registered consumers and closes the pool on the original JVM shutdown thread, after vanilla `ServerMap.QueuedQuit()` finishes its role saves and vehicle reset. Terminal cleanup also runs if the native hook skips quit or throws. |
 
 Enabled module initialization preflights the actual classpath's account bytes
 without defining game classes before the transformer is installed. All three
@@ -165,6 +165,12 @@ helper linkage, telemetry coexistence and shutdown with fake JDBC and game doubl
 Packaging checks also exercise the shaded JDBC service without loose dependency
 JARs. Isolated PostgreSQL role/grant tests, complete journal compatibility,
 async/outage recovery and dedicated-server gameplay acceptance remain required.
+
+The shutdown regression fixture runs the original 42.22.2 shutdown thread with
+a JDBC double during the quit callback. It verifies that database access remains
+available until the callback returns and that terminal cleanup closes the pool.
+Live acceptance still needs a dedicated-server quit with an isolated PostgreSQL
+database and active NPCs to verify final role writes and actor checkpoints.
 
 ## Schema and engine-role requirements
 

@@ -6,6 +6,9 @@ Date: **2026-11-21**. Target: **root Maven Byte Buddy agent against the original
 Status: **inventory and migration handoff only**. No optimization implementation
 or runtime behavior was changed for this report.
 
+The [optimization feature guide](../features/server-optimizations.md) records
+the subsequent implementation and validation of the first five ports.
+
 ## Executive summary
 
 The 2026-11-18 migration baseline is a source-difference inventory, not a feature

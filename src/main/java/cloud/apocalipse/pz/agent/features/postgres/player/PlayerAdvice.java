@@ -45,9 +45,6 @@ public final class PlayerAdvice {
     public static class Close {
         @Advice.OnMethodEnter public static void enter() { PlayerRuntime.closeDatabase(); }
     }
-    public static class Main {
-        @Advice.OnMethodEnter public static void enter() { PlayerRuntime.serverMain(); }
-    }
     public static class Quit {
         @Advice.OnMethodEnter public static void enter() { PlayerRuntime.beginShutdown(); }
         @Advice.OnMethodExit(onThrowable = Throwable.class) public static void exit() { PlayerRuntime.endShutdown(); }

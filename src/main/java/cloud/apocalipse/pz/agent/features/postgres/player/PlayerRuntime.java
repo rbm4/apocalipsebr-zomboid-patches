@@ -33,11 +33,8 @@ public final class PlayerRuntime {
     private static final java.util.concurrent.locks.ReentrantLock PROCESS = new java.util.concurrent.locks.ReentrantLock();
     private static final Map<Object, PlayerNativeSave> NATIVE = Collections.synchronizedMap(new WeakHashMap<>());
     private static final ThreadLocal<Boolean> TEARDOWN = new ThreadLocal<>();
-    private static final java.util.concurrent.CountDownLatch NATIVE_QUIT = new java.util.concurrent.CountDownLatch(1);
-    private static volatile boolean mainStarted;
-    public static void serverMain() { mainStarted=true; }
     public static void beginShutdown() { TEARDOWN.set(true); }
-    public static void endShutdown() { TEARDOWN.remove(); NATIVE_QUIT.countDown(); }
+    public static void endShutdown() { TEARDOWN.remove(); }
     public static void beginProcess() { PROCESS.lock(); }
     public static void endProcess() { PROCESS.unlock(); }
     public static boolean enabled() { return PlayerState.enabled && !closed; }
@@ -192,16 +189,12 @@ public final class PlayerRuntime {
     }
     public static void shutdown() {
         if (closed) return; closed = true;
-        // JVM shutdown hooks run concurrently. Keep the pool and dictionary metadata available
-        // until vanilla's own quit hook has performed final captures and role saves.
         try {
-        if (mainStarted && Thread.currentThread()!=GameServer.mainThread && !Boolean.TRUE.equals(TEARDOWN.get())) {
-            try { if(!NATIVE_QUIT.await(60, java.util.concurrent.TimeUnit.SECONDS)) throw new IllegalStateException("Native quit did not finish before player shutdown"); }
-            catch(InterruptedException interrupted) { Thread.currentThread().interrupt(); throw new IllegalStateException("Player shutdown interrupted"); }
-        }
-        PlayerCreation.shutdown();
-        var database=ServerPlayerDB.isAvailable()?ServerPlayerDB.getInstance():null;if(database!=null)database.process();
-        PlayerSync.forceFlush(); PlayerJournal.drain();
+            PlayerCreation.shutdown();
+            var database = ServerPlayerDB.isAvailable() ? ServerPlayerDB.getInstance() : null;
+            if (database != null) database.process();
+            PlayerSync.forceFlush();
+            PlayerJournal.drain();
         }
         finally { try { PlayerJournal.shutdown(); } finally { PlayerSync.shutdown(); NATIVE.clear(); } }
     }

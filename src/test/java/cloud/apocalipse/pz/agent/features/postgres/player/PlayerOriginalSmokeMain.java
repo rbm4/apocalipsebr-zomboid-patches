@@ -135,8 +135,9 @@ public final class PlayerOriginalSmokeMain {
                 },0);return writer.toByteArray();
             }
         });
-        module.configure(decode.configure(new AgentBuilder.Default().disableClassFormatChanges()
-            .with(AgentBuilder.Listener.StreamWriting.toSystemError().withErrorsOnly())))
+        var shutdown = new ServerShutdownModule(); shutdown.initialize();
+        shutdown.configure(module.configure(decode.configure(new AgentBuilder.Default().disableClassFormatChanges()
+            .with(AgentBuilder.Listener.StreamWriting.toSystemError().withErrorsOnly()))))
             .type(net.bytebuddy.matcher.ElementMatchers.named("zombie.network.packets.INetworkPacket"))
             .transform((dynamic,type,loader,javaModule,domain)->dynamic.visit(net.bytebuddy.asm.Advice.to(MetadataAdvice.class).on(
                 net.bytebuddy.matcher.ElementMatchers.named("send").and(net.bytebuddy.matcher.ElementMatchers.isStatic()).and(net.bytebuddy.matcher.ElementMatchers.takesArguments(3))
@@ -307,12 +308,13 @@ public final class PlayerOriginalSmokeMain {
         } finally { AsyncRuntime.shutdown(); PlayerRuntime.shutdown(); PostgresRuntime.shutdown(); }
     }
     static void shutdownScenario()throws Exception {
-        PlayerRuntime.serverMain();var failure=new java.util.concurrent.atomic.AtomicReference<Throwable>();
-        var hook=new Thread(()->{try{PostgresRuntime.shutdown();}catch(Throwable error){failure.set(error);}},"fixture-jvm-shutdown");hook.start();
-        long deadline=System.nanoTime()+3_000_000_000L;
-        while(PostgresRuntime.acceptingAccounts()&&System.nanoTime()<deadline)Thread.sleep(5);
-        check(!poolClosed,"JVM hook closed the pool ahead of native quit");
-        zombie.network.ServerMap.instance.QueuedQuit();hook.join(5000);
+        var field = GameServer.class.getDeclaredField("shutdownHook"); field.setAccessible(true);
+        var hook = (Thread) field.get(null);
+        var failure = new java.util.concurrent.atomic.AtomicReference<Throwable>();
+        hook.setUncaughtExceptionHandler((thread, error) -> failure.set(error));
+        hook.setDaemon(true);
+        hook.start();
+        hook.join(5000);
         check(!hook.isAlive()&&failure.get()==null&&nativeQuitQueried&&poolClosed,"native quit/pool shutdown coordination failed: "+failure.get());
     }
     static void acceptanceScenario(ConnectionFixture connection,PlayerCapture.Graph graph)throws Exception {

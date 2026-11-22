@@ -2,6 +2,7 @@ package cloud.apocalipse.pz.agent.features.telemetry;
 
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
@@ -20,7 +21,11 @@ class TelemetrySnapshotPayloadTest {
             new TelemetryRegistry.TickSnapshot(292, 12_114_788_000L, 408_077_000L, 15),
             new TelemetryRegistry.LoopSnapshot(4_404, 29_993_048_000L),
             564,
-            Map.of("OnTick", event)
+            Map.of("OnTick", event),
+            new OptimizationTelemetry.Snapshot(
+                Map.of("zombies.culling.zeroQuotaConnections", 3L),
+                List.of(new OptimizationTelemetry.PhaseSample(
+                    List.of("simulation", "players", "thermalClothing"), 2L, 3_000_000L, 2_000_000L)))
         )).getAsJsonObject();
 
         assertEquals(3, payload.get("schemaVersion").getAsInt());
@@ -39,8 +44,13 @@ class TelemetrySnapshotPayloadTest {
         assertEquals(15, payload.get("overBudgetTicks").getAsInt());
         assertEquals(4_404, payload.getAsJsonObject("loop").get("count").getAsInt());
         assertEquals(29_993.048, payload.getAsJsonObject("loop").get("totalMs").getAsDouble());
-        assertTrue(payload.get("phases").isJsonObject());
-        assertTrue(payload.get("counters").isJsonObject());
+        var clothingPhase = payload.getAsJsonObject("phases").getAsJsonObject("simulation")
+            .getAsJsonObject("players").getAsJsonObject("thermalClothing");
+        assertEquals(2L, clothingPhase.get("calls").getAsLong());
+        assertEquals(3.0, clothingPhase.get("totalMs").getAsDouble());
+        assertEquals(1.5, clothingPhase.get("avgMs").getAsDouble());
+        assertEquals(2.0, clothingPhase.get("maxMs").getAsDouble());
+        assertEquals(3L, payload.getAsJsonObject("counters").get("zombies.culling.zeroQuotaConnections").getAsLong());
         assertTrue(payload.get("world").isJsonObject());
         assertEquals(564, payload.getAsJsonObject("world").get("zombies").getAsInt());
         assertTrue(payload.get("jvm").isJsonObject());

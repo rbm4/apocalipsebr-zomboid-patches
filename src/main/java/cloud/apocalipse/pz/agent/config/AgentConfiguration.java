@@ -8,6 +8,24 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public record AgentConfiguration(String profile, URI telemetryEndpoint, URI restartEndpoint, boolean restartEnabled) {
+    /** Zombie culling port, enabled by {@code -Dapocbr.optimization.zombieCulling.enabled=true}. */
+    public static final String ZOMBIE_CULLING_OPTIMIZATION = "apocbr.optimization.zombieCulling.enabled";
+    /** Lua dispatch port, enabled by {@code -Dapocbr.optimization.luaDispatch.enabled=true}. */
+    public static final String LUA_DISPATCH_OPTIMIZATION = "apocbr.optimization.luaDispatch.enabled";
+    /** Player proximity port, enabled by {@code -Dapocbr.optimization.playerNearVehicle.enabled=true}. */
+    public static final String PLAYER_NEAR_VEHICLE_OPTIMIZATION = "apocbr.optimization.playerNearVehicle.enabled";
+    /** Zombie packet preparation port, enabled by {@code -Dapocbr.optimization.zombiePacket.enabled=true}. */
+    public static final String ZOMBIE_PACKET_OPTIMIZATION = "apocbr.optimization.zombiePacket.enabled";
+    /** Thermal clothing port, enabled by {@code -Dapocbr.optimization.thermalClothing.enabled=true}. */
+    public static final String THERMAL_CLOTHING_OPTIMIZATION = "apocbr.optimization.thermalClothing.enabled";
+
+    /** Java pathfinding lock: {@code -Dapocbr.pathfinding.forceJava=false} restores vanilla selection. Defaults true. */
+    public static final String FORCE_JAVA_PATHFINDING_PROPERTY = "apocbr.pathfinding.forceJava";
+
+    public static boolean forceJavaPathfinding() {
+        return Boolean.parseBoolean(systemProperty(FORCE_JAVA_PATHFINDING_PROPERTY, "true"));
+    }
+
     /** NPC engine: JVM argument {@code -Dapocbr.npc.enabled=true}; actor/planner hooks, default false. */
     public static final String NPC_ENABLED_PROPERTY = "apocbr.npc.enabled";
     /** NPC engine: JVM argument {@code -Dapocbr.npc.async=false}; default true, detached planning only. */

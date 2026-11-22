@@ -44,7 +44,7 @@ public final class PlayerModule implements AgentModule {
             {TARGETS.get(7), "addMovingObject", PlayerConstruction.class.getName(), "active"},
             {TARGETS.get(7), "addToProcessItems", PlayerConstruction.class.getName(), "active"},
             {TARGETS.get(8), "triggerEvent", PlayerConstruction.class.getName(), "active"},
-            {TARGETS.get(5), "main", runtime, "serverMain"}, {TARGETS.get(9), "QueuedQuit", runtime, "beginShutdown"},
+            {TARGETS.get(9), "QueuedQuit", runtime, "beginShutdown"},
             {TARGETS.get(9), "QueuedQuit", runtime, "endShutdown"}
         };
         for (int i = 0; i < contracts.length; i++) { var c = contracts[i]; checks.add(new HookCheck("player-" + i, c[0], c[1], c[2], c[3], false)); }
@@ -70,7 +70,7 @@ public final class PlayerModule implements AgentModule {
         if (name.equals(TARGETS.get(2))) return dynamic.visit(Advice.to(PlayerAdvice.Profile.class).on(named("processServer").and(takesArguments(2))));
         if (name.equals(TARGETS.get(3))) return dynamic.visit(new PlayerVisitor()).visit(Advice.to(PlayerAdvice.Create.class).on(named("processServer").and(takesArguments(2))));
         if (name.equals(TARGETS.get(4))) return dynamic.visit(Advice.to(PlayerAdvice.ConnectPacket.class).on(named("parse").and(takesArguments(2))));
-        if (name.equals(TARGETS.get(5))) return dynamic.visit(new PlayerVisitor()).visit(Advice.to(PlayerAdvice.Main.class).on(named("main").and(takesArguments(String[].class)))).visit(Advice.to(PlayerAdvice.Connect.class)
+        if (name.equals(TARGETS.get(5))) return dynamic.visit(new PlayerVisitor()).visit(Advice.to(PlayerAdvice.Connect.class)
             .on(named("receivePlayerConnect").and(takesArguments(3))));
         if (name.equals(TARGETS.get(6))) return dynamic.visit(new PlayerVisitor()).visit(Advice.to(PlayerAdvice.Tick.class).on(named("update").and(takesArguments(0))));
         if (name.equals(TARGETS.get(7))) return dynamic.visit(Advice.to(PlayerAdvice.Detached.class).on(namedOneOf("addMovingObject", "addToProcessItems")));

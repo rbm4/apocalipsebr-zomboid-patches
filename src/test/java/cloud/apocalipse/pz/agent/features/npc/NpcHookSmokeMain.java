@@ -21,6 +21,12 @@ public final class NpcHookSmokeMain {
         definitions.put(NpcQuitFixture.class.getName(), NpcModule.transform("zombie.network.ServerMap",
             new ByteBuddy().redefine(NpcQuitFixture.class)).make().getBytes());
         var loader = new ByteArrayClassLoader.ChildFirst(NpcHookSmokeMain.class.getClassLoader(), definitions);
+        if (args[0].equals("console")) {
+            Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+                if (!NpcRuntime.status().stopped()) throw new AssertionError("NPC runtime was still active at process exit");
+                System.out.println("NPC transformed lifecycle passed: console");
+            }));
+        }
         {
             var fixture = loader.loadClass(NpcHookFixture.class.getName());
             try {

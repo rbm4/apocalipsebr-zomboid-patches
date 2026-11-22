@@ -23,7 +23,7 @@ All installation contracts are declared in `hookChecks()` for automatic discover
 | Original boundary | Agent behavior |
 | --- | --- |
 | `GameServer.main(String[])`, after `LoginQueue.update()` | Production runtime callback in the active simulation branch, before later backup/social/world-map work; packet-only iterations do not supply this callback. |
-| `ServerMap.QueuedQuit()` entry, main return/throw and before main `System.exit(int)` | Cleanup before vanilla teardown, with original flow/exception retained. Shared-pool shutdown also invokes the NPC callback. |
+| `ServerMap.QueuedQuit()` entry, main return/throw and before `System.exit(int)` in main and `ServerMap.preupdate()` | Console quit checkpoints and removes native actors on the simulation thread before JVM shutdown starts. The native quit hook stops NPC workers before vanilla teardown. Shared-pool shutdown also invokes the NPC callback. External JVM shutdown can reach the quit hook off-owner, where actor checkpoint and removal still require the simulation thread. |
 | `IsoWorld.KillCell()` / `IsoCell.Dispose()` entry | Stop the native session before world disposal; later readiness can create another generation. |
 | `GameServer.getFreeSlot()` | Preserve slot ordering while excluding connection slots 192–255, including not-yet-issued NPC IDs. |
 | `PlayerDataRequestPacket.processServer(...)` | Consume known NPC requests and announce only to relevant connected recipients; otherwise continue ordinary lookup. |

@@ -77,8 +77,8 @@ Use the shared PostgreSQL URL/environment and pool settings from the
 [PostgreSQL guide](postgresql.md). The extra listener session is not counted in
 poolSize. Dictionary setup also works with account hooks disabled.
 
-`GameServer.main` exit and `ServerMap.QueuedQuit` exit close the shared runtime,
-including when account hooks are disabled. The shared JVM shutdown hook provides
+`GameServer$1.run()` closes the shared runtime after vanilla shutdown,
+including when account hooks are disabled. Its exceptional exit also provides
 the final fallback. A registered before-pool-close callback stops the listener,
 closes its notification/query sessions, joins its thread with a bounded wait,
 then clears local/foreign/cache state. Never close the query pool before its

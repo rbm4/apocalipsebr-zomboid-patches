@@ -34,7 +34,7 @@ public final class HookPreflight {
                     throw new IllegalStateException("Missing original-game hook: "+contract.id());
             }
         }catch(Exception|LinkageError failure) {
-            throw new IllegalStateException("Original-game Lua/worker hook preflight failed",failure);
+            throw new IllegalStateException("Original-game hook preflight failed",failure);
         }
     }
 }

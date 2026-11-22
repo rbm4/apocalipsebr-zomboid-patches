@@ -27,6 +27,11 @@ public final class PostgresAgentSmokeMain {
         if (TelemetryRegistry.snapshotTicksAndReset().calls()!=3 || TelemetryRegistry.snapshotLoopsAndReset().calls()!=5) {
             throw new AssertionError("PostgreSQL registration displaced server-loop telemetry");
         }
+        if (database.shutdowns != 0) throw new AssertionError("Main exit prematurely closed the shared pool");
+        var field = GameServer.class.getDeclaredField("shutdownHook");
+        field.setAccessible(true);
+        ((Thread) field.get(null)).run();
+        if (!GameServer.done) throw new AssertionError("Vanilla shutdown body did not run");
         if (database.borrowed!=database.returned || database.shutdowns!=1) throw new AssertionError("Pool/lease lifecycle did not close");
         System.out.println("Registered PostgreSQL hooks, fail-closed authentication, telemetry coexistence and shutdown passed.");
     }

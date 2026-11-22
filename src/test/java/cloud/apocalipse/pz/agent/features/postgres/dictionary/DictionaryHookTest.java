@@ -28,10 +28,10 @@ class DictionaryHookTest {
             System.setProperty(AgentConfiguration.POSTGRES_ENABLED_PROPERTY,"true");
             System.setProperty(AgentConfiguration.DICTIONARY_ENABLED_PROPERTY,"true");
             System.setProperty(AgentConfiguration.APOCBR_POSTGRES_SERVER_ID_PROPERTY,"1");
-            var module=new DictionaryModule();module.initialize();assertNull(module.disabledReason());assertEquals(3,module.hookChecks().size());
+            var module=new DictionaryModule();module.initialize();assertNull(module.disabledReason());assertEquals(1,module.hookChecks().size());
             var transformer=module.configure(new AgentBuilder.Default().disableClassFormatChanges()).makeRaw();
             try(var locator=new ClassFileLocator.ForJarFile(new java.util.jar.JarFile(game))) {
-                for(String name:List.of(DictionaryModule.TARGET,"zombie.network.GameServer","zombie.network.ServerMap")) {
+                for (String name : List.of(DictionaryModule.TARGET)) {
                     byte[] original=locator.locate(name).resolve();
                     byte[] transformed=transformer.transform(getClass().getClassLoader(),name.replace('.','/'),null,null,original);
                     assertNotNull(transformed,"registered matcher must transform "+name);

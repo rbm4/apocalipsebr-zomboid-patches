@@ -23,7 +23,8 @@ final class TelemetrySnapshotPayload {
             TelemetryRegistry.TickSnapshot ticks,
             TelemetryRegistry.LoopSnapshot loops,
             Integer activeZombieCount,
-            Map<String, TelemetryRegistry.EventSnapshot> luaEvents) {
+            Map<String, TelemetryRegistry.EventSnapshot> luaEvents,
+            OptimizationTelemetry.Snapshot optimizations) {
         if (gameVersion == null || gameVersion.isBlank() || gameVersion.length() > 255
                 || intervalMillis < 1 || sequence < 1 || timestampMillis < 1
                 || playersOnline < 0 || dropped < 0 || ticks == null
@@ -73,8 +74,8 @@ final class TelemetrySnapshotPayload {
         snapshot.put("tick", tick);
         snapshot.put("overBudgetTicks", ticks.overBudgetCalls());
         snapshot.put("loop", loop);
-        snapshot.put("phases", Map.of());
-        snapshot.put("counters", Map.of());
+        snapshot.put("phases", phases(optimizations.phases()));
+        snapshot.put("counters", optimizations.counters());
         Map<String, Object> world = new LinkedHashMap<>();
         if (activeZombieCount != null) {
             world.put("zombies", activeZombieCount);
@@ -89,6 +90,23 @@ final class TelemetrySnapshotPayload {
             throw new IllegalArgumentException("Telemetry snapshot exceeds the payload limit");
         }
         return encoded;
+    }
+
+    private static Map<String, Object> phases(List<OptimizationTelemetry.PhaseSample> samples) {
+        Map<String, Object> root = new LinkedHashMap<>();
+        for (var sample : samples) {
+            Map<String, Object> node = root;
+            for (String part : sample.path()) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> child = (Map<String, Object>) node.computeIfAbsent(part, ignored -> new LinkedHashMap<>());
+                node = child;
+            }
+            node.put("calls", sample.calls());
+            node.put("totalMs", decimal(sample.totalNanos() / 1_000_000.0));
+            node.put("avgMs", decimal(sample.totalNanos() / 1_000_000.0 / sample.calls()));
+            node.put("maxMs", decimal(sample.maxNanos() / 1_000_000.0));
+        }
+        return root;
     }
 
     private static double decimal(double value) {
