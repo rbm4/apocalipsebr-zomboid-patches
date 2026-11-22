@@ -2,7 +2,8 @@ param(
     [string]$AgentJar = (Join-Path $PSScriptRoot '../target/apocbr-agent.jar'),
     [string]$GameJar = 'Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar',
     [string]$GameHome = '',
-    [string]$Jdk = (Join-Path $PSScriptRoot '../jdk')
+    [string]$Jdk = (Join-Path $PSScriptRoot '../jdk'),
+    [switch]$LegacyHotspots
 )
 
 $ErrorActionPreference = 'Stop'
@@ -22,6 +23,7 @@ $probeMain = 'cloud.apocalipse.pz.agent.integration.probe.HookProbe'
 $smokeMain = 'cloud.apocalipse.pz.agent.features.optimization.OptimizationOriginalSmokeMain'
 & (Join-Path $jdkBin 'javac') -cp $classpath -d $classes `
     (Join-Path $testRoot 'features/optimization/OptimizationOriginalSmokeMain.java') `
+    (Join-Path $testRoot 'features/optimization/LegacyHotspotsOriginalSmoke.java') `
     (Join-Path $testRoot 'integration/probe/HookProbe.java')
 if ($LASTEXITCODE -ne 0) { throw 'Optimization fixture compilation failed' }
 
@@ -39,7 +41,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Optimization hook observer packaging failed' }
 } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $run 'evidence.json') -Encoding UTF8
 Write-Output "Evidence directory $run"
 
-function Invoke-OptimizationFixture([string]$State) {
+function Invoke-OptimizationFixture([string]$State, [bool]$CheckHotspots = $false) {
     $evidence = Join-Path $run $State
     $cache = Join-Path $evidence 'cache'
     New-Item -ItemType Directory -Path $cache -Force | Out-Null
@@ -66,10 +68,11 @@ function Invoke-OptimizationFixture([string]$State) {
         ('-javaagent:' + $agent),
         ('-javaagent:' + $probe + '=' + $evidence),
         '-cp', ($classpath + [IO.Path]::PathSeparator + $classes), $smokeMain,
-        $original, $State, $cache, $evidence
+        $original, $State, $cache, $evidence, $CheckHotspots.ToString().ToLowerInvariant()
     )
     if ($State -eq 'false') {
-        $switches = @('zombieCulling', 'luaDispatch', 'playerNearVehicle', 'zombiePacket', 'thermalClothing') |
+        $switches = @('zombieCulling', 'luaDispatch', 'playerNearVehicle', 'zombiePacket', 'thermalClothing',
+            'serverLos', 'entityRemoval', 'entitySimulation', 'zombieAsyncSend') |
             ForEach-Object { "-Dapocbr.optimization.$_.enabled=false" }
         $arguments = $switches + $arguments
     }
@@ -99,9 +102,12 @@ function Invoke-OptimizationFixture([string]$State) {
     }
 }
 
-$vanillaPackets = @(Invoke-OptimizationFixture 'false')
-$optimizedPackets = @(Invoke-OptimizationFixture 'true')
+$vanillaPackets = @(Invoke-OptimizationFixture 'false' $LegacyHotspots.IsPresent)
+$optimizedPackets = @(Invoke-OptimizationFixture 'true' $LegacyHotspots.IsPresent)
 if ($vanillaPackets.Count -ne 2 -or ($vanillaPackets -join '|') -ne ($optimizedPackets -join '|')) {
     throw "Serialized zombie packets differ. See $run"
 }
-Write-Output 'Original-JAR optimization fixtures passed with defaults and with all five explicit opt-outs. Zombie packet bytes match.'
+Write-Output 'Original-JAR optimization fixtures passed with defaults and explicit opt-outs. Zombie packet bytes match.'
+if ($LegacyHotspots) {
+    Write-Output 'Original-JAR ServerLOS, entity catch-up, removal and async zombie fixtures passed.'
+}

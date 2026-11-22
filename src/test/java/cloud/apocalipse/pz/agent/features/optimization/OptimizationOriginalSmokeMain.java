@@ -91,6 +91,9 @@ public final class OptimizationOriginalSmokeMain {
         thermalClothing(enabled);
         verifyTelemetry(enabled);
         verifyHookEvidence(Path.of(arguments[3]), enabled);
+        if (arguments.length == 5 && Boolean.parseBoolean(arguments[4])) {
+            LegacyHotspotsOriginalSmoke.run(Path.of(arguments[3]), enabled);
+        }
         System.out.println("ORIGINAL_OPTIMIZATION_SMOKE_PASS enabled=" + enabled);
     }
 
@@ -363,13 +366,13 @@ public final class OptimizationOriginalSmokeMain {
         field(SERVER, "server").setBoolean(null, dedicated);
     }
 
-    private static Field field(Class<?> owner, String name) throws ReflectiveOperationException {
+    static Field field(Class<?> owner, String name) throws ReflectiveOperationException {
         Field field = owner.getDeclaredField(name);
         field.setAccessible(true);
         return field;
     }
 
-    private static Class<?> gameClass(String name) {
+    static Class<?> gameClass(String name) {
         try {
             return Class.forName(name, false, OptimizationOriginalSmokeMain.class.getClassLoader());
         } catch (ClassNotFoundException invalidFixture) {
@@ -386,11 +389,11 @@ public final class OptimizationOriginalSmokeMain {
     }
 
     /** Game fixtures omit constructors needing native world state. */
-    private static <T> T allocate(Class<T> type) throws InstantiationException {
+    static <T> T allocate(Class<T> type) throws InstantiationException {
         return type.cast(UNSAFE.allocateInstance(type));
     }
 
-    private static void check(boolean condition, String message) {
+    static void check(boolean condition, String message) {
         if (!condition) {
             throw new AssertionError(message);
         }

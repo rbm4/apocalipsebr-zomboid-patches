@@ -8,6 +8,8 @@ or runtime behavior was changed for this report.
 
 The [optimization feature guide](../features/server-optimizations.md) records
 the subsequent implementation and validation of the first five ports.
+The [server simulation guide](../features/server-simulation-hotspots.md) records
+later work on LOS, simulation catch-up, entity indexes, and async transmission.
 
 ## Executive summary
 

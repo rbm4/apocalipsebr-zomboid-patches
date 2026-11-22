@@ -19,6 +19,7 @@ The [feature contract](../features/postgresql.md) tracks implementation and gaps
 | Agent foundation and Workshop hook | Existing implementation | Validate the new original-JAR launch in the intended runtime. |
 | Basic telemetry | Partial implementation | Preserve measured semantics as individual features add phases/counters. |
 | [First five optimization ports](../features/server-optimizations.md) | Enabled by default with original-JAR hooks and packaged behavior fixtures validated | Measure under a representative dedicated-server workload. |
+| [Server simulation, LOS and zombie transmission](../features/server-simulation-hotspots.md) | Enabled by default for the original 42.22.2 JAR | Validate gameplay and measure live-server work under representative load. |
 | [Java pathfinding lock](../features/java-pathfinding.md) | Original-JAR hooks implemented and verified in a forked JVM | Exercise routing and graceful shutdown in a running game. |
 | PostgreSQL and NPC runtime | Module and account hooks registered; integrated migration still open | Complete journal/recovery/async, player/vehicle/dictionary and NPC contracts before full cutover. |
 | [PostgreSQL dictionary setup](../features/postgresql-dictionary.md) | Publication/cache/listener and native decode hooks wired; live acceptance pending | Validate mixed historical payloads with real clients and engine-role SQL. |

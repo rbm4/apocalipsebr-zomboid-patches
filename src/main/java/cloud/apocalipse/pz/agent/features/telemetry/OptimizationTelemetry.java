@@ -18,7 +18,20 @@ public final class OptimizationTelemetry {
         LUA_MEMBERSHIP_SCAN_SKIPPED("lua.dispatch.membershipScansSkipped"),
         NEAR_VEHICLE_QUERY_SKIPPED("players.nearVehicle.queriesSkipped"),
         PACKET_PATH_SQRT_SKIPPED("zombies.packet.pathSquareRootsSkipped"),
-        CLOTHING_REBUILT("players.thermal.clothingRebuilt");
+        CLOTHING_REBUILT("players.thermal.clothingRebuilt"),
+        ENTITY_REMOVAL_INDEXED("entities.removal.indexed"),
+        ENTITY_CATCHUP_TICKS("entities.simulationCatchupTicks"),
+        ENTITY_META_NOT_DUE("entities.metaNotDue"),
+        ENTITY_BUCKET_SKIPPED("entities.simulationSkippedByIndex"),
+        ENTITY_USING_PLAYER_CANDIDATES("entities.usingPlayer.candidatesVisited"),
+        LOS_QUEUED("players.los.jobsQueued"),
+        LOS_QUEUE_REJECTED("players.los.jobsRejected"),
+        LOS_STALE("players.los.staleResults"),
+        LOS_ZOMBIE_CANDIDATES("players.los.zombieCandidates"),
+        ZOMBIE_SEND_BACKPRESSURE("zombies.async.backpressure"),
+        ZOMBIE_SEND_FAILED("zombies.async.failed"),
+        ZOMBIE_SEND_SUBMITTED("zombieJobs.submitted"),
+        ZOMBIE_SEND_BYTES("zombies.async.snapshotBytes");
 
         private final String key;
         private final LongAdder value = new LongAdder();
@@ -31,7 +44,13 @@ public final class OptimizationTelemetry {
     public enum Phase {
         NEAR_VEHICLE("simulation", "players", "nearVehicle"),
         PACKET_PREPARATION("zombies", "packet", "prepare"),
-        THERMAL_CLOTHING("simulation", "players", "thermalClothing");
+        THERMAL_CLOTHING("simulation", "players", "thermalClothing"),
+        LOS_WORK("simulation", "players", "losWork"),
+        LOS_COMPLETION("simulation", "players", "losCompletion"),
+        LOS_SUSPEND("map", "losSuspendWait"),
+        ZOMBIE_SEND_CAPTURE("network", "zombies", "snapshot"),
+        ZOMBIE_SEND_QUEUE("network", "zombies", "async", "queueDelay"),
+        ZOMBIE_SEND_TRANSPORT("network", "zombies", "async", "transport");
 
         private final List<String> path;
         private final LongAdder calls = new LongAdder();

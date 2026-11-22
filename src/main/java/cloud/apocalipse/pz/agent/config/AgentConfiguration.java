@@ -19,6 +19,27 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     /** Thermal clothing port, defaults to enabled. Set {@code -Dapocbr.optimization.thermalClothing.enabled=false} to disable. */
     public static final String THERMAL_CLOTHING_OPTIMIZATION = "apocbr.optimization.thermalClothing.enabled";
 
+    /** Engine entity removal index defaults on. Disable with {@code -Dapocbr.optimization.entityRemoval.enabled=false}. */
+    public static final String ENTITY_REMOVAL_OPTIMIZATION = "apocbr.optimization.entityRemoval.enabled";
+    /** Entity catch-up and meta cadence default on. Disable with {@code -Dapocbr.optimization.entitySimulation.enabled=false}. */
+    public static final String ENTITY_SIMULATION_OPTIMIZATION = "apocbr.optimization.entitySimulation.enabled";
+    /** Entity simulation port, JVM argument {@code -Dapocbr.metaSimulationInterval=10}. */
+    public static final String META_SIMULATION_INTERVAL_PROPERTY = "apocbr.metaSimulationInterval";
+    /** Dedicated-server LOS workers default on. Disable with {@code -Dapocbr.optimization.serverLos.enabled=false}. */
+    public static final String SERVER_LOS_OPTIMIZATION = "apocbr.optimization.serverLos.enabled";
+    /** Server LOS port, JVM argument {@code -Dapocbr.los.workerThreads=4}, bounded by vanilla slots. */
+    public static final String LOS_WORKER_THREADS_PROPERTY = "apocbr.los.workerThreads";
+    /** Server LOS port, JVM argument {@code -Dapocbr.los.queueCapacity=256}. */
+    public static final String LOS_QUEUE_CAPACITY_PROPERTY = "apocbr.los.queueCapacity";
+    /** Server LOS port, JVM argument {@code -Dapocbr.los.intervalMs=2000}. */
+    public static final String LOS_INTERVAL_PROPERTY = "apocbr.los.intervalMs";
+    /** Async zombie transmission defaults on. Disable with {@code -Dapocbr.optimization.zombieAsyncSend.enabled=false}. */
+    public static final String ZOMBIE_ASYNC_SEND_OPTIMIZATION = "apocbr.optimization.zombieAsyncSend.enabled";
+    /** Async zombie transmission, JVM argument {@code -Dapocbr.zombiePacketWorkers=6}. */
+    public static final String ZOMBIE_SEND_WORKERS_PROPERTY = "apocbr.zombiePacketWorkers";
+    /** Async zombie transmission, JVM argument {@code -Dapocbr.zombieSendCapacity=64}. */
+    public static final String ZOMBIE_SEND_CAPACITY_PROPERTY = "apocbr.zombieSendCapacity";
+
     public static boolean optimizationEnabled(String property) {
         return Boolean.parseBoolean(systemProperty(property, "true"));
     }
