@@ -1,293 +1,122 @@
-# Apocalipse [BR] - Project Zomboid Server Patches
+# ApocalipseBR Project Zomboid Agent
 
-Custom server-side Java patches used on the **[Apocalipse \[BR\]](https://apocalipse.cloud)** Project Zomboid server.
+A Byte Buddy Java agent for the ApocalipseBR Project Zomboid Build 42 dedicated
+server. It adds server diagnostics, performance changes, hotfixes, and gameplay
+and persistence integrations by transforming selected game classes as the JVM
+loads them. The root Maven project builds a shaded agent for the original
+**Project Zomboid 42.22.2** game JAR.
 
-These patches fix bugs and improve multiplayer behavior that cannot be addressed through Lua mods alone. They work by placing corrected `.class` files next to the game's JAR, which the JVM loads before the vanilla classes. **The original game JAR is never modified or overwritten.** Starting with signed build 42.22.1, deployment creates a separate unsigned runtime JAR and configures startup to use it; see the [deployment guide](42.22.1/docs/features/2026-11-04-unsigned-runtime-deployment.md).
+Start with the [documentation index](.docs/README.md) for architecture, feature
+configuration, migration status, and validation reports.
 
----
+## How the agent works
 
-## What Is This?
+The server JVM loads `target/apocbr-agent.jar` through `-javaagent`.
+[ApocBrAgent.premain](src/main/java/cloud/apocalipse/pz/agent/ApocBrAgent.java)
+calls [AgentRuntime](src/main/java/cloud/apocalipse/pz/agent/AgentRuntime.java),
+which installs one Byte Buddy pipeline using the
+[shared module registry](src/main/java/cloud/apocalipse/pz/agent/AgentModules.java).
+Each feature module owns its target classes and method signatures and installs
+its hooks through Byte Buddy advice or bytecode visitors. Vanilla execution
+reaches agent-owned code through those hooks. The original game archive stays
+intact.
 
-Project Zomboid runs on Java. The game ships with compiled `.class` files packed inside a `projectzomboid.jar` archive. Because of how Java's classpath works, you can place a replacement `.class` file loose in the game directory and the JVM will load yours first, silently overriding the original.
+[AgentConfiguration](src/main/java/cloud/apocalipse/pz/agent/config/AgentConfiguration.java)
+defines supported JVM settings and environment variables. The default
+`prod` profile uses [application.yaml](src/main/resources/application.yaml).
+Set `-Dapocbr.profile=local` to apply the
+[local overlay](src/main/resources/application-local.yaml), which points the
+telemetry and restart base URLs at localhost. Feature guides describe activation
+flags and service prerequisites.
 
-This repository contains:
+## What's in the agent
 
-- **Patch scripts** (`.ps1` for Windows, `.sh` for Linux) that compile and deploy those replacement classes automatically.
-- A **version folder** for each game build (`42.17.0/`, etc.) containing the patches that apply to that version.
-- A **main launcher script** (`patch.ps1` / `patch.sh`) at the root of the repository that guides you through the entire process step by step.
+| Area | Implemented scope |
+| --- | --- |
+| Telemetry and server operations | Tick and Lua callback timing, JVM and world metrics, packet log rate limits, and asynchronous Workshop checks with restart notification. [Lag diagnostics](.docs/features/server-lag-diagnostics.md) · [Packet diagnostics](.docs/features/network-diagnostics.md) |
+| Performance and compatibility | Server simulation, line of sight, cell and chunk streaming, parked-vehicle scheduling, zombie packet preparation and transmission, Java pathfinding, and asset-loading hotfixes. [Feature catalog](.docs/features/README.md) |
+| Lua and NPC runtime | Server Lua APIs, bounded service workers, mod entity persistence, and NPC actors with game hooks and a persistence coordinator. [Server Lua](.docs/features/server-lua.md) · [Lua entity persistence](.docs/features/lua-mod-entities.md) · [NPC engine](.docs/features/npc-engine.md) |
+| PostgreSQL | Account, dictionary, and optional player persistence hooks, plus experimental chunk persistence and chunk object mutations. [PostgreSQL](.docs/features/postgresql.md) · [Experimental chunk storage](.docs/features/postgresql-chunks.md) · [Chunk object mutations](.docs/features/chunk-object-mutations.md) |
 
-You do **not** need to know Java or programming to use these. Just follow the steps below.
+Feature activation and validation vary. The
+[migration status](.docs/migrations/README.md) records which paths are wired,
+which have been exercised, and what remains open for live-server acceptance.
 
----
+## Build and run
 
-## Java Agent (Early Migration)
+Use **JDK 25**, **Maven**, and a local copy of the original
+`projectzomboid.jar` for build 42.22.2. Run the following from the repository
+root with the absolute path to your archive.
 
-The Maven project under `src/main/java` is an early Byte Buddy migration path, separate from the existing loose-class patch workflow. It uses one global agent entry point with each feature owning its instrumentation registrations. The agent targets the latest supported game build; hook matchers and callback logic are updated together as vanilla changes, while older support remains available through Git history rather than runtime target selection. Telemetry records Lua-event timings and posts a direct schema-3 snapshot every 30 seconds to `POST /api/v1/telemetry` on a virtual thread. Telemetry and restart calls use standalone OpenFeign interfaces: `@RequestLine` declares each endpoint path and the selected YAML profile supplies the base URL to a shared JDK HTTP/2 transport. Calls remain synchronous inside their virtual-thread workers. `src/main/resources/application.yaml` contains production defaults; the same packaged JAR can select `application-local.yaml` at runtime with `-Dapocbr.profile=local`, which directs telemetry and restart requests to `http://localhost:8080`. The Maven build does not bake in a profile; with no runtime profile property, production settings are used. JVM properties and environment variables still override configured endpoints, and credentials remain outside YAML. Telemetry API key uses `apocbr.telemetry.apiKey` or `APOCBR_TELEMETRY_API_KEY` when set, otherwise it reuses `apocbr.bridge.serverKey`; that credential must be an active integration key associated with the runtime server. Tick, loop, world and JVM sections are placeholders until their measurements are ported. The game JAR is not bundled into the agent.
-
----
-
-## Patches Included
-
-- Build 42.22.0 pre-release: [current development target and migration status](42.22.0/docs/README.md).
-- Build 42.22.0: [subsystem tracker and individual merge queue](42.22.0/docs/features/2026-10-27-subsystem-port-tracker.md). 250 original carry-overs, 45 reviewed merges, 3 native retirements and 2 resolved removed targets. All 48 numbered decisions are complete; review48 GameServer/packer integration is applied. Follow-up review49 hand-field adaptation is applied; review50 new-dataset build metadata is applied; review51 dictionary metadata/guard is applied. A full303-source build found four errors; review52 IsoDoor compile repair is applied. Review53 NPC transport is applied; applied54 resolves the last observed build error. All303 approved sources compile; collision thread-local regression passes. Review55 event metadata is applied. Review56 remains unapplied: the user stopped individual reviews and shifted to runtime validation and cross-build character recovery. Identity-position indexing remains pending. Vehicle PostgreSQL gaps remain user-deferred while disabled. Migration and runtime validation remain incomplete.
-- Build 42.22.0: [class-by-class compatibility audit from 42.21.0](42.22.0/docs/reports/2026-10-27-port-42-21-to-42-22.md). Migration and deployment validation remain incomplete.
-- Build 42.21.0: [feature guides, reports and issue index](42.21.0/docs/README.md).
-- Build 42.21.0: [character login origin and native lobby teleport](42.21.0/docs/features/2026-10-21-player-login-origin.md).
-
-Each version of the game will have it's own patches, this happens because the way java patching works is replacing the entire original class with our newer one, so every single patch must be done without breaking the behaviour and signature of a class while addressing the issues the patch is intended to address.
-
----
-
-## Requirements
-
-| Requirement                          | Notes                                                                                         |
-| ------------------------------------ | --------------------------------------------------------------------------------------------- |
-| Project Zomboid dedicated server     | Windows or Linux                                                                              |
-| Internet connection (first run only) | The script will automatically download a Java 25 compiler if one is not found on your machine |
-| PowerShell 5.1+                      | Windows only - already included in Windows 10/11                                              |
-| Bash + Python 3                      | Linux only - already present on most server distributions                                     |
-
-> **You do not need to install Java yourself.** The launcher will find it if it exists, or download Azul Zulu JDK 25 automatically.
-
----
-
-## How to Use - Windows
-
-> These steps are for Windows servers or local installations. All commands are run in **PowerShell**.
-
-### 1. Download the repository
-
-Click the green **Code** button on this page and choose **Download ZIP**, then extract it anywhere you like.
-
-Alternatively, if you have Git installed:
-```powershell
-git clone https://github.com/apocalipsebr/apocalipsebr-zomboid-patches.git
-cd apocalipsebr-zomboid-patches
+```sh
+mvn "-Dpz.game.jar=/absolute/path/to/projectzomboid.jar" clean package
 ```
 
-### 2. Open PowerShell
+The platform defaults are
+`Z:/SteamLibrary/steamapps/common/ProjectZomboid/projectzomboid.jar` on Windows
+and `/opt/pzserver/java/projectzomboid.jar` on Linux. Pass `pz.game.jar`
+explicitly so tests that read the JVM property pick up the same archive.
 
-Press `Win + X` and choose **Windows PowerShell** (or **Terminal** on Windows 11). Run as administrator to avoid conflicts with permissions. 
-Navigate to the folder where you extracted the repository:
-```powershell
-cd "C:\path\to\apocalipsebr-zomboid-patches"
+Maven writes the shaded agent to `target/apocbr-agent.jar`. It bundles the
+agent dependencies and leaves the game JAR external. Put the `-javaagent`
+argument before the server main class in your dedicated-server launch command.
+
+```text
+-javaagent:/absolute/path/to/apocbr-agent.jar
 ```
 
-### 3. Run the launcher
-
-```powershell
-.\patch.ps1
-```
-
-> If you see an error about script execution being blocked, run this first and then try again:
-> ```powershell
-> Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy Bypass
-> ```
-
-### 4. Follow the prompts
-
-The launcher will ask you a series of questions:
-
-1. **Select a version** - choose the number matching your server's game build (e.g. `42.17.0`)
-2. **Path to your Project Zomboid installation** - paste the path to the folder that contains `ProjectZomboid64.json`. On a default Steam install that is:
-   ```
-   Z:\SteamLibrary\steamapps\common\ProjectZomboid
-   ```
-   You can also paste the full path to the JSON file itself and the script will use its parent folder:
-   ```
-   Z:\SteamLibrary\steamapps\common\ProjectZomboid\ProjectZomboid64.json
-   ```
-   The script will tell you if the path is wrong so you can try again.
-3. **Which patch to apply** - type `0` to apply all patches, or a number to apply just one.
-
-The script then compiles and deploys the patch automatically. When it finishes you will see:
-```
-=== Done ===
-```
-
-### 5. Restart your server
-
-The patch takes effect on the next server start. No further action is needed.
-
----
-
-### Reverting (Windows)
-
-To remove a patch and go back to the original game behavior:
-
-```powershell
-.\patch.ps1 -Revert
-```
-
----
-
-## Distributing the Client Patch to Players
-
-The `patch-client.ps1` script handles the heavy lifting for players: it finds the Project Zomboid installation through Steam, downloads a Java compiler if needed, and deploys the patched `.class` files as classpath overrides. However, Windows blocks `.ps1` files by default, so players cannot simply double-click the script.
-
-### Option 1: Batch file wrapper (simplest)
-
-A `patch-client.bat` wrapper is included. It runs the PowerShell script with the execution policy bypassed, so players can double-click it like a normal program.
-
-**What to distribute:**
-- The whole `apocalipsebr-zomboid-patches` folder (or just the `patch-client.ps1`, `patch-client.bat`, and `42.19.0-client` folder).
-
-**Instructions for players:**
-1. Close Project Zomboid.
-2. Double-click `patch-client.bat`.
-3. Wait for the script to download and use the Azul Zulu JDK, compile the patch, and deploy it. Restart the game when it finishes.
-
-> The client patch ignores any `javac` already installed on the player's machine and always uses the bundled or downloaded Zulu JDK. This avoids compatibility issues with pre-installed Java versions.
-
-### Option 2: Formal Windows installer (recommended)
-
-For a more professional distribution, build an installer using the included Inno Setup script. Inno Setup is a free Windows tool that turns the `.iss` file into a standalone `.exe` installer. You download it once, build the installer, and then give that `.exe` to players.
-
-1. Download and install [Inno Setup 6](https://jrsoftware.org/isdl.php).
-2. Open `installer\ApocBRClientPatch.iss` in the Inno Setup Compiler.
-3. Click **Build** to produce an installer in `dist\`.
-4. Distribute the resulting `dist\ApocBR_ClientPatch_42.19.0_Installer.exe` to players.
-
-The installer will:
-- Install the patch tools to a standard program folder (`C:\Program Files\ApocBR\ClientPatch`).
-- Find the player's Steam Project Zomboid installation automatically.
-- Apply the patch during installation.
-- Revert the patch when uninstalled.
-
-### Avoiding Windows security warnings
-
-Unsigned scripts and unsigned `.exe` installers will both trigger Windows security warnings:
-- `.ps1` files are blocked by PowerShell's **Execution Policy** (the `.bat` wrapper bypasses this only for the patch script).
-- `.exe` and `.msi` installers are checked by **Windows SmartScreen** and antivirus heuristics.
-
-To distribute without warnings, you need a **code signing certificate** from a trusted Certificate Authority (CA). Options:
-- **Standard (OV) code signing certificate** (~$200-$400/year): Signs the installer EXE, but SmartScreen may still warn until the certificate builds reputation.
-- **Extended Validation (EV) code signing certificate** (~$700+/year): Gives immediate SmartScreen trust on Windows. This is the only option that fully eliminates the "unknown publisher" warnings from day one.
-
-Popular providers: DigiCert, Sectigo, Certum, SSL.com. Once you have the certificate, configure it in Inno Setup via **Tools > Configure Sign Tools** and uncomment the `SignTool` line in `installer\ApocBRClientPatch.iss`.
-
-> **Important:** Client-side Java patches modify which game classes the JVM loads. Make sure players understand this is a third-party modification, and consider whether it aligns with their use case.
-
----
-
-## How to Use - Linux
-
-> These steps are for Linux dedicated servers. All commands are run in a **terminal / SSH session**.
-
-### 1. Download the repository
-
-```bash
-git clone https://github.com/apocalipsebr/apocalipsebr-zomboid-patches.git
-cd apocalipsebr-zomboid-patches
-```
-
-Or download the ZIP and extract it:
-```bash
-unzip apocalipsebr-zomboid-patches-main.zip
-cd apocalipsebr-zomboid-patches-main
-```
-
-### 2. Make the launcher executable
-
-```bash
-chmod +x patch.sh
-```
-
-### 3. Run the launcher
-
-```bash
-./patch.sh
-```
-
-### 4. Follow the prompts
-
-The launcher will ask:
-
-1. **Select a version** - type the number matching your server's game build.
-2. **Path to your Project Zomboid installation** - paste the path to the folder that contains `ProjectZomboid64.json`. On a default Linux server install that is:
-   ```
-   /opt/pzserver
-   ```
-   You can also paste the full path to the JSON file itself and the script will use its parent folder:
-   ```
-   /opt/pzserver/ProjectZomboid64.json
-   ```
-   > **Note:** The launcher needs the parent directory where `ProjectZomboid64.json` lives. Since it is the file where the configuration of the classpath is located, the script uses ProjectZomboid64.json by default, if your system is 32 bits then point to the ProjectZomboid32.json
-3. **Which patch to apply** - type `0` for all patches, or a number for one.
-
-The script compiles and deploys automatically. When done you will see:
-```
-Session complete - 1 passed, 0 failed
-```
-
-### 5. Restart your server
-
-The patch takes effect on the next server start.
-
----
-
-### Reverting (Linux)
-
-```bash
-./patch.sh --revert
-```
-
----
-
-## Advanced Options
-
-Both launchers accept optional flags if you want to skip the interactive prompts:
-
-| Flag (Windows)              | Flag (Linux)              | Description                                                            |
-| --------------------------- | ------------------------- | ---------------------------------------------------------------------- |
-| `-PZDir "path\to\PZFolder"` | `--pz-dir /path/to/pzdir` | Skip the path prompt — must be the folder with `ProjectZomboid64.json` |
-| `-Version 42.17.0`          | `--version 42.17.0`       | Skip the version prompt                                                |
-| `-DryRun`                   | `--dry-run`               | Show what would happen without writing any files                       |
-| `-Revert`                   | `--revert`                | Remove deployed patches and restore original behavior                  |
-
-Example (Windows, non-interactive):
-```powershell
-.\patch.ps1 -PZDir "Z:\Steam\ProjectZomboid" -Version 42.17.0
-```
-
-Example (Linux, non-interactive):
-```bash
-./patch.sh --pz-dir /opt/pzserver --version 42.17.0
-```
-
----
-
-## How It Works (Plain English)
-
-When Project Zomboid starts, Java looks for class files in this order:
-
-1. Loose `.class` files in the game directory (or `java/` subfolder on Linux)
-2. Inside `projectzomboid.jar`
-
-Because of this order, placing a patched `.class` file at the right path means the JVM loads the fixed version and never even looks at the one inside the JAR. **The JAR is never touched.** Removing the loose `.class` file at any time fully restores original behavior.
-
----
-
-## Troubleshooting
-
-**"Directory not found"**  
-The launcher expects the folder that contains `ProjectZomboid64.json` (the game install root). On a default install that is:
-- Windows: `C:\Program Files (x86)\Steam\steamapps\common\ProjectZomboid`
-- Linux: `/opt/pzserver` (may vary by hosting provider — check for `ProjectZomboid64.json` there)
-
-**"Compilation failed"**  
-This usually means the patch was written for a different game build. Check that the version folder matches your server build number. If your build is newer than the latest version folder, the patch may not have been updated yet - open an issue on this repository.
-
-**Patch applied but behavior unchanged after restart**  
-Verify the `.class` file was actually deployed to the right location. Run the launcher with `-DryRun` / `--dry-run` to see where files would be placed, then compare with your actual game directory.
-
-**The script downloaded a JDK but it takes up disk space**  
-The downloaded JDK is stored in a `jdk/` folder inside this repository. You can delete it at any time; the next run will find your system Java or download it again.
-
-**How to keep up-to-date with the repository**  
-You can clone the repository and "git reset --HARD" to clear any temporary files from the folder, then run "git pull", that way you'll pull the most recent changes.
----
-
-## About Apocalipse [BR]
-
-**[Apocalipse \[BR\]](https://apocalipse.cloud)** is a Brazilian Project Zomboid multiplayer community. These patches are maintained by myself to improve the gameplay experience for all players. If you run your own server and find them useful, you are welcome to use them.
+Launch from the matching game installation so native libraries and game
+resources are available. Resolve game classes from the original archive and
+exclude patched archives and directories containing loose game-class overrides
+from the classpath. See the [architecture and launch guide](.docs/architecture/README.md)
+for the original-JAR launch setup.
+
+## Testing
+
+- **Routine development** uses JUnit 5 through Maven Surefire. Run
+  `mvn "-Dpz.game.jar=/absolute/path/to/projectzomboid.jar" test`, or add
+  `-Dtest=LagDiagnosticsHookTest` to run a focused example. The suite includes
+  feature tests with doubles, transformation checks against original game
+  bytecode, and targeted execution of transformed methods. Cover the expected
+  feature result, vanilla call-through or deliberate skip, failure behavior,
+  and lifecycle cleanup where applicable.
+- **Packaging** uses the build command above to produce the shaded JAR. When
+  the artifact changes, verify packaged linkage on the original-JAR classpath.
+  Keep build, linkage, and live acceptance results distinct.
+- **Dedicated-server integration** is opt-in through Maven Failsafe. Run
+  `mvn verify -Pserver-integration "-Dpz.game.jar=/absolute/path/to/projectzomboid.jar" "-Dpz.it.home=/absolute/path/to/server"`.
+  The standard suite starts one disposable dedicated-server JVM with the
+  packaged agent and a test-only observer. It checks original-JAR class origins
+  and declared hooks, discovers independent `ServerAssertion` implementations
+  through Java's service loader, and captures evidence under
+  `target/server-integration/`. Routine `test` and `package` runs need only
+  the original archive and use no dedicated-server process.
+
+The manually triggered [GitHub Actions workflow](.github/workflows/server-integration.yml)
+runs the Linux suite against the expected Steam build and original JAR digest.
+
+Read the [validation guide](.docs/validation/README.md) for the evidence expected
+for a port and the [integration guide](.docs/validation/server-integration.md)
+for runtime prerequisites, isolated services, available scenarios, and coverage
+limits.
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| [`pom.xml`](pom.xml) | Java 25 Maven build, agent shading, and integration profile |
+| [`src/main/java/`](src/main/java/) | Agent entry point, module registry, hooks, and feature code |
+| [`src/main/resources/`](src/main/resources/) | Runtime defaults and bundled SQL resources |
+| [`src/test/`](src/test/) | JUnit tests, game doubles, and the isolated server harness |
+| [`.docs/`](.docs/README.md) | Active architecture, feature, migration, and validation guides |
+| [`42.22.2/`](42.22.2/docs/README.md) and [`42.22.2-client/`](42.22.2-client/) | Legacy patches, same-build vanilla references where available, and historical deployment material |
+
+The root Maven project is the destination for feature work. To port a legacy
+behavior, compare the matching `decompiled/` and `src/` sources, implement the
+required vanilla hooks in a registered module, and declare each installation
+contract with `hookChecks()`. Use [AGENTS.md](AGENTS.md) and the
+[feature migration template](.docs/migrations/feature-template.md) to document
+the scope, evidence, and open runtime checks.
+
+Maintained for the Brazilian Project Zomboid multiplayer community
+[Apocalipse \[BR\]](https://apocalipse.cloud).
