@@ -9,6 +9,7 @@ import cloud.apocalipse.pz.agent.features.optimization.entity.EntityRemovalModul
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntitySimulationModule;
 import cloud.apocalipse.pz.agent.features.optimization.los.ServerLosModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.CellBorderModule;
+import cloud.apocalipse.pz.agent.features.optimization.streaming.CellRelevanceModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkAdjacencyModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkContainerModule;
 import cloud.apocalipse.pz.agent.features.optimization.lua.LuaDispatchModule;
@@ -36,7 +37,7 @@ public final class AgentModules {
         new ZombieCullingModule(), new LuaDispatchModule(), new PlayerNearVehicleModule(),
         new ZombiePacketPreparationModule(), new ThermalClothingModule(),
         new EntityRemovalModule(), new EntitySimulationModule(), new ServerLosModule(), new ZombieAsyncSendModule(),
-        new CellBorderModule(), new ParkedVehicleModule(), new ChunkContainerModule(), new ChunkAdjacencyModule(),
+        new CellBorderModule(), new CellRelevanceModule(), new ParkedVehicleModule(), new ChunkContainerModule(), new ChunkAdjacencyModule(),
         new NetworkDiagnosticsModule());
 
     private AgentModules() { }

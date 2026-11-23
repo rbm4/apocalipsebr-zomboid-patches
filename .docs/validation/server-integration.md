@@ -234,6 +234,13 @@ native integration, detach, save enqueue, worker save and release counts agree.
 The request is a file in the run directory. The control code and its advice
 live in the probe JAR and run only when explicitly enabled.
 
+With the relevance and entity simulation hooks enabled, the scenario also
+checks direct edits to the native relevance list and performs original-JAR
+bucket removal with only the using-player index present. It verifies the native
+tail swap and then removes the relocated tail. The run checks both optimization
+counters and the two behavior checks in its artifacts. See the
+[unload report](../reports/2026-11-23-unload-scan-and-async-review.md).
+
 Use matched runs to evaluate a single optimization. The following example uses
 the existing LOS worker implementation because cell integration and unload call
 the LOS suspend/resume barrier:

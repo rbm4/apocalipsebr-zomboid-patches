@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent.integration.assertions;
 
 import cloud.apocalipse.pz.agent.features.optimization.vehicle.ParkedVehicleModule;
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkAdjacencyModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkContainerModule;
@@ -42,6 +43,14 @@ public final class StreamingLifecycleAssertion implements ServerAssertion {
             () -> Files.isRegularFile(complete) || Files.isRegularFile(error));
         if (Files.isRegularFile(error)) fail(Files.readString(error));
         if (movingScenario) return;
+        if (AgentConfiguration.cellRelevanceOptimizationEnabled()) {
+            assertTrue(Files.isRegularFile(directory.resolve("cell-relevance-oracle")));
+            assertTrue(server.telemetrySnapshots().stream().anyMatch(json -> json.contains("\"map.cell.relevanceScansSkipped\"")));
+        }
+        if (AgentConfiguration.optimizationEnabled(AgentConfiguration.ENTITY_SIMULATION_OPTIMIZATION)) {
+            assertTrue(Files.isRegularFile(directory.resolve("bucket-removal-oracle")));
+            assertTrue(server.telemetrySnapshots().stream().anyMatch(json -> json.contains("\"entities.removal.usingPlayerBucketIndexed\"")));
+        }
         if (Boolean.getBoolean(VehicleCadenceProbe.COMPARE_PROPERTY)) verifyVehicleCadence(server, workload);
         if (workload.chunkComparison()) verifyChunkLifecycle(server, workload);
         Map<String, List<Sample>> results = readSamples(directory, workload);

@@ -51,10 +51,13 @@ public final class EntityDueIndex {
     }
 
     public static boolean remove(Array<GameEntity> entries, GameEntity entity, boolean identity, EntityBucket bucket) {
-        UsingPlayerIndex.removing(bucket, entries, entity, identity);
+        int usingPlayerPosition = UsingPlayerIndex.removing(bucket, entries, entity, identity);
         EntityDueIndex index = BUCKETS.get(bucket);
         if (index == null) {
-            return entries.removeValue(entity, identity);
+            if (usingPlayerPosition < 0) return entries.removeValue(entity, identity);
+            entries.removeIndex(usingPlayerPosition);
+            OptimizationTelemetry.count(OptimizationTelemetry.Counter.BUCKET_REMOVAL_USING_PLAYER_INDEX);
+            return true;
         }
         Member member = index.members.get(entity);
         if (!identity || member == null || member.position >= entries.size || entries.get(member.position) != entity) {

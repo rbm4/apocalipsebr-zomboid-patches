@@ -21,6 +21,8 @@ public final class OptimizationTelemetry {
         CLOTHING_REBUILT("players.thermal.clothingRebuilt"),
         VEHICLE_FULL_CADENCE("vehicles.scheduler.fullChecks"),
         VEHICLE_PARKED_CADENCE("vehicles.scheduler.sixteenthChecks"),
+        CELL_RELEVANCE_SCAN_SKIPPED("map.cell.relevanceScansSkipped"),
+        BUCKET_REMOVAL_USING_PLAYER_INDEX("entities.removal.usingPlayerBucketIndexed"),
         CHUNK_CONTAINER_CHECK_SKIPPED("map.chunk.containerChecksSkipped"),
         CHUNK_INTERIOR_UNLINK_SKIPPED("map.chunk.interiorUnlinksSkipped"),
         ENTITY_REMOVAL_INDEXED("entities.removal.indexed"),

@@ -38,8 +38,15 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     /** Chunk detachment adjacency cleanup defaults on. Disable with {@code -Dapocbr.optimization.chunkAdjacency.enabled=false}. */
     public static final String CHUNK_ADJACENCY_OPTIMIZATION = "apocbr.optimization.chunkAdjacency.enabled";
 
+    /** Opt-in frame relevance index. Enable with {@code -Dapocbr.optimization.cellRelevance.enabled=true}. */
+    public static final String CELL_RELEVANCE_OPTIMIZATION = "apocbr.optimization.cellRelevance.enabled";
+
     /** Opt-in same-cell perimeter lookups. Enable with {@code -Dapocbr.optimization.cellBorder.enabled=true}. */
     public static final String CELL_BORDER_OPTIMIZATION = "apocbr.optimization.cellBorder.enabled";
+
+    public static boolean cellRelevanceOptimizationEnabled() {
+        return Boolean.parseBoolean(systemProperty(CELL_RELEVANCE_OPTIMIZATION, "false"));
+    }
 
     public static boolean cellBorderOptimizationEnabled() {
         return Boolean.parseBoolean(systemProperty(CELL_BORDER_OPTIMIZATION, "false"));

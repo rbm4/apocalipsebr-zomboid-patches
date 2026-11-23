@@ -379,6 +379,7 @@ public final class StreamingProbe {
                 // The runner compiles alongside a GameServer double with a different field descriptor.
                 engine = (UdpEngine) GameServer.class.getField("udpEngine").get(null);
                 owner = Thread.currentThread();
+                UnloadScanChecks.verify(map, directory);
                 if (workload.vehicleStress()) {
                     originalSpawnOverride = SystemDisabler.doVehiclesEverywhere;
                     require(SandboxOptions.instance.enableVehicles.getValue()
