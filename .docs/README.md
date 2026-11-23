@@ -22,6 +22,7 @@ Each session selects one bounded feature; no migration queue is authorized here.
 - [PostgreSQL dictionary setup](features/postgresql-dictionary.md)
 - [PostgreSQL player authority and historical payload decoding](features/postgresql-players.md)
 - [Experimental PostgreSQL chunk persistence](features/postgresql-chunks.md)
+- [Experimental chunk object mutations](features/chunk-object-mutations.md)
 - [Dictionary prerequisites and PostgreSQL player reconstruction](reports/2026-11-21-player-reconstruction-context.md)
 - [Bot engine vanilla dependencies before porting](reports/2026-11-21-npc-dependency-map.md)
 - [NPC actors, gameplay adapters and persistence](features/npc-engine.md)

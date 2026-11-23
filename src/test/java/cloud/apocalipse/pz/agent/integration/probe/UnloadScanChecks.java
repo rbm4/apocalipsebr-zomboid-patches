@@ -19,6 +19,10 @@ final class UnloadScanChecks {
             verifyRelevance(map);
             Files.createFile(directory.resolve("cell-relevance-oracle"));
         }
+        if (Boolean.getBoolean(BucketUnloadProbe.PROPERTY)) {
+            verifyLargeBucketOrder();
+            Files.createFile(directory.resolve("large-bucket-order-oracle"));
+        }
         if (AgentConfiguration.optimizationEnabled(AgentConfiguration.ENTITY_SIMULATION_OPTIMIZATION)) {
             verifyBucketRemoval();
             Files.createFile(directory.resolve("bucket-removal-oracle"));
@@ -81,6 +85,46 @@ final class UnloadScanChecks {
         removing.setBoolean(first, true);
         update.invoke(bucket, first);
         require(contents.size() == 0, "The last removal must empty the native bucket");
+    }
+
+    private static void verifyLargeBucketOrder() throws Exception {
+        var constructor = Class.forName("zombie.entity.EntityBucket$IsoObjectBucket").getDeclaredConstructor(int.class);
+        var initialize = GameEntity.class.getDeclaredMethod("ensureComponents");
+        var update = EntityBucket.class.getDeclaredMethod("updateMembership", GameEntity.class);
+        var removing = GameEntity.class.getDeclaredField("removingFromEngine");
+        constructor.setAccessible(true);
+        initialize.setAccessible(true);
+        update.setAccessible(true);
+        removing.setAccessible(true);
+        var bucket = (EntityBucket) constructor.newInstance(0);
+        var expected = new java.util.ArrayList<GameEntity>();
+        for (int index = 0; index < 384; index++) {
+            GameEntity entity = new IsoObject();
+            initialize.invoke(entity);
+            update.invoke(bucket, entity);
+            expected.add(entity);
+        }
+        GameEntity first = expected.get(expected.size() / 5);
+        boolean readded = false;
+        while (!expected.isEmpty()) {
+            int index = expected.size() / 5;
+            GameEntity target = expected.get(index);
+            GameEntity tail = expected.removeLast();
+            if (target != tail) expected.set(index, tail);
+            removing.setBoolean(target, true);
+            update.invoke(bucket, target);
+            if (!readded && expected.size() == 370) {
+                readded = true;
+                removing.setBoolean(first, false);
+                update.invoke(bucket, first);
+                expected.add(first);
+            }
+            var actual = bucket.getEntities();
+            require(actual.size() == expected.size(), "Unexpected native bucket size");
+            for (int position = 0; position < expected.size(); position++) {
+                require(actual.get(position) == expected.get(position), "Bucket order disagrees with vanilla tail swap");
+            }
+        }
     }
 
     private static void require(boolean condition, String message) {

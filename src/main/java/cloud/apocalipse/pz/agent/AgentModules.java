@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent;
 
 import cloud.apocalipse.pz.agent.experimental.chunks.PostgresChunksModule;
+import cloud.apocalipse.pz.agent.experimental.chunks.ChunkObjectMutationsModule;
 import cloud.apocalipse.pz.agent.features.postgres.PostgresModule;
 import cloud.apocalipse.pz.agent.features.postgres.ServerShutdownModule;
 import cloud.apocalipse.pz.agent.features.hotfixes.XmlCaseModule;
@@ -39,7 +40,7 @@ public final class AgentModules {
         new ZombiePacketPreparationModule(), new ThermalClothingModule(),
         new EntityRemovalModule(), new EntitySimulationModule(), new ServerLosModule(), new ZombieAsyncSendModule(),
         new CellBorderModule(), new CellRelevanceModule(), new ParkedVehicleModule(), new ChunkContainerModule(), new ChunkAdjacencyModule(),
-        new NetworkDiagnosticsModule(), new PostgresChunksModule());
+        new NetworkDiagnosticsModule(), new PostgresChunksModule(), new ChunkObjectMutationsModule());
 
     private AgentModules() { }
 

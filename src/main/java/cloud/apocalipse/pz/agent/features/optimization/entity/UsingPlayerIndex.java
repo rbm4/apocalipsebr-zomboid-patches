@@ -41,7 +41,10 @@ public final class UsingPlayerIndex {
         if (!GameServer.server || GameClient.client) {
             return false;
         }
-        var index = BUCKETS.computeIfAbsent(bucket, UsingPlayerIndex::new);
+        var index = BUCKETS.computeIfAbsent(bucket, key -> {
+            BucketRemovalIndex.release(key);
+            return new UsingPlayerIndex(key);
+        });
         int position = -1;
         int visited = 0;
         try {

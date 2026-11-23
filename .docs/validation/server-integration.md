@@ -385,6 +385,31 @@ the native unload intervals and their samples. Add
 instrumenting individual comparison steps. Run an otherwise matched control
 with the profiling settings omitted.
 
+### Entity bucket removal A/B
+
+Run the same packaged agent and fixture with the index disabled, then enabled.
+The third probe records native bucket visits, append and remove calls,
+native comparisons, fallback reasons, index builds, and elapsed time in bucket
+fan-out, object entity ID lookup, unregistration and meta allocation.
+The test also drives a real original-JAR bucket through a known sequence of
+adds, tail swaps, re-addition and shrinkage and checks its ordering after
+every operation.
+
+```powershell
+$fixture = @('-Dpz.it.streaming=true', '-Dpz.it.streamingProfile=players30',
+    '-Dpz.it.heap=6g', '-Dpz.it.unloadSampling=true', '-Dpz.it.unloadSearchWork=true',
+    '-Dpz.it.bucketUnload=true')
+mvn verify -Pserver-integration @fixture '-Dapocbr.optimization.entityBucketRemoval.enabled=false'
+$baseline = 'target/server-integration/run-...'
+mvn verify -Pserver-integration @fixture "-Dpz.it.streamingBaseline=$baseline"
+```
+
+The focused CSVs are `unload-buckets.csv`, `unload-bucket-fallbacks.csv` and
+`unload-entity-phases.csv`. Counts compare actual engine mutations; wall times
+are diagnostic and exclude workers. Entity unregister, fan-out, ID work,
+meta allocation, and mutation timers may nest. Use instrumented timing
+comparisons only between runs with the same probe options.
+
 ### Experimental world simulation
 
 ```powershell

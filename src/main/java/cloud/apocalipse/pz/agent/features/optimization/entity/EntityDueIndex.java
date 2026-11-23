@@ -37,12 +37,16 @@ public final class EntityDueIndex {
         if (!EntitySimulationClock.active()) {
             return entries;
         }
-        EntityDueIndex index = BUCKETS.computeIfAbsent(bucket, ignored -> new EntityDueIndex(entries));
+        EntityDueIndex index = BUCKETS.computeIfAbsent(bucket, ignored -> {
+            BucketRemovalIndex.release(bucket);
+            return new EntityDueIndex(entries);
+        });
         return index.dueMembers();
     }
 
     public static void append(Array<GameEntity> entries, GameEntity entity, EntityBucket bucket) {
         entries.add(entity);
+        BucketRemovalIndex.appended(entries, entity, bucket);
         UsingPlayerIndex.appended(bucket, entity, entries.size - 1);
         EntityDueIndex index = BUCKETS.get(bucket);
         if (index != null) {
@@ -54,7 +58,7 @@ public final class EntityDueIndex {
         int usingPlayerPosition = UsingPlayerIndex.removing(bucket, entries, entity, identity);
         EntityDueIndex index = BUCKETS.get(bucket);
         if (index == null) {
-            if (usingPlayerPosition < 0) return entries.removeValue(entity, identity);
+            if (usingPlayerPosition < 0) return BucketRemovalIndex.remove(entries, entity, identity, bucket);
             entries.removeIndex(usingPlayerPosition);
             OptimizationTelemetry.count(OptimizationTelemetry.Counter.BUCKET_REMOVAL_USING_PLAYER_INDEX);
             return true;
@@ -63,7 +67,7 @@ public final class EntityDueIndex {
         if (!identity || member == null || member.position >= entries.size || entries.get(member.position) != entity) {
             index.discard();
             BUCKETS.remove(bucket);
-            return entries.removeValue(entity, identity);
+            return BucketRemovalIndex.scan(entries, entity, identity, BucketRemovalIndex.Fallback.INVALID_SIMULATION_INDEX);
         }
 
         GameEntity tail = entries.peek();
@@ -104,6 +108,7 @@ public final class EntityDueIndex {
     static void reset() {
         BUCKETS.clear();
         OWNERS.clear();
+        BucketRemovalIndex.reset();
     }
 
     private void add(GameEntity entity, int position) {

@@ -54,6 +54,13 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     /** Engine entity removal index defaults on. Disable with {@code -Dapocbr.optimization.entityRemoval.enabled=false}. */
     public static final String ENTITY_REMOVAL_OPTIMIZATION = "apocbr.optimization.entityRemoval.enabled";
+    /** On-demand entity bucket positions default on. Disable with {@code -Dapocbr.optimization.entityBucketRemoval.enabled=false}. */
+    public static final String ENTITY_BUCKET_REMOVAL_OPTIMIZATION = "apocbr.optimization.entityBucketRemoval.enabled";
+
+    public static boolean entityBucketRemovalIndexEnabled() {
+        return optimizationEnabled(ENTITY_BUCKET_REMOVAL_OPTIMIZATION);
+    }
+
     /** Entity catch-up and meta cadence default on. Disable with {@code -Dapocbr.optimization.entitySimulation.enabled=false}. */
     public static final String ENTITY_SIMULATION_OPTIMIZATION = "apocbr.optimization.entitySimulation.enabled";
     /** Entity simulation port, JVM argument {@code -Dapocbr.metaSimulationInterval=10}. */
@@ -179,6 +186,8 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     /** Experimental map chunk persistence switch: -Dapocbr.experimental.postgresChunks.enabled=true. */
     public static final String POSTGRES_CHUNKS_ENABLED_PROPERTY = "apocbr.experimental.postgresChunks.enabled";
+    /** Direct capture of ordinary map-object changes: -Dapocbr.experimental.chunkObjectMutations.enabled=true. */
+    public static final String CHUNK_OBJECT_MUTATIONS_PROPERTY = "apocbr.experimental.chunkObjectMutations.enabled";
     /** Experimental map save identity: -Dapocbr.experimental.postgresChunks.dataset=<unique-save-id>. */
     public static final String POSTGRES_CHUNK_DATASET_PROPERTY = "apocbr.experimental.postgresChunks.dataset";
     /** Agent schema owner connection: -Dapocbr.postgres.migrationUrl=<jdbc-url>. */
@@ -188,6 +197,10 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     public static boolean postgresChunksEnabled() {
         return Boolean.parseBoolean(systemProperty(POSTGRES_CHUNKS_ENABLED_PROPERTY, "false"));
+    }
+
+    public static boolean chunkObjectMutationsEnabled() {
+        return Boolean.parseBoolean(systemProperty(CHUNK_OBJECT_MUTATIONS_PROPERTY, "false"));
     }
 
     public static String postgresChunkDataset() {

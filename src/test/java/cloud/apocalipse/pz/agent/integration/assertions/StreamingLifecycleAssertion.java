@@ -12,6 +12,7 @@ import cloud.apocalipse.pz.agent.integration.ServerTestContext;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadSamplingProbe;
+import cloud.apocalipse.pz.agent.integration.probe.BucketUnloadProbe;
 import cloud.apocalipse.pz.agent.integration.probe.VehicleCadenceProbe;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -48,6 +49,7 @@ public final class StreamingLifecycleAssertion implements ServerAssertion {
         if (Files.isRegularFile(error)) fail(Files.readString(error));
         if (ChunkMigrationFixture.enabled()) {
             ChunkMigrationFixture.verify(directory);
+            ChunkMigrationFixture.verifyObjectMutations(server);
             for (var hook : new PostgresChunksModule().hookChecks()) {
                 server.assertHook(hook.targetClass(), hook.method(), hook.helperClass(), hook.helperMethod());
             }
@@ -55,6 +57,7 @@ public final class StreamingLifecycleAssertion implements ServerAssertion {
         }
         if (Boolean.getBoolean(UnloadBreakdownProbe.PROPERTY)) UnloadBreakdownAssertions.verify(directory);
         if (Boolean.getBoolean(UnloadSamplingProbe.PROPERTY)) UnloadSamplingAssertions.verify(directory);
+        if (Boolean.getBoolean(BucketUnloadProbe.PROPERTY)) BucketUnloadAssertions.verify(directory);
         if (movingScenario) return;
         if (AgentConfiguration.cellRelevanceOptimizationEnabled()) {
             assertTrue(Files.isRegularFile(directory.resolve("cell-relevance-oracle")));

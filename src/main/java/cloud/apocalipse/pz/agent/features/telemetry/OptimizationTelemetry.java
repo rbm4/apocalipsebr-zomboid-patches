@@ -23,6 +23,8 @@ public final class OptimizationTelemetry {
         VEHICLE_PARKED_CADENCE("vehicles.scheduler.sixteenthChecks"),
         CELL_RELEVANCE_SCAN_SKIPPED("map.cell.relevanceScansSkipped"),
         BUCKET_REMOVAL_USING_PLAYER_INDEX("entities.removal.usingPlayerBucketIndexed"),
+        ENTITY_BUCKET_REUSE_POSITION("entities.bucketRemoval.indexed"),
+        ENTITY_BUCKET_POSITION_BUILD("entities.bucketRemoval.indexBuilds"),
         CHUNK_CONTAINER_CHECK_SKIPPED("map.chunk.containerChecksSkipped"),
         CHUNK_INTERIOR_UNLINK_SKIPPED("map.chunk.interiorUnlinksSkipped"),
         ENTITY_REMOVAL_INDEXED("entities.removal.indexed"),

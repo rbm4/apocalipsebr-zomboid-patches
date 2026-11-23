@@ -82,6 +82,51 @@ transmission to the original JAR's packet preparation and ownership APIs.
 The separate legacy all-zombie per-frame bookkeeping and demand-driven packet
 field cache remain outside this port.
 
+## On-demand entity bucket removal positions
+
+The fallback index defaults on and runs on the dedicated-server owner through
+the existing entity simulation hooks. Disable it with
+`-Dapocbr.optimization.entityBucketRemoval.enabled=false`. The world’s native bucket arrays remain authoritative and the original
+remove-index tail swap, membership bits and listener order remain in force.
+Buckets already served by the simulation or using-player index reuse those
+positions.
+
+A fallback bucket stays on the native scan path for its first successful
+removal at a size of at least 256. Further removal demand can build a
+primitive-valued identity index. Appends and native swaps maintain its
+positions. The index releases at fewer than 128 entries, when an existing
+simulation index takes ownership, or on world reset. Invalid positions fall
+back to the native search. The counters `entities.bucketRemoval.indexed`
+and `entities.bucketRemoval.indexBuilds` report actual work. See the
+[original-JAR bucket A/B](../validation/server-integration.md#entity-bucket-removal-ab)
+for the focused probes and comparison.
+
+The comparison used the same packaged agent, original 42.22.2 JAR and
+30-position fixture with the switch off and on. Both completed real streaming,
+save drain, reload, the native bucket ordering oracle and graceful shutdown.
+The following timings sum the five warm cycles unless otherwise marked.
+
+| Metric | Index off | Index on |
+| --- | ---: | ---: |
+| Native bucket comparisons | 81,613,225 | 38,905 |
+| Native bucket search and removal time | 22.928 ms | 0.083 ms |
+| Bucket append/remove time, including searches and index builds | 50.466 ms | 39.653 ms |
+| Bucket fan-out wall time | 80.118 ms | 66.731 ms |
+| Object entity ID work within unregistration | 4.925 ms | 4.918 ms |
+| Median cell unload per warm cycle | 197.867 ms | 197.774 ms |
+
+Vanilla's `NonMetaEntities` (`CustomBucket`, index 2) accounted for all of
+the bucket comparisons in both arms. The similarly sized `IsoObjectBucket`
+already used its using-player positions. With the switch on, the probe saw
+five index builds taking 6.373 ms inside the mutation timestamps. Five
+first-removal scans and 635 small-bucket scans remained. No stale-index
+fallbacks were recorded. The whole-unload medians were effectively equal.
+
+Raw A/B artifacts live under `target/server-integration` in
+`run-16766703884949405965` (off) and `run-17707118796149724685` (on).
+The fixture is playerless. Retained index memory and connected-player
+workloads were outside the comparison.
+
 ## Measurement and verification
 
 Telemetry includes LOS queue, rejection, stale-result and candidate counts,

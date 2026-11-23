@@ -12,7 +12,7 @@ import org.postgresql.ds.PGSimpleDataSource;
 
 /** Owns the version history for the agent-managed schema. Existing application schemas are independent. */
 public final class PostgresMigrations {
-    private static final List<String> MIGRATIONS = List.of("V1__map_chunks.sql");
+    private static final List<String> MIGRATIONS = List.of("V1__map_chunks.sql", "V2__chunk_object_mutations.sql");
 
     private PostgresMigrations() {
     }
@@ -43,6 +43,20 @@ public final class PostgresMigrations {
             }
         } catch (SQLException failure) {
             throw new IllegalStateException(PostgresErrors.sanitized("chunk schema preparation", failure).getMessage());
+        }
+    }
+
+    public static void verifyChunkObjectSchema() {
+        try (Connection engine = PostgresRuntime.borrowBackground();
+             var query = engine.createStatement();
+             var rows = query.executeQuery("""
+                 SELECT has_table_privilege(current_user, 'apocbr_world.chunk_object_mutations', 'SELECT')
+                    AND has_table_privilege(current_user, 'apocbr_world.chunk_object_mutations', 'INSERT')
+                    AND has_table_privilege(current_user, 'apocbr_world.chunk_object_mutations', 'UPDATE')
+                 """)) {
+            if (!rows.next() || !rows.getBoolean(1)) throw new SQLException("Missing chunk object grants", "42501");
+        } catch (SQLException failure) {
+            throw new IllegalStateException(PostgresErrors.sanitized("chunk object schema verification", failure).getMessage());
         }
     }
 

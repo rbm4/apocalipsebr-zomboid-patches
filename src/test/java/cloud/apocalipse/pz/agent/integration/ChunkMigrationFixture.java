@@ -1,10 +1,12 @@
 package cloud.apocalipse.pz.agent.integration;
 
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
+import cloud.apocalipse.pz.agent.experimental.chunks.ChunkObjectMutationsModule;
 import cloud.apocalipse.pz.agent.integration.probe.ChunkStorageArm;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.sql.DriverManager;
+import java.util.Base64;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +45,7 @@ public final class ChunkMigrationFixture {
             throw new IllegalArgumentException("Chunk migration requires the isolated smoke streaming fixture");
         }
         configurePostgres(runner, child);
+        child.put(AgentConfiguration.CHUNK_OBJECT_MUTATIONS_PROPERTY, "true");
     }
 
     private static void configurePostgres(Properties runner, Map<String, String> child) {
@@ -100,6 +103,35 @@ public final class ChunkMigrationFixture {
         verifyRows(System.getProperties(), files);
     }
 
+    public static void verifyObjectMutations(ServerTestContext server) throws Exception {
+        List<String> expected = Files.readAllLines(server.directory().resolve("chunk-object-mutation-expected.txt"));
+        byte[] payload = Base64.getDecoder().decode(expected.get(2));
+        try (var connection = DriverManager.getConnection(url(System.getProperties(), "chunk_engine"));
+             var query = connection.prepareStatement("""
+                 SELECT revision, special_object, payload FROM apocbr_world.chunk_object_mutations
+                 WHERE dataset = ? AND x = ? AND y = ? AND z = ? AND object_index = ?
+                 """)) {
+            for (int index = 0; index < 2; index++) {
+                query.setString(1, DATASET);
+                String[] key = expected.get(index).split(",");
+                for (int field = 0; field < key.length; field++) {
+                    query.setInt(field + 2, Integer.parseInt(key[field]));
+                }
+                try (var rows = query.executeQuery()) {
+                    assertTrue(rows.next(), "Missing observed object row at " + expected.get(index));
+                    assertTrue(rows.getLong(1) > 0);
+                    assertEquals(index == 1, rows.getBoolean(2));
+                    if (index == 0) assertNull(rows.getBytes(3), "Removed object must leave a tombstone");
+                    else assertArrayEquals(payload, rows.getBytes(3), "Latest native object payload");
+                    assertFalse(rows.next(), "Expected mutations to update the same live object row");
+                }
+            }
+        }
+        for (var hook : new ChunkObjectMutationsModule().hookChecks()) {
+            server.assertHook(hook.targetClass(), hook.method(), hook.helperClass(), hook.helperMethod());
+        }
+    }
+
     static void verifyRows(Properties settings, List<Path> files) throws Exception {
         var expected = new HashSet<>(files);
         try (var connection = DriverManager.getConnection(url(settings, "chunk_engine"));
@@ -118,10 +150,14 @@ public final class ChunkMigrationFixture {
         }
         try (var migration = DriverManager.getConnection(url(settings, "chunk_migrator"));
              var query = migration.createStatement();
-             var rows = query.executeQuery("SELECT version, script, length(checksum) FROM apocbr_agent.schema_history")) {
+             var rows = query.executeQuery("SELECT version, script, length(checksum) FROM apocbr_agent.schema_history ORDER BY version")) {
             assertTrue(rows.next());
             assertEquals(1, rows.getInt(1));
             assertEquals("V1__map_chunks.sql", rows.getString(2));
+            assertEquals(64, rows.getInt(3));
+            assertTrue(rows.next());
+            assertEquals(2, rows.getInt(1));
+            assertEquals("V2__chunk_object_mutations.sql", rows.getString(2));
             assertEquals(64, rows.getInt(3));
             assertFalse(rows.next());
         }

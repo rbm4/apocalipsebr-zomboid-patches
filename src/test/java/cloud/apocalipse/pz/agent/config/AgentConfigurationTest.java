@@ -26,6 +26,21 @@ class AgentConfigurationTest {
         }
     }
     @Test
+    void entityBucketRemovalIndexDefaultsToEnabledAndCanBeDisabled() {
+        String property = AgentConfiguration.ENTITY_BUCKET_REMOVAL_OPTIMIZATION;
+        String previous = System.getProperty(property);
+        try {
+            System.clearProperty(property);
+            assertTrue(AgentConfiguration.entityBucketRemovalIndexEnabled());
+            System.setProperty(property, "false");
+            assertFalse(AgentConfiguration.entityBucketRemovalIndexEnabled());
+        } finally {
+            if (previous == null) System.clearProperty(property);
+            else System.setProperty(property, previous);
+        }
+    }
+
+    @Test
     void productionIsDefaultAndLocalChangesOnlyTransportEndpoints() {
         AgentConfiguration production = AgentConfiguration.load("prod");
         AgentConfiguration local = AgentConfiguration.load("local");

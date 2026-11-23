@@ -146,6 +146,7 @@ public final class StreamingProbe {
         if (profileChunkLifecycle) builder = ChunkLifecycleProbe.configure(builder, workload.chunkComparison());
         builder = UnloadBreakdownProbe.configure(builder);
         builder = UnloadSamplingProbe.configure(builder);
+        builder = BucketUnloadProbe.configure(builder);
         builder.type(named(LOADER)).transform((dynamic, type, loader, module, domain) -> dynamic
             .visit(Advice.to(LoadQueued.class).on(named("addJob")
                 .and(hasDescriptor("(Lzombie/network/ServerMap$ServerCell;)V"))))
@@ -461,6 +462,14 @@ public final class StreamingProbe {
                     }
                 }
                 require(chunks == cycle.chunks, "Chunk coverage changed while holding relevance");
+                if (cycle.index == 0 && AgentConfiguration.chunkObjectMutationsEnabled()) {
+                    if (cycle.holdFrames == 0) {
+                        ChunkObjectMutationProbe.add(groundSquare(map, cycle.cells.getFirst()),
+                            groundSquare(map, cycle.cells.get(1)));
+                    } else if (cycle.holdFrames == 1) {
+                        ChunkObjectMutationProbe.changeAndRemove(directory);
+                    }
+                }
                 if (cycle.holdFrames < workload.holdFrames()) cycle.holdFrames++;
                 return;
             }
@@ -540,6 +549,7 @@ public final class StreamingProbe {
                 writeCsv();
                 UnloadBreakdownProbe.write(directory);
                 UnloadSamplingProbe.finish(directory);
+                BucketUnloadProbe.write(directory);
                 if (compareVehicleCadence) VehicleCadenceProbe.write(directory);
                 if (workload.chunkComparison()) ChunkLifecycleComparison.write(directory);
                 if (EXPERIMENTAL_WORLD_SIMULATION) {

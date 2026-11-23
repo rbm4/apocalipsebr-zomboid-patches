@@ -133,6 +133,8 @@ public final class UnloadSamplingProbe {
         if (armed) cellDepth--;
     }
 
+    static boolean inCell() { return cellDepth != 0 && StreamingProbe.onStreamingOwner(); }
+
     public static void countChunk() {
         if (cellDepth != 0 && StreamingProbe.onStreamingOwner()) window.chunks++;
     }
@@ -179,13 +181,16 @@ public final class UnloadSamplingProbe {
 
     public static void endSearch(long started, int size, boolean found, Throwable failure) {
         if (started == 0) return;
-        window.searchNanos += System.nanoTime() - started;
+        long elapsed = System.nanoTime() - started;
+        window.searchNanos += elapsed;
         searching = false;
         window.searchCalls++;
         if (failure != null || found && match < 0) {
             window.searchIncomplete++;
         } else {
-            window.searchCandidates += found ? match + 1L : size;
+            long candidates = found ? match + 1L : size;
+            window.searchCandidates += candidates;
+            BucketUnloadProbe.nativeSearch(candidates, elapsed);
         }
     }
 }

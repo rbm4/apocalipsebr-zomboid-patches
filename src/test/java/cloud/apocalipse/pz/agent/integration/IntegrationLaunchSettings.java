@@ -5,6 +5,7 @@ import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadSamplingProbe;
+import cloud.apocalipse.pz.agent.integration.probe.BucketUnloadProbe;
 import cloud.apocalipse.pz.agent.integration.probe.ChunkLifecycleProbe;
 import cloud.apocalipse.pz.agent.integration.probe.VehicleCadenceProbe;
 import java.nio.file.Path;
@@ -50,6 +51,13 @@ final class IntegrationLaunchSettings {
         if (countSearches) {
             if (!sampleUnload) throw new IllegalArgumentException("Native search accounting requires unload sampling");
             settings.put(UnloadSamplingProbe.SEARCH_PROPERTY, "true");
+        }
+        if (Boolean.parseBoolean(runner.getProperty(BucketUnloadProbe.PROPERTY))) {
+            if (!sampleUnload || !countSearches || !Boolean.parseBoolean(
+                    runner.getProperty(AgentConfiguration.ENTITY_SIMULATION_OPTIMIZATION, "true"))) {
+                throw new IllegalArgumentException("Bucket profiling requires unload sampling, native search counting and entity simulation hooks");
+            }
+            settings.put(BucketUnloadProbe.PROPERTY, "true");
         }
         if (moving && !streaming) {
             throw new IllegalArgumentException("The moving-object scenario requires -Dpz.it.streaming=true");
