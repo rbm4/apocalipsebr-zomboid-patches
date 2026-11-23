@@ -36,8 +36,17 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String THERMAL_CLOTHING_OPTIMIZATION = "apocbr.optimization.thermalClothing.enabled";
     /** Character stat lookup defaults on. Disable with {@code -Dapocbr.optimization.characterStats.enabled=false}. */
     public static final String CHARACTER_STATS_OPTIMIZATION = "apocbr.optimization.characterStats.enabled";
+    /** Actor update allocation reduction defaults on. Disable with {@code -Dapocbr.optimization.actorUpdateAllocation.enabled=false}. */
+    public static final String ACTOR_UPDATE_ALLOCATION_OPTIMIZATION = "apocbr.optimization.actorUpdateAllocation.enabled";
     /** Dedicated parked-vehicle cadence defaults on. Disable with {@code -Dapocbr.optimization.parkedVehicle.enabled=false}. */
     public static final String PARKED_VEHICLE_OPTIMIZATION = "apocbr.optimization.parkedVehicle.enabled";
+
+    /** Animal growth gene key defaults on. Disable with {@code -Dapocbr.optimization.animalGrowthGene.enabled=false}. */
+    public static final String ANIMAL_GROWTH_GENE_OPTIMIZATION = "apocbr.optimization.animalGrowthGene.enabled";
+    /** Chunk blend direction reuse defaults on. Disable with {@code -Dapocbr.optimization.blendDirections.enabled=false}. */
+    public static final String BLEND_DIRECTIONS_OPTIMIZATION = "apocbr.optimization.blendDirections.enabled";
+    /** Primitive LOS buckets default on. Disable with {@code -Dapocbr.optimization.perceptionBuckets.enabled=false}. */
+    public static final String PERCEPTION_BUCKETS_OPTIMIZATION = "apocbr.optimization.perceptionBuckets.enabled";
 
     /** Primitive region cell lookup defaults on. Disable with {@code -Dapocbr.optimization.regionCellLookup.enabled=false}. */
     public static final String REGION_CELL_LOOKUP_OPTIMIZATION = "apocbr.optimization.regionCellLookup.enabled";

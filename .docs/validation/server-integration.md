@@ -662,6 +662,56 @@ frame and 211 KB per moving frame. Its 73.61 ms high frame contained a
 well. These sites describe the isolated fixture. Connected relay allocation
 needs a workload with active clients and recipients.
 
+#### Player and animal allocation breakdown
+
+Add `"-Dpz.it.movingObjectLoad.entityAllocations=true"` to the moving-object
+scenario to record allocation and call counts inside the native actor updates.
+The test observer records only on the scheduler thread while the scheduler
+update is active. It measures the player update, remote-player branch,
+inherited character update and stat calculation. Animal columns also cover
+behavior, data update, growth checks and perception. It uses the original
+methods and their existing scheduling.
+
+Each `*_bytes` column is the sum of allocations across all calls to that
+scope on the frame. Divide by the corresponding `*_calls` total for bytes
+per call. Child method totals overlap their parents. Growth is inside
+animal data, stats are inside the character update, and the character
+update is inside the corresponding entity update. A value of `-1` means
+the JVM thread-allocation counter was unavailable. Use this opt-in probe
+to locate allocations and use JFR to identify the allocating call stacks.
+For scheduler timings comparable to the normal workload, leave this
+per-call probe disabled.
+
+In the Windows original 42.22.2 run with 30 simulated players and 135 active
+animals, each actor ran once per frame over both 120-frame windows. The
+moving window averaged 451 bytes per player update and 106 bytes per animal
+update. Player stat calculation accounted for 147 bytes per player update
+and animal perception for 34 bytes per animal update. Animal data and growth
+recorded zero bytes in both windows. Use the per-call figures when comparing
+against a server with a different actor cadence.
+
+For an A/B comparison of the actor allocation module, run the same
+`players30` moving-object profile and allocation probe twice with
+`-Dapocbr.optimization.actorUpdateAllocation.enabled=false` and
+`-Dapocbr.optimization.actorUpdateAllocation.enabled=true`. Keep the other
+optimizations enabled. In the Windows original 42.22.2 comparison, each arm
+measured 120 idle and 120 moving frames. Both arms ran 30 players per frame.
+The off arm averaged 137 animal update calls per frame and the on arm 140.
+
+| Moving window | Disabled | Enabled |
+| --- | ---: | ---: |
+| Player update bytes per call | 406.05 | 235.65 |
+| Player stat calculation bytes per call | 147.20 | 68.55 |
+| Animal update bytes per call | 103.64 | 87.86 |
+| Animal perception bytes per call | 34.33 | 34.73 |
+| Scheduler bytes per frame | 26,392.60 | 19,374.80 |
+
+Both runs passed and shut down gracefully. The idle window measured
+28,772 and 22,336 scheduler bytes per frame. Perception allocations were
+approximately flat in this fixture. The packaged original-JAR smoke test
+also exercised stat writes, saturated and changing animal acceptance, and
+dirty-ID reuse with the feature off and on.
+
 #### Character stat lookup comparison
 
 Use the same packaged agent and run the scenario twice with
@@ -746,6 +796,83 @@ vanilla chunk traversal, reset isolation and repopulation. The hook
 inventory checks the constructor, lookup, insertion, and reset boundaries
 against the original JAR. The worker still exchanges entire roots through
 the existing buffer handoff.
+
+The Java 25 Windows runs keep the character-stat lookup enabled and use
+the same shaded agent and original game archive within each pair. Compare
+server-thread allocation in measured scheduler frames and count JFR pause
+events only inside the matching idle and moving measurement windows.
+The seeded layout and forced populations are held constant. Vehicles and
+naturally spawned populations can differ between disposable worlds.
+
+| Adaptive heap | Median bytes per moving update, off → on | Total scheduler allocation, off → on | JVM GC pauses, off → on |
+| --- | ---: | ---: | ---: |
+| 6 GiB | 41,544 → 31,424 | 40.03 → 30.22 MB | 0 → 0 |
+| 3 GiB | 40,024 → 31,848 | 38.18 → 32.47 MB | 0 → 1 |
+
+The adaptive 3 GiB enabled run recorded a 57.28 ms GC pause that overlapped
+an idle scheduler update. In the 3 GiB fixed-young pair, with a 64 MiB
+young generation, the median moving allocation fell from 40,096 to
+31,288 bytes. Total scheduler allocation went from 25.76 to 19.07 MB
+across 480 frames per run. The baseline recorded one 11.72 ms JVM pause
+and the enabled run recorded two totaling 23.00 ms. None overlapped a
+scheduler update. Both fixed-young runs used the same saved agent JAR and
+matching test probe in an isolated build directory.
+
+All six integration runs passed with graceful shutdown. JFR sampled the
+boxed cell lookup eight times across the three baseline runs and recorded
+zero samples with that stack in the enabled runs. The allocation reduction
+repeated across the pairs. The observed pause counts and elapsed scheduler
+outliers varied across runs.
+
+#### Combined allocation optimization comparison
+
+The comparison switches the character-stat lookup, region-cell lookup,
+animal growth gene key, blend direction reuse and LOS perception buckets
+together. The fixture records `schedulerAllocatedBytes` and
+`mapPostupdateAllocatedBytes` separately. The latter brackets native
+`ServerMap.postupdate()` and includes the loaded-chunk blending path.
+
+```powershell
+$fixture = @('-Pserver-integration', '-Dpz.it.streaming=true',
+    '-Dpz.it.streamingProfile=players30', '-Dpz.it.movingObjectLoad=true',
+    '-Dpz.it.movingObjectLoad.jfr=true', '-Dpz.it.movingObjectLoad.youngMiB=64',
+    '-Dpz.it.movingObjectLoad.frames=240', '-Dpz.it.heap=3g')
+$gcOptions = @('characterStats', 'regionCellLookup', 'animalGrowthGene',
+    'blendDirections', 'perceptionBuckets')
+mvn '-Djar.forceCreation=true' package
+foreach ($enabled in @('false', 'true')) {
+    $flags = $gcOptions | ForEach-Object { "-Dapocbr.optimization.$_.enabled=$enabled" }
+    mvn failsafe:integration-test failsafe:verify @fixture @flags
+}
+```
+
+The fixture exercises the native growth calculation on a cow, verifies
+the direction pairs and public enum array ownership, and checks perception
+bucket ordering, misses, and invalidation. The real LOS and map updates
+also run throughout the workload. The combined A/B measures the total
+effect of the switches. Heap pressure, enabled features and natural
+world populations affect the pause timings.
+
+The Windows original-JAR A/B used the same shaded agent, a 3 GiB heap
+and a 64 MiB G1 young generation. Each run completed 480 measured frames,
+save drain and graceful shutdown. The baseline had 143 animals, 462 zombies
+and 31 vehicles. The enabled run had 143 animals, 483 zombies and 26 vehicles.
+
+| Measurement | All five off | All five on |
+| --- | ---: | ---: |
+| Moving scheduler median allocation | 209,464 bytes | 23,504 bytes |
+| Total scheduler allocation | 105.86 MB | 13.61 MB |
+| Median map postupdate allocation | 8,776 bytes | 1,256 bytes |
+| Total map postupdate allocation | 4.14 MB | 0.52 MB |
+| JVM GC pauses during measurement | 2 | 1 |
+| Total JVM GC pause time | 10.67 ms | 13.27 ms |
+
+The enabled run also recorded a 507.35 ms moving scheduler update.
+It spent 31.25 ms of measured thread CPU and had no overlapping JFR GC
+pause. Player update accounted for 342.02 ms elapsed and animal update
+for 162.13 ms on that frame. This pair demonstrates lower allocation.
+The cause of the wall-time gap and the production effect on latency remain
+open.
 
 ## Chunk storage replay
 

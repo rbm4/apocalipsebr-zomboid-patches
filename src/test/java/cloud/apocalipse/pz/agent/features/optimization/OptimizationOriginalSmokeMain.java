@@ -12,11 +12,13 @@ import java.nio.file.Path;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.HexFormat;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Random;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import se.krka.kahlua.converter.KahluaConverterManager;
 import se.krka.kahlua.integration.LuaCaller;
@@ -38,6 +40,9 @@ import zombie.characters.NetworkZombieAI;
 import zombie.characters.NetworkZombieVariables;
 import zombie.characters.Safety;
 import zombie.characters.Stats;
+import zombie.characters.animals.AnimalDefinitions;
+import zombie.characters.animals.IsoAnimal;
+import zombie.characters.animals.behavior.BaseAnimalBehavior;
 import zombie.core.raknet.UdpConnection;
 import zombie.core.raknet.UdpEngine;
 import zombie.core.network.ByteBufferWriter;
@@ -53,6 +58,8 @@ import zombie.core.skinnedmodel.visual.ItemVisuals;
 import zombie.debug.DebugOptions;
 import zombie.inventory.types.Clothing;
 import zombie.iso.Vector2;
+import zombie.iso.IsoCell;
+import zombie.iso.IsoGridSquare;
 import zombie.iso.areas.isoregion.data.DataRoot;
 import zombie.network.NetworkVariables.WalkType;
 import zombie.network.NetworkVariables.ZombieState;
@@ -71,7 +78,14 @@ public final class OptimizationOriginalSmokeMain {
         boolean enabled = Boolean.parseBoolean(arguments[1]);
         Path original = Path.of(arguments[0]).toRealPath();
         for (Class<?> target : List.of(SERVER, ZombieCountOptimiser.class, Event.class, IsoPlayer.class,
-                NetworkZombieAI.class, ZombiePacket.class, Thermoregulator.class, Stats.class, DataRoot.class)) {
+                NetworkZombieAI.class, ZombiePacket.class, Thermoregulator.class, Stats.class, DataRoot.class,
+                gameClass("zombie.characters.animals.behavior.BaseAnimalBehavior"),
+                gameClass("zombie.popman.animal.AnimalInstanceManager"),
+                gameClass("zombie.MovingObjectUpdateScheduler"), gameClass("zombie.iso.IsoChunk"),
+                gameClass("zombie.iso.IsoObject"),
+                gameClass("zombie.characters.animals.datas.AnimalGrowStage"),
+                gameClass("zombie.iso.worldgen.blending.Blending"),
+                gameClass("zombie.iso.worldgen.blending.BlendDirection"))) {
             Path source = Path.of(target.getProtectionDomain().getCodeSource().getLocation().toURI()).toRealPath();
             check(original.equals(source), "Game class came from " + source);
             target.getDeclaredMethods();
@@ -90,12 +104,73 @@ public final class OptimizationOriginalSmokeMain {
         packetPrediction();
         packetBytes();
         thermalClothing(enabled);
+        actorUpdateAllocations(enabled);
         verifyTelemetry(enabled);
         verifyHookEvidence(Path.of(arguments[3]), enabled);
         if (arguments.length == 5 && Boolean.parseBoolean(arguments[4])) {
             LegacyHotspotsOriginalSmoke.run(Path.of(arguments[3]), enabled);
         }
         System.out.println("ORIGINAL_OPTIMIZATION_SMOKE_PASS enabled=" + enabled);
+    }
+
+    private static void actorUpdateAllocations(boolean enabled) throws Exception {
+        var stat = zombie.characters.CharacterStat.STRESS;
+        var stats = new Stats();
+        var values = (Map<?, ?>) field(Stats.class, "stats").get(stats);
+        check(!stats.set(stat, 0.0F) && values.containsKey(stat), "First write of the default must store it");
+        check(stats.set(stat, 2.0F) && stats.get(stat) == 1.0F, "Stat write did not clamp");
+        Object clamped = values.get(stat);
+        check(!stats.set(stat, 3.0F) && (values.get(stat) == clamped) == enabled, "Clamped repeat did not reuse the float");
+        check(stats.set(stat, 0.0F) && !stats.set(stat, -0.0F)
+            && Float.floatToRawIntBits(stats.get(stat)) == Integer.MIN_VALUE, "Stat write lost signed zero");
+        float nan = Float.intBitsToFloat(0x7fc00001);
+        check(stats.set(stat, nan) && stats.set(stat, nan)
+            && Float.floatToRawIntBits(stats.get(stat)) == 0x7fc00001, "Stat write changed NaN semantics");
+
+        var animal = allocate(PerceptionAnimal.class);
+        animal.setOnlineID((short) 313);
+        var manager = zombie.popman.animal.AnimalInstanceManager.getInstance();
+        var dirty = (Set<?>) field(zombie.popman.animal.AnimalSynchronizationManager.class, "sendToClients").get(null);
+        try {
+            manager.update(animal);
+            Object first = dirty.iterator().next();
+            check(first.equals((short) 313), "Animal update lost the dirty ID");
+            dirty.clear();
+            manager.update(animal);
+            check(dirty.size() == 1 && (dirty.iterator().next() == first) == enabled, "Wrong dirty-ID reuse");
+        } finally {
+            dirty.clear();
+        }
+
+        var cell = new IsoCell(1, 1);
+        var square = new IsoGridSquare(cell, null, 0, 0, 0);
+        animal.setCurrentSquare(square);
+        animal.adef = new AnimalDefinitions();
+        animal.playerAcceptanceList = new HashMap<>();
+        var player = allocate(IsoPlayer.class);
+        player.cheats = new zombie.characters.PlayerCheats();
+        player.setOnlineID((short) 14);
+        player.setCurrentSquare(square);
+        field(zombie.characters.IsoGameCharacter.class, "health").setFloat(player, 1.0F);
+        var behavior = new BaseAnimalBehavior(animal);
+        animal.playerAcceptanceList.put((short) 14, 100.0F);
+        Float capped = animal.playerAcceptanceList.get((short) 14);
+        behavior.spotted(player, false, 2.0F);
+        Float after = animal.playerAcceptanceList.get((short) 14);
+        check(after == 100.0F && (after == capped) == enabled, "Wrong capped acceptance write");
+        animal.playerAcceptanceList.put((short) 14, 2.0F);
+        behavior.spotted(player, false, 2.0F);
+        check(animal.playerAcceptanceList.get((short) 14) > 2.0F, "Perception lost the acceptance increment");
+    }
+
+    private static final class PerceptionAnimal extends IsoAnimal {
+        PerceptionAnimal() {
+            super(null);
+        }
+
+        @Override public boolean isAnimalMoving() {
+            return true;
+        }
     }
 
     private static void culling(boolean enabled) throws Exception {

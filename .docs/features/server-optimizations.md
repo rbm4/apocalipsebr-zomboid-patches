@@ -13,7 +13,11 @@ execution at its hook sites.
 | Local zombie packet preparation | `apocbr.optimization.zombiePacket.enabled` | `NetworkZombieAI.set(ZombiePacket)`, its prediction helpers, and `ZombiePacket.set(IsoZombie)` use primitive flags, enum lookups without a fresh values array, and primitive forward-direction snapshots. The walk-toward prediction avoids square roots after crossing five units and still checks later deltas for NaN so the comparison agrees with vanilla. Both vanilla walk-type assignments, prediction bookkeeping, synchronous preparation, and serialization order are preserved. |
 | Thermal clothing ownership | `apocbr.optimization.thermalClothing.enabled` | `Thermoregulator(BodyDamage)` creates its instance's clothing state, which `updateClothing()` uses for current visuals, cached visual identities, and covered-part scratch space. Equipment changes still trigger the vanilla rebuild logic. Thermal cadence and formulas follow vanilla. |
 | Character stat lookup | `apocbr.optimization.characterStats.enabled` | `Stats.get(CharacterStat)` returns the stored float on a hit and uses the primitive default on a miss. The existing stats map, writes, clamping and serialized layout are preserved. |
+| Actor update allocations | `apocbr.optimization.actorUpdateAllocation.enabled` | `Stats.set` and animal `BaseAnimalBehavior.spotted` reuse a stored float when the new value has identical bits. `AnimalInstanceManager.updateLocal` reuses boxed dirty IDs. Update cadence, stat clamping, perception traversal and the vanilla synchronization queue follow the existing paths. |
 | Region cell lookup | `apocbr.optimization.regionCellLookup.enabled` | `DataRoot.getCell(int)` reads a primitive index owned by that root. The original cell map still handles traversal and cleanup. Cell creation and whole-root reset update both indexes. |
+| Animal growth gene lookup | `apocbr.optimization.animalGrowthGene.enabled` | `AnimalGrowStage.getAgeToGrow(IsoAnimal)` passes the existing normalized gene key to the live genome lookup. |
+| Chunk blending directions | `apocbr.optimization.blendDirections.enabled` | `Blending.applyBlending(IsoChunk)` and `BlendDirection.opposite()` reuse the original enum order internally. Public `BlendDirection.values()` still returns a fresh copy. |
+| Zombie perception buckets | `apocbr.optimization.perceptionBuckets.enabled` | The existing dedicated-server LOS hook uses primitive spatial keys and copies matching bucket entries without temporary arrays. Candidate sorting, fallback snapshots and index invalidation follow the existing hook. |
 
 The thermal module adds one private synthetic field when the JVM first defines
 `Thermoregulator`. Its lifetime follows the regulator and avoids a global map
@@ -58,8 +62,7 @@ mvn "-Djar.forceCreation=true" "-Dpz.game.jar=Z:/SteamLibrary/steamapps/common/P
 
 The script launches two isolated JVMs with the packaged production agent,
 original game classes, and the existing test-only hook observer. It validates
-the declared hooks with default settings and with its five original switches set to
-`false`, including composition
+the declared hooks with default settings and explicit opt-outs, including composition
 with existing Lua event timing. The same fixtures execute the game methods in
 both modes. The culling fixture reads zero versus two candidates for a
 zero-quota connection, and one versus three after quota is filled. The thermal
@@ -77,4 +80,4 @@ under `target/optimization-validation/run-*`. It does not launch
 live-server performance measurements remain pending. Toggle ports individually
 when measuring production impact.
 
-The [moving-object JVM profile](../validation/server-integration.md#character-stat-lookup-comparison) exercises the stat lookup with defaults, stored values, a native save/load round trip, and the live scheduler.
+The [moving-object JVM profile](../validation/server-integration.md#character-stat-lookup-comparison) exercises the stat lookup with defaults, stored values, a native save/load round trip, and the live scheduler. The [region lookup comparison](../validation/server-integration.md#region-cell-lookup-comparison) covers lookup identity, reset isolation, and scheduler allocations.

@@ -3,6 +3,7 @@ package cloud.apocalipse.pz.agent.integration.assertions;
 import cloud.apocalipse.pz.agent.integration.ServerAssertion;
 import cloud.apocalipse.pz.agent.integration.ServerTestContext;
 import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
+import cloud.apocalipse.pz.agent.integration.probe.EntityAllocations;
 import java.nio.file.Files;
 import java.time.Duration;
 import java.util.Arrays;
@@ -65,6 +66,17 @@ public final class MovingObjectLoadAssertion implements ServerAssertion {
                 assertTrue(start > 0 && start <= end && end <= integer(row, columns, "epochMs"),
                     "Real scheduler timestamps must bracket the update before the sample");
                 assertTrue(integer(row, columns, "schedulerAllocatedBytes") >= -1);
+                assertTrue(integer(row, columns, "mapPostupdateAllocatedBytes") >= -1);
+            }
+            if (Boolean.getBoolean(EntityAllocations.PROPERTY)) {
+                verifyPhase(frames, columns, "PLAYER_UPDATE_calls");
+                verifyPhase(frames, columns, "PLAYER_REMOTE_calls");
+                verifyPhase(frames, columns, "PLAYER_BASE_calls");
+                if (settings.animals() > 0) {
+                    for (String scope : List.of("UPDATE", "BEHAVIOR", "DATA", "GROWTH", "LOS", "BASE")) {
+                        verifyPhase(frames, columns, "ANIMAL_" + scope + "_calls");
+                    }
+                }
             }
             int scheduler = columns.indexOf("MOVING_ns");
             assertTrue(scheduler >= 0);

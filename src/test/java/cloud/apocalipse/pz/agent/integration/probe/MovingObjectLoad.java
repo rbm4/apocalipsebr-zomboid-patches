@@ -1,5 +1,6 @@
 package cloud.apocalipse.pz.agent.integration.probe;
 
+import cloud.apocalipse.pz.agent.features.optimization.los.perception.PerceptionBuckets;
 import cloud.apocalipse.pz.agent.features.telemetry.OptimizationTelemetry.Phase;
 import cloud.apocalipse.pz.agent.features.telemetry.TickDiagnostics;
 import com.sun.management.ThreadMXBean;
@@ -24,9 +25,11 @@ import zombie.characters.Stats;
 import zombie.characters.IsoZombie;
 import zombie.characters.SurvivorFactory;
 import zombie.characters.animals.IsoAnimal;
+import zombie.characters.animals.datas.AnimalGrowStage;
 import zombie.iso.IsoCell;
 import zombie.iso.IsoDirections;
 import zombie.iso.IsoGridSquare;
+import zombie.iso.worldgen.blending.BlendDirection;
 import zombie.iso.areas.isoregion.data.DataChunk;
 import zombie.iso.areas.isoregion.data.DataRoot;
 import zombie.network.GameServer;
@@ -86,7 +89,7 @@ public final class MovingObjectLoad {
     private final StringBuilder samples = new StringBuilder(
         "scenario,frame,epochMs,players,movedPlayers,forcedAnimalsActive,forcedZombiesActive,"
             + "activeZombies,activeAnimals,activeVehicles,movedVehicle,vehiclePacket_ns,drivenVehicleUpdate_ns,bulletSteps,"
-            + "schedulerStartEpochMs,schedulerEndEpochMs,schedulerAllocatedBytes");
+            + "schedulerStartEpochMs,schedulerEndEpochMs,schedulerAllocatedBytes,mapPostupdateAllocatedBytes");
     private final long[] timings;
     private final float[] previousX = new float[settings.players()];
     private final float[] previousY = new float[settings.players()];
@@ -101,6 +104,8 @@ public final class MovingObjectLoad {
     private long schedulerEndEpochMs;
     private long schedulerStartBytes;
     private long schedulerAllocatedBytes;
+    private long mapPostupdateStartBytes;
+    private long mapPostupdateAllocatedBytes;
     private int frame;
     private boolean finished;
 
@@ -109,6 +114,7 @@ public final class MovingObjectLoad {
         Field phases = TickDiagnostics.class.getDeclaredField("FRAME_PHASES");
         phases.setAccessible(true);
         timings = (long[]) phases.get(null);
+        EntityAllocations.appendColumns(samples);
         for (Phase phase : PHASES) samples.append(',').append(phase.name()).append("_ns");
         samples.append('\n');
     }
@@ -122,6 +128,8 @@ public final class MovingObjectLoad {
 
     void start(ServerMap map, List<StreamingWorkload.Position> positions) throws IOException {
         verifyCharacterStats();
+        verifyBlendDirections();
+        verifyPerceptionBuckets();
         verifyRegionLookup();
         for (int index = 0; index < settings.players(); index++) {
             var position = positions.get(index * positions.size() / settings.players());
@@ -191,6 +199,7 @@ public final class MovingObjectLoad {
             manager.choices.clear();
             manager.choices.addAll(originalChoices);
         }
+        if (!animals.isEmpty()) verifyGrowthGene(animals.getFirst());
         if (settings.vehicle()) {
             Route driver = players.getFirst();
             var parking = squares(map, driver.from().getX() - 4, driver.from().getY() - 4, 16).stream()
@@ -229,6 +238,43 @@ public final class MovingObjectLoad {
         if (first.select.cell == null || first.select.cell == originalCell) {
             throw new IllegalStateException("Region lookup reused a cell from before reset");
         }
+    }
+
+    private static void verifyGrowthGene(IsoAnimal animal) {
+        var stage = new AnimalGrowStage();
+        stage.ageToGrow = 100;
+        var allele = animal.getUsedGene("ageToGrow");
+        if (allele == null) throw new IllegalStateException("Expected growth gene on the fixture cow");
+        int expected = (int) (stage.ageToGrow * (0.25f - allele.currentValue / 4.0f + 1.0f));
+        if (stage.getAgeToGrow(animal) != expected) throw new IllegalStateException("Growth age changed");
+    }
+
+    private static void verifyBlendDirections() {
+        var directions = BlendDirection.values();
+        directions[0] = BlendDirection.WEST;
+        if (BlendDirection.values()[0] != BlendDirection.NORTH
+                || BlendDirection.NORTH.opposite() != BlendDirection.SOUTH
+                || BlendDirection.SOUTH.opposite() != BlendDirection.NORTH
+                || BlendDirection.EAST.opposite() != BlendDirection.WEST
+                || BlendDirection.WEST.opposite() != BlendDirection.EAST) {
+            throw new IllegalStateException("Vanilla blend direction semantics changed");
+        }
+    }
+
+    private static void verifyPerceptionBuckets() {
+        var buckets = new PerceptionBuckets<Integer>();
+        var collected = new ArrayList<Integer>();
+        buckets.add(0, 1);
+        buckets.add(Long.MIN_VALUE, 2);
+        buckets.add(0, 3);
+        buckets.append(0, collected);
+        buckets.append(Long.MAX_VALUE, collected);
+        buckets.append(Long.MIN_VALUE, collected);
+        if (!collected.equals(List.of(1, 3, 2))) throw new IllegalStateException("Perception bucket order changed");
+        collected.clear();
+        buckets.clear();
+        buckets.append(0, collected);
+        if (!collected.isEmpty()) throw new IllegalStateException("Perception retained an invalidated bucket");
     }
 
     private static void verifyCharacterStats() throws IOException {
@@ -311,13 +357,22 @@ public final class MovingObjectLoad {
 
     void beginScheduler() {
         schedulerStartEpochMs = System.currentTimeMillis();
+        EntityAllocations.beginFrame();
         schedulerStartBytes = currentThreadAllocatedBytes();
     }
 
     void endScheduler() {
         long allocated = currentThreadAllocatedBytes();
+        EntityAllocations.endFrame();
         schedulerEndEpochMs = System.currentTimeMillis();
         schedulerAllocatedBytes = allocated < 0 || schedulerStartBytes < 0 ? -1 : allocated - schedulerStartBytes;
+    }
+
+    void beginMapPostupdate() { mapPostupdateStartBytes = currentThreadAllocatedBytes(); }
+
+    void endMapPostupdate() {
+        long allocated = currentThreadAllocatedBytes();
+        mapPostupdateAllocatedBytes = allocated < 0 || mapPostupdateStartBytes < 0 ? -1 : allocated - mapPostupdateStartBytes;
     }
 
     private long currentThreadAllocatedBytes() {
@@ -352,7 +407,8 @@ public final class MovingObjectLoad {
                 .append(',').append(moving && vehicle != null && vehicle.moved() ? 1 : 0)
                 .append(',').append(vehiclePacketNanos).append(',').append(vehicleUpdateNanos).append(',').append(bulletSteps)
                 .append(',').append(schedulerStartEpochMs).append(',').append(schedulerEndEpochMs)
-                .append(',').append(schedulerAllocatedBytes);
+                .append(',').append(schedulerAllocatedBytes).append(',').append(mapPostupdateAllocatedBytes);
+            EntityAllocations.appendSample(samples);
             for (Phase phase : PHASES) samples.append(',').append(timings[phase.ordinal()]);
             samples.append('\n');
         }

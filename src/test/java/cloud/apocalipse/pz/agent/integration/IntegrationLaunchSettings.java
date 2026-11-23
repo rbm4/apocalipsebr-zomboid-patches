@@ -4,6 +4,7 @@ import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
 import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
+import cloud.apocalipse.pz.agent.integration.probe.EntityAllocations;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadSamplingProbe;
 import cloud.apocalipse.pz.agent.integration.probe.BucketUnloadProbe;
@@ -30,6 +31,9 @@ final class IntegrationLaunchSettings {
                 throw new IllegalArgumentException("Moving-object load requires its own players30 streaming run");
             }
             MovingObjectLoad.Settings.from(runner).forward(settings);
+            if (Boolean.parseBoolean(runner.getProperty(EntityAllocations.PROPERTY))) {
+                settings.put(EntityAllocations.PROPERTY, "true");
+            }
             settings.put(AgentConfiguration.MOVING_OBJECT_TELEMETRY_PROPERTY, "true");
         }
         if (Boolean.parseBoolean(runner.getProperty(WorldSimulation.PROPERTY))) {

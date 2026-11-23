@@ -9,6 +9,8 @@ import cloud.apocalipse.pz.agent.features.hotfixes.AssetLogModule;
 import cloud.apocalipse.pz.agent.features.hotfixes.XmlCaseModule;
 import cloud.apocalipse.pz.agent.features.networkdiagnostics.NetworkDiagnosticsModule;
 import cloud.apocalipse.pz.agent.features.npc.NpcModule;
+import cloud.apocalipse.pz.agent.features.optimization.actor.allocation.ActorUpdateAllocationModule;
+import cloud.apocalipse.pz.agent.features.optimization.animal.growth.AnimalGrowthGeneModule;
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntityRemovalModule;
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntitySimulationModule;
 import cloud.apocalipse.pz.agent.features.optimization.los.ServerLosModule;
@@ -18,6 +20,7 @@ import cloud.apocalipse.pz.agent.features.optimization.streaming.RegionCellLooku
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkAdjacencyModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkContainerModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkAsyncSendModule;
+import cloud.apocalipse.pz.agent.features.optimization.streaming.blending.BlendDirectionsModule;
 import cloud.apocalipse.pz.agent.features.optimization.lua.LuaDispatchModule;
 import cloud.apocalipse.pz.agent.features.optimization.vehicle.ParkedVehicleModule;
 import cloud.apocalipse.pz.agent.features.optimization.player.CharacterStatsModule;
@@ -45,6 +48,7 @@ public final class AgentModules {
         new ServerPhaseTelemetryModule(), new MovingObjectTelemetryModule(), new JavaPathfindingModule(),
         new ZombieCullingModule(), new LuaDispatchModule(), new PlayerNearVehicleModule(),
         new ZombiePacketPreparationModule(), new ThermalClothingModule(), new CharacterStatsModule(),
+        new ActorUpdateAllocationModule(), new AnimalGrowthGeneModule(), new BlendDirectionsModule(),
         new EntityRemovalModule(), new EntitySimulationModule(), new ServerLosModule(), new ZombieAsyncSendModule(),
         new CellBorderModule(), new CellRelevanceModule(), new RegionCellLookupModule(), new ParkedVehicleModule(), new ChunkContainerModule(),
         new ChunkAdjacencyModule(), new ChunkAsyncSendModule(),

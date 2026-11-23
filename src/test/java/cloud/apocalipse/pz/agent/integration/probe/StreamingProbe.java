@@ -146,6 +146,7 @@ public final class StreamingProbe {
                 .transform((dynamic, type, loader, module, domain) -> dynamic.visit(Advice.to(SchedulerSample.class)
                     .on(named("update").and(hasDescriptor("()V")))));
         }
+        builder = EntityAllocations.configure(builder);
         if (movingScenario) builder = MovingObjectSpike.configure(builder, output);
         if (compareVehicleCadence) builder = VehicleCadenceProbe.configure(builder);
         if (EXPERIMENTAL_WORLD_SIMULATION) builder = WorldSimulation.configure(builder);
@@ -320,6 +321,7 @@ public final class StreamingProbe {
         @Advice.OnMethodEnter public static long enter(@Advice.Local("unloadProfile") long unloadProfile) {
             UnloadSamplingProbe.beginPostupdate();
             unloadProfile = UnloadBreakdownProbe.beginPostupdate();
+            sampleMapPostupdate(true);
             return start("map.postupdate");
         }
 
@@ -327,11 +329,18 @@ public final class StreamingProbe {
         public static void exit(@Advice.This Object map, @Advice.Enter long started,
                                 @Advice.Thrown Throwable failure,
                                 @Advice.Local("unloadProfile") long unloadProfile) {
+            sampleMapPostupdate(false);
             finish("map.postupdate", started, failure);
             UnloadBreakdownProbe.endPostupdate(unloadProfile);
             UnloadSamplingProbe.endPostupdate();
             if (failure == null) afterPostupdate(map);
         }
+    }
+
+    public static void sampleMapPostupdate(boolean starting) {
+        if (movingLoad == null || !onStreamingOwner()) return;
+        if (starting) movingLoad.beginMapPostupdate();
+        else movingLoad.endMapPostupdate();
     }
 
     // Advice signatures stay free of game types so Byte Buddy can read them during class definition.
