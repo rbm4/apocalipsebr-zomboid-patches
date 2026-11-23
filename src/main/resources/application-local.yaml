@@ -1,0 +1,5 @@
+apocbr:
+  telemetry:
+    base-url: "http://localhost:8080"
+  restart:
+    base-url: "http://localhost:8080"

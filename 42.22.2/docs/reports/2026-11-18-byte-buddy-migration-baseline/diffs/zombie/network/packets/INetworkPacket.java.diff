@@ -1,0 +1,33 @@
+diff --git a/zombie/network/packets/INetworkPacket.java b/zombie/network/packets/INetworkPacket.java
+index 7c8aa4e..f8a563c 100644
+--- a/zombie/network/packets/INetworkPacket.java
++++ b/zombie/network/packets/INetworkPacket.java
+@@ -9,10 +9,11 @@ import zombie.core.raknet.UdpConnection;
+ import zombie.debug.DebugType;
+ import zombie.debug.LogSeverity;
+ import zombie.network.GameClient;
+ import zombie.network.GameServer;
+ import zombie.network.IConnection;
++import zombie.network.ApocBRNetworkDiagnostics;
+ import zombie.network.PacketTypes;
+ import zombie.network.fields.INetworkPacketField;
+ 
+ public interface INetworkPacket extends INetworkPacketField {
+     default void setData(Object... values) {
+@@ -52,11 +53,15 @@ public interface INetworkPacket extends INetworkPacketField {
+ 
+     default void sync(PacketTypes.PacketType packetType, IConnection connection) {
+     }
+ 
+     default void logInconsistentPacket(IConnection connection, PacketTypes.PacketType packetType) {
+-        DebugType.Multiplayer.warn("The packet %s is not consistent: %s", packetType.name(), this.getDescription());
++        if (GameServer.server) {
++            ApocBRNetworkDiagnostics.warn(connection, packetType, "inconsistent-packet", this::getDescription);
++        } else {
++            DebugType.Multiplayer.warn("The packet %s is not consistent: %s", packetType.name(), this.getDescription());
++        }
+     }
+ 
+     private void sendToConnection(PacketTypes.PacketType packetType, IConnection connection) {
+         if (connection != null) {
+             ByteBufferWriter b = connection.startPacket();

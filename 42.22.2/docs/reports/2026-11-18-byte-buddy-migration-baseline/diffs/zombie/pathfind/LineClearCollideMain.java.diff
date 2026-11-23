@@ -1,0 +1,75 @@
+diff --git a/zombie/pathfind/LineClearCollideMain.java b/zombie/pathfind/LineClearCollideMain.java
+index 1b2be2d..6ba24f0 100644
+--- a/zombie/pathfind/LineClearCollideMain.java
++++ b/zombie/pathfind/LineClearCollideMain.java
+@@ -18,10 +18,12 @@ import zombie.network.GameServer;
+ import zombie.network.ServerMap;
+ import zombie.vehicles.BaseVehicle;
+ 
+ final class LineClearCollideMain {
+     final Vector2 perp = new Vector2();
++    // Borrowed result, valid until the next getCollidepoint call on this helper.
++    private final Vector2 collidePoint = new Vector2();
+     final ArrayList<Point> pts = new ArrayList<>();
+     final VehicleRect sweepAabb = new VehicleRect();
+     final VehicleRect vehicleAabb = new VehicleRect();
+     final VehiclePoly vehiclePoly = new VehiclePoly();
+     final Vector2f[] polyVec = new Vector2f[4];
+@@ -694,11 +696,11 @@ final class LineClearCollideMain {
+ 
+         for (int i = 0; i < this.pts.size(); i++) {
+             Point pt = this.pts.get(i);
+             IsoGridSquare square = IsoWorld.instance.currentCell.getGridSquare(pt.x, pt.y, z);
+             if (checkCost && square != null && SquareUpdateTask.getCost(square) > 0) {
+-                return PolygonalMap2.temp.set(pt.x + 0.5F, pt.y + 0.5F);
++                return this.collidePoint.set(pt.x + 0.5F, pt.y + 0.5F);
+             }
+ 
+             if (square != null
+                 && !square.isSolid()
+                 && (!square.isSolidTrans() || square.isAdjacentToWindow() || square.isAdjacentToHoppable())
+@@ -724,11 +726,11 @@ final class LineClearCollideMain {
+                     if (this.lb.lineRectIntersect(fromX, fromY, toX - fromX, toY - fromY, pt.x - w, pt.y - n, pt.x + e, pt.y + 1.0F + s)) {
+                         if (render) {
+                             LineDrawer.addLine(pt.x - w, pt.y - n, z, pt.x + e, pt.y + 1.0F + s, z, 1.0F, 0.0F, 0.0F, null, false);
+                         }
+ 
+-                        return PolygonalMap2.temp.set(pt.x + (fromX - toX < 0.0F ? -0.5F : 0.5F), pt.y + 0.5F);
++                        return this.collidePoint.set(pt.x + (fromX - toX < 0.0F ? -0.5F : 0.5F), pt.y + 0.5F);
+                     }
+                 }
+ 
+                 if (square.has(IsoFlagType.collideN) || !ignoreDoors && square.hasBlockedDoor(GridSquareEdgeFacingDirection.NORTH_SOUTH)) {
+                     float wx = 0.3F;
+@@ -750,11 +752,11 @@ final class LineClearCollideMain {
+                     if (this.lb.lineRectIntersect(fromX, fromY, toX - fromX, toY - fromY, pt.x - wx, pt.y - nx, pt.x + 1.0F + ex, pt.y + sx)) {
+                         if (render) {
+                             LineDrawer.addLine(pt.x - wx, pt.y - nx, z, pt.x + 1.0F + ex, pt.y + sx, z, 1.0F, 0.0F, 0.0F, null, false);
+                         }
+ 
+-                        return PolygonalMap2.temp.set(pt.x + 0.5F, pt.y + (fromY - toY < 0.0F ? -0.5F : 0.5F));
++                        return this.collidePoint.set(pt.x + 0.5F, pt.y + (fromY - toY < 0.0F ? -0.5F : 0.5F));
+                     }
+                 }
+             } else {
+                 float wxx = 0.3F;
+                 float nxx = 0.3F;
+@@ -775,16 +777,16 @@ final class LineClearCollideMain {
+                 if (this.lb.lineRectIntersect(fromX, fromY, toX - fromX, toY - fromY, pt.x - wxx, pt.y - nxx, pt.x + 1.0F + exx, pt.y + 1.0F + sxx)) {
+                     if (render) {
+                         LineDrawer.addLine(pt.x - wxx, pt.y - nxx, z, pt.x + 1.0F + exx, pt.y + 1.0F + sxx, z, 1.0F, 0.0F, 0.0F, null, false);
+                     }
+ 
+-                    return PolygonalMap2.temp.set(pt.x + 0.5F, pt.y + 0.5F);
++                    return this.collidePoint.set(pt.x + 0.5F, pt.y + 0.5F);
+                 }
+             }
+         }
+ 
+-        return PolygonalMap2.temp.set(toX, toY);
++        return this.collidePoint.set(toX, toY);
+     }
+ 
+     boolean polyVehicleIntersect(VehiclePoly poly, boolean render) {
+         this.vehicleVec[0].set(poly.x1, poly.y1);
+         this.vehicleVec[1].set(poly.x2, poly.y2);

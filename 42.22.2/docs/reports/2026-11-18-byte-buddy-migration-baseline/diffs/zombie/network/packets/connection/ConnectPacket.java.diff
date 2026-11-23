@@ -1,0 +1,22 @@
+diff --git a/zombie/network/packets/connection/ConnectPacket.java b/zombie/network/packets/connection/ConnectPacket.java
+index 8a91091..2ebc273 100644
+--- a/zombie/network/packets/connection/ConnectPacket.java
++++ b/zombie/network/packets/connection/ConnectPacket.java
+@@ -40,13 +40,14 @@ public class ConnectPacket implements INetworkPacket {
+         this.extraInfoFlags = player.getExtraInfoFlags();
+     }
+ 
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
+-        GameServer.receivePlayerConnect(b, connection, connection.getUserName());
+-        GameServer.sendInitialWorldState(connection);
+-        INetworkPacket.send(connection, PacketTypes.PacketType.MetaData, connection.getUserName());
++        GameServer.receivePlayerConnect(b,connection,connection.getUserName(),()->{
++            GameServer.sendInitialWorldState(connection);
++            INetworkPacket.send(connection,PacketTypes.PacketType.MetaData,connection.getUserName());
++        });
+     }
+ 
+     @Override
+     public void write(ByteBufferWriter b) {
+         b.putByte(this.index);

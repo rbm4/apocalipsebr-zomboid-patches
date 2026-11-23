@@ -1,0 +1,25 @@
+diff --git a/zombie/popman/LoadedAreas.java b/zombie/popman/LoadedAreas.java
+index 21cd706..786c431 100644
+--- a/zombie/popman/LoadedAreas.java
++++ b/zombie/popman/LoadedAreas.java
+@@ -61,13 +61,20 @@ public final class LoadedAreas {
+                     this.add(cm.getWorldXMin(), cm.getWorldYMin(), IsoChunkMap.chunkGridWidth, IsoChunkMap.chunkGridWidth);
+                 }
+             }
+         }
+ 
++        if (GameServer.server && !this.serverCells) {
++            zombie.network.ApocBRLobbyStreaming.appendPopulationArea(this);
++        }
+         return this.changed = this.compareWithPrev();
+     }
+ 
++    public static boolean apocbrLobbyActivationSupported() {
++        return true;
++    }
++
+     public void add(int x, int y, int width, int height) {
+         if (this.count < 64) {
+             int n = this.count * 4;
+             this.areas[n++] = x;
+             this.areas[n++] = y;

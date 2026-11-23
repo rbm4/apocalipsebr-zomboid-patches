@@ -1,0 +1,14 @@
+diff --git a/zombie/apocalipse/pathfind/WalkOnlyMover.java b/zombie/apocalipse/pathfind/WalkOnlyMover.java
+new file mode 100644
+index 0000000..f779b57
+--- /dev/null
++++ b/zombie/apocalipse/pathfind/WalkOnlyMover.java
+@@ -0,0 +1,8 @@
++package zombie.apocalipse.pathfind;
++
++import zombie.ai.astar.Mover;
++
++/** An isolated request identity with no crawling, thumping or fence-climbing capability.
++ * Contains no live actor access; polygon worker classification must not unwrap a native body. */
++public interface WalkOnlyMover extends Mover {
++}

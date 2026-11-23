@@ -1,0 +1,51 @@
+diff --git a/zombie/world/ScriptsDictionary.java b/zombie/world/ScriptsDictionary.java
+index ce0b324..8bff67f 100644
+--- a/zombie/world/ScriptsDictionary.java
++++ b/zombie/world/ScriptsDictionary.java
+@@ -177,10 +177,11 @@ public class ScriptsDictionary {
+                 }
+             }
+         }
+ 
+         public T loadScript(ByteBuffer input, int worldVersion) {
++            try(var dictionary=ApocBRWorldDictionaryDecode.enter(input)) {
+             if (input.get() != 0) {
+                 short id = input.getShort();
+                 DictionaryScriptInfo<T> info = this.getInfoForID(id);
+                 if (info != null) {
+                     return info.script;
+@@ -190,19 +191,20 @@ public class ScriptsDictionary {
+                     DebugType.General.warn("[" + this.name + "] Unable to load script with id: " + id);
+                 }
+             }
+ 
+             return null;
++                    }
+         }
+ 
+         public T get(String name) {
+             DictionaryScriptInfo<T> info = this.namedMap.get(name);
+             return info != null ? info.script : null;
+         }
+ 
+         public T get(short id) {
+-            DictionaryScriptInfo<T> info = this.idMap.get(id);
++            DictionaryScriptInfo<T> info = this.getInfoForID(id);
+             return info != null ? info.script : null;
+         }
+ 
+         public short getIdFor(String name) {
+             DictionaryScriptInfo<T> info = this.namedMap.get(name);
+@@ -244,11 +246,11 @@ public class ScriptsDictionary {
+         public DictionaryScriptInfo<T> getInfoForName(String name) {
+             return this.namedMap.get(name);
+         }
+ 
+         public DictionaryScriptInfo<T> getInfoForID(short id) {
+-            return this.idMap.get(id);
++            return ApocBRWorldDictionaryDecode.current()==null?this.idMap.get(id):ApocBRWorldDictionaryDecode.script(this,this.name,id);
+         }
+ 
+         protected void register(T script) throws WorldDictionaryException {
+             if (!this.canRegister(script)) {
+                 throw new WorldDictionaryException("[" + this.name + "]  Cannot register this script!");

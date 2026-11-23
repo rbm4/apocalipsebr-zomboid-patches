@@ -1,0 +1,562 @@
+diff --git a/zombie/network/ServerMap.java b/zombie/network/ServerMap.java
+index 288d82c..d21d031 100644
+--- a/zombie/network/ServerMap.java
++++ b/zombie/network/ServerMap.java
+@@ -1,8 +1,10 @@
+ // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
+ package zombie.network;
+ 
++import zombie.ApocBRServerTelemetryLite;
++
+ import java.io.IOException;
+ import java.util.ArrayList;
+ import java.util.Arrays;
+ import java.util.Comparator;
+ import java.util.HashSet;
+@@ -43,10 +45,11 @@ import zombie.iso.Vector2;
+ import zombie.iso.Vector3;
+ import zombie.iso.WorldGenerate;
+ import zombie.iso.worldgen.WorldGenParams;
+ import zombie.network.id.ObjectIDManager;
+ import zombie.network.packets.INetworkPacket;
++import zombie.pathfind.PolygonalMap2;
+ import zombie.pathfind.nativeCode.PathfindNative;
+ import zombie.popman.NetworkZombiePacker;
+ import zombie.popman.ZombiePopulationManager;
+ import zombie.radio.ZomboidRadio;
+ import zombie.savefile.ServerPlayerDB;
+@@ -78,10 +81,12 @@ public class ServerMap {
+     public boolean queuedQuit;
+     public static ServerMap instance = new ServerMap();
+     public ServerMap.ServerCell[] cellMap;
+     public ArrayList<ServerMap.ServerCell> loadedCells = new ArrayList<>();
+     public ArrayList<ServerMap.ServerCell> releventNow = new ArrayList<>();
++    private final HashSet<ServerMap.ServerCell> releventNowLookup = new HashSet<>();
++    private final HashSet<ServerMap.ServerCell> completedLoad2 = new HashSet<>();
+     int width;
+     int height;
+     IsoMetaGrid grid;
+     ArrayList<ServerMap.ServerCell> toLoad = new ArrayList<>();
+     static final ServerMap.DistToCellComparator distToCellComparator = new ServerMap.DistToCellComparator();
+@@ -241,11 +246,12 @@ public class ServerMap {
+ 
+                 this.cellMap[y * this.width + x] = cell;
+                 this.toLoad.add(cell);
+                 this.loadedCells.add(cell);
+                 this.releventNow.add(cell);
+-            } else if (!this.releventNow.contains(cell)) {
++                this.releventNowLookup.add(cell);
++            } else if (this.releventNowLookup.add(cell)) {
+                 this.releventNow.add(cell);
+             }
+         }
+     }
+ 
+@@ -329,10 +335,11 @@ public class ServerMap {
+ 
+         this.loadOrKeepRelevent(sx - this.getMinX(), sy - this.getMinY());
+     }
+ 
+     public void QueuedQuit() {
++        zombie.apocalipse.humans.ServerHumanFactory.shutdown();
+         ZipBackup.waitFinish();
+         this.QueuedSaveAll(true);
+         ByteBufferWriter b = GameServer.udpEngine.startPacket();
+         PacketTypes.PacketType.ServerQuit.doPacket(b);
+         GameServer.udpEngine.endPacketBroadcast(PacketTypes.PacketType.ServerQuit);
+@@ -342,24 +349,35 @@ public class ServerMap {
+             Thread.sleep(5000L);
+         } catch (InterruptedException var3) {
+             DebugType.General.printException(var3, LogSeverity.Error);
+         }
+ 
+-        Roles.save();
+-        PathfindNative.instance.stop();
+-        PathfindNative.freeMemoryAtExit();
++        // Final captures are queued; keep persistence alive and wait before synchronous role saves.
++        zombie.savefile.ApocBRPostgresConnector.runShutdownDatabaseWork(Roles::save);
++        if (PathfindNative.useNativeCode) {
++            PathfindNative.instance.stop();
++            PathfindNative.freeMemoryAtExit();
++        } else {
++            PolygonalMap2.instance.stop();
++        }
+         MapCollisionData.instance.stop();
+         AnimalPopulationManager.getInstance().stop();
+         ZombiePopulationManager.instance.stop();
++        zombie.apocalipse.events.ApocBREventControl.shutdown();
++        ApocBRBackendBridgeHooks.shutdown();
++        zombie.apocbr.api.ApiBridgeLifecycle.shutdown();
+         RCONServer.shutdown();
+         ServerMap.ServerCell.chunkLoader.quit();
+         ServerWorldDatabase.instance.close();
+         ServerPlayersVehicles.instance.stop();
+         ServerPlayerDB.getInstance().close();
+         ObjectIDManager.getInstance().checkForSaveDataFile(true);
+         ImportantAreaManager.getInstance().saveDataFile();
+         VehiclesDB2.instance.Reset();
++        zombie.savefile.ApocBRPlayerRelationalSync.shutdown();
++        zombie.savefile.ApocBRPostgresConnector.closePool();
++        zombie.popman.NetworkZombiePacker.getInstance().shutdown();
+         GameServer.udpEngine.Shutdown();
+         ServerGUI.shutdown();
+         SteamUtils.shutdown();
+     }
+ 
+@@ -431,10 +449,14 @@ public class ServerMap {
+ 
+         System.out.println("Saving finish");
+         DebugLog.log("Saving took " + (System.nanoTime() - this.saveStartTime) / 1000000.0 + " ms");
+     }
+ 
++    public int telemetryPendingCells() {
++        return this.toLoad.size();
++    }
++
+     public void preupdate() {
+         this.lastTick = System.nanoTime();
+         mapLoading = DebugType.MapLoading.isEnabled();
+ 
+         for (int i = 0; i < this.toLoad.size(); i++) {
+@@ -450,10 +472,11 @@ public class ServerMap {
+                 assert this.cellMap[cx + cy * this.width] == cell;
+ 
+                 this.cellMap[cx + cy * this.width] = null;
+                 this.loadedCells.remove(cell);
+                 this.releventNow.remove(cell);
++                this.releventNowLookup.remove(cell);
+                 ServerMap.ServerCell.loaded2.remove(cell);
+                 this.toLoad.remove(i--);
+             }
+         }
+ 
+@@ -489,16 +512,21 @@ public class ServerMap {
+             }
+ 
+             ServerMap.ServerCell.loaded.clear();
+             ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
+             if (!ServerMap.ServerCell.loaded2.isEmpty()) {
++                this.completedLoad2.clear();
+                 try {
+                     ServerLOS.instance.suspend();
+ 
+                     for (int x = 0; x < ServerMap.ServerCell.loaded2.size(); x++) {
+                         ServerMap.ServerCell cell = ServerMap.ServerCell.loaded2.get(x);
+ 
++                        if (cell == null) {
++                            continue;
++                        }
++
+                         try {
+                             cell.Load2();
+                         } catch (Exception var12) {
+                             DebugType.General.printException(var12, LogSeverity.Error, "Dropping cell %d,%d", cell.wx, cell.wy);
+                             int cx = cell.wx - this.getMinX();
+@@ -511,18 +539,27 @@ public class ServerMap {
+                             }
+ 
+                             this.cellMap[cy * this.width + cx] = null;
+                             this.loadedCells.remove(cell);
+                             this.releventNow.remove(cell);
++                            this.releventNowLookup.remove(cell);
+                         }
+ 
+-                        this.toLoad.remove(cell);
+-                        ServerMap.ServerCell.loaded2.remove(x--);
++                        this.completedLoad2.add(cell);
++                        ServerMap.ServerCell.loaded2.set(x, null);
+                         ServerMap.ServerCell.chunkLoader.getRecalc(ServerMap.ServerCell.loaded2);
+                     }
+                 } finally {
+-                    ServerLOS.instance.resume();
++                    try {
++                        compactLoaded2();
++                        if (!this.completedLoad2.isEmpty()) {
++                            this.toLoad.removeIf(this.completedLoad2::contains);
++                        }
++                    } finally {
++                        this.completedLoad2.clear();
++                        ServerLOS.instance.resume();
++                    }
+                 }
+             }
+         }
+ 
+         int saveWorldEveryMinutes = ServerOptions.instance.saveWorldEveryMinutes.getValue();
+@@ -534,35 +571,53 @@ public class ServerMap {
+             }
+         }
+ 
+         if (this.queuedSaveAll && !ZipBackup.isRunning()) {
+             this.queuedSaveAll = false;
+-            this.QueuedSaveAll(false);
++            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.saveAll")) {
++                this.QueuedSaveAll(false);
++            }
+         }
+ 
+         if (this.queuedQuit) {
+             System.exit(0);
+         }
+ 
+         this.releventNow.clear();
++        this.releventNowLookup.clear();
+         this.updateLosThisFrame = LOS_TICK.Check();
+         if (TIME_TICK.Check()) {
+             ServerMap.ServerCell.chunkLoader.saveLater(GameTime.instance);
+         }
+ 
+         if (GameEntityManager.needSave && this.metaEntitySaveFrequency.Check()) {
+             GameEntityManager.Save();
+         }
+     }
+ 
++    private static void compactLoaded2() {
++        ArrayList<ServerMap.ServerCell> loaded2 = ServerMap.ServerCell.loaded2;
++        int write = 0;
++        for (int read = 0; read < loaded2.size(); read++) {
++            ServerMap.ServerCell cell = loaded2.get(read);
++            if (cell != null) {
++                loaded2.set(write++, cell);
++            }
++        }
++
++        if (write < loaded2.size()) {
++            loaded2.subList(write, loaded2.size()).clear();
++        }
++    }
++
+     public void postupdate() {
+         boolean pathfindPaused = false;
+ 
+         try {
+             for (int n = 0; n < this.loadedCells.size(); n++) {
+                 ServerMap.ServerCell cell = this.loadedCells.get(n);
+-                boolean shouldBeLoaded = this.releventNow.contains(cell) || !this.outsidePlayerInfluence(cell);
++                boolean shouldBeLoaded = this.releventNowLookup.contains(cell) || !this.outsidePlayerInfluence(cell);
+                 if (!cell.isLoaded) {
+                     if (!shouldBeLoaded && !cell.cancelLoading) {
+                         if (mapLoading) {
+                             DebugLog.log(
+                                 DebugType.MapLoading, "MainThread: cancelling " + cell.wx + "," + cell.wy + " cell.startedLoading=" + cell.startedLoading
+@@ -581,16 +636,21 @@ public class ServerMap {
+                     if (!pathfindPaused) {
+                         ServerLOS.instance.suspend();
+                         pathfindPaused = true;
+                     }
+ 
+-                    this.cellMap[y * this.width + x].Unload();
++                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.unload")) {
++                        this.cellMap[y * this.width + x].Unload();
++                    }
++                    ApocBRServerTelemetryLite.count("cells.unloaded", 1L);
+                     this.cellMap[y * this.width + x] = null;
+                     this.loadedCells.remove(cell);
+                     n--;
+                 } else {
+-                    cell.update();
++                    try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.update")) {
++                        cell.update();
++                    }
+                 }
+             }
+         } catch (Exception var10) {
+             DebugType.General.printException(var10, LogSeverity.Error);
+         } finally {
+@@ -598,11 +658,13 @@ public class ServerMap {
+                 ServerLOS.instance.resume();
+             }
+         }
+ 
+         NetworkZombiePacker.getInstance().postupdate();
+-        ServerMap.ServerCell.chunkLoader.updateSaved();
++        try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.saveCompletions")) {
++            ServerMap.ServerCell.chunkLoader.updateSaved();
++        }
+     }
+ 
+     public void physicsCheck(int x, int y) {
+         int cx = PZMath.coorddivision(x, 64) - this.getMinX();
+         int cy = PZMath.coorddivision(y, 64) - this.getMinY();
+@@ -815,21 +877,32 @@ public class ServerMap {
+         private boolean doingRecalc;
+         private final UpdateLimit hotSaveFrequency = new UpdateLimit(1000L);
+ 
+         public void Load2() {
+             long start = System.nanoTime();
+-            this.RecalcAll2();
++            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.integrate")) {
++                this.RecalcAll2();
++            }
+             if (ServerMap.mapLoading) {
+-                DebugType.MapLoading.debugln("loaded2=" + loaded2);
++                DebugType.MapLoading.debugln("loaded2=" + loaded2ForLogging());
+             }
+ 
+             float time = (float)(System.nanoTime() - start) / 1000000.0F;
+             if (ServerMap.mapLoading) {
+                 DebugType.MapLoading.debugln("finish loading cell " + this.wx + "," + this.wy + " ms=" + time);
+             }
+ 
+-            this.loadVehicles();
++            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.loadVehicles")) {
++                this.loadVehicles();
++            }
++            ApocBRServerTelemetryLite.count("cells.integrated", 1L);
++        }
++
++        private static ArrayList<ServerMap.ServerCell> loaded2ForLogging() {
++            ArrayList<ServerMap.ServerCell> pending = new ArrayList<>(loaded2);
++            pending.removeIf(Objects::isNull);
++            return pending;
+         }
+ 
+         private void loadVehicles() {
+             for (int cx = 0; cx < 8; cx++) {
+                 for (int cy = 0; cy < 8; cy++) {
+@@ -854,121 +927,130 @@ public class ServerMap {
+             this.unexploredRooms.clear();
+             this.isLoaded = true;
+             int minLevel = Integer.MAX_VALUE;
+             int maxLevel = Integer.MIN_VALUE;
+ 
+-            for (int chunkY = 0; chunkY < 8; chunkY++) {
+-                for (int chunkX = 0; chunkX < 8; chunkX++) {
+-                    IsoChunk chunk = this.getChunk(chunkX, chunkY);
+-                    if (chunk != null) {
+-                        minLevel = PZMath.min(minLevel, chunk.getMinLevel());
+-                        maxLevel = PZMath.max(maxLevel, chunk.getMaxLevel());
++            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.boundarySetup")) {
++                for (int chunkY = 0; chunkY < 8; chunkY++) {
++                    for (int chunkX = 0; chunkX < 8; chunkX++) {
++                        IsoChunk chunk = this.getChunk(chunkX, chunkY);
++                        if (chunk != null) {
++                            minLevel = PZMath.min(minLevel, chunk.getMinLevel());
++                            maxLevel = PZMath.max(maxLevel, chunk.getMaxLevel());
++                        }
+                     }
+                 }
+-            }
+ 
+-            for (int z = 1; z <= maxLevel; z++) {
+-                for (int x = -1; x < 65; x++) {
+-                    IsoGridSquare sq = ServerMap.instance.getGridSquare(sx + x, sy - 1, z);
+-                    if (sq != null && !sq.getObjects().isEmpty()) {
+-                        IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+-                    } else if (x >= 0 && x < 64) {
+-                        sq = ServerMap.instance.getGridSquare(sx + x, sy, z);
++                for (int z = 1; z <= maxLevel; z++) {
++                    for (int x = -1; x < 65; x++) {
++                        IsoGridSquare sq = ServerMap.instance.getGridSquare(sx + x, sy - 1, z);
+                         if (sq != null && !sq.getObjects().isEmpty()) {
+                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
++                        } else if (x >= 0 && x < 64) {
++                            sq = ServerMap.instance.getGridSquare(sx + x, sy, z);
++                            if (sq != null && !sq.getObjects().isEmpty()) {
++                                IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
++                            }
+                         }
+-                    }
+ 
+-                    sq = ServerMap.instance.getGridSquare(sx + x, sy + 64, z);
+-                    if (sq != null && !sq.getObjects().isEmpty()) {
+-                        IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
+-                    } else if (x >= 0 && x < 64) {
+-                        ServerMap.instance.getGridSquare(sx + x, sy + 64 - 1, z);
++                        sq = ServerMap.instance.getGridSquare(sx + x, sy + 64, z);
+                         if (sq != null && !sq.getObjects().isEmpty()) {
+                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
++                        } else if (x >= 0 && x < 64) {
++                            ServerMap.instance.getGridSquare(sx + x, sy + 64 - 1, z);
++                            if (sq != null && !sq.getObjects().isEmpty()) {
++                                IsoWorld.instance.currentCell.EnsureSurroundNotNull(sq.x, sq.y, z);
++                            }
+                         }
+                     }
+-                }
+ 
+-                for (int y = 0; y < 64; y++) {
+-                    IsoGridSquare sqx = ServerMap.instance.getGridSquare(sx - 1, sy + y, z);
+-                    if (sqx != null && !sqx.getObjects().isEmpty()) {
+-                        IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+-                    } else {
+-                        sqx = ServerMap.instance.getGridSquare(sx, sy + y, z);
++                    for (int y = 0; y < 64; y++) {
++                        IsoGridSquare sqx = ServerMap.instance.getGridSquare(sx - 1, sy + y, z);
+                         if (sqx != null && !sqx.getObjects().isEmpty()) {
+                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
++                        } else {
++                            sqx = ServerMap.instance.getGridSquare(sx, sy + y, z);
++                            if (sqx != null && !sqx.getObjects().isEmpty()) {
++                                IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
++                            }
+                         }
+-                    }
+ 
+-                    sqx = ServerMap.instance.getGridSquare(sx + 64, sy + y, z);
+-                    if (sqx != null && !sqx.getObjects().isEmpty()) {
+-                        IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
+-                    } else {
+-                        sqx = ServerMap.instance.getGridSquare(sx + 64 - 1, sy + y, z);
++                        sqx = ServerMap.instance.getGridSquare(sx + 64, sy + y, z);
+                         if (sqx != null && !sqx.getObjects().isEmpty()) {
+                             IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
++                        } else {
++                            sqx = ServerMap.instance.getGridSquare(sx + 64 - 1, sy + y, z);
++                            if (sqx != null && !sqx.getObjects().isEmpty()) {
++                                IsoWorld.instance.currentCell.EnsureSurroundNotNull(sqx.x, sqx.y, z);
++                            }
+                         }
+                     }
+                 }
+             }
+ 
+-            for (int z = minLevel; z <= maxLevel; z++) {
+-                for (int x = 0; x < 64; x++) {
+-                    IsoGridSquare sqxx = ServerMap.instance.getGridSquare(sx + x, sy, z);
+-                    if (sqxx != null) {
+-                        sqxx.RecalcAllWithNeighbours(true);
+-                    }
++            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.borderRecalc")) {
++                for (int z = minLevel; z <= maxLevel; z++) {
++                    for (int x = 0; x < 64; x++) {
++                        IsoGridSquare sqxx = this.getGridSquareLocal(x, 0, z);
++                        if (sqxx != null) {
++                            sqxx.RecalcAllWithNeighbours(true);
++                        }
+ 
+-                    sqxx = ServerMap.instance.getGridSquare(sx + x, ey - 1, z);
+-                    if (sqxx != null) {
+-                        sqxx.RecalcAllWithNeighbours(true);
++                        sqxx = this.getGridSquareLocal(x, 63, z);
++                        if (sqxx != null) {
++                            sqxx.RecalcAllWithNeighbours(true);
++                        }
+                     }
+-                }
+ 
+-                for (int y = 0; y < 64; y++) {
+-                    IsoGridSquare sqxxx = ServerMap.instance.getGridSquare(sx, sy + y, z);
+-                    if (sqxxx != null) {
+-                        sqxxx.RecalcAllWithNeighbours(true);
+-                    }
++                    for (int y = 1; y < 63; y++) {
++                        IsoGridSquare sqxxx = this.getGridSquareLocal(0, y, z);
++                        if (sqxxx != null) {
++                            sqxxx.RecalcAllWithNeighbours(true);
++                        }
+ 
+-                    sqxxx = ServerMap.instance.getGridSquare(ex - 1, sy + y, z);
+-                    if (sqxxx != null) {
+-                        sqxxx.RecalcAllWithNeighbours(true);
++                        sqxxx = this.getGridSquareLocal(63, y, z);
++                        if (sqxxx != null) {
++                            sqxxx.RecalcAllWithNeighbours(true);
++                        }
+                     }
+                 }
+             }
+ 
+             int nSquares = 64;
+ 
+-            for (int cx = 0; cx < 8; cx++) {
+-                for (int cy = 0; cy < 8; cy++) {
+-                    IsoChunk chunk = this.chunks[cx][cy];
+-                    if (chunk != null) {
+-                        chunk.loaded = true;
+-
+-                        for (int i = 0; i < 64; i++) {
+-                            for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
+-                                int squaresIndexOfLevel = chunk.squaresIndexOfLevel(z);
+-                                IsoGridSquare g = chunk.squares[squaresIndexOfLevel][i];
+-                                if (g != null) {
+-                                    if (g.getRoom() != null && !g.getRoom().def.explored) {
+-                                        this.unexploredRooms.add(g.getRoom().def);
++            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.markSquares")) {
++                for (int cx = 0; cx < 8; cx++) {
++                    for (int cy = 0; cy < 8; cy++) {
++                        IsoChunk chunk = this.chunks[cx][cy];
++                        if (chunk != null) {
++                            chunk.loaded = true;
++
++                            for (int i = 0; i < 64; i++) {
++                                for (int z = chunk.minLevel; z <= chunk.maxLevel; z++) {
++                                    int squaresIndexOfLevel = chunk.squaresIndexOfLevel(z);
++                                    IsoGridSquare g = chunk.squares[squaresIndexOfLevel][i];
++                                    if (g != null) {
++                                        if (g.getRoom() != null && !g.getRoom().def.explored) {
++                                            this.unexploredRooms.add(g.getRoom().def);
++                                        }
++
++                                        g.propertiesDirty = true;
+                                     }
+-
+-                                    g.propertiesDirty = true;
+                                 }
+                             }
+                         }
+                     }
+                 }
+             }
+ 
+-            for (int x = 0; x < 8; x++) {
+-                for (int y = 0; y < 8; y++) {
+-                    if (this.chunks[x][y] != null) {
+-                        this.chunks[x][y].doLoadGridsquare();
++            try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.cell.doLoadGridsquare")) {
++                for (int x = 0; x < 8; x++) {
++                    for (int y = 0; y < 8; y++) {
++                        if (this.chunks[x][y] != null) {
++                            ApocBRServerTelemetryLite.count(this.chunks[x][y].isNewChunk() ? "chunks.newIntegrated" : "chunks.existingIntegrated", 1L);
++                            this.chunks[x][y].doLoadGridsquare();
++                        }
+                     }
+                 }
+             }
+ 
+             for (RoomDef def : this.unexploredRooms) {
+@@ -1006,16 +1088,20 @@ public class ServerMap {
+                     IsoChunk chunk = this.chunks[x][y];
+                     if (chunk != null) {
+                         chunk.removeFromWorld();
+                         chunk.loadVehiclesObject = null;
+ 
+-                        for (int i = 0; i < chunk.vehicles.size(); i++) {
+-                            BaseVehicle vehicle = chunk.vehicles.get(i);
+-                            VehiclesDB2.instance.updateVehicle(vehicle);
++                        try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.chunk.unloadVehiclePersistence")) {
++                            for (int i = 0; i < chunk.vehicles.size(); i++) {
++                                BaseVehicle vehicle = chunk.vehicles.get(i);
++                                VehiclesDB2.instance.updateVehicle(vehicle);
++                            }
+                         }
+ 
+-                        chunkLoader.addSaveUnloadedJob(chunk);
++                        try (ApocBRServerTelemetryLite.Scope telemetry = ApocBRServerTelemetryLite.phase("map.chunk.unloadSaveEnqueue")) {
++                            chunkLoader.addSaveUnloadedJob(chunk);
++                        }
+                         this.chunks[x][y] = null;
+                     }
+                 }
+             }
+ 
+@@ -1103,10 +1189,19 @@ public class ServerMap {
+             }
+ 
+             return null;
+         }
+ 
++        private IsoGridSquare getGridSquareLocal(int localX, int localY, int z) {
++            if (localX < 0 || localX >= 64 || localY < 0 || localY >= 64) {
++                return null;
++            }
++
++            IsoChunk chunk = this.chunks[localX / 8][localY / 8];
++            return chunk == null ? null : chunk.getGridSquare(localX % 8, localY % 8, z);
++        }
++
+         public int getWX() {
+             return this.wx;
+         }
+ 
+         public int getWY() {

@@ -1,0 +1,1814 @@
+{
+  "method": "Conservative lexical custom-type closure, not resolved runtime ownership",
+  "seeds": [
+    "zombie/apocalipse/humans/HumanLifecycle.java",
+    "zombie/apocalipse/humans/HumanLog.java",
+    "zombie/apocalipse/humans/OperationAnnouncementProvider.java",
+    "zombie/apocalipse/humans/ServerHuman.java",
+    "zombie/apocalipse/humans/ServerHumanActuator.java",
+    "zombie/apocalipse/humans/ServerHumanAimPacket.java",
+    "zombie/apocalipse/humans/ServerHumanAttackLine.java",
+    "zombie/apocalipse/humans/ServerHumanAttackReplay.java",
+    "zombie/apocalipse/humans/ServerHumanCombat.java",
+    "zombie/apocalipse/humans/ServerHumanCombatApproach.java",
+    "zombie/apocalipse/humans/ServerHumanCombatAudio.java",
+    "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java",
+    "zombie/apocalipse/humans/ServerHumanCombatNetwork.java",
+    "zombie/apocalipse/humans/ServerHumanCommittedHit.java",
+    "zombie/apocalipse/humans/ServerHumanCorpseDrag.java",
+    "zombie/apocalipse/humans/ServerHumanCorpses.java",
+    "zombie/apocalipse/humans/ServerHumanDeaths.java",
+    "zombie/apocalipse/humans/ServerHumanDefinition.java",
+    "zombie/apocalipse/humans/ServerHumanDialogue.java",
+    "zombie/apocalipse/humans/ServerHumanDragPacket.java",
+    "zombie/apocalipse/humans/ServerHumanEmotePacket.java",
+    "zombie/apocalipse/humans/ServerHumanEncounters.java",
+    "zombie/apocalipse/humans/ServerHumanFactory.java",
+    "zombie/apocalipse/humans/ServerHumanFurniture.java",
+    "zombie/apocalipse/humans/ServerHumanFurnitureWorld.java",
+    "zombie/apocalipse/humans/ServerHumanGroups.java",
+    "zombie/apocalipse/humans/ServerHumanHealing.java",
+    "zombie/apocalipse/humans/ServerHumanHitPacket.java",
+    "zombie/apocalipse/humans/ServerHumanInventory.java",
+    "zombie/apocalipse/humans/ServerHumanMedicalPacket.java",
+    "zombie/apocalipse/humans/ServerHumanMissPacket.java",
+    "zombie/apocalipse/humans/ServerHumanMovement.java",
+    "zombie/apocalipse/humans/ServerHumanPerception.java",
+    "zombie/apocalipse/humans/ServerHumanPhysiology.java",
+    "zombie/apocalipse/humans/ServerHumanPlanning.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerDamage.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java",
+    "zombie/apocalipse/humans/ServerHumanPresentationIds.java",
+    "zombie/apocalipse/humans/ServerHumanProfiles.java",
+    "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+    "zombie/apocalipse/humans/ServerHumanSeating.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingAssets.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingCatalog.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingCommands.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingGeometry.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingPacket.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingTransport.java",
+    "zombie/apocalipse/humans/ServerHumanSimulationWorker.java",
+    "zombie/apocalipse/humans/ServerHumanSpeech.java",
+    "zombie/apocalipse/humans/ServerHumanSquadAssist.java",
+    "zombie/apocalipse/humans/ServerHumanSurvival.java",
+    "zombie/apocalipse/humans/ServerHumanTasks.java",
+    "zombie/apocalipse/humans/ServerHumanTerritory.java",
+    "zombie/apocalipse/humans/ServerHumanTrading.java",
+    "zombie/apocalipse/humans/ServerHumanTransport.java",
+    "zombie/apocalipse/humans/ServerHumanWalking.java",
+    "zombie/apocalipse/humans/ServerHumanWeaponBackend.java",
+    "zombie/apocalipse/humans/ServerHumanZombieVictims.java",
+    "zombie/apocalipse/humans/brain/EngageZombiesModule.java",
+    "zombie/apocalipse/humans/brain/GuideBrain.java",
+    "zombie/apocalipse/humans/brain/HumanAction.java",
+    "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+    "zombie/apocalipse/humans/brain/HumanActivityController.java",
+    "zombie/apocalipse/humans/brain/HumanActuator.java",
+    "zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java",
+    "zombie/apocalipse/humans/brain/HumanBehavior.java",
+    "zombie/apocalipse/humans/brain/HumanCombat.java",
+    "zombie/apocalipse/humans/brain/HumanCombatDamage.java",
+    "zombie/apocalipse/humans/brain/HumanCombatInventory.java",
+    "zombie/apocalipse/humans/brain/HumanCombatTactics.java",
+    "zombie/apocalipse/humans/brain/HumanContactMemory.java",
+    "zombie/apocalipse/humans/brain/HumanEngagement.java",
+    "zombie/apocalipse/humans/brain/HumanModule.java",
+    "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+    "zombie/apocalipse/humans/brain/HumanObservation.java",
+    "zombie/apocalipse/humans/brain/HumanSenses.java",
+    "zombie/apocalipse/humans/brain/HumanStateMachine.java",
+    "zombie/apocalipse/humans/brain/HumanTerritory.java",
+    "zombie/apocalipse/humans/brain/HumanWeaponCombat.java",
+    "zombie/apocalipse/humans/brain/IdleBehavior.java",
+    "zombie/apocalipse/humans/brain/TacticalIntent.java",
+    "zombie/apocalipse/humans/brain/WalkingModule.java",
+    "zombie/apocalipse/humans/death/HumanDeathPolicy.java",
+    "zombie/apocalipse/humans/death/HumanDeathState.java",
+    "zombie/apocalipse/humans/death/HumanReputationPort.java",
+    "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java",
+    "zombie/apocalipse/humans/dialogue/HumanDialogueResponses.java",
+    "zombie/apocalipse/humans/dialogue/HumanDialogueSession.java",
+    "zombie/apocalipse/humans/dialogue/HumanGreetingProvider.java",
+    "zombie/apocalipse/humans/dialogue/HumanLanguage.java",
+    "zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+    "zombie/apocalipse/humans/encounters/EncounterPort.java",
+    "zombie/apocalipse/humans/encounters/HumanRelationships.java",
+    "zombie/apocalipse/humans/encounters/PlayerEncounterModule.java",
+    "zombie/apocalipse/humans/encounters/RetaliatePlayerModule.java",
+    "zombie/apocalipse/humans/encounters/RetaliationPort.java",
+    "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+    "zombie/apocalipse/humans/furniture/FurnitureBindings.java",
+    "zombie/apocalipse/humans/furniture/FurnitureCaptureScheduler.java",
+    "zombie/apocalipse/humans/furniture/FurnitureDemand.java",
+    "zombie/apocalipse/humans/furniture/FurnitureReservations.java",
+    "zombie/apocalipse/humans/furniture/FurnitureScanBudget.java",
+    "zombie/apocalipse/humans/furniture/FurnitureScanner.java",
+    "zombie/apocalipse/humans/furniture/FurnitureSelector.java",
+    "zombie/apocalipse/humans/groups/GroupCohesionCoordinator.java",
+    "zombie/apocalipse/humans/groups/GroupPatrolCoordinator.java",
+    "zombie/apocalipse/humans/groups/GroupPatrolModule.java",
+    "zombie/apocalipse/humans/groups/GroupPatrolPort.java",
+    "zombie/apocalipse/humans/groups/GroupRecoveryCoordinator.java",
+    "zombie/apocalipse/humans/groups/HumanGroupMembership.java",
+    "zombie/apocalipse/humans/groups/SquadAssistModule.java",
+    "zombie/apocalipse/humans/groups/SquadAssistPort.java",
+    "zombie/apocalipse/humans/groups/SquadCombatCoordinator.java",
+    "zombie/apocalipse/humans/healing/HealingModule.java",
+    "zombie/apocalipse/humans/healing/HealingSettings.java",
+    "zombie/apocalipse/humans/healing/HumanHealingPort.java",
+    "zombie/apocalipse/humans/healing/HumanRecoveryState.java",
+    "zombie/apocalipse/humans/healing/MedicalExecution.java",
+    "zombie/apocalipse/humans/interactions/InteractionReservations.java",
+    "zombie/apocalipse/humans/movement/AreaReturnPlanner.java",
+    "zombie/apocalipse/humans/movement/CohesionGrid.java",
+    "zombie/apocalipse/humans/movement/CombatRoutePlanner.java",
+    "zombie/apocalipse/humans/movement/DestinationRoutePlanner.java",
+    "zombie/apocalipse/humans/movement/IndoorRoutePlanner.java",
+    "zombie/apocalipse/humans/movement/MovementGrid.java",
+    "zombie/apocalipse/humans/movement/MovementModifiers.java",
+    "zombie/apocalipse/humans/movement/VicinityGrid.java",
+    "zombie/apocalipse/humans/planning/NpcDecisionPlanner.java",
+    "zombie/apocalipse/humans/profiles/GuidePolicy.java",
+    "zombie/apocalipse/humans/profiles/HumanCheats.java",
+    "zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+    "zombie/apocalipse/humans/profiles/HumanModuleRegistry.java",
+    "zombie/apocalipse/humans/profiles/HumanProfile.java",
+    "zombie/apocalipse/humans/profiles/HumanProfileRegistry.java",
+    "zombie/apocalipse/humans/rest/RestModule.java",
+    "zombie/apocalipse/humans/rest/RestSettings.java",
+    "zombie/apocalipse/humans/seating/HumanSeating.java",
+    "zombie/apocalipse/humans/seating/SeatingExecution.java",
+    "zombie/apocalipse/humans/seating/SeatingGeometry.java",
+    "zombie/apocalipse/humans/seating/StockSeatingAssets.java",
+    "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+    "zombie/apocalipse/humans/speech/HumanSpeechDefaults.java",
+    "zombie/apocalipse/humans/speech/HumanSpeechEngine.java",
+    "zombie/apocalipse/humans/speech/HumanSpeechMemory.java",
+    "zombie/apocalipse/humans/speech/HumanStateSpeechDefaults.java",
+    "zombie/apocalipse/humans/speech/SpeechContext.java",
+    "zombie/apocalipse/humans/speech/SpeechEvent.java",
+    "zombie/apocalipse/humans/state/HumanConditionCalculator.java",
+    "zombie/apocalipse/humans/state/HumanHealthCapacity.java",
+    "zombie/apocalipse/humans/state/HumanMutation.java",
+    "zombie/apocalipse/humans/state/HumanState.java",
+    "zombie/apocalipse/humans/state/HumanStateReducer.java",
+    "zombie/apocalipse/humans/state/HumanStateStore.java",
+    "zombie/apocalipse/humans/survival/RetreatPlanner.java",
+    "zombie/apocalipse/humans/survival/RouteRefusals.java",
+    "zombie/apocalipse/humans/survival/SurvivalModule.java",
+    "zombie/apocalipse/humans/survival/SurvivalPort.java",
+    "zombie/apocalipse/humans/survival/SurvivalSettings.java",
+    "zombie/apocalipse/humans/survival/ThreatAssessment.java",
+    "zombie/apocalipse/humans/tasks/AssignedTaskModule.java",
+    "zombie/apocalipse/humans/tasks/CorpseCleanupExecution.java",
+    "zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+    "zombie/apocalipse/humans/tasks/HumanTaskCommand.java",
+    "zombie/apocalipse/humans/tasks/HumanTaskWorld.java",
+    "zombie/apocalipse/humans/trading/HumanTradeOffer.java",
+    "zombie/apocalipse/humans/traversal/BodyOccupancy.java",
+    "zombie/apocalipse/humans/traversal/CrossingReservations.java",
+    "zombie/apocalipse/humans/traversal/HumanTraversal.java",
+    "zombie/apocalipse/humans/traversal/TraversalEdge.java",
+    "zombie/apocalipse/humans/traversal/TraversalExecution.java",
+    "zombie/apocalipse/humans/traversal/TraversalStatePacket.java",
+    "zombie/apocalipse/humans/traversal/TraversalWorld.java",
+    "zombie/apocalipse/humans/walking/MovementRequest.java",
+    "zombie/apocalipse/humans/walking/WalkingPattern.java",
+    "zombie/apocalipse/humans/walking/WalkingPatternRegistry.java",
+    "zombie/apocalipse/humans/walking/WalkingPatternSpec.java",
+    "zombie/apocalipse/pathfind/WalkOnlyMover.java",
+    "zombie/apocalipse/zombies/ServerCorpseDragAuthority.java",
+    "zombie/apocalipse/zombies/ServerZombieController.java",
+    "zombie/apocalipse/zombies/ServerZombieNativeAdapter.java",
+    "zombie/apocalipse/zombies/ServerZombiePace.java",
+    "zombie/apocalipse/zombies/ServerZombiePath.java",
+    "zombie/apocalipse/zombies/ServerZombieSession.java",
+    "zombie/apocalipse/zombies/ZombieVictimPort.java",
+    "zombie/savefile/ApocBRHumanSales.java",
+    "zombie/savefile/ApocBRNpcDialogues.java",
+    "zombie/savefile/ApocBRNpcMortality.java",
+    "zombie/savefile/ApocBRNpcRelationships.java",
+    "zombie/savefile/ApocBRNpcSpeech.java",
+    "zombie/savefile/ApocBRNpcStore.java"
+  ],
+  "closure": [
+    "zombie/ApocBRServerTelemetryLite.java",
+    "zombie/ServerAnimalPerceptionGrid.java",
+    "zombie/ServerMovingObjectIndex.java",
+    "zombie/ServerMovingObjectSet.java",
+    "zombie/apocalipse/events/ApocBREventControl.java",
+    "zombie/apocalipse/humans/HumanLifecycle.java",
+    "zombie/apocalipse/humans/HumanLog.java",
+    "zombie/apocalipse/humans/OperationAnnouncementProvider.java",
+    "zombie/apocalipse/humans/ServerHuman.java",
+    "zombie/apocalipse/humans/ServerHumanActuator.java",
+    "zombie/apocalipse/humans/ServerHumanAimPacket.java",
+    "zombie/apocalipse/humans/ServerHumanAttackLine.java",
+    "zombie/apocalipse/humans/ServerHumanAttackReplay.java",
+    "zombie/apocalipse/humans/ServerHumanCombat.java",
+    "zombie/apocalipse/humans/ServerHumanCombatApproach.java",
+    "zombie/apocalipse/humans/ServerHumanCombatAudio.java",
+    "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java",
+    "zombie/apocalipse/humans/ServerHumanCombatNetwork.java",
+    "zombie/apocalipse/humans/ServerHumanCommittedHit.java",
+    "zombie/apocalipse/humans/ServerHumanCorpseDrag.java",
+    "zombie/apocalipse/humans/ServerHumanCorpses.java",
+    "zombie/apocalipse/humans/ServerHumanDeaths.java",
+    "zombie/apocalipse/humans/ServerHumanDefinition.java",
+    "zombie/apocalipse/humans/ServerHumanDialogue.java",
+    "zombie/apocalipse/humans/ServerHumanDragPacket.java",
+    "zombie/apocalipse/humans/ServerHumanEmotePacket.java",
+    "zombie/apocalipse/humans/ServerHumanEncounters.java",
+    "zombie/apocalipse/humans/ServerHumanFactory.java",
+    "zombie/apocalipse/humans/ServerHumanFurniture.java",
+    "zombie/apocalipse/humans/ServerHumanFurnitureWorld.java",
+    "zombie/apocalipse/humans/ServerHumanGroups.java",
+    "zombie/apocalipse/humans/ServerHumanHealing.java",
+    "zombie/apocalipse/humans/ServerHumanHitPacket.java",
+    "zombie/apocalipse/humans/ServerHumanInventory.java",
+    "zombie/apocalipse/humans/ServerHumanMedicalPacket.java",
+    "zombie/apocalipse/humans/ServerHumanMissPacket.java",
+    "zombie/apocalipse/humans/ServerHumanMovement.java",
+    "zombie/apocalipse/humans/ServerHumanPerception.java",
+    "zombie/apocalipse/humans/ServerHumanPhysiology.java",
+    "zombie/apocalipse/humans/ServerHumanPlanning.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerDamage.java",
+    "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java",
+    "zombie/apocalipse/humans/ServerHumanPresentationIds.java",
+    "zombie/apocalipse/humans/ServerHumanProfiles.java",
+    "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+    "zombie/apocalipse/humans/ServerHumanSeating.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingAssets.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingCatalog.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingCommands.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingGeometry.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingPacket.java",
+    "zombie/apocalipse/humans/ServerHumanSeatingTransport.java",
+    "zombie/apocalipse/humans/ServerHumanSimulationWorker.java",
+    "zombie/apocalipse/humans/ServerHumanSpeech.java",
+    "zombie/apocalipse/humans/ServerHumanSquadAssist.java",
+    "zombie/apocalipse/humans/ServerHumanSurvival.java",
+    "zombie/apocalipse/humans/ServerHumanTasks.java",
+    "zombie/apocalipse/humans/ServerHumanTerritory.java",
+    "zombie/apocalipse/humans/ServerHumanTrading.java",
+    "zombie/apocalipse/humans/ServerHumanTransport.java",
+    "zombie/apocalipse/humans/ServerHumanWalking.java",
+    "zombie/apocalipse/humans/ServerHumanWeaponBackend.java",
+    "zombie/apocalipse/humans/ServerHumanZombieVictims.java",
+    "zombie/apocalipse/humans/brain/EngageZombiesModule.java",
+    "zombie/apocalipse/humans/brain/GuideBrain.java",
+    "zombie/apocalipse/humans/brain/HumanAction.java",
+    "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+    "zombie/apocalipse/humans/brain/HumanActivityController.java",
+    "zombie/apocalipse/humans/brain/HumanActuator.java",
+    "zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java",
+    "zombie/apocalipse/humans/brain/HumanBehavior.java",
+    "zombie/apocalipse/humans/brain/HumanCombat.java",
+    "zombie/apocalipse/humans/brain/HumanCombatDamage.java",
+    "zombie/apocalipse/humans/brain/HumanCombatInventory.java",
+    "zombie/apocalipse/humans/brain/HumanCombatTactics.java",
+    "zombie/apocalipse/humans/brain/HumanContactMemory.java",
+    "zombie/apocalipse/humans/brain/HumanEngagement.java",
+    "zombie/apocalipse/humans/brain/HumanModule.java",
+    "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+    "zombie/apocalipse/humans/brain/HumanObservation.java",
+    "zombie/apocalipse/humans/brain/HumanSenses.java",
+    "zombie/apocalipse/humans/brain/HumanStateMachine.java",
+    "zombie/apocalipse/humans/brain/HumanTerritory.java",
+    "zombie/apocalipse/humans/brain/HumanWeaponCombat.java",
+    "zombie/apocalipse/humans/brain/IdleBehavior.java",
+    "zombie/apocalipse/humans/brain/TacticalIntent.java",
+    "zombie/apocalipse/humans/brain/WalkingModule.java",
+    "zombie/apocalipse/humans/death/HumanDeathPolicy.java",
+    "zombie/apocalipse/humans/death/HumanDeathState.java",
+    "zombie/apocalipse/humans/death/HumanReputationPort.java",
+    "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java",
+    "zombie/apocalipse/humans/dialogue/HumanDialogueResponses.java",
+    "zombie/apocalipse/humans/dialogue/HumanDialogueSession.java",
+    "zombie/apocalipse/humans/dialogue/HumanGreetingProvider.java",
+    "zombie/apocalipse/humans/dialogue/HumanLanguage.java",
+    "zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+    "zombie/apocalipse/humans/encounters/EncounterPort.java",
+    "zombie/apocalipse/humans/encounters/HumanRelationships.java",
+    "zombie/apocalipse/humans/encounters/PlayerEncounterModule.java",
+    "zombie/apocalipse/humans/encounters/RetaliatePlayerModule.java",
+    "zombie/apocalipse/humans/encounters/RetaliationPort.java",
+    "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+    "zombie/apocalipse/humans/furniture/FurnitureBindings.java",
+    "zombie/apocalipse/humans/furniture/FurnitureCaptureScheduler.java",
+    "zombie/apocalipse/humans/furniture/FurnitureDemand.java",
+    "zombie/apocalipse/humans/furniture/FurnitureReservations.java",
+    "zombie/apocalipse/humans/furniture/FurnitureScanBudget.java",
+    "zombie/apocalipse/humans/furniture/FurnitureScanner.java",
+    "zombie/apocalipse/humans/furniture/FurnitureSelector.java",
+    "zombie/apocalipse/humans/groups/GroupCohesionCoordinator.java",
+    "zombie/apocalipse/humans/groups/GroupPatrolCoordinator.java",
+    "zombie/apocalipse/humans/groups/GroupPatrolModule.java",
+    "zombie/apocalipse/humans/groups/GroupPatrolPort.java",
+    "zombie/apocalipse/humans/groups/GroupRecoveryCoordinator.java",
+    "zombie/apocalipse/humans/groups/HumanGroupMembership.java",
+    "zombie/apocalipse/humans/groups/SquadAssistModule.java",
+    "zombie/apocalipse/humans/groups/SquadAssistPort.java",
+    "zombie/apocalipse/humans/groups/SquadCombatCoordinator.java",
+    "zombie/apocalipse/humans/healing/HealingModule.java",
+    "zombie/apocalipse/humans/healing/HealingSettings.java",
+    "zombie/apocalipse/humans/healing/HumanHealingPort.java",
+    "zombie/apocalipse/humans/healing/HumanRecoveryState.java",
+    "zombie/apocalipse/humans/healing/MedicalExecution.java",
+    "zombie/apocalipse/humans/interactions/InteractionReservations.java",
+    "zombie/apocalipse/humans/movement/AreaReturnPlanner.java",
+    "zombie/apocalipse/humans/movement/CohesionGrid.java",
+    "zombie/apocalipse/humans/movement/CombatRoutePlanner.java",
+    "zombie/apocalipse/humans/movement/DestinationRoutePlanner.java",
+    "zombie/apocalipse/humans/movement/IndoorRoutePlanner.java",
+    "zombie/apocalipse/humans/movement/MovementGrid.java",
+    "zombie/apocalipse/humans/movement/MovementModifiers.java",
+    "zombie/apocalipse/humans/movement/VicinityGrid.java",
+    "zombie/apocalipse/humans/planning/NpcDecisionPlanner.java",
+    "zombie/apocalipse/humans/profiles/GuidePolicy.java",
+    "zombie/apocalipse/humans/profiles/HumanCheats.java",
+    "zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+    "zombie/apocalipse/humans/profiles/HumanModuleRegistry.java",
+    "zombie/apocalipse/humans/profiles/HumanProfile.java",
+    "zombie/apocalipse/humans/profiles/HumanProfileRegistry.java",
+    "zombie/apocalipse/humans/rest/RestModule.java",
+    "zombie/apocalipse/humans/rest/RestSettings.java",
+    "zombie/apocalipse/humans/seating/HumanSeating.java",
+    "zombie/apocalipse/humans/seating/SeatingExecution.java",
+    "zombie/apocalipse/humans/seating/SeatingGeometry.java",
+    "zombie/apocalipse/humans/seating/StockSeatingAssets.java",
+    "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+    "zombie/apocalipse/humans/speech/HumanSpeechDefaults.java",
+    "zombie/apocalipse/humans/speech/HumanSpeechEngine.java",
+    "zombie/apocalipse/humans/speech/HumanSpeechMemory.java",
+    "zombie/apocalipse/humans/speech/HumanStateSpeechDefaults.java",
+    "zombie/apocalipse/humans/speech/SpeechContext.java",
+    "zombie/apocalipse/humans/speech/SpeechEvent.java",
+    "zombie/apocalipse/humans/state/HumanConditionCalculator.java",
+    "zombie/apocalipse/humans/state/HumanHealthCapacity.java",
+    "zombie/apocalipse/humans/state/HumanMutation.java",
+    "zombie/apocalipse/humans/state/HumanState.java",
+    "zombie/apocalipse/humans/state/HumanStateReducer.java",
+    "zombie/apocalipse/humans/state/HumanStateStore.java",
+    "zombie/apocalipse/humans/survival/RetreatPlanner.java",
+    "zombie/apocalipse/humans/survival/RouteRefusals.java",
+    "zombie/apocalipse/humans/survival/SurvivalModule.java",
+    "zombie/apocalipse/humans/survival/SurvivalPort.java",
+    "zombie/apocalipse/humans/survival/SurvivalSettings.java",
+    "zombie/apocalipse/humans/survival/ThreatAssessment.java",
+    "zombie/apocalipse/humans/tasks/AssignedTaskModule.java",
+    "zombie/apocalipse/humans/tasks/CorpseCleanupExecution.java",
+    "zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+    "zombie/apocalipse/humans/tasks/HumanTaskCommand.java",
+    "zombie/apocalipse/humans/tasks/HumanTaskWorld.java",
+    "zombie/apocalipse/humans/trading/HumanTradeOffer.java",
+    "zombie/apocalipse/humans/traversal/BodyOccupancy.java",
+    "zombie/apocalipse/humans/traversal/CrossingReservations.java",
+    "zombie/apocalipse/humans/traversal/HumanTraversal.java",
+    "zombie/apocalipse/humans/traversal/TraversalEdge.java",
+    "zombie/apocalipse/humans/traversal/TraversalExecution.java",
+    "zombie/apocalipse/humans/traversal/TraversalStatePacket.java",
+    "zombie/apocalipse/humans/traversal/TraversalWorld.java",
+    "zombie/apocalipse/humans/walking/MovementRequest.java",
+    "zombie/apocalipse/humans/walking/WalkingPattern.java",
+    "zombie/apocalipse/humans/walking/WalkingPatternRegistry.java",
+    "zombie/apocalipse/humans/walking/WalkingPatternSpec.java",
+    "zombie/apocalipse/pathfind/WalkOnlyMover.java",
+    "zombie/apocalipse/zombies/ServerCorpseDragAuthority.java",
+    "zombie/apocalipse/zombies/ServerZombieController.java",
+    "zombie/apocalipse/zombies/ServerZombieNativeAdapter.java",
+    "zombie/apocalipse/zombies/ServerZombiePace.java",
+    "zombie/apocalipse/zombies/ServerZombiePath.java",
+    "zombie/apocalipse/zombies/ServerZombieSession.java",
+    "zombie/apocalipse/zombies/ZombieVictimPort.java",
+    "zombie/network/ApocBRBackendBridge.java",
+    "zombie/network/ApocBRBackendBridgeHooks.java",
+    "zombie/network/ApocBRBackendHttpDelivery.java",
+    "zombie/savefile/ApocBRAsyncLogin.java",
+    "zombie/savefile/ApocBRAsyncServerDatabase.java",
+    "zombie/savefile/ApocBRForegroundDatabase.java",
+    "zombie/savefile/ApocBRHumanSales.java",
+    "zombie/savefile/ApocBRLoginGuard.java",
+    "zombie/savefile/ApocBRNpcDialogues.java",
+    "zombie/savefile/ApocBRNpcMortality.java",
+    "zombie/savefile/ApocBRNpcRelationships.java",
+    "zombie/savefile/ApocBRNpcSpeech.java",
+    "zombie/savefile/ApocBRNpcStore.java",
+    "zombie/savefile/ApocBRPayloadProvenance.java",
+    "zombie/savefile/ApocBRPersistence.java",
+    "zombie/savefile/ApocBRPersistenceJournal.java",
+    "zombie/savefile/ApocBRPersistenceOperations.java",
+    "zombie/savefile/ApocBRPlayerDatabase.java",
+    "zombie/savefile/ApocBRPlayerLoadQuality.java",
+    "zombie/savefile/ApocBRPlayerLogin.java",
+    "zombie/savefile/ApocBRPlayerMigration.java",
+    "zombie/savefile/ApocBRPlayerMigrationVerification.java",
+    "zombie/savefile/ApocBRPlayerReconstructionLog.java",
+    "zombie/savefile/ApocBRPlayerRelationalAccess.java",
+    "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+    "zombie/savefile/ApocBRPlayerRelationalCodecs.java",
+    "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+    "zombie/savefile/ApocBRPlayerRelationalDelta.java",
+    "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+    "zombie/savefile/ApocBRPlayerRelationalMetrics.java",
+    "zombie/savefile/ApocBRPlayerRelationalMutations.java",
+    "zombie/savefile/ApocBRPlayerRelationalReader.java",
+    "zombie/savefile/ApocBRPlayerRelationalReconstruction.java",
+    "zombie/savefile/ApocBRPlayerRelationalSchema.java",
+    "zombie/savefile/ApocBRPlayerRelationalSnapshot.java",
+    "zombie/savefile/ApocBRPlayerRelationalSync.java",
+    "zombie/savefile/ApocBRPlayerValidationTargets.java",
+    "zombie/savefile/ApocBRPostgresConnector.java",
+    "zombie/savefile/ApocBRServerDatabase.java",
+    "zombie/savefile/ApocBRSuccessfulLogin.java",
+    "zombie/savefile/ApocBRWorldDictionaryDatabase.java",
+    "zombie/util/list/MutationTrackedArrayList.java",
+    "zombie/world/ApocBRWorldDictionaryDecode.java",
+    "zombie/world/ApocBRWorldDictionarySnapshot.java"
+  ],
+  "inboundNativeOwners": {
+    "zombie/characters/IsoGameCharacter.java": [
+      "zombie/apocalipse/zombies/ServerZombieController.java"
+    ],
+    "zombie/network/GameServer.java": [
+      "zombie/apocalipse/humans/ServerHumanFactory.java",
+      "zombie/apocalipse/humans/ServerHumanPresentationIds.java"
+    ],
+    "zombie/network/ServerMap.java": [
+      "zombie/apocalipse/humans/ServerHumanFactory.java"
+    ],
+    "zombie/pathfind/PMMover.java": [
+      "zombie/apocalipse/pathfind/WalkOnlyMover.java"
+    ],
+    "zombie/popman/NetworkZombieManager.java": [
+      "zombie/apocalipse/zombies/ServerCorpseDragAuthority.java",
+      "zombie/apocalipse/zombies/ServerZombieController.java"
+    ],
+    "zombie/popman/NetworkZombiePacker.java": [
+      "zombie/apocalipse/zombies/ServerCorpseDragAuthority.java",
+      "zombie/apocalipse/zombies/ServerZombieController.java"
+    ],
+    "zombie/characters/BodyDamage/BodyPart.java": [
+      "zombie/apocalipse/humans/ServerHumanPlayerDamage.java"
+    ],
+    "zombie/network/packets/AcceptTradingPacket.java": [
+      "zombie/apocalipse/humans/ServerHumanTrading.java"
+    ],
+    "zombie/network/packets/RejectTradingPacket.java": [
+      "zombie/apocalipse/humans/ServerHumanTrading.java"
+    ],
+    "zombie/network/packets/RequestTradingPacket.java": [
+      "zombie/apocalipse/humans/ServerHumanTrading.java"
+    ],
+    "zombie/network/packets/TradingUIAddItemPacket.java": [
+      "zombie/apocalipse/humans/ServerHumanTrading.java"
+    ],
+    "zombie/network/packets/TradingUIRemoveItemPacket.java": [
+      "zombie/apocalipse/humans/ServerHumanTrading.java"
+    ],
+    "zombie/network/packets/TradingUIUpdateStatePacket.java": [
+      "zombie/apocalipse/humans/ServerHumanTrading.java"
+    ],
+    "zombie/network/fields/hit/Hit.java": [
+      "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java"
+    ],
+    "zombie/network/packets/character/PlayerDataRequestPacket.java": [
+      "zombie/apocalipse/humans/ServerHumanFactory.java"
+    ],
+    "zombie/network/packets/hit/PlayerHitPlayerPacket.java": [
+      "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+      "zombie/apocalipse/humans/ServerHumanPlayerDamage.java"
+    ],
+    "zombie/network/packets/hit/PlayerHitSquarePacket.java": [
+      "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java"
+    ]
+  },
+  "references": {
+    "zombie/ApocBRServerTelemetryLite.java": [
+      "zombie/network/ApocBRBackendBridgeHooks.java"
+    ],
+    "zombie/ServerAnimalPerceptionGrid.java": [
+      "zombie/ApocBRServerTelemetryLite.java",
+      "zombie/ServerMovingObjectIndex.java"
+    ],
+    "zombie/ServerMovingObjectIndex.java": [
+      "zombie/ServerAnimalPerceptionGrid.java",
+      "zombie/ServerMovingObjectSet.java"
+    ],
+    "zombie/ServerMovingObjectSet.java": [
+      "zombie/ApocBRServerTelemetryLite.java",
+      "zombie/ServerMovingObjectIndex.java"
+    ],
+    "zombie/apocalipse/events/ApocBREventControl.java": [
+      "zombie/apocalipse/humans/dialogue/HumanLanguage.java",
+      "zombie/savefile/ApocBRPostgresConnector.java"
+    ],
+    "zombie/apocalipse/humans/HumanLifecycle.java": [
+      "zombie/apocalipse/humans/ServerHumanDefinition.java",
+      "zombie/apocalipse/humans/death/HumanDeathState.java",
+      "zombie/apocalipse/humans/state/HumanState.java",
+      "zombie/apocalipse/humans/state/HumanStateStore.java"
+    ],
+    "zombie/apocalipse/humans/HumanLog.java": [
+      "zombie/savefile/ApocBRNpcStore.java"
+    ],
+    "zombie/apocalipse/humans/OperationAnnouncementProvider.java": [
+      "zombie/apocalipse/events/ApocBREventControl.java",
+      "zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java"
+    ],
+    "zombie/apocalipse/humans/ServerHuman.java": [
+      "zombie/apocalipse/humans/ServerHumanActuator.java",
+      "zombie/apocalipse/humans/ServerHumanAttackReplay.java",
+      "zombie/apocalipse/humans/ServerHumanCombat.java",
+      "zombie/apocalipse/humans/ServerHumanDefinition.java",
+      "zombie/apocalipse/humans/ServerHumanDialogue.java",
+      "zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "zombie/apocalipse/humans/ServerHumanFurniture.java",
+      "zombie/apocalipse/humans/ServerHumanHealing.java",
+      "zombie/apocalipse/humans/ServerHumanInventory.java",
+      "zombie/apocalipse/humans/ServerHumanMovement.java",
+      "zombie/apocalipse/humans/ServerHumanPerception.java",
+      "zombie/apocalipse/humans/ServerHumanPhysiology.java",
+      "zombie/apocalipse/humans/ServerHumanPlanning.java",
+      "zombie/apocalipse/humans/ServerHumanProfiles.java",
+      "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+      "zombie/apocalipse/humans/ServerHumanSeating.java",
+      "zombie/apocalipse/humans/ServerHumanSpeech.java",
+      "zombie/apocalipse/humans/ServerHumanSquadAssist.java",
+      "zombie/apocalipse/humans/ServerHumanTerritory.java",
+      "zombie/apocalipse/humans/ServerHumanTrading.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/ServerHumanWalking.java",
+      "zombie/apocalipse/humans/brain/EngageZombiesModule.java",
+      "zombie/apocalipse/humans/brain/HumanActivityController.java",
+      "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/healing/HealingModule.java",
+      "zombie/apocalipse/humans/healing/HealingSettings.java",
+      "zombie/apocalipse/humans/movement/MovementModifiers.java",
+      "zombie/apocalipse/humans/planning/NpcDecisionPlanner.java",
+      "zombie/apocalipse/humans/profiles/HumanProfile.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java",
+      "zombie/apocalipse/humans/state/HumanState.java",
+      "zombie/apocalipse/humans/state/HumanStateStore.java",
+      "zombie/apocalipse/humans/survival/SurvivalModule.java",
+      "zombie/apocalipse/humans/traversal/TraversalWorld.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanActuator.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanCorpses.java",
+      "zombie/apocalipse/humans/ServerHumanSurvival.java",
+      "zombie/apocalipse/humans/ServerHumanTasks.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java",
+      "zombie/apocalipse/humans/survival/SurvivalPort.java",
+      "zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+      "zombie/apocalipse/humans/tasks/HumanTaskWorld.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanAimPacket.java": [
+      "zombie/apocalipse/humans/ServerHuman.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanAttackLine.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanCombatNetwork.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanAttackReplay.java": [],
+    "zombie/apocalipse/humans/ServerHumanCombat.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanWeaponBackend.java",
+      "zombie/apocalipse/humans/brain/HumanActivityController.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/survival/SurvivalModule.java",
+      "zombie/apocalipse/zombies/ServerZombieController.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanCombatApproach.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanAttackLine.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombatInventory.java",
+      "zombie/apocalipse/humans/brain/HumanCombatTactics.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/movement/CombatRoutePlanner.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/movement/MovementModifiers.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanCombatAudio.java": [
+      "zombie/apocalipse/humans/ServerHuman.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java": [],
+    "zombie/apocalipse/humans/ServerHumanCombatNetwork.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanAttackLine.java",
+      "zombie/apocalipse/humans/ServerHumanCombatAudio.java",
+      "zombie/apocalipse/humans/ServerHumanCombatEnvelope.java",
+      "zombie/apocalipse/humans/ServerHumanCommittedHit.java",
+      "zombie/apocalipse/humans/ServerHumanHitPacket.java",
+      "zombie/apocalipse/humans/ServerHumanMissPacket.java",
+      "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java",
+      "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/brain/HumanCombatDamage.java",
+      "zombie/apocalipse/humans/state/HumanMutation.java",
+      "zombie/apocalipse/humans/state/HumanState.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanCommittedHit.java": [],
+    "zombie/apocalipse/humans/ServerHumanCorpseDrag.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanDragPacket.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+      "zombie/apocalipse/humans/traversal/TraversalEdge.java",
+      "zombie/apocalipse/zombies/ServerCorpseDragAuthority.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanCorpses.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanCorpseDrag.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+      "zombie/apocalipse/humans/traversal/TraversalEdge.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanDeaths.java": [
+      "zombie/apocalipse/humans/HumanLifecycle.java",
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "zombie/apocalipse/humans/death/HumanReputationPort.java",
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanDefinition.java": [
+      "zombie/apocalipse/humans/death/HumanDeathPolicy.java",
+      "zombie/apocalipse/humans/groups/HumanGroupMembership.java",
+      "zombie/apocalipse/humans/profiles/HumanProfile.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanDialogue.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "zombie/apocalipse/humans/ServerHumanFactory.java",
+      "zombie/apocalipse/humans/ServerHumanTasks.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java",
+      "zombie/apocalipse/humans/dialogue/HumanDialogueResponses.java",
+      "zombie/apocalipse/humans/dialogue/HumanDialogueSession.java",
+      "zombie/apocalipse/humans/dialogue/HumanLanguage.java",
+      "zombie/apocalipse/humans/tasks/HumanTaskCommand.java",
+      "zombie/savefile/ApocBRNpcStore.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanDragPacket.java": [
+      "zombie/apocalipse/humans/ServerHuman.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanEmotePacket.java": [
+      "zombie/apocalipse/humans/ServerHuman.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanEncounters.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "zombie/apocalipse/humans/dialogue/HumanLanguage.java",
+      "zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+      "zombie/apocalipse/humans/encounters/EncounterPort.java",
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java",
+      "zombie/apocalipse/humans/encounters/PlayerEncounterModule.java",
+      "zombie/savefile/ApocBRNpcStore.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanFactory.java": [
+      "zombie/apocalipse/humans/HumanLifecycle.java",
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanDeaths.java",
+      "zombie/apocalipse/humans/ServerHumanDefinition.java",
+      "zombie/apocalipse/humans/ServerHumanDialogue.java",
+      "zombie/apocalipse/humans/ServerHumanFurniture.java",
+      "zombie/apocalipse/humans/ServerHumanGroups.java",
+      "zombie/apocalipse/humans/ServerHumanMovement.java",
+      "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+      "zombie/apocalipse/humans/ServerHumanPresentationIds.java",
+      "zombie/apocalipse/humans/ServerHumanProfiles.java",
+      "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+      "zombie/apocalipse/humans/ServerHumanSeatingCommands.java",
+      "zombie/apocalipse/humans/ServerHumanSimulationWorker.java",
+      "zombie/apocalipse/humans/ServerHumanTrading.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/ServerHumanZombieVictims.java",
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/death/HumanReputationPort.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/planning/NpcDecisionPlanner.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java",
+      "zombie/apocalipse/humans/state/HumanConditionCalculator.java",
+      "zombie/apocalipse/humans/state/HumanMutation.java",
+      "zombie/apocalipse/humans/state/HumanState.java",
+      "zombie/apocalipse/humans/state/HumanStateStore.java",
+      "zombie/apocalipse/humans/traversal/TraversalWorld.java",
+      "zombie/apocalipse/zombies/ServerZombieController.java",
+      "zombie/savefile/ApocBRNpcStore.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanFurniture.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanFurnitureWorld.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/furniture/FurnitureCaptureScheduler.java",
+      "zombie/apocalipse/humans/furniture/FurnitureDemand.java",
+      "zombie/apocalipse/humans/furniture/FurnitureReservations.java",
+      "zombie/apocalipse/humans/furniture/FurnitureScanBudget.java",
+      "zombie/apocalipse/humans/furniture/FurnitureScanner.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanFurnitureWorld.java": [
+      "zombie/apocalipse/humans/ServerHumanSeatingCatalog.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/furniture/FurnitureBindings.java",
+      "zombie/apocalipse/humans/furniture/FurnitureScanner.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java",
+      "zombie/util/list/MutationTrackedArrayList.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanGroups.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+      "zombie/apocalipse/humans/ServerHumanSquadAssist.java",
+      "zombie/apocalipse/humans/brain/EngageZombiesModule.java",
+      "zombie/apocalipse/humans/brain/HumanActivityController.java",
+      "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/groups/GroupCohesionCoordinator.java",
+      "zombie/apocalipse/humans/groups/GroupPatrolCoordinator.java",
+      "zombie/apocalipse/humans/groups/GroupPatrolModule.java",
+      "zombie/apocalipse/humans/groups/GroupPatrolPort.java",
+      "zombie/apocalipse/humans/groups/GroupRecoveryCoordinator.java",
+      "zombie/apocalipse/humans/groups/SquadCombatCoordinator.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/survival/RetreatPlanner.java",
+      "zombie/apocalipse/humans/survival/SurvivalModule.java",
+      "zombie/apocalipse/humans/survival/SurvivalSettings.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanHealing.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanMedicalPacket.java",
+      "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+      "zombie/apocalipse/humans/brain/HumanActivityController.java",
+      "zombie/apocalipse/humans/healing/HealingModule.java",
+      "zombie/apocalipse/humans/healing/HealingSettings.java",
+      "zombie/apocalipse/humans/healing/HumanHealingPort.java",
+      "zombie/apocalipse/humans/healing/HumanRecoveryState.java",
+      "zombie/apocalipse/humans/healing/MedicalExecution.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java",
+      "zombie/apocalipse/humans/state/HumanMutation.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanHitPacket.java": [],
+    "zombie/apocalipse/humans/ServerHumanInventory.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/brain/HumanCombatInventory.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanMedicalPacket.java": [
+      "zombie/apocalipse/humans/ServerHuman.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanMissPacket.java": [],
+    "zombie/apocalipse/humans/ServerHumanMovement.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/movement/MovementModifiers.java",
+      "zombie/apocalipse/humans/traversal/BodyOccupancy.java",
+      "zombie/apocalipse/humans/traversal/HumanTraversal.java",
+      "zombie/apocalipse/humans/traversal/TraversalEdge.java",
+      "zombie/apocalipse/humans/traversal/TraversalExecution.java",
+      "zombie/apocalipse/humans/traversal/TraversalWorld.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanPerception.java": [
+      "zombie/ServerMovingObjectSet.java",
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/brain/HumanContactMemory.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/brain/HumanTerritory.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanPhysiology.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/state/HumanMutation.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanPlanning.java": [
+      "zombie/apocalipse/humans/brain/HumanEngagement.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/planning/NpcDecisionPlanner.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanAttackLine.java",
+      "zombie/apocalipse/humans/ServerHumanDialogue.java",
+      "zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "zombie/apocalipse/humans/ServerHumanFactory.java",
+      "zombie/apocalipse/humans/ServerHumanRetaliation.java",
+      "zombie/apocalipse/humans/ServerHumanTrading.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/encounters/EncounterPort.java",
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanPlayerDamage.java": [
+      "zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "zombie/apocalipse/humans/ServerHumanFactory.java",
+      "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+      "zombie/apocalipse/humans/state/HumanHealthCapacity.java",
+      "zombie/apocalipse/humans/state/HumanMutation.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java": [],
+    "zombie/apocalipse/humans/ServerHumanPresentationIds.java": [],
+    "zombie/apocalipse/humans/ServerHumanProfiles.java": [
+      "zombie/apocalipse/humans/OperationAnnouncementProvider.java",
+      "zombie/apocalipse/humans/brain/EngageZombiesModule.java",
+      "zombie/apocalipse/humans/brain/GuideBrain.java",
+      "zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java",
+      "zombie/apocalipse/humans/brain/HumanEngagement.java",
+      "zombie/apocalipse/humans/brain/IdleBehavior.java",
+      "zombie/apocalipse/humans/brain/WalkingModule.java",
+      "zombie/apocalipse/humans/dialogue/HumanGreetingProvider.java",
+      "zombie/apocalipse/humans/encounters/PlayerEncounterModule.java",
+      "zombie/apocalipse/humans/encounters/RetaliatePlayerModule.java",
+      "zombie/apocalipse/humans/groups/GroupPatrolModule.java",
+      "zombie/apocalipse/humans/healing/HealingModule.java",
+      "zombie/apocalipse/humans/healing/HealingSettings.java",
+      "zombie/apocalipse/humans/profiles/GuidePolicy.java",
+      "zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+      "zombie/apocalipse/humans/profiles/HumanModuleRegistry.java",
+      "zombie/apocalipse/humans/profiles/HumanProfile.java",
+      "zombie/apocalipse/humans/profiles/HumanProfileRegistry.java",
+      "zombie/apocalipse/humans/rest/RestModule.java",
+      "zombie/apocalipse/humans/rest/RestSettings.java",
+      "zombie/apocalipse/humans/survival/SurvivalModule.java",
+      "zombie/apocalipse/humans/tasks/AssignedTaskModule.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternRegistry.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanRetaliation.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanCombatApproach.java",
+      "zombie/apocalipse/humans/ServerHumanCombatNetwork.java",
+      "zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanCombatInventory.java",
+      "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanWeaponCombat.java",
+      "zombie/apocalipse/humans/encounters/RetaliatePlayerModule.java",
+      "zombie/apocalipse/humans/encounters/RetaliationPort.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSeating.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanFurniture.java",
+      "zombie/apocalipse/humans/ServerHumanSeatingAssets.java",
+      "zombie/apocalipse/humans/ServerHumanSeatingGeometry.java",
+      "zombie/apocalipse/humans/ServerHumanSeatingTransport.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/brain/HumanActivityController.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java",
+      "zombie/apocalipse/humans/seating/SeatingExecution.java",
+      "zombie/apocalipse/humans/seating/SeatingGeometry.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSeatingAssets.java": [
+      "zombie/apocalipse/humans/seating/StockSeatingAssets.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSeatingCatalog.java": [
+      "zombie/apocalipse/humans/ServerHumanFurnitureWorld.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSeatingCommands.java": [
+      "zombie/apocalipse/humans/ServerHumanFactory.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSeatingGeometry.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanFurniture.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/seating/SeatingGeometry.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSeatingPacket.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/seating/SeatingGeometry.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSeatingTransport.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanSeating.java",
+      "zombie/apocalipse/humans/ServerHumanSeatingPacket.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java",
+      "zombie/apocalipse/humans/seating/SeatingGeometry.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSimulationWorker.java": [],
+    "zombie/apocalipse/humans/ServerHumanSpeech.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "zombie/apocalipse/humans/brain/HumanActivityController.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/dialogue/HumanLanguage.java",
+      "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+      "zombie/apocalipse/humans/speech/HumanSpeechEngine.java",
+      "zombie/apocalipse/humans/speech/HumanSpeechMemory.java",
+      "zombie/apocalipse/humans/speech/SpeechContext.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java",
+      "zombie/savefile/ApocBRNpcStore.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSquadAssist.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/groups/SquadAssistPort.java",
+      "zombie/apocalipse/humans/groups/SquadCombatCoordinator.java",
+      "zombie/apocalipse/humans/movement/DestinationRoutePlanner.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/movement/MovementModifiers.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java",
+      "zombie/apocalipse/humans/survival/RetreatPlanner.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanSurvival.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/movement/MovementModifiers.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java",
+      "zombie/apocalipse/humans/survival/RetreatPlanner.java",
+      "zombie/apocalipse/humans/survival/RouteRefusals.java",
+      "zombie/apocalipse/humans/survival/SurvivalPort.java",
+      "zombie/apocalipse/humans/survival/SurvivalSettings.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanTasks.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/tasks/AssignedTaskModule.java",
+      "zombie/apocalipse/humans/tasks/HumanTaskCommand.java",
+      "zombie/apocalipse/humans/tasks/HumanTaskWorld.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanTerritory.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/brain/HumanTerritory.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanTrading.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "zombie/apocalipse/humans/ServerHumanFactory.java",
+      "zombie/apocalipse/humans/ServerHumanPresentationIds.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/trading/HumanTradeOffer.java",
+      "zombie/savefile/ApocBRHumanSales.java",
+      "zombie/savefile/ApocBRPayloadProvenance.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanTransport.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanAimPacket.java",
+      "zombie/apocalipse/humans/ServerHumanEmotePacket.java",
+      "zombie/apocalipse/humans/ServerHumanMovement.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/movement/MovementModifiers.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanWalking.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanProfiles.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/movement/AreaReturnPlanner.java",
+      "zombie/apocalipse/humans/movement/CohesionGrid.java",
+      "zombie/apocalipse/humans/movement/DestinationRoutePlanner.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/movement/VicinityGrid.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java",
+      "zombie/apocalipse/humans/walking/WalkingPattern.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanWeaponBackend.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanCombat.java",
+      "zombie/apocalipse/humans/ServerHumanCombatApproach.java",
+      "zombie/apocalipse/humans/ServerHumanCombatNetwork.java",
+      "zombie/apocalipse/humans/ServerHumanTransport.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanCombatInventory.java",
+      "zombie/apocalipse/humans/brain/HumanWeaponCombat.java",
+      "zombie/apocalipse/humans/brain/TacticalIntent.java"
+    ],
+    "zombie/apocalipse/humans/ServerHumanZombieVictims.java": [
+      "zombie/apocalipse/humans/ServerHuman.java",
+      "zombie/apocalipse/humans/ServerHumanFactory.java",
+      "zombie/apocalipse/humans/state/HumanMutation.java",
+      "zombie/apocalipse/zombies/ZombieVictimPort.java"
+    ],
+    "zombie/apocalipse/humans/brain/EngageZombiesModule.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanCombatTactics.java",
+      "zombie/apocalipse/humans/brain/HumanEngagement.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "zombie/apocalipse/humans/groups/SquadAssistModule.java",
+      "zombie/apocalipse/humans/groups/SquadAssistPort.java"
+    ],
+    "zombie/apocalipse/humans/brain/GuideBrain.java": [
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanStateMachine.java",
+      "zombie/apocalipse/humans/profiles/GuidePolicy.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanAction.java": [
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanActionExecution.java": [
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanActivityController.java": [
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanBehavior.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/state/HumanState.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanActuator.java": [
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java",
+      "zombie/apocalipse/humans/survival/SurvivalPort.java",
+      "zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+      "zombie/apocalipse/humans/tasks/HumanTaskWorld.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java": [],
+    "zombie/apocalipse/humans/brain/HumanBehavior.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/furniture/FurnitureDemand.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanCombat.java": [
+      "zombie/apocalipse/humans/brain/HumanSenses.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanCombatDamage.java": [],
+    "zombie/apocalipse/humans/brain/HumanCombatInventory.java": [],
+    "zombie/apocalipse/humans/brain/HumanCombatTactics.java": [
+      "zombie/apocalipse/humans/brain/HumanCombatInventory.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanContactMemory.java": [
+      "zombie/apocalipse/humans/brain/HumanSenses.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanEngagement.java": [
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanModule.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanBehavior.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanModuleRuntime.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanBehavior.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/furniture/FurnitureDemand.java",
+      "zombie/apocalipse/humans/profiles/HumanProfile.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanObservation.java": [
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/brain/HumanTerritory.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/state/HumanState.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanSenses.java": [],
+    "zombie/apocalipse/humans/brain/HumanStateMachine.java": [
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanTerritory.java": [
+      "zombie/apocalipse/humans/brain/HumanSenses.java"
+    ],
+    "zombie/apocalipse/humans/brain/HumanWeaponCombat.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanCombatInventory.java"
+    ],
+    "zombie/apocalipse/humans/brain/IdleBehavior.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanBehavior.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java"
+    ],
+    "zombie/apocalipse/humans/brain/TacticalIntent.java": [
+      "zombie/apocalipse/humans/brain/HumanSenses.java"
+    ],
+    "zombie/apocalipse/humans/brain/WalkingModule.java": [
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java"
+    ],
+    "zombie/apocalipse/humans/death/HumanDeathPolicy.java": [],
+    "zombie/apocalipse/humans/death/HumanDeathState.java": [
+      "zombie/apocalipse/humans/death/HumanDeathPolicy.java"
+    ],
+    "zombie/apocalipse/humans/death/HumanReputationPort.java": [
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java"
+    ],
+    "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java": [],
+    "zombie/apocalipse/humans/dialogue/HumanDialogueResponses.java": [
+      "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java",
+      "zombie/apocalipse/humans/dialogue/HumanLanguage.java"
+    ],
+    "zombie/apocalipse/humans/dialogue/HumanDialogueSession.java": [
+      "zombie/apocalipse/humans/dialogue/HumanLanguage.java"
+    ],
+    "zombie/apocalipse/humans/dialogue/HumanGreetingProvider.java": [
+      "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java",
+      "zombie/apocalipse/humans/dialogue/HumanLanguage.java"
+    ],
+    "zombie/apocalipse/humans/dialogue/HumanLanguage.java": [
+      "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java"
+    ],
+    "zombie/apocalipse/humans/encounters/EncounterPolicy.java": [],
+    "zombie/apocalipse/humans/encounters/EncounterPort.java": [
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java"
+    ],
+    "zombie/apocalipse/humans/encounters/HumanRelationships.java": [
+      "zombie/apocalipse/humans/encounters/EncounterPolicy.java"
+    ],
+    "zombie/apocalipse/humans/encounters/PlayerEncounterModule.java": [
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+      "zombie/apocalipse/humans/encounters/EncounterPort.java",
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java"
+    ],
+    "zombie/apocalipse/humans/encounters/RetaliatePlayerModule.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/encounters/RetaliationPort.java"
+    ],
+    "zombie/apocalipse/humans/encounters/RetaliationPort.java": [
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java"
+    ],
+    "zombie/apocalipse/humans/furniture/FurnitureAffordances.java": [],
+    "zombie/apocalipse/humans/furniture/FurnitureBindings.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java"
+    ],
+    "zombie/apocalipse/humans/furniture/FurnitureCaptureScheduler.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureScanBudget.java"
+    ],
+    "zombie/apocalipse/humans/furniture/FurnitureDemand.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java"
+    ],
+    "zombie/apocalipse/humans/furniture/FurnitureReservations.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/interactions/InteractionReservations.java"
+    ],
+    "zombie/apocalipse/humans/furniture/FurnitureScanBudget.java": [],
+    "zombie/apocalipse/humans/furniture/FurnitureScanner.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/furniture/FurnitureDemand.java",
+      "zombie/apocalipse/humans/furniture/FurnitureScanBudget.java"
+    ],
+    "zombie/apocalipse/humans/furniture/FurnitureSelector.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java"
+    ],
+    "zombie/apocalipse/humans/groups/GroupCohesionCoordinator.java": [
+      "zombie/apocalipse/humans/groups/GroupPatrolCoordinator.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/groups/GroupPatrolCoordinator.java": [
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/groups/GroupPatrolModule.java": [
+      "zombie/apocalipse/humans/brain/HumanAction.java",
+      "zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/groups/GroupPatrolPort.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java"
+    ],
+    "zombie/apocalipse/humans/groups/GroupPatrolPort.java": [
+      "zombie/apocalipse/humans/groups/GroupPatrolCoordinator.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/groups/GroupRecoveryCoordinator.java": [
+      "zombie/apocalipse/humans/groups/GroupPatrolCoordinator.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/groups/HumanGroupMembership.java": [],
+    "zombie/apocalipse/humans/groups/SquadAssistModule.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "zombie/apocalipse/humans/groups/SquadAssistPort.java",
+      "zombie/apocalipse/humans/groups/SquadCombatCoordinator.java"
+    ],
+    "zombie/apocalipse/humans/groups/SquadAssistPort.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/groups/SquadCombatCoordinator.java"
+    ],
+    "zombie/apocalipse/humans/groups/SquadCombatCoordinator.java": [
+      "zombie/apocalipse/humans/brain/HumanSenses.java"
+    ],
+    "zombie/apocalipse/humans/healing/HealingModule.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "zombie/apocalipse/humans/healing/HealingSettings.java",
+      "zombie/apocalipse/humans/healing/HumanHealingPort.java"
+    ],
+    "zombie/apocalipse/humans/healing/HealingSettings.java": [],
+    "zombie/apocalipse/humans/healing/HumanHealingPort.java": [],
+    "zombie/apocalipse/humans/healing/HumanRecoveryState.java": [
+      "zombie/apocalipse/humans/state/HumanState.java"
+    ],
+    "zombie/apocalipse/humans/healing/MedicalExecution.java": [
+      "zombie/apocalipse/humans/healing/HumanHealingPort.java"
+    ],
+    "zombie/apocalipse/humans/interactions/InteractionReservations.java": [],
+    "zombie/apocalipse/humans/movement/AreaReturnPlanner.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/movement/CohesionGrid.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/movement/CombatRoutePlanner.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/movement/DestinationRoutePlanner.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/movement/IndoorRoutePlanner.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/movement/MovementGrid.java": [],
+    "zombie/apocalipse/humans/movement/MovementModifiers.java": [],
+    "zombie/apocalipse/humans/movement/VicinityGrid.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/planning/NpcDecisionPlanner.java": [
+      "zombie/apocalipse/humans/brain/HumanEngagement.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/movement/DestinationRoutePlanner.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/profiles/GuidePolicy.java": [],
+    "zombie/apocalipse/humans/profiles/HumanCheats.java": [],
+    "zombie/apocalipse/humans/profiles/HumanModuleBinding.java": [
+      "zombie/apocalipse/humans/profiles/HumanProfile.java"
+    ],
+    "zombie/apocalipse/humans/profiles/HumanModuleRegistry.java": [
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+      "zombie/apocalipse/humans/profiles/HumanProfile.java"
+    ],
+    "zombie/apocalipse/humans/profiles/HumanProfile.java": [
+      "zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+      "zombie/apocalipse/humans/profiles/HumanCheats.java",
+      "zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+      "zombie/apocalipse/humans/survival/SurvivalSettings.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/profiles/HumanProfileRegistry.java": [
+      "zombie/apocalipse/humans/brain/HumanBehavior.java",
+      "zombie/apocalipse/humans/profiles/HumanProfile.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternRegistry.java"
+    ],
+    "zombie/apocalipse/humans/rest/RestModule.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "zombie/apocalipse/humans/furniture/FurnitureDemand.java",
+      "zombie/apocalipse/humans/furniture/FurnitureSelector.java",
+      "zombie/apocalipse/humans/healing/HealingModule.java",
+      "zombie/apocalipse/humans/rest/RestSettings.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java"
+    ],
+    "zombie/apocalipse/humans/rest/RestSettings.java": [],
+    "zombie/apocalipse/humans/seating/HumanSeating.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java"
+    ],
+    "zombie/apocalipse/humans/seating/SeatingExecution.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureReservations.java",
+      "zombie/apocalipse/humans/seating/HumanSeating.java",
+      "zombie/apocalipse/humans/seating/SeatingGeometry.java"
+    ],
+    "zombie/apocalipse/humans/seating/SeatingGeometry.java": [
+      "zombie/apocalipse/humans/furniture/FurnitureAffordances.java"
+    ],
+    "zombie/apocalipse/humans/seating/StockSeatingAssets.java": [],
+    "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java": [
+      "zombie/apocalipse/humans/speech/HumanSpeechDefaults.java",
+      "zombie/apocalipse/humans/speech/SpeechContext.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java"
+    ],
+    "zombie/apocalipse/humans/speech/HumanSpeechDefaults.java": [
+      "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+      "zombie/apocalipse/humans/speech/HumanStateSpeechDefaults.java",
+      "zombie/apocalipse/humans/speech/SpeechContext.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java"
+    ],
+    "zombie/apocalipse/humans/speech/HumanSpeechEngine.java": [
+      "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+      "zombie/apocalipse/humans/speech/HumanSpeechMemory.java",
+      "zombie/apocalipse/humans/speech/SpeechContext.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java"
+    ],
+    "zombie/apocalipse/humans/speech/HumanSpeechMemory.java": [],
+    "zombie/apocalipse/humans/speech/HumanStateSpeechDefaults.java": [
+      "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+      "zombie/apocalipse/humans/speech/SpeechContext.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java"
+    ],
+    "zombie/apocalipse/humans/speech/SpeechContext.java": [],
+    "zombie/apocalipse/humans/speech/SpeechEvent.java": [],
+    "zombie/apocalipse/humans/state/HumanConditionCalculator.java": [
+      "zombie/apocalipse/humans/movement/MovementModifiers.java",
+      "zombie/apocalipse/humans/state/HumanState.java"
+    ],
+    "zombie/apocalipse/humans/state/HumanHealthCapacity.java": [],
+    "zombie/apocalipse/humans/state/HumanMutation.java": [
+      "zombie/apocalipse/humans/state/HumanState.java"
+    ],
+    "zombie/apocalipse/humans/state/HumanState.java": [],
+    "zombie/apocalipse/humans/state/HumanStateReducer.java": [
+      "zombie/apocalipse/humans/state/HumanMutation.java",
+      "zombie/apocalipse/humans/state/HumanState.java"
+    ],
+    "zombie/apocalipse/humans/state/HumanStateStore.java": [
+      "zombie/apocalipse/humans/state/HumanMutation.java",
+      "zombie/apocalipse/humans/state/HumanState.java",
+      "zombie/apocalipse/humans/state/HumanStateReducer.java"
+    ],
+    "zombie/apocalipse/humans/survival/RetreatPlanner.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/survival/RouteRefusals.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/survival/SurvivalModule.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanCombat.java",
+      "zombie/apocalipse/humans/brain/HumanCombatTactics.java",
+      "zombie/apocalipse/humans/brain/HumanEngagement.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "zombie/apocalipse/humans/healing/HealingModule.java",
+      "zombie/apocalipse/humans/healing/HealingSettings.java",
+      "zombie/apocalipse/humans/healing/HumanHealingPort.java",
+      "zombie/apocalipse/humans/survival/SurvivalSettings.java",
+      "zombie/apocalipse/humans/survival/ThreatAssessment.java"
+    ],
+    "zombie/apocalipse/humans/survival/SurvivalPort.java": [
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/survival/SurvivalSettings.java"
+    ],
+    "zombie/apocalipse/humans/survival/SurvivalSettings.java": [],
+    "zombie/apocalipse/humans/survival/ThreatAssessment.java": [
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/brain/HumanSenses.java",
+      "zombie/apocalipse/humans/survival/SurvivalSettings.java"
+    ],
+    "zombie/apocalipse/humans/tasks/AssignedTaskModule.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/brain/HumanModule.java",
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/tasks/CorpseCleanupExecution.java",
+      "zombie/apocalipse/humans/tasks/HumanTaskCommand.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/tasks/CorpseCleanupExecution.java": [
+      "zombie/apocalipse/humans/brain/HumanActuator.java",
+      "zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+      "zombie/apocalipse/humans/walking/MovementRequest.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/tasks/HumanCorpsePort.java": [
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/tasks/HumanTaskCommand.java": [
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/tasks/HumanTaskWorld.java": [
+      "zombie/apocalipse/humans/brain/HumanObservation.java",
+      "zombie/apocalipse/humans/tasks/AssignedTaskModule.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/trading/HumanTradeOffer.java": [],
+    "zombie/apocalipse/humans/traversal/BodyOccupancy.java": [],
+    "zombie/apocalipse/humans/traversal/CrossingReservations.java": [
+      "zombie/apocalipse/humans/interactions/InteractionReservations.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/traversal/TraversalEdge.java"
+    ],
+    "zombie/apocalipse/humans/traversal/HumanTraversal.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/traversal/BodyOccupancy.java",
+      "zombie/apocalipse/humans/traversal/CrossingReservations.java",
+      "zombie/apocalipse/humans/traversal/TraversalEdge.java",
+      "zombie/apocalipse/humans/traversal/TraversalExecution.java",
+      "zombie/apocalipse/humans/traversal/TraversalStatePacket.java",
+      "zombie/apocalipse/humans/traversal/TraversalWorld.java"
+    ],
+    "zombie/apocalipse/humans/traversal/TraversalEdge.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/traversal/TraversalExecution.java": [
+      "zombie/apocalipse/humans/traversal/CrossingReservations.java",
+      "zombie/apocalipse/humans/traversal/TraversalEdge.java"
+    ],
+    "zombie/apocalipse/humans/traversal/TraversalStatePacket.java": [
+      "zombie/apocalipse/humans/traversal/TraversalEdge.java"
+    ],
+    "zombie/apocalipse/humans/traversal/TraversalWorld.java": [
+      "zombie/apocalipse/humans/traversal/CrossingReservations.java"
+    ],
+    "zombie/apocalipse/humans/walking/MovementRequest.java": [
+      "zombie/apocalipse/humans/profiles/HumanProfile.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/walking/WalkingPattern.java": [
+      "zombie/apocalipse/humans/movement/MovementGrid.java"
+    ],
+    "zombie/apocalipse/humans/walking/WalkingPatternRegistry.java": [
+      "zombie/apocalipse/humans/movement/DestinationRoutePlanner.java",
+      "zombie/apocalipse/humans/movement/IndoorRoutePlanner.java",
+      "zombie/apocalipse/humans/movement/MovementGrid.java",
+      "zombie/apocalipse/humans/profiles/HumanProfile.java",
+      "zombie/apocalipse/humans/walking/WalkingPattern.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java"
+    ],
+    "zombie/apocalipse/humans/walking/WalkingPatternSpec.java": [
+      "zombie/apocalipse/humans/profiles/HumanProfile.java"
+    ],
+    "zombie/apocalipse/pathfind/WalkOnlyMover.java": [],
+    "zombie/apocalipse/zombies/ServerCorpseDragAuthority.java": [],
+    "zombie/apocalipse/zombies/ServerZombieController.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/zombies/ServerZombieNativeAdapter.java",
+      "zombie/apocalipse/zombies/ServerZombiePace.java",
+      "zombie/apocalipse/zombies/ServerZombiePath.java",
+      "zombie/apocalipse/zombies/ServerZombieSession.java",
+      "zombie/apocalipse/zombies/ZombieVictimPort.java"
+    ],
+    "zombie/apocalipse/zombies/ServerZombieNativeAdapter.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/zombies/ServerZombiePace.java",
+      "zombie/apocalipse/zombies/ServerZombiePath.java",
+      "zombie/apocalipse/zombies/ZombieVictimPort.java"
+    ],
+    "zombie/apocalipse/zombies/ServerZombiePace.java": [],
+    "zombie/apocalipse/zombies/ServerZombiePath.java": [
+      "zombie/apocalipse/humans/HumanLog.java",
+      "zombie/apocalipse/pathfind/WalkOnlyMover.java"
+    ],
+    "zombie/apocalipse/zombies/ServerZombieSession.java": [
+      "zombie/apocalipse/zombies/ServerZombieNativeAdapter.java",
+      "zombie/apocalipse/zombies/ZombieVictimPort.java"
+    ],
+    "zombie/apocalipse/zombies/ZombieVictimPort.java": [],
+    "zombie/network/ApocBRBackendBridge.java": [],
+    "zombie/network/ApocBRBackendBridgeHooks.java": [
+      "zombie/network/ApocBRBackendBridge.java",
+      "zombie/network/ApocBRBackendHttpDelivery.java"
+    ],
+    "zombie/network/ApocBRBackendHttpDelivery.java": [
+      "zombie/network/ApocBRBackendBridge.java"
+    ],
+    "zombie/savefile/ApocBRAsyncLogin.java": [
+      "zombie/savefile/ApocBRAsyncServerDatabase.java",
+      "zombie/savefile/ApocBRForegroundDatabase.java",
+      "zombie/savefile/ApocBRLoginGuard.java",
+      "zombie/savefile/ApocBRPlayerDatabase.java",
+      "zombie/savefile/ApocBRServerDatabase.java"
+    ],
+    "zombie/savefile/ApocBRAsyncServerDatabase.java": [
+      "zombie/savefile/ApocBRForegroundDatabase.java"
+    ],
+    "zombie/savefile/ApocBRForegroundDatabase.java": [
+      "zombie/savefile/ApocBRPersistence.java"
+    ],
+    "zombie/savefile/ApocBRHumanSales.java": [
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceJournal.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java"
+    ],
+    "zombie/savefile/ApocBRLoginGuard.java": [
+      "zombie/savefile/ApocBRForegroundDatabase.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPlayerDatabase.java",
+      "zombie/savefile/ApocBRPostgresConnector.java",
+      "zombie/savefile/ApocBRServerDatabase.java"
+    ],
+    "zombie/savefile/ApocBRNpcDialogues.java": [
+      "zombie/apocalipse/humans/tasks/HumanTaskCommand.java"
+    ],
+    "zombie/savefile/ApocBRNpcMortality.java": [
+      "zombie/apocalipse/humans/death/HumanDeathPolicy.java",
+      "zombie/savefile/ApocBRNpcStore.java"
+    ],
+    "zombie/savefile/ApocBRNpcRelationships.java": [
+      "zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java",
+      "zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+      "zombie/savefile/ApocBRNpcStore.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java"
+    ],
+    "zombie/savefile/ApocBRNpcSpeech.java": [
+      "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+      "zombie/apocalipse/humans/speech/HumanSpeechMemory.java",
+      "zombie/apocalipse/humans/speech/SpeechContext.java",
+      "zombie/apocalipse/humans/speech/SpeechEvent.java",
+      "zombie/savefile/ApocBRNpcStore.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java"
+    ],
+    "zombie/savefile/ApocBRNpcStore.java": [
+      "zombie/apocalipse/humans/HumanLifecycle.java",
+      "zombie/apocalipse/humans/ServerHumanDefinition.java",
+      "zombie/apocalipse/humans/death/HumanDeathState.java",
+      "zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java",
+      "zombie/apocalipse/humans/encounters/HumanRelationships.java",
+      "zombie/apocalipse/humans/groups/HumanGroupMembership.java",
+      "zombie/apocalipse/humans/profiles/HumanCheats.java",
+      "zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+      "zombie/apocalipse/humans/profiles/HumanProfile.java",
+      "zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+      "zombie/apocalipse/humans/speech/HumanSpeechMemory.java",
+      "zombie/apocalipse/humans/state/HumanMutation.java",
+      "zombie/apocalipse/humans/state/HumanState.java",
+      "zombie/apocalipse/humans/state/HumanStateReducer.java",
+      "zombie/apocalipse/humans/survival/SurvivalSettings.java",
+      "zombie/apocalipse/humans/walking/WalkingPatternSpec.java",
+      "zombie/savefile/ApocBRNpcDialogues.java",
+      "zombie/savefile/ApocBRNpcMortality.java",
+      "zombie/savefile/ApocBRNpcRelationships.java",
+      "zombie/savefile/ApocBRNpcSpeech.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java",
+      "zombie/savefile/ApocBRPostgresConnector.java"
+    ],
+    "zombie/savefile/ApocBRPayloadProvenance.java": [],
+    "zombie/savefile/ApocBRPersistence.java": [
+      "zombie/savefile/ApocBRHumanSales.java",
+      "zombie/savefile/ApocBRPersistenceJournal.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java",
+      "zombie/savefile/ApocBRPlayerDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalMutations.java",
+      "zombie/savefile/ApocBRPlayerRelationalSync.java",
+      "zombie/savefile/ApocBRPostgresConnector.java",
+      "zombie/savefile/ApocBRServerDatabase.java",
+      "zombie/savefile/ApocBRSuccessfulLogin.java"
+    ],
+    "zombie/savefile/ApocBRPersistenceJournal.java": [],
+    "zombie/savefile/ApocBRPersistenceOperations.java": [
+      "zombie/savefile/ApocBRHumanSales.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceJournal.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalMutations.java",
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java",
+      "zombie/savefile/ApocBRPlayerRelationalSync.java",
+      "zombie/savefile/ApocBRPostgresConnector.java",
+      "zombie/savefile/ApocBRSuccessfulLogin.java"
+    ],
+    "zombie/savefile/ApocBRPlayerDatabase.java": [
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java",
+      "zombie/savefile/ApocBRPostgresConnector.java"
+    ],
+    "zombie/savefile/ApocBRPlayerLoadQuality.java": [],
+    "zombie/savefile/ApocBRPlayerLogin.java": [
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPlayerRelationalMutations.java",
+      "zombie/savefile/ApocBRSuccessfulLogin.java"
+    ],
+    "zombie/savefile/ApocBRPlayerMigration.java": [
+      "zombie/savefile/ApocBRLoginGuard.java",
+      "zombie/savefile/ApocBRPlayerLoadQuality.java",
+      "zombie/savefile/ApocBRPlayerMigrationVerification.java",
+      "zombie/savefile/ApocBRPlayerReconstructionLog.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalReader.java",
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java",
+      "zombie/savefile/ApocBRPlayerRelationalSync.java",
+      "zombie/savefile/ApocBRPlayerValidationTargets.java",
+      "zombie/savefile/ApocBRPostgresConnector.java"
+    ],
+    "zombie/savefile/ApocBRPlayerMigrationVerification.java": [
+      "zombie/savefile/ApocBRPlayerReconstructionLog.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalReader.java",
+      "zombie/savefile/ApocBRPlayerRelationalReconstruction.java",
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java"
+    ],
+    "zombie/savefile/ApocBRPlayerReconstructionLog.java": [
+      "zombie/savefile/ApocBRPlayerRelationalReader.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalAccess.java": [
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalCapture.java": [
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRPlayerRelationalAccess.java",
+      "zombie/savefile/ApocBRPlayerRelationalCodecs.java",
+      "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalSchema.java",
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalCodecs.java": [
+      "zombie/savefile/ApocBRPlayerRelationalAccess.java",
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalDatabase.java": [
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalDelta.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalMetrics.java",
+      "zombie/savefile/ApocBRPlayerRelationalMutations.java",
+      "zombie/savefile/ApocBRPlayerRelationalSchema.java",
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalDelta.java": [
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalSchema.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalLimits.java": [],
+    "zombie/savefile/ApocBRPlayerRelationalMetrics.java": [
+      "zombie/savefile/ApocBRPlayerRelationalDelta.java",
+      "zombie/savefile/ApocBRPlayerRelationalMutations.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalMutations.java": [
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java",
+      "zombie/savefile/ApocBRPlayerRelationalAccess.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalSchema.java",
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalReader.java": [
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRPlayerReconstructionLog.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalSchema.java",
+      "zombie/savefile/ApocBRPostgresConnector.java",
+      "zombie/world/ApocBRWorldDictionaryDecode.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalReconstruction.java": [
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRPlayerReconstructionLog.java",
+      "zombie/savefile/ApocBRPlayerRelationalAccess.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalReader.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalSchema.java": [],
+    "zombie/savefile/ApocBRPlayerRelationalSnapshot.java": [
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRPlayerRelationalAccess.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalCodecs.java",
+      "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalSchema.java"
+    ],
+    "zombie/savefile/ApocBRPlayerRelationalSync.java": [
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java",
+      "zombie/savefile/ApocBRPlayerDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "zombie/savefile/ApocBRPlayerRelationalMutations.java",
+      "zombie/savefile/ApocBRPlayerRelationalReader.java",
+      "zombie/savefile/ApocBRPlayerRelationalSnapshot.java",
+      "zombie/savefile/ApocBRPostgresConnector.java"
+    ],
+    "zombie/savefile/ApocBRPlayerValidationTargets.java": [],
+    "zombie/savefile/ApocBRPostgresConnector.java": [
+      "zombie/savefile/ApocBRAsyncLogin.java",
+      "zombie/savefile/ApocBRForegroundDatabase.java",
+      "zombie/savefile/ApocBRNpcStore.java",
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java",
+      "zombie/savefile/ApocBRPlayerMigration.java",
+      "zombie/savefile/ApocBRPlayerRelationalMutations.java"
+    ],
+    "zombie/savefile/ApocBRServerDatabase.java": [
+      "zombie/savefile/ApocBRAsyncLogin.java",
+      "zombie/savefile/ApocBRForegroundDatabase.java",
+      "zombie/savefile/ApocBRPersistence.java",
+      "zombie/savefile/ApocBRPersistenceOperations.java",
+      "zombie/savefile/ApocBRPostgresConnector.java"
+    ],
+    "zombie/savefile/ApocBRSuccessfulLogin.java": [
+      "zombie/savefile/ApocBRPersistenceJournal.java",
+      "zombie/savefile/ApocBRPlayerLogin.java",
+      "zombie/savefile/ApocBRPostgresConnector.java"
+    ],
+    "zombie/savefile/ApocBRWorldDictionaryDatabase.java": [
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRPostgresConnector.java",
+      "zombie/world/ApocBRWorldDictionarySnapshot.java"
+    ],
+    "zombie/util/list/MutationTrackedArrayList.java": [],
+    "zombie/world/ApocBRWorldDictionaryDecode.java": [
+      "zombie/savefile/ApocBRPayloadProvenance.java",
+      "zombie/savefile/ApocBRWorldDictionaryDatabase.java",
+      "zombie/world/ApocBRWorldDictionarySnapshot.java"
+    ],
+    "zombie/world/ApocBRWorldDictionarySnapshot.java": []
+  }
+}

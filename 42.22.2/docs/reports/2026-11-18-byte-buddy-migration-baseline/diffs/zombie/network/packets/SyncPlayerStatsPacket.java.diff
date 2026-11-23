@@ -1,0 +1,33 @@
+diff --git a/zombie/network/packets/SyncPlayerStatsPacket.java b/zombie/network/packets/SyncPlayerStatsPacket.java
+index 384b7fa..6fa5afc 100644
+--- a/zombie/network/packets/SyncPlayerStatsPacket.java
++++ b/zombie/network/packets/SyncPlayerStatsPacket.java
+@@ -7,10 +7,11 @@ import zombie.characters.CharacterStat;
+ import zombie.characters.IsoPlayer;
+ import zombie.core.network.ByteBufferReader;
+ import zombie.core.network.ByteBufferWriter;
+ import zombie.debug.DebugType;
+ import zombie.network.IConnection;
++import zombie.network.ApocBRPacketOwnershipGuard;
+ import zombie.network.JSONField;
+ import zombie.network.PacketSetting;
+ import zombie.network.fields.character.OnlinePlayer;
+ 
+ @PacketSetting(ordering = 0, priority = 1, reliability = 2, requiredCapability = Capability.CanModifyBodyStats, handlingType = 3)
+@@ -44,10 +45,16 @@ public class SyncPlayerStatsPacket implements INetworkPacket {
+ 
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
+         this.player.parse(b, connection);
+         this.syncParams = b.getInt();
++        if (!ApocBRPacketOwnershipGuard.validate(
++            "SyncPlayerStats", connection, this.player.getId(), (byte)-1, this.player.getPlayer()
++        )) {
++            return;
++        }
++
+         IsoPlayer isoPlayer = this.player.getPlayer();
+         if (isoPlayer == null) {
+             DebugType.Multiplayer.error("player not found");
+         } else {
+             if (this.syncParams == -1) {

@@ -1,0 +1,94 @@
+diff --git a/zombie/entity/GameEntity.java b/zombie/entity/GameEntity.java
+index 5beef17..982696a 100644
+--- a/zombie/entity/GameEntity.java
++++ b/zombie/entity/GameEntity.java
+@@ -57,10 +57,12 @@ public abstract class GameEntity {
+     boolean scheduledDelayedAddToEngine;
+     boolean scheduledForEngineRemoval;
+     boolean scheduledForBucketUpdate;
+     @DebugNonRecursive
+     private IsoPlayer usingPlayer;
++    @DebugNonRecursive
++    ServerUsingPlayerIndex.Member usingPlayerMemberships;
+     private static final boolean IOverbose = false;
+ 
+     public static String getDefaultEntityDisplayName() {
+         return "EC_Entity_DisplayName_Default";
+     }
+@@ -443,10 +445,11 @@ public abstract class GameEntity {
+ 
+             assert !this.addedToEngine;
+         }
+ 
+         this.usingPlayer = null;
++        ServerUsingPlayerIndex.changed(this);
+         this.addedToEngine = false;
+         this.removingFromEngine = false;
+         this.scheduledDelayedAddToEngine = false;
+         this.scheduledForEngineRemoval = false;
+         this.scheduledForBucketUpdate = false;
+@@ -558,12 +561,15 @@ public abstract class GameEntity {
+                         if (loaded != null) {
+                             loaded.add(component);
+                         }
+                     } else if (Core.debug) {
+                         throw new IOException("Component with id '" + componentID + "' not found.");
++                    } else {
++                        zombie.savefile.ApocBRPlayerLoadQuality.issue("COMPONENT_SKIPPED");
+                     }
+                 } catch (Exception var11) {
++                    zombie.savefile.ApocBRPlayerLoadQuality.issue("COMPONENT_LOAD_FAILED");
+                     ExceptionLogger.logException(var11);
+                 }
+ 
+                 ByteBlock.End(input, block);
+             }
+@@ -585,10 +591,11 @@ public abstract class GameEntity {
+     }
+ 
+     public void setUsingPlayer(IsoPlayer player) {
+         if (this.usingPlayer != player) {
+             this.usingPlayer = player;
++            ServerUsingPlayerIndex.changed(this);
+             if ((GameClient.client || GameServer.server) && this.getGameEntityType() == GameEntityType.IsoObject) {
+                 this.sendUpdateUsingPlayer();
+             }
+         }
+     }
+@@ -640,18 +647,21 @@ public abstract class GameEntity {
+         if (input.getBoolean()) {
+             String username = input.getUTF();
+             short onlineID = input.getShort();
+             if (GameClient.client) {
+                 this.usingPlayer = GameClient.instance.getPlayerByOnlineID(onlineID);
++                ServerUsingPlayerIndex.changed(this);
+             } else if (GameServer.server) {
+                 IsoPlayer player = GameServer.getPlayerByUserName(username);
+                 if (this.usingPlayer == null) {
+                     this.usingPlayer = player;
++                    ServerUsingPlayerIndex.changed(this);
+                 }
+             }
+         } else {
+             this.usingPlayer = null;
++            ServerUsingPlayerIndex.changed(this);
+         }
+ 
+         if (GameServer.server) {
+             this.sendUpdateUsingPlayer();
+         }
+@@ -705,12 +715,14 @@ public abstract class GameEntity {
+         } else {
+             try {
+                 if (input.getBoolean()) {
+                     short onlineID = input.getShort();
+                     this.usingPlayer = GameClient.instance.getPlayerByOnlineID(onlineID);
++                    ServerUsingPlayerIndex.changed(this);
+                 } else {
+                     this.usingPlayer = null;
++                    ServerUsingPlayerIndex.changed(this);
+                 }
+ 
+                 ArrayList<ComponentType> syncedTypes = new ArrayList<>();
+                 int size = input.getByte();
+                 if (size > 0) {

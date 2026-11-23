@@ -20,6 +20,12 @@ You do **not** need to know Java or programming to use these. Just follow the st
 
 ---
 
+## Java Agent (Early Migration)
+
+The Maven project under `src/main/java` is an early Byte Buddy migration path, separate from the existing loose-class patch workflow. It uses one global agent entry point with each feature owning its instrumentation registrations. The agent targets the latest supported game build; hook matchers and callback logic are updated together as vanilla changes, while older support remains available through Git history rather than runtime target selection. Telemetry records Lua-event timings and posts a direct schema-3 snapshot every 30 seconds to `POST /api/v1/telemetry` on a virtual thread. Telemetry and restart calls use standalone OpenFeign interfaces: `@RequestLine` declares each endpoint path and the selected YAML profile supplies the base URL to a shared JDK HTTP/2 transport. Calls remain synchronous inside their virtual-thread workers. `src/main/resources/application.yaml` contains production defaults; the same packaged JAR can select `application-local.yaml` at runtime with `-Dapocbr.profile=local`, which directs telemetry and restart requests to `http://localhost:8080`. The Maven build does not bake in a profile; with no runtime profile property, production settings are used. JVM properties and environment variables still override configured endpoints, and credentials remain outside YAML. Telemetry API key uses `apocbr.telemetry.apiKey` or `APOCBR_TELEMETRY_API_KEY` when set, otherwise it reuses `apocbr.bridge.serverKey`; that credential must be an active integration key associated with the runtime server. Tick, loop, world and JVM sections are placeholders until their measurements are ported. The game JAR is not bundled into the agent.
+
+---
+
 ## Patches Included
 
 - Build 42.22.0 pre-release: [current development target and migration status](42.22.0/docs/README.md).

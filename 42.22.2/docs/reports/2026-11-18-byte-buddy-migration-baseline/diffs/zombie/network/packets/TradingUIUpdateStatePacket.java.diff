@@ -1,0 +1,29 @@
+diff --git a/zombie/network/packets/TradingUIUpdateStatePacket.java b/zombie/network/packets/TradingUIUpdateStatePacket.java
+index 0f34d0f..6672ca0 100644
+--- a/zombie/network/packets/TradingUIUpdateStatePacket.java
++++ b/zombie/network/packets/TradingUIUpdateStatePacket.java
+@@ -32,20 +32,24 @@ public class TradingUIUpdateStatePacket extends PlayerRequestPacket {
+     }
+ 
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
+         super.parse(b, connection);
++        zombie.apocalipse.humans.ServerHumanTrading.resolveTarget(this.destination);
+         this.state = b.getEnum(TradingState.class);
+     }
+ 
+     @Override
+     public void processClient(UdpConnection connection) {
+         LuaEventManager.triggerEvent("TradingUIUpdateState", this.sender.getPlayer(), this.destination.getPlayer(), this.state);
+     }
+ 
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
++        if (zombie.apocalipse.humans.ServerHumanTrading.state(
++            this.sender.getPlayer(), this.destination.getPlayer(), connection, this.state
++        )) return;
+         if (this.state == TradingState.WindowWasClosed) {
+             TradingRequests.getInstance().response(this.sender.getPlayer(), this.destination.getPlayer());
+         }
+ 
+         if (!TradingManager.getInstance().isInvalid(this.sender.getPlayer(), this.destination.getPlayer())) {

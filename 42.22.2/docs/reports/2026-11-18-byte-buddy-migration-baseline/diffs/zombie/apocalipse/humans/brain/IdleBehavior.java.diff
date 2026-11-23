@@ -1,0 +1,18 @@
+diff --git a/zombie/apocalipse/humans/brain/IdleBehavior.java b/zombie/apocalipse/humans/brain/IdleBehavior.java
+new file mode 100644
+index 0000000..0815c98
+--- /dev/null
++++ b/zombie/apocalipse/humans/brain/IdleBehavior.java
+@@ -0,0 +1,12 @@
++package zombie.apocalipse.humans.brain;
++
++/** Stationary policy proving that the runtime does not require a guide brain. */
++public final class IdleBehavior implements HumanBehavior {
++    private boolean stopped;
++    public boolean needsPerception() { return false; }
++    public void update(HumanObservation observation, HumanActuator actuator) { }
++    public void suspend(long now, HumanActuator actuator) { actuator.stopMoving(); }
++    public void resume(HumanObservation.Identity visitor, long now, HumanActuator actuator) { }
++    public void stop(long now, HumanActuator actuator) { stopped = true; actuator.stopMoving(); }
++    public boolean available() { return !stopped; }
++}

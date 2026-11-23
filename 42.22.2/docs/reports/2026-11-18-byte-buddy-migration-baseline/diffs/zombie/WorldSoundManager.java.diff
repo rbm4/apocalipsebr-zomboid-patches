@@ -1,0 +1,78 @@
+diff --git a/zombie/WorldSoundManager.java b/zombie/WorldSoundManager.java
+index a40011f..6fc7842 100644
+--- a/zombie/WorldSoundManager.java
++++ b/zombie/WorldSoundManager.java
+@@ -37,11 +37,14 @@ import zombie.vehicles.VehiclePartOwner;
+ @UsedFromLua
+ public final class WorldSoundManager {
+     public static final WorldSoundManager instance = new WorldSoundManager();
+     private static final float MUFFLE_SOUND_DIFFERENT_ROOMS = 1.2F;
+     private static final float MUFFLE_SOUND_INSIDE_OUTSIDE = 1.4F;
+-    public final List<WorldSoundManager.WorldSound> soundList = new ArrayList<>();
++    public final List<WorldSoundManager.WorldSound> soundList = new zombie.util.list.MutationTrackedArrayList<>();
++    private final ServerSoundStressIndex serverStressIndex = new ServerSoundStressIndex();
++    /** For integrations that edit an existing sound's position/radius/flags in place. */
++    public void invalidateStressIndex() { this.serverStressIndex.invalidate(); }
+     private final ObjectPool<WorldSoundManager.WorldSound> freeSounds = new ObjectPool<>(WorldSoundManager.WorldSound::new, "WorldSoundManager.freeSounds");
+     private static final WorldSoundManager.ResultBiggestSound resultBiggestSound = new WorldSoundManager.ResultBiggestSound();
+ 
+     public void init(IsoCell cell) {
+     }
+@@ -185,11 +188,13 @@ public final class WorldSoundManager {
+                             }
+                         }
+                     }
+                 }
+ 
++                long soundRevision = ((zombie.util.list.MutationTrackedArrayList<WorldSound>)this.soundList).mutationVersion();
+                 this.soundList.add(s);
++                if (GameServer.server) this.serverStressIndex.appended(this.soundList, s, soundRevision);
+                 ZombiePopulationManager.instance.addWorldSound(s, doSend);
+             }
+ 
+             if (doSend) {
+                 if (GameClient.client) {
+@@ -402,10 +407,15 @@ public final class WorldSoundManager {
+             }
+         }
+     }
+ 
+     public float getStressFromSounds(int x, int y, int z) {
++        if (GameServer.server) {
++            try (ApocBRServerTelemetryLite.Scope timing = ApocBRServerTelemetryLite.phase("simulation.players.soundStress")) {
++                return this.serverStressIndex.query(this.soundList, x, y);
++            }
++        }
+         float ret = 0.0F;
+ 
+         for (int i = 0; i < this.soundList.size(); i++) {
+             WorldSoundManager.WorldSound sound = this.soundList.get(i);
+             if (sound.stresshumans && sound.radius != 0) {
+@@ -441,10 +451,27 @@ public final class WorldSoundManager {
+                     }
+                 }
+             }
+         }
+ 
++        if (GameServer.server) {
++            // ArrayList.removeIf compacts once and retains the original survivor order.
++            synchronized (this.soundList) {
++                long started = System.nanoTime();
++                int entries = this.soundList.size();
++                this.soundList.removeIf(sound -> {
++                    if (sound != null && sound.life > 0) { sound.life--; return false; }
++                    this.release(sound);
++                    return true;
++                });
++                ApocBRServerTelemetryLite.count("sounds.expiry.checked", entries);
++                ApocBRServerTelemetryLite.count("sounds.expiry.removed", entries - this.soundList.size());
++                ApocBRServerTelemetryLite.recordPhase("simulation.worldSounds.expiry", System.nanoTime() - started);
++            }
++            return;
++        }
++
+         int s = this.soundList.size();
+ 
+         for (int nx = 0; nx < s; nx++) {
+             WorldSoundManager.WorldSound sound = this.soundList.get(nx);
+             if (sound != null && sound.life > 0) {

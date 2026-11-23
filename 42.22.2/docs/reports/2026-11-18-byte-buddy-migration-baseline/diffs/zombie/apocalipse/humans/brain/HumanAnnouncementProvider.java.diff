@@ -1,0 +1,16 @@
+diff --git a/zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java b/zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java
+new file mode 100644
+index 0000000..2126e87
+--- /dev/null
++++ b/zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java
+@@ -0,0 +1,10 @@
++package zombie.apocalipse.humans.brain;
++
++import java.util.List;
++
++/** Content port: resolve one announcement snapshot, without performing actions. */
++@FunctionalInterface
++public interface HumanAnnouncementProvider {
++    HumanAnnouncementProvider NONE = List::of;
++    List<String> lines();
++}

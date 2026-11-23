@@ -1,0 +1,1972 @@
+{
+  "date": "2026-11-21",
+  "scope": "NPC dependency report only; no feature port or runtime execution",
+  "summary": {
+    "seedSources": 191,
+    "customClosureSources": 234,
+    "directNativeInboundOwners": 17,
+    "nativeApiRows": 3865,
+    "seedNativeApiRows": 3035,
+    "seedNativeOwnerTypes": 135,
+    "seedNativeSourceFiles": 125,
+    "distinctSeedNativeMembers": 603,
+    "originalJarBoundaryClasses": 48,
+    "javacExitCode": 1,
+    "compilerErrors": 10
+  },
+  "gitHead": "ff892feafc65de9317e205ec5440cf3c65780e5b",
+  "originalJarSha256": "3c4a7c5f149d784758c6fb5f8fa85f3a21d572e38bc081400e89035f8120d287",
+  "compilerVersion": "javac 25.0.4",
+  "sourceFiles": [
+    {
+      "path": "42.22.2/decompiled/zombie/AttackType.java",
+      "sha256": "3e1aecd9436629e12de0aef8318c06f1d0056f09aed39e60c5dffd6d41c23d93"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/CombatManager.java",
+      "sha256": "dd80a33e08e48d1ae3d39a4c1ba4d75e44e2000ffc0edda8d394f53f9b58bfff"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/GameTime.java",
+      "sha256": "819e1f8e376f0f68a67fe05756c9344267945f20f0880b8942fe8d243c981e83"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/GameWindow.java",
+      "sha256": "51fa2e8e5cf9b90df018498d5ac92e16ae5853cf2096bdbc893c5a3cc14da343"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/Lua/LuaEventManager.java",
+      "sha256": "eaba114cb3572a5c351b6f39d6b1d745a7d1f1037bb6fe4ab4087ca7b82aee35"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/Lua/LuaManager.java",
+      "sha256": "50f780df0d34d89c457b8a81c70792d09f39a4c6a464b485076ea649c9816670"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/MovingObjectUpdateScheduler.java",
+      "sha256": "7ea1c8ab7aee43289414bc755ec1e91c2b531b7a5a314921059095610c3a3126"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ReanimatedPlayers.java",
+      "sha256": "cc66cb0b80543ca20682956613fb1eeb0cf23c6dcb2ac16e117f928c8abef26a"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/VirtualZombieManager.java",
+      "sha256": "146916d6eac85ef6b9cafaf74e0c5cf3fc12e12328a229c579088dcf1ca991b5"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ZomboidFileSystem.java",
+      "sha256": "e5b97851d90230a37721821f55ad23fd3ae1973a4526c4c099c860564eeb41ff"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/State.java",
+      "sha256": "a8c144906d377ad87c56d4b327c15baaff7ad59e6ea2f598f79f2206ff41e4be"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/astar/Mover.java",
+      "sha256": "6c06ee5f92b8ebb30dcd339c5f9106d6fcdeee07a08ecca45f5e2a5ef96c575a"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/ClimbOverFenceState.java",
+      "sha256": "b5e5c58ede7a3bfe1000d200916bea729afbcdf2b9dbc3e690505708c0a52d25"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/ClimbThroughWindowPositioningParams.java",
+      "sha256": "3b0df6827f5d53cb70cebf7803a822f5db40d54fb159577343f11d427eed8c42"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/ClimbThroughWindowState.java",
+      "sha256": "ff4443c00818d2aad24bec2aa827e6d8b984898a76f2043afb4588552ed6b6d5"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/IdleState.java",
+      "sha256": "78470b40bf00c1c56132ba2ea54f663c0a0a0692c16eb26bc0a012399d6c7159"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/PlayerActionsState.java",
+      "sha256": "83a9602dcc390a0a836074d31906ec184c30c6a24f557aec00d9d1ed5d86c379"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/PlayerAimState.java",
+      "sha256": "82f88a9ca502a66e5d1811992cb5949de870505fb94b5a663e231bebfe194588"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/PlayerDraggingCorpse.java",
+      "sha256": "f16798f5c6898362e3c047cf984bbcd152009a6c30d3382176c7f9c3135b8a52"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/PlayerEmoteState.java",
+      "sha256": "76deeefb71bd550bf665b66407db74fc7543aa761e11b9429a539a15139bd4af"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/PlayerGetUpState.java",
+      "sha256": "8fdff5f350d8f1a58155e9a71118f0948b83a43f800fe7694870ead417aa8998"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/ai/states/PlayerSitOnFurnitureState.java",
+      "sha256": "f6554e081d8745589db7a19d4337f8e553956f3efe9b33ff39a473e6af628975"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/audio/parameters/ParameterBulletHitSurface.java",
+      "sha256": "41f6e2fb7c4a84658c5f5aa3d106344f6d4443ab380c6c3fd21c7e99642ab3b5"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/audio/parameters/ParameterMeleeHitSurface.java",
+      "sha256": "29fe1cc24195a3016c1c4e4a07e137d6e92bf3f4c2bf686d10ea21a4d275d7f2"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characterTextures/BloodBodyPartType.java",
+      "sha256": "13825e22ec217e0fb6c3ae590c4f607b89ca93d4ba4e2b0324ec39ae5694bf57"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/BaseCharacterSoundEmitter.java",
+      "sha256": "8946aad3d924990d659fe1dd996cb21f57ff231c10694ca42a2b06d5cc414ed8"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/BodyDamage/BodyDamage.java",
+      "sha256": "83a8da26d421177cffdc4c9269e4445d5e681d4749ec65d3111d81884e3069c7"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/BodyDamage/BodyPart.java",
+      "sha256": "b4db36eb94ac97772b34bf5a6a094dc5b62708bc9900d21ae5cfe7d3b4c57b1b"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/BodyDamage/BodyPartType.java",
+      "sha256": "35550b516535c83b06714ce1edffbaef9937aad4a3b6058a2f0606a4c7bcef21"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/BodyDamage/Nutrition.java",
+      "sha256": "4e172e24a131ccc83f6245e7a84e8d51207fb2781c8f1575feb49f61a5777d58"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/CharacterStat.java",
+      "sha256": "93b21c9a7aab0f2e47be9c89d24b2bf7cf419d218a3da21bbb29ed8a72b5ad9a"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/Faction.java",
+      "sha256": "db5622bcd124652817b7d2107b3996547df57ffc7e14ef9843958e815f5351b7"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/IsoGameCharacter.java",
+      "sha256": "3321951975f54130f5945a575801e1c9a2cafda349f436c426163d2ff2ef7f09"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/IsoLivingCharacter.java",
+      "sha256": "93649c72a414c05536ffe68f0951cca956dfd5f14e734e9b58e6d05d9d6d88aa"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/IsoPlayer.java",
+      "sha256": "1d6de2bc003c7fbec62f8da4c73c51c44963d0f52aeb8729fde79a4576af11b7"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/IsoZombie.java",
+      "sha256": "1d9049d4e0fc431c0debd2a20652e0f9d4575b83dc005c40fc8e115367d6325f"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/NetworkCharacterAI.java",
+      "sha256": "0a79ee0d7b837f92277c34c99457f1d18e650689166dc9ae993cd69e35ba26ad"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/NetworkPlayerAI.java",
+      "sha256": "9864f50721d077b7922c3c66a45b7bd450924f25e5daad67c56d474f9678ba04"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/NetworkPlayerVariables.java",
+      "sha256": "2829b82f113b548d6a66c04b91dd5bbfda708e5226a51edaacd9b4d5f6cc1d00"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/NetworkZombieAI.java",
+      "sha256": "1dd8967bee0cbeff7923eec5c535d1d334c38a44ddd2d587b81d1d44e3ef600d"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/NetworkZombieVariables.java",
+      "sha256": "c9912cd7abb9dd6f32db0459bd9e40837fec929b82d57e12e0a52a58778b400e"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/Safety.java",
+      "sha256": "993a13de3276fba533baeb53bd10c779e431c0bf495531ba91edf1934a19f609"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/Stats.java",
+      "sha256": "19fbd0604566d081e5a37d800f03f040f710e82678d14beaedbdb8f898589d2e"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/SurvivorDesc.java",
+      "sha256": "7c5d66ce55655d8f4f40e4011452beec6625bdc9d569edd8d8b10a0a0e9c92cd"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/ThumpDamageRender.java",
+      "sha256": "188e8f83dac5103abe1af4a7c7d44dfa38db09eafbb9fd20f81c09ce2050dbf9"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/animals/AnimalManagerMain.java",
+      "sha256": "66559d542d3aa645f8d732e870b49b726dce14edb50da26cfe4a8474f9211661"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/animals/AnimalZones.java",
+      "sha256": "24cd43f4b274162667bffe0cffd3ebb677675f604836e0590752a14673e51b9a"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/animals/IsoAnimal.java",
+      "sha256": "e2102334c178ec5f5193332b42e79b448e14ad4d6a36314d65b5194133226851"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/animals/VirtualAnimal.java",
+      "sha256": "9568c4910edf9a49fbae40cc3ebdf5eca6403610f39ee9bcb463fdb65aa10f33"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/characters/skills/PerkFactory.java",
+      "sha256": "a2fb5539e923b0ba6a33c66c8fce6784bc37c065a865d5251ac9928f7835ae4d"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/config/BooleanConfigOption.java",
+      "sha256": "99c3cf7ca4c42c7384a2dcc0a66f5d2671bc24a6665c5ebdc8ff16e6d966605f"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/Color.java",
+      "sha256": "b5bbf9112315e563d3be30d02ac33c0cae7302d9c7d750e658302d103f8e3e71"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/Core.java",
+      "sha256": "b677d11030904e832f9f673a9eb33b3b8a62ac220657e50cd0631211d004dfd7"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/ImmutableColor.java",
+      "sha256": "d8d34dfdab71decd0b4b2d1c66518b30c286062d5f5c052e58429fcab1b41317"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/TradingState.java",
+      "sha256": "8d35b55c53e7934ee1d98fed018823c61a01f2c4bc1d343829219487a3a5be06"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/math/PZMath.java",
+      "sha256": "7cc2c929ed1a169878b5aba369325e1a9a59e7a604b95ee9de6dde803c508dcb"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/network/ByteBufferReader.java",
+      "sha256": "0bf2f3f78d094be73574a26691603f0473c89bc82d82c09b3796a282e97de8b1"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/network/ByteBufferWriter.java",
+      "sha256": "97e3eeeb81c353942511d7375ac5fa01fef5659cfb9082aa90970c7c079dd736"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/properties/PropertyContainer.java",
+      "sha256": "3efd4025ecbf2829552482f4927b079db49b0d3012c26e2fe32510169bb97917"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/raknet/UdpConnection.java",
+      "sha256": "c1abef3018fa9150868e9e33d45c914f3a9c9c447dc6ee8dcda570a100dd1abd"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/raknet/UdpEngine.java",
+      "sha256": "88951322fb791e319030d41baaa58243122941b3e1ff7c114bb85fd3b516a997"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/random/Rand.java",
+      "sha256": "eee06eda63511e3158817bef86ea199d0b607d4e08c36e6c74c59367810d0564"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/skinnedmodel/BaseGrappleable.java",
+      "sha256": "cb3a8cd5ccfc40c9baf682538f878d3bd4f28c9a692f7d5304dd6a07369a72b4"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/skinnedmodel/IGrappleable.java",
+      "sha256": "473dad05c72cd04fc5f3bd2fd41a58489eef87d95af910fb3ee419a973fff49e"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/skinnedmodel/IGrappleableWrapper.java",
+      "sha256": "ea88b794530e52ed34774151a584ef08e121c88ab92dd46e92f7ed0aeec8ad4a"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/skinnedmodel/advancedanimation/IAnimationVariableSourceContainer.java",
+      "sha256": "065f086d5564afe5ac46f8583985001d07f6ec529be7fc60ba8e87bcc8408784"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/skinnedmodel/visual/HumanVisual.java",
+      "sha256": "3f8f234a21aa2c8a6060ebb73135a946dd1280ffbb11b914c651c6eeb25db4f3"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/utils/ByteBlock.java",
+      "sha256": "b7adfab0141346d9f93c340b4470eb4ac13763e316d3bd014f83671608bc1412"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/core/znet/SteamUtils.java",
+      "sha256": "68eaebf3751a61ff74a7853a29b502b17c8a7d2171d6821c63d71583dfbdcb58"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/debug/DebugLog.java",
+      "sha256": "23abe6c79c99bf80cee71e0cc12a7690b5c0baa9e4c13e44dfcc5d5131c4b40f"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/debug/debugWindows/ScenePanel.java",
+      "sha256": "7a18abbd304f3a16f0a8343c4837f33587bc7c7e31a49c644eb23c89027d95bc"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/entity/ComponentType.java",
+      "sha256": "eb7403416fb9621db5bee10ea207986464e51ca07b32ac3e1749956d88865c35"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/entity/GameEntity.java",
+      "sha256": "ca333ea07cbf0ec5cc9981ce47e279c26a16a6588346174607bd4dfb7f7d7430"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/erosion/season/ErosionSeason.java",
+      "sha256": "27f36dfcb82d2ebe27c9c08ac82bc94c989b7a261d16b7f551757eb6e91f9052"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/InventoryItem.java",
+      "sha256": "e2f901363ed90f7171de7424bc882c697fa52e62bbafa933302059c9c3dbcf2e"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/InventoryItemFactory.java",
+      "sha256": "03a022085eefb48b15ac4464c0e8698958f8297921365dd37daf51fc3cfc453b"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/ItemContainer.java",
+      "sha256": "69a784972f3a4be0dd95e77e5d7bed1806326905f0e87af667e59b9ec7a6defd"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/types/Clothing.java",
+      "sha256": "3b3511c926471b1b2bd8ba3a697d2e19bf919288d576b345cdf7ef093a19d6cf"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/types/Food.java",
+      "sha256": "1ac9bf1e136df285c7d7b2724b65b16dbf4c058b2c411a676f8a05133e77934f"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/types/HandWeapon.java",
+      "sha256": "463892d3a9bcd0760e147414f34f91f705cce861aac91184d9be5f2fa7d07071"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/types/InventoryContainer.java",
+      "sha256": "8d4b6e617906898d01fd583e4bb65142356c942edbe3cf15588b8215489eb557"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/types/Moveable.java",
+      "sha256": "29cf30dfcab51ae0b23038dc68ddb41f17125078ad1ea6873897bb4057108a4b"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/inventory/types/Radio.java",
+      "sha256": "34fa0b092e0911af8410dfd3547b04fb0fc920fcb42dd174209d975cb0cf15ff"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/CellLoader.java",
+      "sha256": "47e4dd1e1614510f0ac57159e666a442b669232b063490c8752faf333bc3904e"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/Helicopter.java",
+      "sha256": "47dd86abe46071bdb3cd4168b46890a2b12ca3dc4b25d93910fd4d52f2081651"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/IsoCell.java",
+      "sha256": "2a6beb263cdf04c160246f25f850a380c15844a2b30c60ba934bb811866a22b5"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/IsoChunkMap.java",
+      "sha256": "f2f4bf06a2c04ec10342e8f733eaea4f92ec05ec989b62de62e62c7c9716c177"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/IsoDirections.java",
+      "sha256": "9582673650f253f589d9af47f391c34f9b1c78e1f290e732e920ab9ed6d4fa2f"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/IsoGridSquare.java",
+      "sha256": "b448cbe53c163955568b2dc18306a45c01d4d81b4289a66f1ccb2e2112fdd3f1"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/IsoMetaGrid.java",
+      "sha256": "b53decf39088f887f4fff7be5fc5f3ffac39cace3e7792b9bdc039cff9c37ea1"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/IsoMovingObject.java",
+      "sha256": "a563355035e6be2c94801fbc4c7070ea3ac3261ffc86163bea112255f3b03883"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/IsoObject.java",
+      "sha256": "eb8bc3a4ef998cfc292e8cce4a1357086e8778e3b0830cc41911a76d80d66ddd"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/IsoWorld.java",
+      "sha256": "2d71dbc4d1ff6579e016228cf6b786ca06e26fc88c6b8a7369e72a7ac0041d32"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/LosUtil.java",
+      "sha256": "b276b86bf938e2d025de97e4217fc0940e8d8b07df77d6b5bdb5c1bd7c5148e8"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/SpriteDetails/IsoFlagType.java",
+      "sha256": "b6e370cde55782549cf94ed45aff5ebcbc52e60218f4b24a93e8ba8ed32d39c2"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/Vector2.java",
+      "sha256": "ab81b12d3e7aa06ba2fd34c38045707e8b723d0d0600508fc02b67dbdd3bcdf7"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/Vector3.java",
+      "sha256": "d12690b9ae747ddf431f858cca649d887941892085c842e46567786db27cc773"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/areas/NonPvpZone.java",
+      "sha256": "acf683b3414fd329431edc1db8bba055f1fd32c5e42d28d5741186c6309f2228"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/areas/SafeHouse.java",
+      "sha256": "7e92d3de6802dfe09b507065e3643d416900a0b3fdb37b6a1903e9bfbfff45a4"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/fboRenderChunk/FBORenderCell.java",
+      "sha256": "8be00865560df74b2d78ebe19728fc3f07a2d3653b8f5086b6361222f242bf13"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/objects/IsoDeadBody.java",
+      "sha256": "78596cb4a98b636df263a470c3a484f08d130827c5f4b8fb9b58098a990cf356"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/objects/IsoDoor.java",
+      "sha256": "6cb9e87b28848ed63d07bc0774e170b4a962dae67ddafa7c6d5b425348551b67"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/objects/IsoHutch.java",
+      "sha256": "4acbefd41773d66dd60c65214b45a3a68cde50bdb614eb7f82bfa03d686b70cd"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/objects/IsoThumpable.java",
+      "sha256": "413074edb4b42f31f2e8e3f85b2bab4977b565d7ebc26acda328048c37542040"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/objects/IsoTrap.java",
+      "sha256": "9816138341f8b4c2d19f3e39418e2ae9f4444d3ac2410fafa3666a3c37143d55"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/objects/IsoWindow.java",
+      "sha256": "5c1b9be54f555fb9acb940bc237a13e89e4f23255c5d7b73bfa4a36beca56d70"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/objects/IsoWindowFrame.java",
+      "sha256": "ef1f50d9a0fb6ae55deeeb26b0a68d15ab8b2564a0f931e0e4cf5269f91cd5e0"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/objects/IsoZombieGiblets.java",
+      "sha256": "9f360c460d8d6b4ccbea26730eb2adde70e9c7f95798aaa8ea6a3c106aebd7b3"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/sprite/IsoSprite.java",
+      "sha256": "6d27f879f7ec84af0a1e321d7e49a0ca0ed2dfe74e988a7a790e35fde6ec0662"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/weather/ClimateManager.java",
+      "sha256": "baeac94d3416dc8f4dba87cd6c8880d1e2e283e0e1cb87ba3dc1c39e157e19ff"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/iso/weather/WeatherPeriod.java",
+      "sha256": "fe739d945e90ce9dc1e81fe870b9dab4eaf669651e4d6b35d950ce7b9c72d877"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/GameServer.java",
+      "sha256": "fb68f8845be349fb9872a738d310241bd3fadc146f16943a44d68ddde79987aa"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/IConnection.java",
+      "sha256": "8dcb36e6217d155a1af019216e70ff2e744600fe8827c4385d7bdb34aab2634f"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/IsoObjectID.java",
+      "sha256": "c3ccdc2cd5f270b091f0b5e8dff19cb6ecc7c6a0c0f2408617c255858dc7f063"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/NetworkVariables.java",
+      "sha256": "a85a85de08fd2b761107d6c3a96a38dbc696b99d621b130e2095f8efb89b75f8"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/PZNetKahluaTableImpl.java",
+      "sha256": "b8465be04406e8b0b3765a1630b3248e87dfb6532292fdbb62d3e9896f4f92c9"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/PacketTypes.java",
+      "sha256": "24eca0fe4e5607231d6cd1a70cf53485b3388493336720bcbd317870df64ac30"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/ServerGUI.java",
+      "sha256": "38712cffa3c0b0341e4a9b03f760e84e3d4cb725021e5a10827d502a5ef44829"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/ServerMap.java",
+      "sha256": "96f48883a3489907c236881e111eeccfc88bcd5dab5f44dab07bde999e6e490a"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/ServerOptions.java",
+      "sha256": "f2df39ee21b95ab22d08825fcd97a30757a39a5f179e95ce2b390edb33c0591c"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/ServerWorldDatabase.java",
+      "sha256": "0d629992615067daae5bdfea31ffe0f95ad589c589fa3489b78e33a3c19dbc77"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/chat/ChatServer.java",
+      "sha256": "ddadfb9b38dc683d39dac4d44baab4f88c378213fef3d8f7c08787df6d1b5830"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/IDShort.java",
+      "sha256": "e5f5fc99ef54ffad9c5b1f299ad54a1127d3086ae91a613cc6f21fc50f52d8ee"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/MovingObject.java",
+      "sha256": "6143d061a0f6f3927972a334ebcc460d25cb9167eccbe4339ae602ad8c5bda1a"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/Position.java",
+      "sha256": "70ae8e5b1337ed23b8d9d4a6d86192da76fb56d66975fdab879fc54699dbbbb8"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/StateID.java",
+      "sha256": "934f955dbaf63779bb53d3e390c2c6ea10281104e556bcbda5636f00fbfe417f"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/Variables.java",
+      "sha256": "a83adf54f97e81805109e91d046e7386d99de383a446ea2caaf0f8c67c1837a5"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/character/CharacterID.java",
+      "sha256": "4a6fc22071c79ab790595c29a43d5ebb1afb373013ec95a58212f12f610a587c"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/character/ConnectionPlayer.java",
+      "sha256": "c031cf5e89dac1897748c51829e449aa4f6a496e94b0fcbc6ee3481f27ff958c"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/character/OnlinePlayer.java",
+      "sha256": "e75c2f31c17bd11705710b94fe8614366b00b35b76db0d432a1e0744965d1711"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/character/PFBData.java",
+      "sha256": "7f783c179dba637e378d2247044982755a988511feeaf8d81b3ed17c49c678c8"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/character/Player.java",
+      "sha256": "7fbe1d427edca0ed81456d6f51bad48323ef15f0ff7c987ec25336d0a81d0858"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/character/PlayerVariables.java",
+      "sha256": "7a31dfe1aaae1671fa5333c25052edbee7e353f4d4c25b7847a38d7da8751dc2"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/character/Prediction.java",
+      "sha256": "9ec2ae7b0b5217a3be2f52dd0df2735bbf66501d3cd222cf8900a7cdc2e7b21d"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/hit/AttackVars.java",
+      "sha256": "5ed5fa2fd832f8ed8f7552662929c3403a0f0195bb61852152e8c3dfaa9d460c"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/hit/Fall.java",
+      "sha256": "cbb619d381cd634fd2027c939580f7dd53fb793634f7e913b88d819edab44e3b"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/hit/Hit.java",
+      "sha256": "188e7082f869378cc9279889455763c861e72a59c1a43ca1cbc11d7718ea385b"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/hit/HitInfo.java",
+      "sha256": "bcbbb4dc0835e237d4de513383808d5972ccc98e3977e05e34a9d3a31e1e6f5e"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/hit/Player.java",
+      "sha256": "0acf8ad0f14964bce7893a4afe60d4b4361d1fd776372f8b765ecd5042b336d6"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/hit/Weapon.java",
+      "sha256": "75dfbed8c296d0f38528ac56e7685c3dfaea9c46172890695f1869fe033fbfb1"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/hit/Zombie.java",
+      "sha256": "470a11c87530e461cd413d73e47a2a786d8ee58e076e0ff8b9cb0e185dbfb165"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/fields/vehicle/VehicleID.java",
+      "sha256": "3cb2f5b62319f5ba899871ffce209100b54b750cbb71c36810067397aac2c809"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/id/ObjectIDManager.java",
+      "sha256": "8b511d89890c0cfbdacc31f519154719e52aa4bd9b0762b74e2edc04b90e4509"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/AcceptTradingPacket.java",
+      "sha256": "b3144a130cd8b468a81c3a58be00d8db03f151fe90cab20b501b452262ff1263"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/INetworkPacket.java",
+      "sha256": "77d50f50b91ef8faeb637ef129eb07929641d9ffdd30b29338fddd403905b7dc"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/PlayerRequestPacket.java",
+      "sha256": "4d2105aedaf36031c77ef5ad010cca2e323a31097e5906221c65d2c01d91e653"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/RejectTradingPacket.java",
+      "sha256": "aeec5767cb966a77f05edf926d8c976208e00db4079410010e01d77bd4a7b908"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/RequestTradingPacket.java",
+      "sha256": "84358cead537eec52cd9b657d9b9aafc945458f7a9ee8bf01d2ef2610f8f7991"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/TradingUIAddItemPacket.java",
+      "sha256": "a2a96789b126c79ee9ca540450b2fdd4e8f2f524a6c8ca5805bc50918b5165e6"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/TradingUIRemoveItemPacket.java",
+      "sha256": "03270af1c7249ee0bf4ee3f65c98506a95f779c52c10347b8364b5ef81a087f7"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/TradingUIUpdateStatePacket.java",
+      "sha256": "b9531aeaa52a519a97444a061990a9e917c24c5e1db4e53eca1b7950ed5b7fd8"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/actions/StatePacket.java",
+      "sha256": "2742ca331f90f1505a8e6e8fe6603a151da2a7ea49c9faca28e65f385f4bf0e7"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/character/CreatePlayerPacket.java",
+      "sha256": "ac9df50b4847bb3824cdd68eb7c3f7a7e3d290c4031c028ea137c7d84ec02428"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/character/PlayerDataRequestPacket.java",
+      "sha256": "c5fa711c23e5f7ab1913b0595bc1194adaf9fc772e3d52050b1dc4cd06cd8e95"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/character/PlayerPacket.java",
+      "sha256": "26815d2376667587c657190ffb3530350a1f4690a15b279e9e31a38f852243d7"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/character/PlayerPacketReliable.java",
+      "sha256": "219fe44555b48ab11da9c68cec25930aa7bc6b6ffd5cd0b4ed66ebed3ca9e0e2"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/character/ZombiePacket.java",
+      "sha256": "7796d4a1bba822af0b4574a5d7e5626b096cee9a304e4cce172a0df45ad42552"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/hit/HitCharacter.java",
+      "sha256": "6316db30b16353a7acc6793c13c47a9aeee25e3bd6d6d5971e24fb71442a14af"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/hit/PlayerHit.java",
+      "sha256": "56b311b1c9592e135b59bec6b920bc056a096270f1f0c63db33036ff9f6c4a1c"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/hit/PlayerHitPacket.java",
+      "sha256": "f173463499d9dc1fe374815a6ba3d2a950e238ee457185efa2c417e37ad48423"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+      "sha256": "5be8205b8cdfc621eff94b04e92efa6cf720a7bdd6c551e24c655501cd2235d1"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/hit/PlayerHitSquarePacket.java",
+      "sha256": "34f152157f44a46943ee01b6043c2ce252c6fdfdd3be034d9ba110f808186e62"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/packets/hit/PlayerHitZombiePacket.java",
+      "sha256": "6013bccd72ba63aa9a01d62fef3b90e284c65bbe122bf2daeeb57958cde44a21"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/network/statistics/data/GameStatistic.java",
+      "sha256": "a285ac6924b41494beef2e33a149dbf357351c841754ff86d44427d4ced7a2a1"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/pathfind/IPathfinder.java",
+      "sha256": "b7d7510a0db136ab5cbe8aecba72c2364103c36259550de076e584c0b294f034"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/pathfind/PMMover.java",
+      "sha256": "c338ca57a3d2d70e70fee63d7ef953517e1ab9c5a70ef61d885df57508b4362d"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/pathfind/Path.java",
+      "sha256": "017aaffd02a03c94fc5b64d579b323621447c90b0bec93b38f4d0234f16cfb68"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/pathfind/PathNode.java",
+      "sha256": "8b3fa5a45a9727a5d75408448787c8b00faf2ed043b9d240163cf3d0e50bcbf4"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/pathfind/PolygonalMap2.java",
+      "sha256": "13f96e8aa87fbe4c3b581d640353ffb4f994d187e3796d2c0b38cda5ea2bc5ac"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/pathfind/nativeCode/PathfindNative.java",
+      "sha256": "1ebe73587bfb0e0a69eb96aff2b50ad5bda89ce2fc61ce696ab432bdea2b7bbd"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/popman/NetworkZombieManager.java",
+      "sha256": "ee39e438ef61820d523fbd5100cf9d4556e0ece7e54f500a11a5996cecee6839"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/popman/NetworkZombiePacker.java",
+      "sha256": "7b216dcce2443148cb6f6295db5750b1723151d469f245716044fbe2248a19f6"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/popman/NetworkZombieSimulator.java",
+      "sha256": "cba4e3f197e8e979a40762c05185e1b33f24e57f1ee89976afc7ca9bc1695f64"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/randomizedWorld/randomizedBuilding/RandomizedBuildingBase.java",
+      "sha256": "e1148ed66e55fcd1ccad4ba8889d94208b3f51c9f267ba7b19e3d7d774a3623c"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/savefile/ServerPlayerDB.java",
+      "sha256": "eb0f62a1f18c4155ac9aa76cb70369b14195a5db594263dba7059c40b8e16987"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/scripting/ScriptManager.java",
+      "sha256": "7c89ff4cfcd3e339af34944f6fb26706f56c1ce07365386c32c23af6d94e3bb2"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/scripting/objects/BaseScriptObject.java",
+      "sha256": "92461233fc886ac79ce060d78421c1a69e82eea528b4ec8b74ffee4fbef51d47"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/scripting/objects/ItemKey.java",
+      "sha256": "4c8cb8770d82d84664550f4ee6ac155a4cf8ade5c3ba23f9136caf01f66b9bb0"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/seating/SeatingManager.java",
+      "sha256": "c5a9e44a9844e609ed67c2e5ceed7725b096f5db9346c26d4d6e1f62a6e7f514"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/util/PZCalendar.java",
+      "sha256": "9daed13c7c39451032e69df0cf65b209edfb896f949e6b06b71431bd537125c9"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/util/StringUtils.java",
+      "sha256": "8dda7400bd80b4732d9cb58c1a5fab21d740495a3492cd19651882c6f5b52a2c"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/vehicles/BaseVehicle.java",
+      "sha256": "6940b1521af7f0879e59f32ca444880cf358a05a997df7a0594e7ad0357d358a"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/world/DictionaryData.java",
+      "sha256": "606712f0a56972dddc42c9e96be95e92147f21e8494ff923d33bdaaefb7344ee"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/world/DictionaryInfo.java",
+      "sha256": "2c870f25fa44816cdea38f2a6904fc6bbd8773325c512722dc8ed923ef943e0d"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/world/DictionaryScriptInfo.java",
+      "sha256": "21e6baf19b6e7a0eaa1055b1282d1eaed7c670d0d63880d48bfabab02be91756"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/world/DictionaryStringInfo.java",
+      "sha256": "31a17d5759dbc38585f58de0e36d1bf550ea0c98500c25f8cf5d71cce7abf6ae"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/world/EntityInfo.java",
+      "sha256": "b8ce09df395d9879c5c4220c5b20cd9e7b6cff78e37edab6b8f3cb61e86f3f1d"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/world/ItemInfo.java",
+      "sha256": "245194dd071ca31ce0d1f69fa83aa5b72640f3caf60cc6c01589f57206fb71ee"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/world/ScriptsDictionary.java",
+      "sha256": "82922a006e8fd3550abb37555fd4af1d128eaa93ecbb60814249171b6c3ce8da"
+    },
+    {
+      "path": "42.22.2/decompiled/zombie/world/WorldDictionary.java",
+      "sha256": "423ac146bacdeb96253c444e2eba9b3ea475aef4460235fb4967f389198005b1"
+    },
+    {
+      "path": "42.22.2/src/zombie/ApocBRServerTelemetryLite.java",
+      "sha256": "4f74b55b1435412afa1ee20997a8349def0d37491ca56ccb12a94752101d76e1"
+    },
+    {
+      "path": "42.22.2/src/zombie/Lua/LuaManager.java",
+      "sha256": "36752a2a351efd1e1d0f64435ea6cac8278530a1072d1cd486dc464f8a65324b"
+    },
+    {
+      "path": "42.22.2/src/zombie/ServerAnimalPerceptionGrid.java",
+      "sha256": "f75ffcce180584fd236177ff97d7f72059c117627944f9885053f0a7d6a8d345"
+    },
+    {
+      "path": "42.22.2/src/zombie/ServerMovingObjectIndex.java",
+      "sha256": "c5c5fd338ab4bba5e33978159f088ee17759cc0899de0c12c97ab97110a5f682"
+    },
+    {
+      "path": "42.22.2/src/zombie/ServerMovingObjectSet.java",
+      "sha256": "778cc0d541152605797809d97011845a4bc4067415ceeff4376f29d0fb12e46e"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/events/ApocBREventControl.java",
+      "sha256": "c8bebe311efceb7b1119a9a45899099f4b50379eeb9ac6a6d43abafc06d247fe"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/HumanLifecycle.java",
+      "sha256": "e77882631836cf13c0d5739ae96f1d15d569dc2561e6746ad1fe4565aa35781d"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/HumanLog.java",
+      "sha256": "f8c2e35c78fb554dfd9eb0f68f1e3912ddee328a0cfb2b064c3f1c41fa694e43"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/OperationAnnouncementProvider.java",
+      "sha256": "ffcc4d786c99df61bbd1a1795c234dd4abdb235e57a146b92327e3fc3f1f2598"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHuman.java",
+      "sha256": "a55c047533dd1e96e6989a8425e63e8e889a8e57e1e3d212cbd3776487ecd1be"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanActuator.java",
+      "sha256": "ac49264172ccd439e9fabd77d905ff15bb04beebd58a7867044b603bd4cfb611"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanAimPacket.java",
+      "sha256": "4c21d604ab2f54c0729bf520076f7c4dd4609a9b89f612a1e98879688b640fdb"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanAttackLine.java",
+      "sha256": "4a7645437e443c037c9122499829dc8f4d1aec0fd5b92623144480022e0f3131"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanAttackReplay.java",
+      "sha256": "bcf9ec01344019ca4b632add177237cc06a20850c2618cb83952f2c677280d91"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanCombat.java",
+      "sha256": "7743905dee55c34bec2dce31a38563b88fdcb1e6b97771811d505560c62a0bcf"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanCombatApproach.java",
+      "sha256": "41d7a43f7570c33f9080507b9648f6a7cfb0c058299838a1b41b3367bdfd9eb9"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanCombatAudio.java",
+      "sha256": "a5688c81d0b9c97247d2c3f34b8fd5b724b8aa47893749fa1caaf5652d9eaa88"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanCombatEnvelope.java",
+      "sha256": "676238390afca5731ec0829af1ec1a0b920e95a33cba7f8d89a202eb4eb21e16"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanCombatNetwork.java",
+      "sha256": "75021bea331d819343a79c51f25bedbefdd0328941eefcbdc048484cd8a9d4fc"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanCommittedHit.java",
+      "sha256": "7d02350efa9bde164e4a38e5376c747072c1d0b5dbd7ea61f1e7a32b08ac925f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanCorpseDrag.java",
+      "sha256": "a90e04a2be0cddfb86b02ae9eca09d3cd1e44646ffdfd49a35cc3b0adf19cfd4"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanCorpses.java",
+      "sha256": "b8afc986af132fbc12ee684cda88a7a75964b28a39d6a141b729336e4e0720c2"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanDeaths.java",
+      "sha256": "24f5b12606530c0e169706a2498aa42faec49e887ba44fd074475a39eaaa524a"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanDefinition.java",
+      "sha256": "041d7b984e727f256cfa3a0ff0bbc6959393323ce1321b4e66bfc1dc11be33e1"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanDialogue.java",
+      "sha256": "fdad722b7ab445ad387b9ac3b6f22b7e85413f918dfba21cbf4392a1138f6fe2"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanDragPacket.java",
+      "sha256": "360540e316bc88ee3072bb1ebb45c86801e52a5d84dd216147155a30c85dae87"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanEmotePacket.java",
+      "sha256": "c275c0e650c5d25fbcbd9ce8156fe5287a497cac2c44afa4e61f9cd04bc246f5"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanEncounters.java",
+      "sha256": "9fd0eb2f557026fe0834d27074b86ab4208fe7593bd0e048e0f9737fcf6a13e6"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanFactory.java",
+      "sha256": "a9d213208054ee7e49a552644c6c77885f4d4872c7d398c41728e2d3675adc2b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanFurniture.java",
+      "sha256": "d0a1a3b82562b2a9a7d2a9b2604cc9cc23a07910816e714b723f17d526e265f9"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanFurnitureWorld.java",
+      "sha256": "0eb6280d060593ab820fa8c8ae0c0dc2722daad542e3a9e5a64cd2b0c1434c18"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanGroups.java",
+      "sha256": "ad4b752d70c7f4f8dd4d34b7854c0bff87f95a830a5791c1c0102a24a17cef36"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanHealing.java",
+      "sha256": "9965fde7de51aa60d48d0a235c53ccbf4bae266f6c84f10c52f22c9a78e83649"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanHitPacket.java",
+      "sha256": "38ea36faa30c043be4a1c8ae0eab9ef9f2124a755e710307ca38573aab121bed"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanInventory.java",
+      "sha256": "ebbf3326ccfd9d13141b304d7bd13f9be38f6f8e5ead71725bab2605e92f284b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanMedicalPacket.java",
+      "sha256": "1a8216fc21d8811f90402d9e3c1bc6d3ced71f288018752054c7aa5514550d08"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanMissPacket.java",
+      "sha256": "90e0df04f82105cc41d816d3a4625cdafa32a0336a326c991ece5fec900ed613"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanMovement.java",
+      "sha256": "7658d2a4f64e784b0eb8701f393b2fcefdbb964cf147d0ef9ebdc33dc9bd9a96"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanPerception.java",
+      "sha256": "2f250989cbf2b7efbc09070c4437237936df7a0f430bd7c770d465336ecbd027"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanPhysiology.java",
+      "sha256": "215f0b825ac2f1a0924fa68e8c82b0f6c0022783a0498c42c229356adf18a752"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanPlanning.java",
+      "sha256": "607478e56696e79b040924c76a66a20fd0a85078e1663c5c0582c06bc2fd0d84"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanPlayerAttacks.java",
+      "sha256": "e0bd223370d2f8af15a23e014210c7ea52ab13b6acd284f1c73445f8e64421f9"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanPlayerDamage.java",
+      "sha256": "d5eadfe07a299fce6f93174b232aa75bfaf99fdfd5b88c4c8e9ffa23dae9b93f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanPlayerHitPacket.java",
+      "sha256": "d790a5c0fbc61493e23b4867b686bda22c1d298f5946886f78e6281974b5c0ea"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanPresentationIds.java",
+      "sha256": "818232939dec91e2979a1ef3720f2129cf1f407ceff2d18e21326a2ed01d87c5"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanProfiles.java",
+      "sha256": "bcbffe16b557ae3464ddbc4b50e261304e449b5093446b2254622ca06b6cf140"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanRetaliation.java",
+      "sha256": "085861bc710c14598b3b1426d6f6eb8afd07a4ea189e6a33e6504cf2bf0f0395"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSeating.java",
+      "sha256": "03fd59b196433c7bd85c9edc728b96a2615fa30362c0c7f691e413498482dc47"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSeatingAssets.java",
+      "sha256": "8d14c2a0e1c24a323cd17f6b9db41044ff1e5af19587c8802c4addd52fd5802e"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSeatingCatalog.java",
+      "sha256": "71ccc402ee6d16f818ce58ffdc08eb7c9e09047efd964cb8198546b81aefbc42"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSeatingCommands.java",
+      "sha256": "90e4b71c13c6cc49dc6efe7f4202a0c47b65322066a4c7929d78f15f9299e27f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSeatingGeometry.java",
+      "sha256": "cfbac5a5b4023a7f5d7a2b0b033c5fb7d8c9acf2978846bceb047dc09a641573"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSeatingPacket.java",
+      "sha256": "05a30a8ed1f49833d5fe6d3a2232fdaf796b2883c8c14d452f4581f651e0e9c1"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSeatingTransport.java",
+      "sha256": "bc59b38a966f4e8faca7d5092e8ca09335d4b9763b3cf686a7c82edc63100deb"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSimulationWorker.java",
+      "sha256": "456f0a4d5324109d9c4aa6011ddcd3808e77401bae0df04a76cd73c907e1d188"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSpeech.java",
+      "sha256": "259b70b1ba4dfb5cb1da0a5e41e8f6e70f9039aa4d2fbe9080566e182b411cb6"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSquadAssist.java",
+      "sha256": "52a2bedae07f1106ad7742e42a06abb4f59e34f9a7d373e0e6de72f6b8725c1e"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanSurvival.java",
+      "sha256": "0d6555c976b15d34812d857f4b16c94fed9ad7258a9f17d8738aadcf006ecdf5"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanTasks.java",
+      "sha256": "6c407c1b57c128b6b026ce66b5cb36e8994d6b8f0eb95b986294b207cfd9263c"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanTerritory.java",
+      "sha256": "4520b33b351bd66e69a0e85a67212db50fbb1ed4d3d64886147dc7cecb6801aa"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanTrading.java",
+      "sha256": "8ef4f28b766b8f05cb585288045155e52f26c7483c681b009112cb210cbef332"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanTransport.java",
+      "sha256": "8811e6308c5ec7300f462b4dc943a4a3f51f1620597fe4f50ab1206fac224795"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanWalking.java",
+      "sha256": "fd5cbf4e1cd2a59fbad8c0ed83eba9a0288b5ae8ad918d9bb5028f298865e095"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanWeaponBackend.java",
+      "sha256": "c40def2bbd43020944c6ad343dbde1427a03765431c307e517997717f20bf2a7"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/ServerHumanZombieVictims.java",
+      "sha256": "d96ec2fe13933328e6384953229a7de2cd0affcb602f9a92101503afced4e2a4"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/EngageZombiesModule.java",
+      "sha256": "6b806483aca37fb63b6cd9cd09d31f2149baafe2318a5f93d9f0e5b2dc2068d7"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/GuideBrain.java",
+      "sha256": "11ec8bf3d66e0d9f5ceda8d0ba8c9269a03473255037ed4096a53aacf171635f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanAction.java",
+      "sha256": "65f71cc4dd393814e794fb832dc4ba709f446edd5d272fc3001c955d3d333cb6"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanActionExecution.java",
+      "sha256": "826ccffb2a9f38abf3bd180590014ac2dc6738f89d4ed94cf6693f4b0136a9ff"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanActivityController.java",
+      "sha256": "f1a3ea10e6936fbec1deacde44b15749092ef7012af6aef7409ed67d052b73cb"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanActuator.java",
+      "sha256": "b9932c7610411e48818bb5577ce4353550a0d94fc73d16ee681b12882faf95ba"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanAnnouncementProvider.java",
+      "sha256": "9d7bd4403bb1d941b6d2f4897e209bac92feed9ac0a6971ccc1853dace384840"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanBehavior.java",
+      "sha256": "47a484d6452ac6df5a5f0b7ec926a0a58e94891567be93ecc07e9a4f1438d02f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanCombat.java",
+      "sha256": "cc6143093b6c7ec92a36c0d7215b2a425068a782590a162ab7e0effbd7be34c6"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanCombatDamage.java",
+      "sha256": "2ee80fc1d5da7eb80f277db4d71b6ed45662e479b7c36c450488edd4b9d9ebaf"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanCombatInventory.java",
+      "sha256": "a93576a9e9d649eb40c98f07fdbd6e92ca6fd0f61b907a7413e291bdfa547454"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanCombatTactics.java",
+      "sha256": "95b8abc7fb197b1af94b93dac6dc21f3a831b754df895b31d16f666bd9c9dd2b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanContactMemory.java",
+      "sha256": "4e3811dada9d4349ba7d40c93a5d4aa3648be0ff4fce2a4b53ce6a548a6e7c6f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanEngagement.java",
+      "sha256": "fc22d6f02f7339e95564545420aa2f72d1beb5afdffa1c7ab71aaf09fae18501"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanModule.java",
+      "sha256": "8a0c64716aacc98f597ab5ef7f691ecdf8ede351e379a9c11abe87f9e2785eec"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanModuleRuntime.java",
+      "sha256": "3ae8f4dde4821e6fe0862b3ab20e370e8fe5f2aff23fabb87d7b75bbd463995f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanObservation.java",
+      "sha256": "442dcbc12ff7bece3d0d484a8bd0919587a42191f617146eedacf3a1a2f72adc"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanSenses.java",
+      "sha256": "e6137140c0c0c808ed51d5b96aadcdf3497bd1e9e0be584a4ac584778d71f68a"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanStateMachine.java",
+      "sha256": "9226d757681fbd331057a7f80e9046eeae91e361d4a600cbb932a86c3627ce23"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanTerritory.java",
+      "sha256": "259c53356e5598d90ea839b45e465d57843e03e21750ef0f8afca7cb1522812e"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/HumanWeaponCombat.java",
+      "sha256": "cd9e8c2507730aa97e9ef36799dc0309fe5374cf9ab61feda4b1c90e0c808c11"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/IdleBehavior.java",
+      "sha256": "7ec8bf9a9decc3a31687d4577c451ecfaa2e790c0cf10aca8b663407403deaad"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/TacticalIntent.java",
+      "sha256": "abd3724748b548de18b42eb078798981c1f44fc655a963bde4b054787766eeb3"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/brain/WalkingModule.java",
+      "sha256": "df5760a53fe99e7fb82c68c17f4c68ab8c7a14f228d98bcc982ad5d54ce55681"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/death/HumanDeathPolicy.java",
+      "sha256": "e05d6b066fb1935088e7ce4407c35251bbbd892062f19e1172e4e3155ac0fe7b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/death/HumanDeathState.java",
+      "sha256": "827703e7a2b9a7ba1babd6d4c7c896a5a63a5f3671f9926f235a97c8d48a2aff"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/death/HumanReputationPort.java",
+      "sha256": "45d71544baf2d9b83b47b63b78a4b8d0f0de85427c64cd93c6f7929ec72597ae"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/dialogue/HumanDialogueCatalog.java",
+      "sha256": "4be0d29cc5eae23d37f6689193af0d183366376f31a9f419e77d44b2d0636b32"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/dialogue/HumanDialogueResponses.java",
+      "sha256": "faabf06ecfe7523b16df2d407b9deadb33d2d43252e28f14bc4b611fb160478d"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/dialogue/HumanDialogueSession.java",
+      "sha256": "fcae392bfcfdfeb55ab3e34ec0ec09956e0bbc01aa4248cd901b97d03c319bd9"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/dialogue/HumanGreetingProvider.java",
+      "sha256": "0056a6ca5b1afab6476195a589b264fbe24eeb1111bb554d6f55859f7dbf5617"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/dialogue/HumanLanguage.java",
+      "sha256": "e3c7d34cab9da17689234922337dae40cb28b1bc12e47d477c91d6d00ce19369"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/encounters/EncounterPolicy.java",
+      "sha256": "1ed737d97ac8715bc37a0892e4bc5e9081968808ea5c9ccf370d3172aea09196"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/encounters/EncounterPort.java",
+      "sha256": "7b41b9f852a5d3475068041eb700af27a5a7c0d258273836ed2e2af38546398c"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/encounters/HumanRelationships.java",
+      "sha256": "dd1683505ef39a637733e3195cab86f017825b24e10951991ea059f0e8fbd8bf"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/encounters/PlayerEncounterModule.java",
+      "sha256": "55d71b5f93da14dbc1652d4f99167bf5fc91972c0fcba56be7befab154367bd7"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/encounters/RetaliatePlayerModule.java",
+      "sha256": "322384eae6d9e44b1f2c07cac0ef13a701eb9e2504a68db3ec37e755c2953f8a"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/encounters/RetaliationPort.java",
+      "sha256": "dd1f05eb930c1e4c18d966ceaab45065ff5bd030de3c5421b3fe4977936e6da9"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/furniture/FurnitureAffordances.java",
+      "sha256": "b1d4984232de4490f28bc67414de028a1a6fb0857412c207f8f827ab77794a62"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/furniture/FurnitureBindings.java",
+      "sha256": "0af8135b2ea534acc44969551f0ecea75e39b42f665c2448daf4a0abc3a4a1c7"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/furniture/FurnitureCaptureScheduler.java",
+      "sha256": "213780cf2e991ae9d1db31f645ef06e175cf5858c929b2032c3eca3a14163236"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/furniture/FurnitureDemand.java",
+      "sha256": "878c833d4f9149d177a6f2d6fc0b5777e6601dec271c6f828afab7a1ae1373ee"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/furniture/FurnitureReservations.java",
+      "sha256": "76f600d8925049491d2acd1fa0db623ea62a051c6c5fe40e72df37a4cb4af34e"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/furniture/FurnitureScanBudget.java",
+      "sha256": "cbb7078de458d1733c2851e41f129e8bbf8ae742f22145448d31ee5a304499e8"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/furniture/FurnitureScanner.java",
+      "sha256": "0419124b82c7b6d4f2d88524dfc147369290541e59cc988f62bdd5ebbc2cf8ea"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/furniture/FurnitureSelector.java",
+      "sha256": "f83e74646c1495bb5c336e91513d2c1dcb4e08cdf17df18d9788fc15c3753c4e"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/GroupCohesionCoordinator.java",
+      "sha256": "e65d8b17f6785148ab553b7471a8f1725721df93756a283743cac81102e2f221"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/GroupPatrolCoordinator.java",
+      "sha256": "807a6b5b12be79f17027c0e6334cf3c7148acf8602b0c60a17a09f60f70e3e5f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/GroupPatrolModule.java",
+      "sha256": "caf49ad63948fecb1fdaa4575c8779737ba54d0dbe98066128bf2cb9effa0246"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/GroupPatrolPort.java",
+      "sha256": "e193ba2ffd9b1206c5b0610f4c1d7a3334f7fa3bbd1fb15414bc71f928629b8b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/GroupRecoveryCoordinator.java",
+      "sha256": "e0879bf8a79ce62d01b54cd4c5b13561950720a45e0a241d4e385788531f8fb5"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/HumanGroupMembership.java",
+      "sha256": "cb7349e563f17d628b5424a344a9c45363882f9f1a20cdbc44461e58d975ca75"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/SquadAssistModule.java",
+      "sha256": "a8d5f0a8ea6303a8095499db3e62392f363d5c8201ce94de6e753a399bbcb88f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/SquadAssistPort.java",
+      "sha256": "6289c66d064d4757c0f97c433506a630d68a1fd192b6d3c83f859ebf8406e322"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/groups/SquadCombatCoordinator.java",
+      "sha256": "abc16f99f2d873ef35ac02145840a501c85596c197bdd1b0c5e8eef18bfda087"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/healing/HealingModule.java",
+      "sha256": "c5cc3a22de16309d718499d188fed0cc328b597a7fb085f31e793e81ec6bc3ca"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/healing/HealingSettings.java",
+      "sha256": "d21fcb9e4d625f95c34c2912bc658e62a21c420bf026584fefc5989ba17b6042"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/healing/HumanHealingPort.java",
+      "sha256": "1f9f61e6b86f1635ce78aa134343b50789344aad9b7a0653f9dfdd9ed0f82215"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/healing/HumanRecoveryState.java",
+      "sha256": "182f4c10d5e421c08fb0615ab02618828587f285a59a3de6b663f8607921ebb6"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/healing/MedicalExecution.java",
+      "sha256": "49840f4e981a937c84db1682760e97c7a6fda270dac68e0630daad88a2e086ab"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/interactions/InteractionReservations.java",
+      "sha256": "414c429020ef081dfeffb5cd233168a508e1cfe9206d60afad8be010d937e314"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/movement/AreaReturnPlanner.java",
+      "sha256": "fdc80bb615cae19cbce858a7cb161eab8b96099346e556fbcb63d7466c1fe528"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/movement/CohesionGrid.java",
+      "sha256": "c1ed2025bad60b90b42a5bf85e03a294caed0f8a41c785d7b3b1655aa0d5886f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/movement/CombatRoutePlanner.java",
+      "sha256": "b88d4bc2588e10b2c6724f8dd1634fdcddad6a7da9d14867286703c4fc3cfdfe"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/movement/DestinationRoutePlanner.java",
+      "sha256": "3c475d536adedb828bb45c7f61e8e124de41bcdb63da7c88fa9730fee37746f8"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/movement/IndoorRoutePlanner.java",
+      "sha256": "8fedd9e8ea5efb9293910cb74499273a291f11eb984dd599ecce103ff9c54ec5"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/movement/MovementGrid.java",
+      "sha256": "67e8aa13cb4bd83bc890ef28c08b3ad941741330968786b3134640a849a78c56"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/movement/MovementModifiers.java",
+      "sha256": "da14ae41abb2a3d0fbd4b3587f9b08df68c32a29821fde890bcfdfd84a487151"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/movement/VicinityGrid.java",
+      "sha256": "735575bcad7866e9f3254a088b92f1d393ae0762afec69834d176fcee1df2470"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/planning/NpcDecisionPlanner.java",
+      "sha256": "622e6f7a0734fb06ef21b428327e4fcd5b979341f646eb3d65156592f519e0a1"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/profiles/GuidePolicy.java",
+      "sha256": "9d16eb0ee6c9946cc2e506e360523069d19a96b99d8b7e27c244e7ffdb982b21"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/profiles/HumanCheats.java",
+      "sha256": "eb3e035369b7123bf4c802b3ee060e824dc645046b3d88f3eed869d3f9392a9e"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/profiles/HumanModuleBinding.java",
+      "sha256": "e4910bb7ac16e911bd4a751a41313d28440de2887c94d3b24a3893485751e049"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/profiles/HumanModuleRegistry.java",
+      "sha256": "1033fb8b1bfa7ba6de17e0b58a0dac02aeb068614817ea2c6dacdd9fc31b5692"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/profiles/HumanProfile.java",
+      "sha256": "4a69d6a1ad5e4da61661b6ac590b7151be5bc18875bb5dafc14611ed89be4bbb"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/profiles/HumanProfileRegistry.java",
+      "sha256": "27491412f8bb69bce2674982c4301508ad717dc8f6cfe1e293d87cdeb18c280d"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/rest/RestModule.java",
+      "sha256": "b768ddc601f784f6d5a842b4378e126939f6206ff7d0ad489b2782b4ab93591f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/rest/RestSettings.java",
+      "sha256": "057b33dbcf269d054221e2d481fbe12da821279fb852b699cf9a7c56782e6f0f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/seating/HumanSeating.java",
+      "sha256": "689fa06ad8b79253f0585cf5dc067cf514ab9cb7b8fa2bc0ca7a0e2d71ea7256"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/seating/SeatingExecution.java",
+      "sha256": "05171c0811ae24247c95264a82a54376a283e96fc492d767bdc9db59d094be58"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/seating/SeatingGeometry.java",
+      "sha256": "06f99421afc2f70efb0cecaa55ffaa98dac46c336ea23761423910b68bfd66a3"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/seating/StockSeatingAssets.java",
+      "sha256": "6c6c9a523f1bb8e7d599ec25c790d59a8b060867098d75ca69078459080ff5ec"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/speech/HumanSpeechCatalog.java",
+      "sha256": "ba50ad70ed2bb4575b62214bf5f3f8b296fa3dd3985c6705a72c7d2cf950d8ab"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/speech/HumanSpeechDefaults.java",
+      "sha256": "ea6511c2cd959dd0c3d560d0ca77f51e0780a68e90b57af814ca5c23e106431b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/speech/HumanSpeechEngine.java",
+      "sha256": "9f1180fa856093c86e98990dcd11c5ddd8fac580d5e8d54eb155e4a9d051016b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/speech/HumanSpeechMemory.java",
+      "sha256": "7c09424ff274749bd5bb80865530b508fe4e602be1f42461df05c21aef237e0b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/speech/HumanStateSpeechDefaults.java",
+      "sha256": "bda1fb71356f4a55577d17e11e1134372b4022e122da33db566272304ed350c3"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/speech/SpeechContext.java",
+      "sha256": "8cf6160051e24431d141024c25121363d3c06a64d817ca55f974e9d9552405c1"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/speech/SpeechEvent.java",
+      "sha256": "08ea1d7e565debb2cd15f07ca788777d34823e107564a7b5b07847df1cd93a9b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/state/HumanConditionCalculator.java",
+      "sha256": "527cb04b0e30b431ea1b60e4d4f466029a04fefbb7d0bfcc4233fa94329597d8"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/state/HumanHealthCapacity.java",
+      "sha256": "0295e87bd750d7ac9547b4f8af038ecb7a61583746ad2605c27ed94be126356f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/state/HumanMutation.java",
+      "sha256": "9d21bd39320c34454d0b515f3bf70c8aeaa6bbd16b323847eb54fa4f542f3826"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/state/HumanState.java",
+      "sha256": "dd0323b06bcc8e3819c1ef3ce761f3e7b43ce9136ce64e4b08412565d37375e9"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/state/HumanStateReducer.java",
+      "sha256": "a8118d9ab11b7cf428626a01a1761714f88e82bab4b522212917e995a5cba7db"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/state/HumanStateStore.java",
+      "sha256": "1a9d2766c99965ea83c67bb2e66baa6b16b62ae1968c311b3873eeace5e5b0b5"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/survival/RetreatPlanner.java",
+      "sha256": "a50892519678f0327447f96d9f32efb97a3d0d80e296afe677a4d1dcd27211ac"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/survival/RouteRefusals.java",
+      "sha256": "5aa3c5928a75bb1ab3db8a076b3c5bb2815d4e09c3f219acc2dcc6572f5c72cc"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/survival/SurvivalModule.java",
+      "sha256": "b6e425fbd3e24cddd7efaa39a67f0acc41fb36dad4e472be7613dbcd1656b89a"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/survival/SurvivalPort.java",
+      "sha256": "5a3af551e3b8beff0c10a99a5cfe8b506bb138c867ab2a0acd55fb1ce1d3582b"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/survival/SurvivalSettings.java",
+      "sha256": "38b5185e2a3efdfda8790192b5a922b14c7e5993789c1ec729bff0f1ab96ff82"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/survival/ThreatAssessment.java",
+      "sha256": "edfdb3df065734f364d3fb6173845ab4a35891d261b454651e15f534d63a8668"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/tasks/AssignedTaskModule.java",
+      "sha256": "dcfa5d469aba91a5a388c6f0b93a4fd8959f1f7efc2941c1aba1fff54be0793d"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/tasks/CorpseCleanupExecution.java",
+      "sha256": "59f07662dffd90b9d6926e3db451c5c6a846fe2db1ccb8a72e37d615727e42e2"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/tasks/HumanCorpsePort.java",
+      "sha256": "2ae2378c64850f84b29f2994d77203a3147b9c94af49758d3eaf257bc9a7a2dc"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/tasks/HumanTaskCommand.java",
+      "sha256": "94c5c89f0d7d497f576fcecd87f9dd5ec13fff1f0ce6f708ca5ce3eb02aeccf4"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/tasks/HumanTaskWorld.java",
+      "sha256": "a3e8786a37fde64b56426ef7f074f869f18ef70ac096de6ee988cbc129937224"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/trading/HumanTradeOffer.java",
+      "sha256": "25a44faf15650e3005799a8ad31d8d98cbeae8a6782a906a86848b9d438c8911"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/traversal/BodyOccupancy.java",
+      "sha256": "39d4accef9489923eab3e540a98c54085b24c06df42b332182ce1d2a7a26d98e"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/traversal/CrossingReservations.java",
+      "sha256": "01628febe5894f051e90b6e6f6d6688a96434386f6fbc2ac4d7214178885aac6"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/traversal/HumanTraversal.java",
+      "sha256": "137078ed28e6376c17e3500901159b918e53b61834d4bf1efe46ac4394837f90"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/traversal/TraversalEdge.java",
+      "sha256": "5473ebd8f571c432d8e83d998e98486b904a8cdc72a054920e72f1e97c0efcec"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/traversal/TraversalExecution.java",
+      "sha256": "8b14cede240bdd929ef9bcb5252470f6dfd952dfd2f301c36dcc416a6b0c29a5"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/traversal/TraversalStatePacket.java",
+      "sha256": "72d95df64a972c67a8390d304530340e66c94dc8cdab4221db266ea492e067c7"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/traversal/TraversalWorld.java",
+      "sha256": "11b2b8389e5ad42158cb561089dd07b4c92c2765f7ff65e9ef252e5b3e2b41d6"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/walking/MovementRequest.java",
+      "sha256": "9fb8606b04c2c5e300faf1b39ed99d93229d8e7bfa6b99f20a7544f5fdb5a97f"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/walking/WalkingPattern.java",
+      "sha256": "74404e7b8aee5c85b418f0a889d6e596a2c39c522350665fc0f0a84852d60c12"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/walking/WalkingPatternRegistry.java",
+      "sha256": "860a024e754342526fa115dde4601b95b2d4d3f38a1223d8088b9382cab95517"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/humans/walking/WalkingPatternSpec.java",
+      "sha256": "842e3a5a1b14baf77306c62d06aaf04af0786fb5dac5612e94307957292e3adb"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/pathfind/WalkOnlyMover.java",
+      "sha256": "d30956edd99907bba3dfb9fab7ce010cfc072aaa3c1e26b3ddedb4db295962fe"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/zombies/ServerCorpseDragAuthority.java",
+      "sha256": "d48eb3e0fee7a15bd3eed1b0e302a29a0601b09c362d1808570a1211ae54f34c"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/zombies/ServerZombieController.java",
+      "sha256": "500b4c1683bc92501c7230377edf89c016d507d04ea0a47ff99cb491e04aef83"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/zombies/ServerZombieNativeAdapter.java",
+      "sha256": "e0f99bc33008c9dae11980e6a31f811c8df87d6ef7071eebc029dce9c067281a"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/zombies/ServerZombiePace.java",
+      "sha256": "4b1a39bbb79e5df053dcdea40614175ce9b386bec1b3ccae846960569f704d50"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/zombies/ServerZombiePath.java",
+      "sha256": "6b1e2aae3289a5418712cd1ccee1308bf216876edd47df6e430744392c627ddf"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/zombies/ServerZombieSession.java",
+      "sha256": "dbb047887990a44133d0cfd8d3d58ad10595c7f129bbeb6b66bcfdf6d46d1b97"
+    },
+    {
+      "path": "42.22.2/src/zombie/apocalipse/zombies/ZombieVictimPort.java",
+      "sha256": "284d283ee97b1fe42c5be035ba36c317b521814b7cdf77f8c06da3e92d42017b"
+    },
+    {
+      "path": "42.22.2/src/zombie/characters/BodyDamage/BodyPart.java",
+      "sha256": "50e0ba1b7c94faa38f544032f30f502a2046fb7c1c53fcf3f257f7ce560e068a"
+    },
+    {
+      "path": "42.22.2/src/zombie/characters/IsoGameCharacter.java",
+      "sha256": "4818b7d80b848579e9e03a8ec4b10f134eacd9e8c35b0585dd76e145f7b6c2b9"
+    },
+    {
+      "path": "42.22.2/src/zombie/characters/IsoPlayer.java",
+      "sha256": "1bb416a9918c03fc354aaa7ea8d160837bf472af5cc4fc187c7f5e9e12090835"
+    },
+    {
+      "path": "42.22.2/src/zombie/characters/NetworkZombieAI.java",
+      "sha256": "4e679e4ecc1ead72243f8d39413d9f351d88a3c9c4ca1eb62e4c7a32d5ac39d2"
+    },
+    {
+      "path": "42.22.2/src/zombie/characters/NetworkZombieVariables.java",
+      "sha256": "bad695355f5352f18270546ad6e2df5373d84c0ab7363c8eaace7219d356425b"
+    },
+    {
+      "path": "42.22.2/src/zombie/characters/animals/IsoAnimal.java",
+      "sha256": "a7062d5aac0fdcd98da7355dba07eee88f16809411437a27d5ddcb9cdeee6c87"
+    },
+    {
+      "path": "42.22.2/src/zombie/entity/GameEntity.java",
+      "sha256": "8a4de3efdf06acee62c11d84e443363971ec3083f03773faa8ec2a932d7cc7af"
+    },
+    {
+      "path": "42.22.2/src/zombie/inventory/InventoryItem.java",
+      "sha256": "d2a4cc2157956f3e85db33235561d7478ba07a67519e56623cf1e5c911205f0f"
+    },
+    {
+      "path": "42.22.2/src/zombie/inventory/ItemContainer.java",
+      "sha256": "876300d20475e4c262368ae963b03a5be66a7bcd8def3e631c7c87130f07193a"
+    },
+    {
+      "path": "42.22.2/src/zombie/iso/IsoCell.java",
+      "sha256": "9462934d78c69923fcd3661714a3ea830213352bd94e87a667ca71ddb242302d"
+    },
+    {
+      "path": "42.22.2/src/zombie/iso/IsoGridSquare.java",
+      "sha256": "5f6bbed3395e1b2a7fcb564e0ae27e0d55922d65d78d26722e2781f05e751b63"
+    },
+    {
+      "path": "42.22.2/src/zombie/iso/IsoObject.java",
+      "sha256": "332a54fcbc0ca84d15b54ceffe94ffe4172d6fe84fbf22b9d764b777a12d6c77"
+    },
+    {
+      "path": "42.22.2/src/zombie/iso/IsoWorld.java",
+      "sha256": "9263ad3a81ff787795a5775507c1607a00a0b1890b598dad4e9fadaf1bc9baf2"
+    },
+    {
+      "path": "42.22.2/src/zombie/iso/LosUtil.java",
+      "sha256": "1b5d326b5efe0a90f53617564ecae32c0883f30e42ed5fcfd48d9e095d4052ed"
+    },
+    {
+      "path": "42.22.2/src/zombie/iso/objects/IsoDeadBody.java",
+      "sha256": "f9f5155eeedca46da712223527345b4eeffba7dbbdce757bf91f9effa00c2586"
+    },
+    {
+      "path": "42.22.2/src/zombie/iso/objects/IsoDoor.java",
+      "sha256": "91f159f5747e5dfefb273e8f8b23abbf70e474c7628a383ea3cd9cbc1239932c"
+    },
+    {
+      "path": "42.22.2/src/zombie/iso/objects/IsoThumpable.java",
+      "sha256": "a21e40f4d60fc74d4ed7fec586b3bffadf4b7de7d9c419cd491c568c806af229"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/ApocBRBackendBridge.java",
+      "sha256": "4642d23a80b1b6d0add5d39abb023a4437e2eac352810c08977af1daa2bfbf45"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/ApocBRBackendBridgeHooks.java",
+      "sha256": "704d5122809f294c553f71a17538a0a051af06c94050daee0837583add802ef9"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/ApocBRBackendHttpDelivery.java",
+      "sha256": "a5b0f59908a4cdd9d32328ff8fa9b2f02cc3a635ca09ee3cbb789d19ba6a91d1"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/GameServer.java",
+      "sha256": "3cbfdb75e734ecb23440f51a9e6a304701d963e79dadd1f9589336a7750b7ca0"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/NetworkVariables.java",
+      "sha256": "1f280bec57bb3ecae4ab78cf36a932502c8881326be85ad210efd401bd5a862e"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/ServerMap.java",
+      "sha256": "bb941ae6d50cc8b175af1f12f612d561595cff7ef7422aee93b8bca15ced6532"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/ServerWorldDatabase.java",
+      "sha256": "e75a22c98cfe4fca7aeeb2353d10fbb49a139020c3746a75db5cb995257dbe8c"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/chat/ChatServer.java",
+      "sha256": "6b828ffc3581c4e4e7cd52bbd4fe7f999e24bd3bc8e716ffae9984bdc574e42a"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/fields/character/ConnectionPlayer.java",
+      "sha256": "790e65803dc1dd72d0d24150c4e4af612442007794d1d70c0a75e1ab30d9d131"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/fields/hit/Hit.java",
+      "sha256": "3a6a3771493a44b865a01e0f562ce8db22f8a145735eb380b6872333a6faa06e"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/AcceptTradingPacket.java",
+      "sha256": "29137ecab23cb8d35c25433a883c780a8faae6b56791ca46b6bd85c04720550e"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/INetworkPacket.java",
+      "sha256": "7ab23d886300ed907e7dafae60535a65c19bcf4b9f4bcf493f0cc451b3fe45f5"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/RejectTradingPacket.java",
+      "sha256": "9809e079d64fd729d8c68757a50b193c46cf89f99674d455a49b8aa8bb403ba3"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/RequestTradingPacket.java",
+      "sha256": "caa44163d001735f15a7a753565843e9bd3f5ea76915b1ef0d5bf122f48a24d2"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/TradingUIAddItemPacket.java",
+      "sha256": "0b57139a517b86b72eb97f6de962cec3913aeee0db86d8e996a188914c4da530"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/TradingUIRemoveItemPacket.java",
+      "sha256": "926a2714ada1c05341b4c28858282284a21251e263ab1daf12c09140bb7cdb68"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/TradingUIUpdateStatePacket.java",
+      "sha256": "af27b59b76f43533d69564c76ba5a61f154784f3ad48d9799155df7c27919f19"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/character/PlayerDataRequestPacket.java",
+      "sha256": "e4c8638d7c07c6d7ae3bdab27c82dadea05ca944558ef4d95fa04878bad5cac2"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/character/ZombiePacket.java",
+      "sha256": "30ab1268454dd6ee8275d766ca3658e9885b42159e3b186c04da1b8e16d8a102"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/hit/PlayerHitPacket.java",
+      "sha256": "0d401b6dc927903a40d67f2bed5fc9797071386d8f97f1ab46282c85b2900395"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/hit/PlayerHitPlayerPacket.java",
+      "sha256": "b05a124893d42c2260e228e34942ab873d6cef30f2b2cd48110074e801a83d98"
+    },
+    {
+      "path": "42.22.2/src/zombie/network/packets/hit/PlayerHitSquarePacket.java",
+      "sha256": "7030df62b9d226508795eeec4896f44def4166b9f200ebcc85db120082c4c29d"
+    },
+    {
+      "path": "42.22.2/src/zombie/pathfind/PMMover.java",
+      "sha256": "611c5da9235b6b95cb65b939812759f23f67a49cdd950faee41ae7cc5c823efa"
+    },
+    {
+      "path": "42.22.2/src/zombie/pathfind/PolygonalMap2.java",
+      "sha256": "7cd6e0795c1399329f556221ef89f2744c344df3be43214900effd0d5579d071"
+    },
+    {
+      "path": "42.22.2/src/zombie/popman/NetworkZombieManager.java",
+      "sha256": "49a616fbaf9d7e4647f07873fabfbed4b788d75e7d97bd52f856f72295a9c668"
+    },
+    {
+      "path": "42.22.2/src/zombie/popman/NetworkZombiePacker.java",
+      "sha256": "194b0ecfcaba889abcd7db40e473133f17304ff99e9bb5fa835965e638419db2"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRAsyncLogin.java",
+      "sha256": "f40c16e1a5da1bd346d90321e530de0ab3229a595bdef802cb9c0f8b905f1672"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRAsyncServerDatabase.java",
+      "sha256": "4c3c6ee3d31d9d31eeb1990db62cfc7a4a070ba05aace354362934960c0630c3"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRForegroundDatabase.java",
+      "sha256": "3aa3c2bf41fe0226321faeda10470182e447bd29ddbbd782fae420d4d2fc7711"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRHumanSales.java",
+      "sha256": "d2584c3ee29246054c0f813db939071080eb75cff7e2ce2f0e00d300cc562a16"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRLoginGuard.java",
+      "sha256": "6a97a29bb3a92cacd5ac61ff9bece96c80d378dc2b3b299f3016abc25ad78fcf"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRNpcDialogues.java",
+      "sha256": "61a7729bd982a7dcbdc3c3f83180895f8667af6a3a1e1bb73362c74f16444ef1"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRNpcMortality.java",
+      "sha256": "8130375ceb10527ee4d1479478cc684aaf2b8aa37ac66b7ce63051c5ee43c053"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRNpcRelationships.java",
+      "sha256": "16476bea0797dd4cd567ca32c75462c3df6cc67a8bc8325f2d5da718a43ddac0"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRNpcSpeech.java",
+      "sha256": "5a3420d4a5d510865d68bd29d385b47b5f172a0b782ae1f498e0363560b20e2c"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRNpcStore.java",
+      "sha256": "35aa8dde2298c05f9d0ff8650114c7fa0ffd75f262764d47aa2e684a4ae4c51d"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPayloadProvenance.java",
+      "sha256": "c0ede626393436fed09d210048acc441098793528b1ff1c006cd372658518e1d"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPersistence.java",
+      "sha256": "d76ad95157df4c6166a6d5c56592a4c8e3ca68cefd1c7e2d308a5ee63b16089f"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPersistenceJournal.java",
+      "sha256": "27f49bb2c5f02715e62139c4308a65222735856218471a1e5532300a6fa00ac0"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPersistenceOperations.java",
+      "sha256": "37f1930679980dfefa34cbeda6bedb3716ba5334ff5f8c968c5b230b3524beca"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerDatabase.java",
+      "sha256": "371d3b2c05227acdf28c1f471a296750c9d12d427c2057fdf0e89c1ece3ab5e9"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerLoadQuality.java",
+      "sha256": "7fedcf448a848dc3dc16da2c2a644a18188eac852599d01f900a391a667d6e2a"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerLogin.java",
+      "sha256": "b6687e83c383b49b87474096c72eff8afd5547de7f7699352a320d4996b0c890"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerMigration.java",
+      "sha256": "da95914f308b587ca9279386f6330b5a1c9616e02c7414639161345d4f2c7b4a"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerMigrationVerification.java",
+      "sha256": "0756401be2b0e3394346a8b62bdf4a1185407351cb30506e510787bdd81acdce"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerReconstructionLog.java",
+      "sha256": "bd4edd71b2aef91dab5dcc12142dcf0cb196eeb066a52486eeee23bce5df2f24"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalAccess.java",
+      "sha256": "49002973f02aeaa7e8a12e539d78042e340e8e93a314904351d12799c33dda88"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalCapture.java",
+      "sha256": "e9479417af854c5dc8092a6fd8308923b25555c82afb41e48162fdb2cd83b6f4"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalCodecs.java",
+      "sha256": "9c130294bea39409b6cf6ff0d9fc87d41f143e0fefe2b1f53940d8ead0342520"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalDatabase.java",
+      "sha256": "d452acadf8891059296afd78a0c79df55f42a2b4a22ca594f1f7320a1d7e1a7e"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalDelta.java",
+      "sha256": "bcd6f2e2478adffa98bea8381e55482e890ff2f09d655be48e2d8af7e5727d38"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalLimits.java",
+      "sha256": "a7471d5197001f9d2c714d42409fc70d4b9a1b04e2283a93bbcef74efe76668a"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalMetrics.java",
+      "sha256": "5cd247905607929a79f23640801ff0fbfb0903bef998ab542360b6f0ec6efe4d"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalMutations.java",
+      "sha256": "98c81d0e80aafeab4519fbb26ae67c86ef64d01a58974b1b542936d95f7c1587"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalReader.java",
+      "sha256": "77ec62501364b1f2ceb06d8e750e990763126111af3bd5e44aee1bc2f34312aa"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalReconstruction.java",
+      "sha256": "364dbb2ee1c8a13d9ee7cafea2ce00fe95c4facc9949bf3e74ad455810d339d3"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalSchema.java",
+      "sha256": "03456fcd45696db9eea1648d1efc64ef452e0b3441ff4f92ad570bd57f4f1761"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalSnapshot.java",
+      "sha256": "ccc0bc3937faf4a003ca569f2afc0bd1ed157c0ed8eaf6b1aba559eefeb0b3f3"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerRelationalSync.java",
+      "sha256": "999ea4630d4e171caeaf6850eee5dd7413949a5af2e6c34eeb05b3f16e20dfd2"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPlayerValidationTargets.java",
+      "sha256": "8cc4a16ac0793ad09ebcb023a25fee6128108e6e05f04dcbc2bc19ea358b4980"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRPostgresConnector.java",
+      "sha256": "542744fd18873e169629b0789c104121af3924703ebe31dee5cd1225de7120ab"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRServerDatabase.java",
+      "sha256": "545d63f4f64d5e4658c614cc2abc1b00c4b99e3eb34ca7ff11211250c246abd7"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRSuccessfulLogin.java",
+      "sha256": "ef434b0ccad2d314888d719b029f133da7825350aad064c8f461884cd2e22eb6"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ApocBRWorldDictionaryDatabase.java",
+      "sha256": "f2daf7e519aa415a3e7691f42708777f8fbe0b50e633e3984c60843ab35ae627"
+    },
+    {
+      "path": "42.22.2/src/zombie/savefile/ServerPlayerDB.java",
+      "sha256": "0c4280be8b4479c4edf82740f25bbeb2e34de208c7140d0bfada2720f4832e22"
+    },
+    {
+      "path": "42.22.2/src/zombie/util/list/MutationTrackedArrayList.java",
+      "sha256": "f2741df2221a4bdd7f650308307fb6df2c09bc957d5c777126754454e126c0bb"
+    },
+    {
+      "path": "42.22.2/src/zombie/vehicles/BaseVehicle.java",
+      "sha256": "a2d1f05e6f638810fc47eb966518328f69e3533e0a366abac6b9fcb8bbe30fa9"
+    },
+    {
+      "path": "42.22.2/src/zombie/world/ApocBRWorldDictionaryDecode.java",
+      "sha256": "dfa743903a01ad0aa0b21101a1811f26c1335119a714705a6f5fbda551fb73e4"
+    },
+    {
+      "path": "42.22.2/src/zombie/world/ApocBRWorldDictionarySnapshot.java",
+      "sha256": "7c4e68cf5fe5c15242ac502a9c38d306622064b34c02deffabad45f95bf1ffa6"
+    },
+    {
+      "path": "42.22.2/src/zombie/world/ScriptsDictionary.java",
+      "sha256": "f7b7369a6021ea8b9dcf06998f3b682a2e3f755205c77b715d05c282c9463437"
+    },
+    {
+      "path": "42.22.2/src/zombie/world/WorldDictionary.java",
+      "sha256": "e3333a578742399d063ad5dbeadb0c522a06b2d6eb30f71a46f20a89c8d485d8"
+    },
+    {
+      "path": "AGENTS.md",
+      "sha256": "fb702004513577e7d7d1dcce7da6d69006b585cdb35ee5893eb8e466853be8c3"
+    },
+    {
+      "path": "pom.xml",
+      "sha256": "d8cf2c41cfa7ebf79b4d5a5bf88478ba5e8bcec59053b4d70e18b03d5544a4f1"
+    },
+    {
+      "path": "src/main/java/cloud/apocalipse/pz/agent/AgentRuntime.java",
+      "sha256": "cde6614e0a7a534eb1711e71aa6c7dbffa68da22299de678912b1e476a9a9c3b"
+    },
+    {
+      "path": "src/main/java/cloud/apocalipse/pz/agent/ApocBrAgent.java",
+      "sha256": "6cabf6a7cf806db338b04d817ca644b6f2a377d6080bb65ca26ec1373f332490"
+    },
+    {
+      "path": "src/main/java/cloud/apocalipse/pz/agent/features/postgres/PostgresModule.java",
+      "sha256": "ea46df5932fbeb279de0b262d1b93aa111749b9d3f82a71b0fda0b6c5d212d91"
+    }
+  ],
+  "artifacts": [
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/capture.py",
+      "sha256": "7615dd6341b960cf32a10d3d2b31967e89f1d73ad566c5c6876fba225aaaa7a9"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/compiler-diagnostics.txt",
+      "sha256": "e34a6665946942b9955979e3a71001e602a89cd1ac8cc97f3460f52d030a4627"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/custom-dependencies.json",
+      "sha256": "6f59234b79a888d441306c9c546513162a48c4d0fa1a13b042598f8b876bd1fe"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/dynamic-and-config.csv",
+      "sha256": "fc0a02b780690f31c675fd65bd23668957e465d8aa14f41760187ee4efc087b8"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/javac-diagnostics.txt",
+      "sha256": "d35f91f8db956bc6343d239fb6f1041b4b940d8484388cb0b238adc069547da9"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/native-api-catalog.md",
+      "sha256": "e9b9f307b4c13194a38fc8f5fec66d6e696f0aeccd26526bfa0f6b352bfbb489"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/native-api.csv",
+      "sha256": "ff9c6469b11085299bc79c1916517b30502a50780bc6af38100e6062ac1514fa"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/native-inbound.csv",
+      "sha256": "7ec79c7b700896663830162b1036977caa39db984dd1cb3b1736f4862020746a"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/native-member-deltas.csv",
+      "sha256": "01bc87301ad2dad9b47c80daed186a7233193fc76cd38295a8e08f8c25cd3983"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/NativeDeltaScan.java",
+      "sha256": "862cf5e4ea3e949416b4bc32c3c4768a015e300eece921895b1d8d7af31eba0d"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/NativeDependencyScan.java",
+      "sha256": "3c43e1682155782de5db4f2ee2e4872a76d01de4cd93b9b4a42650b5120bf117"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/original-jar-boundaries.json",
+      "sha256": "94060723e8672be786b2f225235246ccfc7e37fe03ae5d7aeea991a3764ad3c0"
+    },
+    {
+      "path": ".docs/reports/2026-11-21-npc-dependencies/vanilla-object-list-sites.csv",
+      "sha256": "737b0518121d630c0270844ffb835537b4a9fa6273c525744f40e7301e18b947"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+diff --git a/zombie/network/packets/SledgehammerDestroyPacket.java b/zombie/network/packets/SledgehammerDestroyPacket.java
+index 065dcb6..6972001 100644
+--- a/zombie/network/packets/SledgehammerDestroyPacket.java
++++ b/zombie/network/packets/SledgehammerDestroyPacket.java
+@@ -10,10 +10,13 @@ import zombie.network.ServerOptions;
+ 
+ @PacketSetting(ordering = 0, priority = 1, reliability = 2, requiredCapability = Capability.UseDebugContextMenu, handlingType = 3)
+ public class SledgehammerDestroyPacket extends RemoveItemFromSquarePacket implements INetworkPacket {
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
++        zombie.iso.IsoGridSquare square = zombie.network.ServerMap.instance.getGridSquare(this.x, this.y, this.z);
++        if (square != null && this.index >= 0 && this.index < square.getObjects().size()
++            && zombie.network.ApocBRManagedGenerators.denyRemoval(square.getObjects().get(this.index))) return;
+         if (!ServerOptions.instance.allowDestructionBySledgehammer.getValue()) {
+             DebugType.Multiplayer.error("destruction by sledgehammer is not allowed on the server");
+         } else {
+             removeItemFromMap(connection, this.x, this.y, this.z, this.index);
+             this.sendToRelativeClients(PacketTypes.PacketType.SledgehammerDestroy, null, this.x, this.y);

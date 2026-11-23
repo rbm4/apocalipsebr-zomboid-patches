@@ -1,0 +1,20 @@
+diff --git a/zombie/network/packets/safehouse/SafehouseChangeOwnerPacket.java b/zombie/network/packets/safehouse/SafehouseChangeOwnerPacket.java
+index 71159d9..324043d 100644
+--- a/zombie/network/packets/safehouse/SafehouseChangeOwnerPacket.java
++++ b/zombie/network/packets/safehouse/SafehouseChangeOwnerPacket.java
+@@ -49,13 +49,13 @@ public class SafehouseChangeOwnerPacket
+                 return false;
+             } else if (this.getSafehouse().isOwner(isoPlayer)) {
+                 DebugType.Multiplayer.error("player is already owner");
+                 return false;
+             } else {
+-                SafeHouse newSafeHouse = SafeHouse.hasSafehouse(isoPlayer);
++                SafeHouse newSafeHouse = SafeHouse.getSafehouseByOwner(this.getUsername());
+                 if (newSafeHouse != null && newSafeHouse != this.getSafehouse()) {
+-                    DebugType.Multiplayer.error("player is already member");
++                    DebugType.Multiplayer.error("player already owns another safehouse");
+                     return false;
+                 } else {
+                     return true;
+                 }
+             }

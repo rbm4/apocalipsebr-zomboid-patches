@@ -1,0 +1,71 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Agent: package",
+            "type": "shell",
+            "command": "mvn",
+            "args": [
+                "-B",
+                "-ntp",
+                "clean",
+                "package"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "JAVA_HOME": "${workspaceFolder}/jdk"
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                {
+                    "owner": "apocbr-maven",
+                    "fileLocation": "absolute",
+                    "severity": "error",
+                    "pattern": {
+                        "regexp": "^\\[ERROR\\]\\s+(.+\\.java):\\[(\\d+),(\\d+)\\]\\s*(.*)$",
+                        "file": 1,
+                        "line": 2,
+                        "column": 3,
+                        "message": 4
+                    }
+                }
+            ]
+        },
+        {
+            "label": "Agent: test",
+            "type": "shell",
+            "command": "mvn",
+            "args": [
+                "-B",
+                "-ntp",
+                "test"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "JAVA_HOME": "${workspaceFolder}/jdk"
+                }
+            },
+            "group": "test",
+            "problemMatcher": [
+                {
+                    "owner": "apocbr-maven",
+                    "fileLocation": "absolute",
+                    "severity": "error",
+                    "pattern": {
+                        "regexp": "^\\[ERROR\\]\\s+(.+\\.java):\\[(\\d+),(\\d+)\\]\\s*(.*)$",
+                        "file": 1,
+                        "line": 2,
+                        "column": 3,
+                        "message": 4
+                    }
+                }
+            ]
+        }
+    ]
+}

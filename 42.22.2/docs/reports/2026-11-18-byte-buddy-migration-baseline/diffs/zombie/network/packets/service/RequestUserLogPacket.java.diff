@@ -1,0 +1,67 @@
+diff --git a/zombie/network/packets/service/RequestUserLogPacket.java b/zombie/network/packets/service/RequestUserLogPacket.java
+index fd7e5b8..5111e4a 100644
+--- a/zombie/network/packets/service/RequestUserLogPacket.java
++++ b/zombie/network/packets/service/RequestUserLogPacket.java
+@@ -20,10 +20,12 @@ import zombie.network.PacketTypes;
+ import zombie.network.ServerWorldDatabase;
+ import zombie.network.Userlog;
+ import zombie.network.anticheats.AntiCheat;
+ import zombie.network.anticheats.PacketValidator;
+ import zombie.network.packets.INetworkPacket;
++import zombie.savefile.ApocBRAsyncServerDatabase;
++import zombie.savefile.ApocBRServerDatabase;
+ 
+ @PacketSetting(ordering = 0, priority = 2, reliability = 2, requiredCapability = Capability.ReadUserLog, handlingType = 3)
+ public class RequestUserLogPacket implements INetworkPacket {
+     @JSONField
+     String username;
+@@ -34,11 +36,11 @@ public class RequestUserLogPacket implements INetworkPacket {
+ 
+     @Override
+     public void setData(Object... values) {
+         this.username = (String)values[0];
+         if (GameServer.server) {
+-            this.userLog = ServerWorldDatabase.instance.getUserlog(this.username);
++            this.userLog = values.length > 2 ? ((Reply)values[2]).rows() : ServerWorldDatabase.instance.getUserlog(this.username);
+             PacketValidator validator = (PacketValidator)values[1];
+             if (validator != null) {
+                 this.suspiciousActivity = validator.getCounters();
+             }
+         }
+@@ -104,10 +106,21 @@ public class RequestUserLogPacket implements INetworkPacket {
+     }
+ 
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
+         if (connection.getRole().hasCapability(Capability.ReadUserLog)) {
++            if (ApocBRServerDatabase.enabled()) {
++                String requestedUsername = this.username;
++                ApocBRAsyncServerDatabase.submit(connection,
++                    () -> ServerWorldDatabase.instance.getUserlog(requestedUsername), rows -> {
++                        if (connection.getRole().hasCapability(Capability.ReadUserLog)) {
++                            INetworkPacket.send(connection, PacketTypes.PacketType.RequestUserLog,
++                                requestedUsername, validatorFor(requestedUsername), new Reply(rows));
++                        }
++                    });
++                return;
++            }
+             PacketValidator validator = null;
+             IsoPlayer player = GameServer.getPlayerByUserName(this.username);
+             if (player != null) {
+                 UdpConnection c = GameServer.getConnectionFromPlayer(player);
+                 if (c != null) {
+@@ -116,6 +129,14 @@ public class RequestUserLogPacket implements INetworkPacket {
+             }
+ 
+             INetworkPacket.send(connection, PacketTypes.PacketType.RequestUserLog, this.username, validator);
+         }
+     }
++
++    private record Reply(ArrayList<Userlog> rows) {}
++
++    private static PacketValidator validatorFor(String username) {
++        IsoPlayer player = GameServer.getPlayerByUserName(username);
++        UdpConnection connection = player == null ? null : GameServer.getConnectionFromPlayer(player);
++        return connection == null ? null : connection.getValidator();
++    }
+ }

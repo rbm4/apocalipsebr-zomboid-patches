@@ -1,0 +1,56 @@
+diff --git a/zombie/iso/objects/IsoDoor.java b/zombie/iso/objects/IsoDoor.java
+index feb2763..6f0c65c 100644
+--- a/zombie/iso/objects/IsoDoor.java
++++ b/zombie/iso/objects/IsoDoor.java
+@@ -1417,11 +1417,11 @@ public class IsoDoor extends IsoObject implements BarricadeAble, Thumpable, IHas
+                             toggleGarageDoor(this, true);
+                             if (wasOpen != this.isOpen()) {
+                                 this.playDoorSound(chr.getEmitter(), this.isOpen() ? "Open" : "Close");
+                             }
+ 
+-                            if (player.isLocalPlayer()) {
++                            if (player != null && player.isLocalPlayer()) {
+                                 player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
+                             }
+                         }
+                     } else if (this.isObstructed()) {
+                         this.playDoorSound(chr.getEmitter(), "Blocked");
+@@ -1450,11 +1450,11 @@ public class IsoDoor extends IsoObject implements BarricadeAble, Thumpable, IHas
+                         this.square.RecalcAllWithNeighbours(true);
+                         this.sync(this.isOpen() ? 1 : 0);
+                         PolygonalMap2.instance.squareChanged(this.square);
+                         LuaEventManager.triggerEvent("OnContainerUpdate");
+                         this.invalidateRenderChunkLevel(256L);
+-                        if (player.isLocalPlayer()) {
++                        if (player != null && player.isLocalPlayer()) {
+                             player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
+                         }
+ 
+                         this.PlayAnimation();
+                     }
+@@ -1464,11 +1464,11 @@ public class IsoDoor extends IsoObject implements BarricadeAble, Thumpable, IHas
+                 } else {
+                     boolean wasOpenx = this.isOpen();
+                     toggleDoubleDoor(this, true);
+                     if (wasOpenx != this.isOpen()) {
+                         this.playDoorSound(chr.getEmitter(), this.isOpen() ? "Open" : "Close");
+-                        if (player.isLocalPlayer()) {
++                        if (player != null && player.isLocalPlayer()) {
+                             player.triggerMusicIntensityEvent(this.isOpen() ? "DoorOpen" : "DoorClose");
+                         }
+                     }
+                 }
+             }
+@@ -3515,12 +3515,10 @@ public class IsoDoor extends IsoObject implements BarricadeAble, Thumpable, IHas
+                         && this.getProperties().get(IsoPropertyType.DOOR_SOUND).contains("Metal")) {
+                         return -30 + burglarModifier;
+                     }
+ 
+                     return 0;
+-                default:
+-                    throw new MatchException(null, null);
+             }
+         }
+     }
+ 
+     @Override

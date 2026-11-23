@@ -2,16 +2,148 @@
 
 ## Purpose
 
-This repository contains version-specific Java monkey patches for Project Zomboid. It also contains decompiled Project Zomboid Java source for supported game builds.
+The top-level Project Zomboid version directories and their patch/decompiled trees are **legacy**. They preserve the original implementation and exact-build vanilla references; they are not the active destination for new feature work.
 
-The patches replace complete game classes at runtime through loose `.class` files placed before `projectzomboid.jar` on the Java classpath. A patch must therefore remain binary and behaviorally compatible with the exact game build it targets.
+Active development is the Maven-based Byte Buddy agent in the repository root (`src/main/java`, `src/main/resources`, and `src/test/java`). Future work will gradually port behavior from the legacy patches into this agent over multiple sessions. Treat the original game behavior as compatibility evidence, but express migrated behavior through the agent's instrumentation, advice, feature modules, and tests rather than by adding more complete-class replacements.
 
-Treat this repository as production game-server and game-client code. Preserve vanilla behavior unless the requested change explicitly requires altering it.
+Treat the agent as production game-server code. Preserve vanilla behavior unless a requested migration explicitly changes it. Do not assume that a legacy patch has already been migrated merely because its source or documentation exists.
 
+## Feature-port completion: vanilla hooks are required
+
+**A feature is not ported until vanilla execution reaches its implementation through the installed agent.** Moving helpers, services, database adapters or algorithms into the root project is preparatory work. Compilation, isolated helper tests, documentation, a module name or a registration log alone do not establish a working feature port.
+
+A complete port of the selected feature scope must include:
+
+1. Its feature module registered in the real `AgentRuntime` pipeline, with supported configuration and explicit enabled/disabled behavior.
+2. Executable Byte Buddy instrumentation/advice registered for the relevant **original game classes and method signatures**, connecting vanilla execution to the migrated implementation.
+3. Every integration boundary required by that scope, including startup, recurring simulation, packet/callback handling, persistence and shutdown where applicable. A single working hook does not complete a feature whose other required paths remain disconnected.
+4. Tests that execute the transformed entry points and verify that the hook actually reaches the production feature code, with the intended result, continued vanilla execution or deliberate skipping, failure behavior and resource/lifecycle cleanup. Test doubles can exercise behavior, but also validate transformation against the exact original JAR; doubles alone do not establish vanilla compatibility.
+5. Packaging/linkage validation when the shaded artifact changes, and an explicit record of remaining live-server validation. Keep implementation, artifact validation, deployment and live-runtime acceptance separate; do not claim one proves the others.
+
+If only infrastructure or part of the wiring is implemented, report it as **partial/in progress**, identify the missing hooks and paths, and keep the complete selected scope open. Do not present an unregistered feature, an empty module, an inactive helper library or disconnected persistence services as a completed port.
+
+## Active compatibility target: original JAR only
+
+**Current agent ports target the original vanilla game JAR exclusively.** Compatibility with legacy patched classes, patched runtime archives and loose class overrides is no longer a migration requirement. This rule supersedes earlier dual-runtime instructions and historical coexistence guidance in this repository.
+
+Use legacy patched sources to identify feature intent and the same-build vanilla references to establish original behavior. Implement and validate the agent against the original JAR, without depending on methods, fields, nested types or visibility changes introduced by legacy replacements. Express those extension contracts through agent-owned adapters/state and the established instrumentation architecture.
+
+Ensure validation and launch classpaths resolve game classes from the original archive; patched archives or loose overrides must not silently supply the target classes. Do not compile against a patched game API to hide missing vanilla integration. New ports do not need patched-shape regression tests, dual-shape hook branches or legacy-runtime fallback machinery unless the user explicitly requests that compatibility again. Existing legacy compatibility code/tests may remain historical coverage; their removal is a separately scoped change.
+
+## Active Byte Buddy migration workflow
+
+These rules take precedence over the historical version-directory workflows and checkpoints below:
+
+- Treat every top-level game-version directory, including its `src/`, `decompiled/`, `docs/`, build scripts, and tools, as legacy/reference material. Do not add or port implementation there unless the user explicitly requests legacy patch maintenance.
+- Implement current work in the root Maven project. Keep production code in `src/main/java`, runtime configuration in `src/main/resources`, and focused tests in `src/test/java`.
+- Declare every JVM system property used by production code in `cloud.apocalipse.pz.agent.config.AgentConfiguration`, with a Javadoc comment identifying its owning feature and supported `-D` argument. Read properties through that class rather than calling `System.getProperty` at feature call sites. Add future JVM argument settings there; keep environment-variable names and their lookup in the same class when they participate in application configuration.
+- Port incrementally. Work only on the class, behavior, or explicitly bounded group selected for the current task. Do not start a broad migration, process a queue of classes, or infer approval for later ports. The user orchestrates separate future sessions.
+- For a port, identify the relevant legacy patch and its exact vanilla baseline. Separate old patch intent from vanilla behavior, then map only the intended behavior into the existing Byte Buddy architecture. Do not copy a legacy replacement class wholesale into the agent or recreate whole-class replacement behavior by default.
+- Before editing, inspect the agent's entry point, feature registration, related advice/modules, existing tests, and current documentation. Reuse the established instrumentation and lifecycle patterns. If a behavior has no safe or clear instrumentation boundary, explain the constraint and ask for direction rather than silently expanding the port.
+- Preserve the original method's behavior and call order where the migration is observational or additive. For intentional behavior changes, make the changed contract explicit and test both the hook behavior and continued execution of vanilla behavior as appropriate.
+- Use the relevant legacy game build as evidence for signatures and behavior; do not make a version directory the default implementation target. Compare other builds only when the task involves a version difference or the exact baseline is uncertain.
+- Register the feature and its actual vanilla hooks as part of implementation, following the completion requirements above. Plan instrumentation boundaries before moving support code so integration is part of the port rather than deferred after a supposed completion.
+- Validate only the original-JAR runtime target for current ports. If legacy replacements obstruct validation, correct the validation classpath rather than adapting the new feature to the patched shape. Keep legacy retirement/deployment cleanup separate from implementing the vanilla-targeted hooks, and do not deploy or delete installed overrides without authorization.
+- Add or update active project documentation only under the repository-root `.docs/`. Use `.docs/README.md` as its index and organize future material there (for example, architecture, migrations, features, and reports). Do not create new documentation in version-directory `docs/` or duplicate a guide there. Existing version-directory documents remain historical references unless explicitly requested.
+- Validate the current Maven project with the smallest relevant tests, normally `mvn test`; use `mvn package` when validating the shaded agent artifact. Do not run legacy patch scripts or deploy into a game installation for an agent-only change unless explicitly required.
+- Keep each port independently reviewable: record its source behavior, agent implementation points, compatibility decisions, tests, and remaining runtime gaps in the appropriate `.docs/` material when documentation is part of the task.
+
+## Opt-in real-server integration tests
+
+The root Maven project has a `server-integration` profile. Read
+[the integration guide](.docs/validation/server-integration.md) before running or
+extending it. This is an optional validation tool, not a requirement for every
+feature, port, or session. Do not expand an ordinary task into integration-test
+work or repeatedly start the game unless that session calls for it. Continue
+using focused unit tests for routine development; report integration coverage
+and runtime gaps accurately.
+
+The purpose is to close the gap between unit-test doubles/bytecode transformation
+checks and execution of the packaged agent against the original game process.
+JUnit owns one disposable dedicated-server child JVM per suite and runs separately
+registered assertions sequentially against it. Never run `GameServer.main` in the
+JUnit JVM: native state, static singletons, background threads, and `System.exit`
+require process isolation. Never include `target/test-classes`, loose legacy game
+classes, or the patched archive in the child classpath.
+
+- Run explicitly with `mvn verify -Pserver-integration`; this packages the shaded
+  agent before Maven Failsafe starts the suite. `mvn test` and normal packaging do
+  not start a server. Explicit integration runs fail on missing runtime inputs
+  rather than silently skipping them.
+- Windows defaults to the original JAR at
+  `Z:\SteamLibrary\steamapps\common\ProjectZomboid\projectzomboid.jar`.
+  Linux defaults to `/opt/pzserver/java/projectzomboid.jar`, with runtime resources
+  under `/opt/pzserver`. Override `pz.game.jar` and `pz.it.home` as needed; the
+  JAR alone cannot run a complete server. Do not discover arbitrary installations
+  or assume an installed Steam build remains unchanged.
+- The suite creates a unique cache, server configuration, world, logs, and hook
+  evidence under `target/server-integration/run-*`. It does not use `servertest`,
+  production saves, or production connection settings. It disables PostgreSQL,
+  Steam, Workshop downloads, and restart requests in the initial fixture; telemetry
+  is captured by a local HTTP receiver. Do not enable database tests against a
+  live database or use production credentials to make tests pass.
+- To add coverage in a session dedicated to integration testing, implement
+  `ServerAssertion` in a separate file under
+  `src/test/java/cloud/apocalipse/pz/agent/integration/assertions/` and register its
+  public no-argument class in the test `META-INF/services/...ServerAssertion` file.
+  Reuse `ServerTestContext`; do not add a startup per assertion. Use unique names,
+  bounded waits, meaningful observable assertions, and restore scenario state.
+  Assertions must not rely on another assertion's success or execution order.
+- Initial coverage checks actual injected telemetry/Workshop helper calls and
+  original-JAR class origins using a test-only observer agent installed after the
+  production agent. A lazy Workshop class is explicitly loaded without initializing
+  it. This proves hook installation at startup, not Workshop updates, PostgreSQL,
+  login, player profile persistence, or every feature's gameplay behavior.
+- `AgentModules.all()` is the shared runtime module registry. Every `AgentModule`
+  must declare `hookChecks()` and conditional modules must report their actual
+  `disabledReason()`. Add a `HookCheck` for each new installation contract; the
+  integration suite discovers these automatically and reports one test per check,
+  with explicit skips for disabled modules. Do not maintain a second test target
+  list. The probe also flags transformed target classes without declared checks,
+  but cannot infer an omitted hook inside an already covered class or prove
+  feature semantics. Hooks without agent-helper invocations need a deliberate
+  alternative assertion. Use explicit non-initializing loads only when safe and
+  documented; do not force gameplay-dependent classes into startup casually.
+- Server output streams with `[PZ]` prefixes while raw logs are retained.
+  Assertion results print green PASS, red FAIL, yellow SKIP and a summary. Use
+  `-Dpz.it.serverLogs=false` to suppress streaming and `-Dpz.it.color=false` or
+  `NO_COLOR` for plain output; explicit `-Dpz.it.color=true` overrides `NO_COLOR`.
+  These options affect test presentation only.
+- The user's global VS Code task **Integration test ApocBR agent - configured
+  services** opts into `pz.it.useTaskConfiguration=true` and copies database/API
+  settings from their existing run-task template. In that mode the launcher
+  forwards supplied `apocbr.*` properties and recognized service environment
+  overrides into the child; ordinary runs retain isolated defaults. Maintain
+  these settings in the local task, never commit its credentials. Configured
+  startup may write account/role data and send telemetry to its configured
+  services; do not run that task merely to validate launcher wiring. Validate
+  forwarding with synthetic settings and use the isolated mode for startup
+  regression checks. Any actual database acceptance must follow the isolated
+  database/role/schema rules above. Journal/world/cache state remains run-owned.
+  On Windows, keep a JDBC URL with query parameters in the task's
+  `options.env.APOCBR_POSTGRES_URL`; the shell/Maven command path can truncate
+  `&password=...` in a `-D` argument even with task-level quoting. Never print
+  credential-bearing arguments to diagnose forwarding; compare values or
+  fingerprints without exposing them. `IntegrationConfigurationSmokeMain` can
+  validate the configured parent/child forwarding without starting the game or
+  opening a database connection.
+- Future scenarios that need startup-time dependencies must extend the shared
+  fixture deliberately before launch. Use isolated PostgreSQL with the real
+  schema and distinct migration/engine roles, local HTTP receivers, and an actual
+  client/protocol driver where end-to-end login is claimed. Do not replace real
+  game classes with doubles or weaken the initial checks to bypass failures.
+- Keep test observation/control in test sources; never ship test-only backdoors.
+  Observe production hook installation without modifying the original archive.
+  Document any new probe target, deliberate trigger, fixture dependency, side
+  effect, or coverage limit in the integration guide.
+- Preserve logs, JAR/agent hashes, evidence, and Failsafe results. Require graceful
+  shutdown; timeout fallback terminates only the child created by this suite.
+  Record the tested OS/build and do not imply cross-platform or feature acceptance
+  from a single startup pass. Artifacts remain until deliberately cleaned.
 
 ## Repository model
 
-Each game build has its own top-level version directory, such as:
+Top-level version directories are legacy snapshots, such as:
 
 ```text
 42.19.0/
@@ -22,88 +154,50 @@ Each game build has its own top-level version directory, such as:
 42.22.0/
 ```
 
-Some directories have a suffix such as `-client`. These are separate patch targets and must not be assumed to match the unsuffixed server directory.
+Some legacy directories have a suffix such as `-client`; those snapshots are distinct from their unsuffixed counterparts. Consult the matching snapshot when tracing old behavior, but do not infer that the active agent has separate versioned source trees.
 
-A modern version directory generally contains:
+Legacy version directories may contain:
 
 ```text
 <version>/
   decompiled/zombie/   Unmodified decompiled source for that exact game build
   src/zombie/          Complete Java source files that override vanilla classes
-  docs/README.md      Version documentation index, grouped by category and date
-  docs/features/      Maintained feature, architecture and configuration guides
-  docs/reports/       Investigations, measurements, reviews and implementation maps
-  docs/issues/        Diagnoses, known limitations, fixes and reproduction records
+  docs/               Historical, version-specific documentation
   patch*.ps1           Windows compilation and deployment scripts
   patch*.sh            Linux compilation and deployment scripts where available
 ```
 
-Older version directories may use several focused patch scripts or may not contain the same complete layout. Inspect the selected directory before assuming its workflow.
+These trees explain the legacy class-replacement system. Their presence does not make that system the current implementation or documentation workflow. The active root project is built with Maven; consult its `pom.xml` and current agent code for actual dependencies, packaging, instrumentation, and tests.
 
 ## Source-of-truth rules
 
-1. Identify the exact target game version before investigating or editing code.
-2. Use `<version>/decompiled/zombie/` as the source of truth for vanilla behavior, signatures, fields, imports, and call flow for that version.
-3. Use `<version>/src/zombie/` only for patched replacement classes.
-4. Never edit files under `decompiled/` when implementing a patch.
-5. Never use a source file from another version as the starting point without first comparing it against the target version.
-6. Do not rely on memory, online API documentation, or another Project Zomboid build when the target decompiled source can answer the question.
-7. Decompiled code may contain synthetic names, awkward control flow, or decompiler artifacts. Avoid cleanup-only rewrites because they make compatibility review harder and can change behavior.
-
-Use the version explicitly requested by the user or implicitly identified by the
-task's paths, active files, logs or existing patch context. If no version is
-identified, select the latest available **server** version automatically: compare
-unsuffixed numeric version directories numerically, excluding `-client` and other
-suffixes. At this update that default is **42.22.2** (source carry-forward target;
-runtime and deployment validation remain pending); discover directories again
-instead of treating this number as permanent. Do not ask the user to select a
-version merely because they omitted it. Explicit client work still targets its
-separate client directory and exact baseline.
+1. For active agent code, treat the root Maven source and tests as the implementation source of truth.
+2. When porting behavior, use the relevant legacy `decompiled/` file as the vanilla baseline and the corresponding legacy `src/` file to identify the old patch's intent. Do not edit either tree for an agent migration.
+3. Identify the exact legacy build only as needed to establish the behavior and signatures being ported. There is no implicit “latest game version” target for agent work.
+4. Compare other legacy builds when behavior differs, the task is a version comparison, or the applicable baseline is uncertain. Do not copy a source file from another build without checking those differences.
+5. Decompiled source can contain synthetic names, awkward control flow, and decompiler artifacts. Use it as evidence, not as code to transplant or clean up.
+6. Do not rely on memory or a different game build when the relevant legacy source in this repository can answer the question.
+7. For active instrumentation and linkage validation, the original game JAR is the runtime API source of truth. Legacy patched APIs are evidence of contracts to migrate, not an accepted compilation or runtime dependency.
 
 ## Version documentation and index
 
-All new version-specific documentation belongs under `<version>/docs/`, including
-feature architecture, configuration, investigations, telemetry explanations and
-issue resolutions. For current work start with the [42.22.2 documentation index](42.22.2/docs/README.md)
-and [42.22.1 to 42.22.2 compatibility audit](42.22.2/docs/reports/2026-11-08-port-42-22-1-to-42-22-2.md).
-The [42.22.1 index](42.22.1/docs/README.md) owns the carried implementation guides.
-The [42.21.0 index](42.21.0/docs/README.md) remains the previous build's feature reference;
-do not treat its implementations or measurements as verified on 42.22.0.
-Do not create new guide copies in the version root or a nested `docs/docs/`.
+All new or actively maintained project documentation belongs under the root
+`.docs/` directory, with `.docs/README.md` as the index. The documentation layout
+will evolve with the Byte Buddy migration; keep each new document in the
+appropriate project-level category and link it from the index. Do not create new
+guides or update indexes in version-directory `docs/` for current agent work.
 
-- `features/`: maintained behavior, ownership contracts, configuration, schema
-  references and companion reference SQL. Explain the implemented behavior and
-  distinguish future design from current guarantees.
-- `reports/`: dated source investigations, performance captures, reviews,
-  comparisons and implementation proposals. Preserve their evidence and historical
-  scope; a proposal is not proof that a feature has shipped.
-- `issues/`: reproductions, failure diagnosis, operational troubleshooting and
-  resolutions. State whether the issue remains open, mitigated or resolved.
+Version-directory documentation is legacy and remains useful as historical
+evidence. Preserve its original scope and links when consulting it; do not imply
+that a legacy guide or measurement describes the current agent unless it has been
+verified during migration. Only update legacy docs when a task explicitly asks
+for legacy patch documentation maintenance.
 
-Name documents `YYYY-MM-DD-descriptive-topic.md` using the document's creation or
-report date, with lowercase hyphen-separated topics. Companion documentation SQL
-uses the same dated naming convention and category. Actual executable migrations,
-source files and build tools retain their existing project-specific locations
-and naming contracts; do not rename runtime assets just to match documentation.
-`docs/README.md` is the undated index exception. Keep a maintained guide's original
-filename date when editing it and record material later verification dates in
-its content; create a separate dated report for a new investigation. For migrated
-documents use the original Git addition date when available, and disclose any
-fallback rather than inventing historical dates.
+## Legacy Java monkey-patch workflow (reference only)
 
-Each version's `docs/README.md` must link every version document and SQL companion,
-group entries into features/reports/issues and sort newest date first within each
-category. Include the date and meaningful title. Add links from relevant feature
-guides to their reports/issues and back from reports/issues to the owning feature
-when that relationship is known. Creating, moving, renaming or retiring a document
-must update the index and all affected references in the same change. Preserve
-relative source, SQL, cross-version and external-repository links when moving
-files. Validate local link targets and index coverage; documentation-only changes
-do not require Java compilation or gameplay fixtures.
-
-## Creating a new Java monkey patch
-
-The standard workflow is:
+This workflow applies only when the user explicitly requests maintenance of the
+legacy class-replacement system. It is not the workflow for porting behavior into
+the Byte Buddy agent. In that case:
 
 1. Select the target `<version>` and determine whether the patch is server-side, client-side, or required on both sides.
 2. Locate the original class under `<version>/decompiled/zombie/`.
@@ -146,9 +240,12 @@ The script accepts an optional single-line commit subject:
 
 ## Investigation workflow
 
+For an agent migration, first identify the requested legacy behavior and its
+vanilla baseline, then trace how the current root agent is structured to observe
+or implement it. Avoid broad exploration of unrelated version directories.
 Before changing behavior:
 
-1. Search only within the target version first.
+1. Inspect the requested legacy patch and vanilla baseline, plus the corresponding root-agent feature and tests. Keep searches bounded to those owners and their direct call sites.
 2. Find the owning class and the entry point that invokes it.
 3. Trace both sides of multiplayer behavior. A method name alone does not prove whether it runs on the client, server, or both.
 4. Search for all reads and writes of modified fields and all calls to modified methods.
@@ -156,13 +253,18 @@ Before changing behavior:
 6. Check `GameClient.bClient`, `GameServer.bServer`, dedicated-server checks, and related guards.
 7. For network changes, trace packet declaration, serialization, transmission, receipt, validation, and state application.
 8. For loading changes, trace request, background work, main-thread integration, unload, reuse, and persistence paths.
-9. Compare the same class in the immediately previous and next available versions when porting a feature or diagnosing an upstream change.
+9. Compare another legacy build only when the port depends on a version difference or the exact behavior is uncertain.
+
+Before calling the selected feature port complete, trace the installed module's matchers/advice from the original vanilla entry points through the migrated implementation and its required lifecycle paths. Verify that the actual hooks execute; helper-only tests and successful registration messages are insufficient.
 
 Useful searches include class names, method names, packet identifiers, log text, Lua event names, and field access. Search for behavior and call sites, not only filenames.
 
 ## Lookup shortcuts by subsystem
 
-All paths below are relative to `<version>/decompiled/zombie/`. Exact classes can change between builds, so confirm them in the target version.
+The paths below are legacy source-navigation shortcuts, relative to
+`<version>/decompiled/zombie/`. Use them only to understand behavior being
+ported; exact classes vary by build, and the active implementation belongs in
+the root Maven agent.
 
 ### Startup and main game loop
 
@@ -300,9 +402,14 @@ Do not deploy rendering or UI classes as server patches unless the same class is
 - `radio/`: radio simulation and broadcasts.
 - `worldMap/`: world map data and UI support.
 
-## Version porting
+## Historical version-directory porting records (legacy)
 
-A patch is not automatically valid for a newer build even if the class name is unchanged.
+The dated checkpoints and queue details in this section record earlier work on
+the legacy class-replacement system. They are historical evidence, not current
+task instructions, approval to resume a queue, or a destination for new ports.
+The active direction is the incremental Byte Buddy workflow above.
+
+A legacy patch is not automatically valid for a newer build even if the class name is unchanged.
 
 ### Current 42.22.2 carry-forward checkpoint
 
@@ -616,7 +723,7 @@ Prioritize optimizations, NPCs and PostgreSQL, with telemetry verification
 secondary, while retaining all subsystems in scope. Update this checkpoint as
 decisions are implemented so it does not become a stale approval instruction.
 
-When porting a patch:
+When porting a legacy patch between version directories (legacy maintenance only):
 
 1. Diff the old version's `decompiled` file against its patched `src` file to isolate the intended patch.
 2. Diff the old vanilla file against the new version's vanilla file to identify upstream changes.
@@ -627,7 +734,11 @@ When porting a patch:
 
 Never copy an old patched class wholesale into a new version directory.
 
-## Build and verification
+## Legacy patch build and verification records
+
+The dated implementation notes and patch-script procedures in this section
+describe legacy version-directory work. For current Byte Buddy changes, use the
+root Maven build and tests described in the active migration workflow above.
 
 2026-10-29 priorities5/6: user authorized subtype initialization and health/time
 baselines for42.22. General Moveable/Radio sprite setup precedes saved projection;
@@ -730,9 +841,13 @@ Minimum verification for a patch:
 
 There is no substitute for runtime testing of timing, threading, streaming, networking, and persistence changes.
 
-## Tools and algorithm regression tests
+## Legacy tools and algorithm regression tests
 
-`tools/` contains development and diagnostic utilities, not deployed game code. Inspect the relevant script before running it; scripts in this folder have different side effects and prerequisites.
+`tools/` primarily contains development and diagnostic utilities for the legacy
+patches, not deployed game code. These fixtures do not by themselves validate a
+Byte Buddy port. Inspect the relevant script before running it; scripts in this
+folder have different side effects and prerequisites. For active agent behavior,
+prefer focused tests under `src/test/java` and the root Maven build.
 
 ### Python test architecture and prerequisites
 
@@ -805,18 +920,18 @@ Report the scripts run, their outcomes, the target-JAR compilation result, and r
 - `Analyze-PZGameProfiler.ps1`: analyzes profiler CSV recordings and writes reports. The folder also contains `Analyze-PZGameProfiler-Fixed.ps1` and `script.ps1`; inspect them before choosing an alternate implementation rather than assuming they are interchangeable.
 - `Sample-PZClientStutter.ps1`: samples a running client process, with options for thread stacks, GPU counters and profiler analysis. Inspect its parameters and output locations before collecting diagnostics; it is separate from the isolated Java fixtures and server telemetry.
 
-For server metric definitions and optimization status, find the maintained
-telemetry feature guide and related reports through the target version's
-`docs/README.md`. Keep those documents and their index current when adding
-counters, changing timing boundaries or implementing a previously documented proposal.
+For active server metric definitions and optimization status, use or create
+documentation under root `.docs/`; keep its index current when migrating
+counters, changing timing boundaries, or implementing a documented proposal.
+Version-directory telemetry guides are legacy references.
 
 ## Safety and compatibility constraints
 
-- Do not modify, replace, rename or delete the original game JAR. The repository's deployment model uses loose classpath overrides. Starting with 42.22.1, deployment creates a separate unsigned `projectzomboid-apocbr.jar` from the read-only original and updates native JSON/batch startup to use it. Follow the [runtime deployment guide](42.22.1/docs/features/2026-11-04-unsigned-runtime-deployment.md); repeated deployments must recheck current launchers and refresh only the derived archive when needed.
+- Do not modify, replace, rename or delete the original game JAR. The loose-classpath and derived-JAR instructions below describe legacy deployment only; do not deploy an agent migration unless explicitly requested.
 - Do not commit generated `.class` files, downloaded JDKs, backups, temporary compiler output, or game files.
-- Do not remove existing patch behavior while refreshing a file from vanilla source.
+- Do not remove existing legacy patch behavior while refreshing a legacy source file from vanilla.
 - Avoid broad formatting, renaming, or refactoring of decompiled classes.
-- Preserve public and package-visible contracts used by other vanilla classes.
+- Preserve public and package-visible contracts relied on by vanilla code when instrumenting it.
 - Treat static mutable state, pools, queues, and background workers as concurrency-sensitive.
 - Keep server-authoritative decisions on the server. Do not trust client-provided state without matching vanilla validation.
 - Do not log credentials, access tokens, player passwords, or sensitive connection data.
@@ -824,21 +939,25 @@ counters, changing timing boundaries or implementing a previously documented pro
 
 ## Agent handoff expectations
 
-For each implemented patch, report:
+For each Byte Buddy port, report:
 
-- Target version and execution side.
-- Vanilla source file used as the baseline.
-- Patched source files changed.
-- Behavioral intent and important invariants preserved.
-- Compilation or dry-run command used and its result.
+- Legacy patch and vanilla source used to establish the behavior.
+- Root agent source, instrumentation/advice entry point, and tests changed.
+- The module's registration in `AgentRuntime`, original-JAR target signatures, activation settings and evidence that transformed vanilla entry points invoke the feature.
+- Behavioral intent, vanilla behavior retained, and any intentional change.
+- Maven test/package command used and its result.
+- Hook execution context and any thread, class-loader, server/client, or version assumptions.
 - Runtime scenarios still requiring manual validation.
-- Any assumptions, version-specific risks, or related classes that future work should inspect.
+- Explicit partial status and missing hooks/lifecycle paths whenever the complete selected feature scope is not yet wired; distinguish this from a completed implementation awaiting live-runtime acceptance.
+- Related legacy classes or behaviors that a future, separately scoped session may port.
 
 
 ## NPC engine object-oriented architecture
 
 All NPC bot engine features, including extensions to existing behavior, must
-follow [the NPC engine architecture contract](42.21.0/docs/features/2026-10-20-npc-engine-architecture.md).
+follow the [legacy NPC engine architecture contract](42.21.0/docs/features/2026-10-20-npc-engine-architecture.md)
+as a source of design constraints until its current-agent counterpart is
+documented under `.docs/`.
 Keep lifecycle/composition, behavioral policy, content providers, immutable
 commands, execution state, engine capabilities and transport/authority separate.
 Use composition and injected ports for role-specific behavior. Do not add NPC
@@ -851,8 +970,9 @@ semantics and production-code regression tests, and compile against the target
 build. This rule applies to all NPC features, not only speech.
 
 
-NPC profile/lifecycle changes must also follow
-[the profile and persistence-boundary contract](42.21.0/docs/features/2026-10-20-npc-profiles-lifecycle.md).
+NPC profile/lifecycle changes must also respect the legacy
+[profile and persistence-boundary contract](42.21.0/docs/features/2026-10-20-npc-profiles-lifecycle.md)
+until its current-agent counterpart is documented under `.docs/`.
 Select behavior by registered `profileId`, never logical actor key or display
 name. Register immutable versioned profile data separately from allowlisted
 factories; create fresh behavior/controller state per NPC. Shared interaction
@@ -867,8 +987,9 @@ IDs, live executors, connections or monotonic timers.
 
 ### Component and subsystem map
 
-The engine lives under `src/zombie/apocalipse/humans/` in the selected version.
-Use the indexed architecture and subsystem guides before extending a capability.
+The legacy engine lives under `src/zombie/apocalipse/humans/` in the version
+directories. Use it and its guides as migration references. New agent-side code
+belongs in root `src/main/java`; document migrated architecture under `.docs/`.
 Keep policy, execution, native authority and persistence as separate collaborators.
 
 | Layer / subsystem | Main components | Responsibility and extension boundary |
@@ -892,6 +1013,11 @@ Keep policy, execution, native authority and persistence as separate collaborato
 | Persistence | `zombie.savefile.ApocBRNpcStore` and NPC/profile/relationship/dialogue/speech/mortality persistence adapters | Capture detached facts, stage bounded journal/JDBC work and publish validated results. Database workers do not own live-world mutation or NPC simulation timing. |
 
 ### NPC simulation worker versus world simulation
+
+The details below describe the legacy version-directory NPC engine. They are
+important when preserving or porting its behavior, but do not assume the active
+agent has the same worker, lifecycle, or thread model; verify root agent code for
+each new task.
 
 **42.22.1 update (2026-11-05):** the current target replaces the live-world worker
 with [detached planning and server-owned native authority](42.22.1/docs/features/2026-11-05-npc-async-authority.md).

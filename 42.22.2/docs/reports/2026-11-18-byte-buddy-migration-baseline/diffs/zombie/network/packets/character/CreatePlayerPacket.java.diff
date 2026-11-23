@@ -1,0 +1,72 @@
+diff --git a/zombie/network/packets/character/CreatePlayerPacket.java b/zombie/network/packets/character/CreatePlayerPacket.java
+index 73e4433..66b778a 100644
+--- a/zombie/network/packets/character/CreatePlayerPacket.java
++++ b/zombie/network/packets/character/CreatePlayerPacket.java
+@@ -170,10 +170,37 @@ public class CreatePlayerPacket implements INetworkPacket {
+         }
+     }
+ 
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
++        if(!zombie.savefile.ApocBRLoginGuard.ready(connection))return;
++        // PacketsCache reuses this handler: never retain it across packet dispatches.
++        CreatePlayerPacket request=copyForHandoff();
++        if(zombie.savefile.ApocBRCreatedPlayerHandoff.defer(connection,this.playerIndex,()->request.processServerReady(packetType,connection)))return;
++        processServerReady(packetType,connection);
++    }
++
++    private CreatePlayerPacket copyForHandoff() {
++        CreatePlayerPacket request=new CreatePlayerPacket();
++        request.spawnRegionName=this.spawnRegionName;
++        request.survivorDescriptor=this.survivorDescriptor;
++        request.playerIndex=this.playerIndex;
++        request.characterTraits.addAll(this.characterTraits);
++        return request;
++    }
++
++    private void processServerReady(PacketTypes.PacketType packetType,UdpConnection connection) {
++        if(!zombie.savefile.ApocBRLoginGuard.playerReady(connection,this.playerIndex))return;
++        try(zombie.savefile.ApocBRForegroundDatabase budget=zombie.savefile.ApocBRForegroundDatabase.beginLogin()) {
++            processServerDatabase(packetType,connection);
++        }catch(RuntimeException failure) {
++            if(!zombie.savefile.ApocBRLoginGuard.enabled())throw failure;
++            zombie.savefile.ApocBRLoginGuard.deny(connection);
++        }
++    }
++
++    private void processServerDatabase(PacketTypes.PacketType packetType, UdpConnection connection) {
+         int spawnPointX = 0;
+         int spawnPointY = 0;
+         int spawnPointZ = 0;
+         String withPlayerPrefix = "WithPlayer";
+         if (this.spawnRegionName != null && this.spawnRegionName.length() > "WithPlayer".length() && this.spawnRegionName.startsWith("WithPlayer")) {
+@@ -294,17 +321,25 @@ public class CreatePlayerPacket implements INetworkPacket {
+             }
+ 
+             LuaEventManager.triggerEvent("OnNewGame", this.player, null);
+             ServerPlayerDB.getInstance().serverUpdateNetworkCharacter(this.player, this.playerIndex, connection);
+             ServerPlayerDB.getInstance().process();
+-            ByteBufferWriter b = connection.startPacket();
+-            PacketTypes.PacketType.CreatePlayer.doPacket(b);
+-            this.write(b);
+-            PacketTypes.PacketType.CreatePlayer.send(connection);
++            if(zombie.savefile.ApocBRCreatedPlayerHandoff.created(connection,this.playerIndex,this.player,()->sendCreatedPlayer(connection)))return;
++            zombie.savefile.ApocBRPlayerRelationalSync.offerCreatedPlayer(this.player, zombie.core.Core.gameSaveWorld,
++                GameServer.coop && SteamUtils.isSteamModeEnabled() ? connection.getIDStr() : connection.getUserName(),
++                this.playerIndex, IsoWorld.getWorldVersion());
++            sendCreatedPlayer(connection);
+         }
+     }
+ 
++    private void sendCreatedPlayer(UdpConnection connection) {
++        ByteBufferWriter b=connection.startPacket();
++        PacketTypes.PacketType.CreatePlayer.doPacket(b);
++        this.write(b);
++        PacketTypes.PacketType.CreatePlayer.send(connection);
++    }
++
+     @Override
+     public boolean isConsistent(IConnection connection) {
+         return GameServer.server && this.survivorDescriptor != null || GameClient.client && this.player != null;
+     }
+ 

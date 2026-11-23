@@ -1,0 +1,6 @@
+apocbr:
+  telemetry:
+    base-url: "https://plataforma.apocalipse.cloud"
+  restart:
+    enabled: true
+    base-url: "https://plataforma.apocalipse.cloud"

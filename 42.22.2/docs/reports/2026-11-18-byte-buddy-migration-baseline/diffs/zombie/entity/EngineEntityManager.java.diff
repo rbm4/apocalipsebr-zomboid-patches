@@ -1,0 +1,82 @@
+diff --git a/zombie/entity/EngineEntityManager.java b/zombie/entity/EngineEntityManager.java
+index 208460e..064cd91 100644
+--- a/zombie/entity/EngineEntityManager.java
++++ b/zombie/entity/EngineEntityManager.java
+@@ -1,18 +1,22 @@
+ // Decompiled with Zomboid Decompiler v0.3.0 using Vineflower.
+ package zombie.entity;
+ 
+ import java.util.Objects;
++import java.util.IdentityHashMap;
++import zombie.ApocBRServerTelemetryLite;
++import zombie.network.GameServer;
+ import zombie.core.Core;
+ import zombie.entity.util.Array;
+ import zombie.entity.util.ImmutableArray;
+ import zombie.entity.util.ObjectSet;
+ import zombie.entity.util.SingleThreadPool;
+ 
+ public final class EngineEntityManager {
+     private final EntityBucketManager bucketManager;
+     private final Array<GameEntity> entities = new Array<>(false, 16);
++    private final IdentityHashMap<GameEntity, Integer> entityPositions = new IdentityHashMap<>();
+     private final ObjectSet<GameEntity> entitySet = new ObjectSet<>();
+     private final ImmutableArray<GameEntity> immutableEntities = new ImmutableArray<>(this.entities);
+     private final Array<EngineEntityManager.EntityOperation> pendingOperations = new Array<>(false, 16);
+     private final EngineEntityManager.EntityOperationPool entityOperationPool = new EngineEntityManager.EntityOperationPool();
+     private final ComponentOperationHandler componentOperationHandler;
+@@ -150,31 +154,53 @@ public final class EngineEntityManager {
+     void addEntityInternal(GameEntity entity) {
+         if (this.entitySet.contains(entity)) {
+             throw new IllegalArgumentException("Entity is already registered " + entity);
+         } else {
+             entity.scheduledDelayedAddToEngine = false;
++            this.entityPositions.put(entity, this.entities.size);
+             this.entities.add(entity);
+             this.entitySet.add(entity);
+             entity.setComponentOperationHandler(this.componentOperationHandler);
+             entity.addedToEngine = true;
+             this.bucketManager.updateBucketMembership(entity);
+             this.engine.onEntityAdded(entity);
+         }
+     }
+ 
+     void removeEntityInternal(GameEntity entity) {
++        long started = GameServer.server ? System.nanoTime() : 0L;
++        try {
+         boolean removed = this.entitySet.remove(entity);
+         entity.scheduledForEngineRemoval = false;
+         if (removed) {
+             entity.removingFromEngine = true;
+-            this.entities.removeValue(entity, true);
++            this.removeEntityFromArray(entity);
+             this.bucketManager.updateBucketMembership(entity);
+             entity.setComponentOperationHandler(null);
+             entity.removingFromEngine = false;
+             entity.addedToEngine = false;
+             this.engine.onEntityRemoved(entity);
+         }
++        } finally {
++            if (GameServer.server) ApocBRServerTelemetryLite.recordPhase("entities.removal", System.nanoTime() - started);
++        }
++    }
++
++    private void removeEntityFromArray(GameEntity entity) {
++        long started = GameServer.server ? System.nanoTime() : 0L;
++        int size = this.entities.size;
++        Integer position = this.entityPositions.remove(entity);
++        // This private array has no external writers. Retain the vanilla swap order.
++        if (position == null) throw new IllegalStateException("Missing engine entity position");
++        GameEntity tail = this.entities.peek();
++        this.entities.removeIndex(position);
++        if (tail != entity) this.entityPositions.put(tail, position);
++        if (GameServer.server) {
++            ApocBRServerTelemetryLite.count("entities.removal.indexed", 1L);
++            ApocBRServerTelemetryLite.count("entities.removal.arrayEntriesAtStart", size);
++            ApocBRServerTelemetryLite.recordPhase("entities.removal.array", System.nanoTime() - started);
++        }
+     }
+ 
+     private class ComponentOperationListener implements ComponentOperationHandler.OperationListener {
+         private ComponentOperationListener() {
+             Objects.requireNonNull(EngineEntityManager.this);

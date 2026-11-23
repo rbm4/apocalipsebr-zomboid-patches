@@ -1,0 +1,16 @@
+diff --git a/zombie/network/packets/character/PlayerDataRequestPacket.java b/zombie/network/packets/character/PlayerDataRequestPacket.java
+index fc43a18..989a3a6 100644
+--- a/zombie/network/packets/character/PlayerDataRequestPacket.java
++++ b/zombie/network/packets/character/PlayerDataRequestPacket.java
+@@ -17,10 +17,11 @@ public class PlayerDataRequestPacket extends IDShort implements INetworkPacket {
+         this.setID((Short)values[0]);
+     }
+ 
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
++        if (zombie.apocalipse.humans.ServerHumanFactory.handleDataRequest(this.getID(), connection)) return;
+         IsoPlayer player = GameServer.IDToPlayerMap.get(this.getID());
+         if (player != null
+             && (
+                 connection.getRole().hasCapability(Capability.SeesInvisiblePlayers)
+                     || !player.isInvisible() && (connection.isRelevantTo(player.getX(), player.getY()) || connection.isRelevantTo(player.realx, player.realy))

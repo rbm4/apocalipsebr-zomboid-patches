@@ -1,0 +1,46 @@
+diff --git a/zombie/world/StringDictionary.java b/zombie/world/StringDictionary.java
+index 78341ee..458c294 100644
+--- a/zombie/world/StringDictionary.java
++++ b/zombie/world/StringDictionary.java
+@@ -122,10 +122,11 @@ public class StringDictionary {
+                 GameWindow.WriteString(output, string);
+             }
+         }
+ 
+         public String loadString(ByteBuffer input, int worldVersion) {
++            try(var dictionary=ApocBRWorldDictionaryDecode.enter(input)) {
+             if (input.get() != 0) {
+                 short id = input.getShort();
+                 DictionaryStringInfo info = this.getInfoForID(id);
+                 if (info != null) {
+                     return info.string;
+@@ -137,14 +138,15 @@ public class StringDictionary {
+                     return null;
+                 }
+             } else {
+                 return GameWindow.ReadString(input);
+             }
++                    }
+         }
+ 
+         public String get(short id) {
+-            DictionaryStringInfo info = this.idToStringMap.get(id);
++            DictionaryStringInfo info = this.getInfoForID(id);
+             return info != null ? info.string : null;
+         }
+ 
+         public short getIdFor(String name) {
+             DictionaryStringInfo info = this.stringToIdMap.get(name);
+@@ -169,11 +171,11 @@ public class StringDictionary {
+         public DictionaryStringInfo getInfoForName(String name) {
+             return this.stringToIdMap.get(name);
+         }
+ 
+         public DictionaryStringInfo getInfoForID(short id) {
+-            return this.idToStringMap.get(id);
++            return ApocBRWorldDictionaryDecode.current()==null?this.idToStringMap.get(id):ApocBRWorldDictionaryDecode.string(this.name,id);
+         }
+ 
+         public void register(String string) {
+             if (string != null) {
+                 try {

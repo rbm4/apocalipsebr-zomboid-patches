@@ -1,0 +1,381 @@
+diff --git a/zombie/iso/objects/IsoGenerator.java b/zombie/iso/objects/IsoGenerator.java
+index 689493b..8c62535 100644
+--- a/zombie/iso/objects/IsoGenerator.java
++++ b/zombie/iso/objects/IsoGenerator.java
+@@ -76,10 +76,13 @@ public class IsoGenerator extends IsoObject {
+     public static final float StackedWasherDryerPowerConsumption = 0.9F;
+     public float fuel;
+     public boolean activated;
+     public int condition;
+     private int lastHour = -1;
++    private double isaBackupNextHour = Double.NEGATIVE_INFINITY;
++    private boolean isaApplyingBackupState;
++    private se.krka.kahlua.vm.KahluaTable isaBackupOwner;
+     public boolean connected;
+     private boolean updateSurrounding;
+     private final HashMap<String, String> itemsPowered = new HashMap<>();
+     private float totalPowerUsing;
+     private static final ArrayList<IsoGenerator> AllGenerators = new ArrayList<>();
+@@ -158,10 +161,19 @@ public class IsoGenerator extends IsoObject {
+         return "Base.Generator";
+     }
+ 
+     @Override
+     public void update() {
++        boolean isaBackup = zombie.apocbr.power.PowerBankBackup.isControlled(this);
++        if (isaBackup && GameTime.getInstance().getWorldAgeHours() >= this.isaBackupNextHour) {
++            this.isaBackupNextHour = GameTime.getInstance().getWorldAgeHours() + 1.0 / 6.0;
++            zombie.apocbr.power.PowerBankBackup.request(this);
++        }
++        if (GameServer.server && zombie.network.ApocBRManagedGenerators.isTagged(this)) {
++            zombie.network.ApocBRManagedGenerators.updateGenerator(this);
++            if (!zombie.network.ApocBRManagedGenerators.isManagedGenerator(this)) return;
++        }
+         if (this.isActivated()) {
+             if (!GameServer.server && (this.emitter == null || !this.emitter.isPlaying(this.getSoundPrefix() + "Loop"))) {
+                 this.playGeneratorSound("Loop");
+             }
+ 
+@@ -194,88 +206,97 @@ public class IsoGenerator extends IsoObject {
+             if ((int)GameTime.getInstance().getWorldAgeHours() != this.lastHour) {
+                 if (!this.getSquare().getProperties().has(IsoFlagType.exterior) && this.getSquare().getBuilding() != null) {
+                     this.getSquare().getBuilding().setToxic(this.isActivated());
+                 }
+ 
+-                int elapsedHours = (int)GameTime.getInstance().getWorldAgeHours() - this.lastHour;
+-                float subtractFuel = 0.0F;
+-                int subtractCondition = 0;
+-                int conditionLowerChance = item != null ? item.getConditionLowerChance() : 30;
+-
+-                for (int i = 0; i < elapsedHours; i++) {
+-                    float lowerFuel = this.totalPowerUsing;
+-                    lowerFuel = (float)(lowerFuel * SandboxOptions.instance.generatorFuelConsumption.getValue());
+-                    subtractFuel += lowerFuel;
+-                    if (Rand.Next(conditionLowerChance) == 0) {
+-                        subtractCondition += Rand.Next(2) + 1;
++                if (!zombie.network.ApocBRManagedGenerators.isManagedGenerator(this)) {
++                    if (!isaBackup) {
++                    int elapsedHours = (int)GameTime.getInstance().getWorldAgeHours() - this.lastHour;
++                    float subtractFuel = 0.0F;
++                    int subtractCondition = 0;
++                    int conditionLowerChance = item != null ? item.getConditionLowerChance() : 30;
++
++                    for (int i = 0; i < elapsedHours; i++) {
++                        float lowerFuel = this.totalPowerUsing;
++                        lowerFuel = (float)(lowerFuel * SandboxOptions.instance.generatorFuelConsumption.getValue());
++                        subtractFuel += lowerFuel;
++                        if (Rand.Next(conditionLowerChance) == 0) {
++                            subtractCondition += Rand.Next(2) + 1;
++                        }
++
++                        if (this.fuel - subtractFuel <= 0.0F || this.condition - subtractCondition <= 0) {
++                            break;
++                        }
+                     }
+ 
+-                    if (this.fuel - subtractFuel <= 0.0F || this.condition - subtractCondition <= 0) {
+-                        break;
++                    this.fuel -= subtractFuel;
++                    if (this.fuel <= 0.0F) {
++                        this.setActivated(false);
++                        this.fuel = 0.0F;
+                     }
+-                }
+ 
+-                this.fuel -= subtractFuel;
+-                if (this.fuel <= 0.0F) {
+-                    this.setActivated(false);
+-                    this.fuel = 0.0F;
+-                }
++                    this.condition -= subtractCondition;
++                    if (this.condition <= 0) {
++                        this.setActivated(false);
++                        this.condition = 0;
++                    }
+ 
+-                this.condition -= subtractCondition;
+-                if (this.condition <= 0) {
+-                    this.setActivated(false);
+-                    this.condition = 0;
+-                }
++                    }
++                    boolean bBackfire = false;
++                    if (this.condition <= 20) {
++                        bBackfire = Rand.Next(5) == 0;
++                    } else if (this.condition <= 30) {
++                        bBackfire = Rand.Next(10) == 0;
++                    } else if (this.condition <= 40) {
++                        bBackfire = Rand.Next(15) == 0;
++                    }
+ 
+-                boolean bBackfire = false;
+-                if (this.condition <= 20) {
+-                    bBackfire = Rand.Next(5) == 0;
+-                } else if (this.condition <= 30) {
+-                    bBackfire = Rand.Next(10) == 0;
+-                } else if (this.condition <= 40) {
+-                    bBackfire = Rand.Next(15) == 0;
+-                }
++                    if (bBackfire) {
++                        if (GameServer.server) {
++                            GameServer.PlayWorldSoundServer(this.getSoundPrefix() + "Backfire", this.getSquare(), 40.0F, -1);
++                        } else {
++                            this.playGeneratorSound("Backfire");
++                        }
+ 
+-                if (bBackfire) {
+-                    if (GameServer.server) {
+-                        GameServer.PlayWorldSoundServer(this.getSoundPrefix() + "Backfire", this.getSquare(), 40.0F, -1);
+-                    } else {
+-                        this.playGeneratorSound("Backfire");
++                        WorldSoundManager.instance.addSound(this, this.square.getX(), this.square.getY(), this.square.getZ(), 40, 60, false, 0.0F, 15.0F);
+                     }
+ 
+-                    WorldSoundManager.instance.addSound(this, this.square.getX(), this.square.getY(), this.square.getZ(), 40, 60, false, 0.0F, 15.0F);
+-                }
+-
+-                if (this.condition <= 20) {
+-                    if (Rand.Next(10) == 0) {
+-                        IsoFireManager.StartFire(this.getCell(), this.square, true, 1000);
+-                        this.condition = 0;
+-                        this.setActivated(false);
+-                    } else if (Rand.Next(20) == 0) {
+-                        this.explode(this.square);
+-                        this.condition = 0;
+-                        this.setActivated(false);
++                    if (this.condition <= 20) {
++                        if (Rand.Next(10) == 0) {
++                            IsoFireManager.StartFire(this.getCell(), this.square, true, 1000);
++                            this.condition = 0;
++                            this.setActivated(false);
++                        } else if (Rand.Next(20) == 0) {
++                            this.explode(this.square);
++                            this.condition = 0;
++                            this.setActivated(false);
++                        }
+                     }
++
+                 }
+ 
+                 this.lastHour = (int)GameTime.getInstance().getWorldAgeHours();
+                 if (GameServer.server) {
+                     this.sync();
+                 }
+             }
+         }
+ 
+-        if (this.updateSurrounding && this.getSquare() != null) {
+-            this.setSurroundingElectricity();
+-            this.updateSurrounding = false;
+-        }
++        this.updateElectricityIfNeeded();
+ 
+         if (this.emitter != null) {
+             this.emitter.tick();
+         }
+     }
+ 
++    protected final void updateElectricityIfNeeded() {
++        if (this.updateSurrounding && this.getSquare() != null) {
++            this.setSurroundingElectricity();
++            this.updateSurrounding = false;
++        }
++    }
++
+     public void setSurroundingElectricity() {
+         this.itemsPowered.clear();
+         this.totalPowerUsing = 0.02F;
+         if (this.square != null && this.square.chunk != null) {
+             boolean allowExteriorGenerator = SandboxOptions.getInstance().allowExteriorGenerator.getValue();
+@@ -402,11 +423,11 @@ public class IsoGenerator extends IsoObject {
+             IsoObject object = objects.get(i);
+             this.updateFridgeFreezerItems(object);
+         }
+     }
+ 
+-    private void updateFridgeFreezerItems() {
++    protected final void updateFridgeFreezerItems() {
+         if (this.square != null) {
+             int minX = this.square.getX() - generatorRadius;
+             int maxX = this.square.getX() + generatorRadius;
+             int minY = this.square.getY() - generatorRadius;
+             int maxY = this.square.getY() + generatorRadius;
+@@ -439,39 +460,47 @@ public class IsoGenerator extends IsoObject {
+         this.activated = input.get() != 0;
+         this.fuel = Math.min(input.getFloat(), 10.0F);
+         this.condition = input.getInt();
+         this.lastHour = input.getInt();
+         this.updateSurrounding = true;
++        if (GameServer.server) {
++            Object owner = this.getModData().rawget(zombie.apocbr.power.PowerBankBackup.OWNER);
++            this.setISABackupOwner(owner instanceof se.krka.kahlua.vm.KahluaTable table ? table : null);
++        }
+     }
+ 
+     @Override
+     public void save(ByteBuffer output, boolean isDebugSave) throws IOException {
++        if (GameServer.server) this.getModData().rawset(zombie.apocbr.power.PowerBankBackup.OWNER, this.isaBackupOwner);
+         this.getModData().rawset("totalPowerDraw", (double)this.totalPowerUsing);
+         super.save(output, isDebugSave);
+         output.put((byte)(this.isConnected() ? 1 : 0));
+         output.put((byte)(this.isActivated() ? 1 : 0));
+         output.putFloat(this.getFuel());
+         output.putInt(this.getCondition());
+         output.putInt(this.lastHour);
+     }
+ 
+     public void remove() {
++        if (zombie.network.ApocBRManagedGenerators.denyRemoval(this)) return;
+         if (this.getSquare() != null) {
+             this.getSquare().transmitRemoveItemFromSquare(this);
+         }
+     }
+ 
+     @Override
+     public void addToWorld() {
++        zombie.network.ApocBRManagedGenerators.onAdded(this);
+         this.getCell().addToProcessIsoObject(this);
+         if (!AllGenerators.contains(this)) {
+             AllGenerators.add(this);
+         }
+     }
+ 
+     @Override
+     public void removeFromWorld() {
++        zombie.network.ApocBRManagedGenerators.onRemoved(this);
+         AllGenerators.remove(this);
+         if (this.emitter != null) {
+             this.emitter.stopAll();
+             IsoWorld.instance.returnOwnershipOfEmitter(this.emitter);
+             this.emitter = null;
+@@ -509,25 +538,85 @@ public class IsoGenerator extends IsoObject {
+     public float getMaxFuel() {
+         return 10.0F;
+     }
+ 
+     public void setFuel(float fuel) {
++        if (fuel != 10.0F && zombie.network.ApocBRManagedGenerators.denyChange(this, "fuel")) return;
+         this.fuel = Math.max(0.0F, Math.min(fuel, 10.0F));
+         if (GameServer.server) {
+             this.sync();
+         }
+ 
+         if (GameClient.client) {
+             this.sync();
+         }
+     }
+ 
++    /** ISA owns fuel/wear catch-up; commit once, leaving activation lifecycle native. */
++    public void applyISABackupState(double nextFuel, int nextCondition, boolean supply) {
++        if (!zombie.apocbr.power.PowerBankBackup.isControlled(this)
++            || !Double.isFinite(nextFuel)) throw new IllegalStateException("Unowned ISA backup");
++        float value = (float)Math.max(0, Math.min(10, nextFuel));
++        int health = Math.max(0, Math.min(100, nextCondition));
++        boolean changed = this.fuel != value || this.condition != health;
++        this.fuel = value;
++        this.condition = health;
++        this.lastHour = (int)GameTime.getInstance().getWorldAgeHours();
++        boolean activationChanged = this.activated != (supply && value > 0 && health > 0);
++        this.isaApplyingBackupState = true;
++        try {
++            this.setActivated(supply && value > 0 && health > 0);
++        } finally {
++            this.isaApplyingBackupState = false;
++        }
++        this.flagForHotSave();
++        if (changed && !activationChanged) this.sync();
++    }
++
++    public void resetISABackupClock() {
++        this.lastHour = (int)GameTime.getInstance().getWorldAgeHours();
++        this.isaBackupNextHour = Double.NEGATIVE_INFINITY;
++    }
++
++    public se.krka.kahlua.vm.KahluaTable getISABackupOwner() {
++        return this.isaBackupOwner;
++    }
++
++    /** Private runtime ownership is never assigned by incoming ModData packets. */
++    public void setISABackupOwner(se.krka.kahlua.vm.KahluaTable owner) {
++        if (!GameServer.server) return;
++        this.isaBackupOwner = null;
++        if (owner != null) {
++            se.krka.kahlua.vm.KahluaTable copy = zombie.Lua.LuaManager.platform.newTable();
++            for (String key : new String[]{"x", "y", "z"}) {
++                if (!(owner.rawget(key) instanceof Double coordinate) || !Double.isFinite(coordinate)
++                    || coordinate != Math.rint(coordinate)) {
++                    this.getModData().rawset(zombie.apocbr.power.PowerBankBackup.OWNER, null);
++                    return;
++                }
++                copy.rawset(key, coordinate);
++            }
++            this.isaBackupOwner = copy;
++        }
++        this.getModData().rawset(zombie.apocbr.power.PowerBankBackup.OWNER, this.isaBackupOwner);
++    }
++
+     public boolean isActivated() {
+         return this.activated;
+     }
+ 
++    public boolean isISABackupActivationAllowed(boolean value) {
++        return !zombie.apocbr.power.PowerBankBackup.isControlled(this) || this.isaApplyingBackupState
++            || (!value && (this.fuel <= 0 || this.condition <= 0));
++    }
++
+     public void setActivated(boolean activated) {
++        if (!this.isISABackupActivationAllowed(activated)) {
++            this.sync();
++            return;
++        }
++        if (!activated && zombie.network.ApocBRManagedGenerators.denyChange(this, "deactivate")) return;
+         if (activated != this.activated) {
+             if (!this.getSquare().getProperties().has(IsoFlagType.exterior) && this.getSquare().getBuilding() != null) {
+                 this.getSquare().getBuilding().setToxic(activated);
+             }
+ 
+@@ -567,10 +656,11 @@ public class IsoGenerator extends IsoObject {
+     public int getCondition() {
+         return this.condition;
+     }
+ 
+     public void setCondition(int condition) {
++        if (condition != 100 && zombie.network.ApocBRManagedGenerators.denyChange(this, "condition")) return;
+         this.condition = Math.max(0, Math.min(condition, 100));
+         if (GameServer.server) {
+             this.sync();
+         }
+ 
+@@ -582,10 +672,15 @@ public class IsoGenerator extends IsoObject {
+     public boolean isConnected() {
+         return this.connected;
+     }
+ 
+     public void setConnected(boolean connected) {
++        if (!connected && zombie.apocbr.power.PowerBankBackup.isControlled(this)) {
++            this.sync();
++            return;
++        }
++        if (!connected && zombie.network.ApocBRManagedGenerators.denyChange(this, "disconnect")) return;
+         this.connected = connected;
+         if (GameClient.client) {
+             this.sync();
+         }
+ 
+@@ -612,10 +707,16 @@ public class IsoGenerator extends IsoObject {
+     public void syncIsoObjectReceive(ByteBufferReader bb, UdpConnection source) {
+         float fuel = bb.getFloat();
+         int condition = bb.getInt();
+         boolean activated = bb.getBoolean();
+         boolean connected = bb.getBoolean();
++        if (zombie.apocbr.power.PowerBankBackup.isControlled(this)) {
++            // Consume the stock payload but retain server-owned state, including activation.
++            this.sync();
++            return;
++        }
++        if (zombie.network.ApocBRManagedGenerators.denyChange(this, "remote_sync")) return;
+         this.fuel = fuel;
+         this.condition = condition;
+         this.connected = connected;
+         if (this.activated != activated) {
+             try {

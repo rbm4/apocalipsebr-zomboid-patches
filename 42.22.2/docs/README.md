@@ -11,6 +11,12 @@ runtime validation remains pending. Persistence/event labels remain inherited
 
 ## Features
 
+- 2026-11-18: [Byte Buddy server telemetry: vanilla-backed basics](features/2026-11-18-byte-buddy-server-telemetry-basics.md).
+
+- 2026-11-17: [Workshop update restart hook and virtual-thread API notifier](features/2026-11-17-workshop-update-restart-agent.md).
+
+- 2026-11-17: [Byte Buddy agent foundation and Linux startup coexistence](features/2026-11-17-byte-buddy-agent-foundation.md).
+
 - 2026-11-15: [Power-bank server subclass and Lua update callback](features/2026-11-15-power-bank-lua-update.md).
 
 - 2026-11-12: [Counted dictionary source pagination and failure diagnostics](features/2026-11-12-dictionary-source-pagination.md).
@@ -37,6 +43,8 @@ Consult the [42.22.1 index](../../42.22.1/docs/README.md) for inherited
 implementation contracts and historical verification.
 
 ## Reports
+
+- 2026-11-18 - [Byte Buddy migration baseline and impact report](reports/2026-11-18-byte-buddy-migration-baseline/2026-11-18-byte-buddy-migration-baseline.md), [per-source inventory](reports/2026-11-18-byte-buddy-migration-baseline/2026-11-18-class-inventory.md), [snapshot manifest](reports/2026-11-18-byte-buddy-migration-baseline/manifest.json) and [custom-class reference map](reports/2026-11-18-byte-buddy-migration-baseline/custom-class-references.json). The report folder contains all 375 source diffs and its capture/verifier tool.
 
 - 2026-11-12 - [PZO-Launcher optimization and threading source audit](reports/2026-11-12-pzo-launcher-optimization-audit.md)
 

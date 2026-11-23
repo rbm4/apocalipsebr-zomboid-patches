@@ -1,0 +1,27 @@
+diff --git a/zombie/core/physics/WorldSimulation.java b/zombie/core/physics/WorldSimulation.java
+index 273586a..527d7d8 100644
+--- a/zombie/core/physics/WorldSimulation.java
++++ b/zombie/core/physics/WorldSimulation.java
+@@ -82,15 +82,20 @@ public final class WorldSimulation {
+         float fixedTimeStep = 0.01F;
+         int numSimulationSubSteps = 0;
+         this.localTime = this.localTime + GameTime.instance.getPhysicsSecondsSinceLastUpdate();
+         if (this.localTime >= 0.01F) {
+             numSimulationSubSteps = (int)(this.localTime / 0.01F);
++            if (GameServer.server) zombie.ApocBRServerTelemetryLite.count("physics.substeps", numSimulationSubSteps);
+             this.localTime -= numSimulationSubSteps * 0.01F;
+ 
+             for (int i = 0; i < numSimulationSubSteps; i++) {
+-                this.updateVehiclePhysics();
+-                Bullet.stepSimulation(0.01F, 0, 0.0F);
++                try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.physics.prepare")) {
++                    this.updateVehiclePhysics();
++                }
++                try (zombie.ApocBRServerTelemetryLite.Scope telemetry = zombie.ApocBRServerTelemetryLite.phase("simulation.physics.step")) {
++                    Bullet.stepSimulation(0.01F, 0, 0.0F);
++                }
+             }
+ 
+             this.periodSec = numSimulationSubSteps * 0.01F;
+             this.bulletFrameNo++;
+         }

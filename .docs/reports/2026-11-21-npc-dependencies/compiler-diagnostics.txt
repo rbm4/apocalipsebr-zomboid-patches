@@ -1,0 +1,30 @@
+42.22.2/src/zombie/ApocBRServerTelemetryLite.java:189: ERROR: cannot find symbol
+  symbol:   method telemetryPendingCells()
+  location: variable instance of type zombie.network.ServerMap
+42.22.2/src/zombie/apocalipse/humans/ServerHumanTransport.java:145: ERROR: cannot find symbol
+  symbol:   method humanShoutRange()
+  location: class zombie.network.chat.ChatServer
+42.22.2/src/zombie/apocalipse/humans/ServerHumanTransport.java:154: ERROR: cannot find symbol
+  symbol:   method sendHumanShout(short,java.lang.String,java.lang.String)
+  location: class zombie.network.chat.ChatServer
+42.22.2/src/zombie/apocalipse/humans/ServerHumanTransport.java:171: ERROR: cannot find symbol
+  symbol:   method sendHumanSay(short,java.lang.String,java.lang.String)
+  location: class zombie.network.chat.ChatServer
+42.22.2/src/zombie/apocalipse/humans/ServerHumanFurnitureWorld.java:20: ERROR: cannot find symbol
+  symbol:   method getApocbrLifetimeRevision()
+  location: variable object of type zombie.iso.IsoObject
+42.22.2/src/zombie/apocalipse/zombies/ServerZombieNativeAdapter.java:154: ERROR: cannot find symbol
+  symbol:   method getPlayerSpatialQueries()
+  location: variable currentCell of type zombie.iso.IsoCell
+42.22.2/src/zombie/savefile/ApocBRAsyncLogin.java:62: ERROR: cannot find symbol
+  symbol:   class LoginRoles
+  location: class zombie.network.ServerWorldDatabase
+42.22.2/src/zombie/savefile/ApocBRAsyncLogin.java:62: ERROR: cannot find symbol
+  symbol:   class LoginRoles
+  location: class zombie.network.ServerWorldDatabase
+42.22.2/src/zombie/savefile/ApocBRAsyncLogin.java:72: ERROR: cannot find symbol
+  symbol:   method useLoginRoles(<nulltype>)
+  location: class zombie.network.ServerWorldDatabase
+42.22.2/src/zombie/savefile/ApocBRPlayerMigrationVerification.java:28: ERROR: cannot find symbol
+  symbol:   method encodePostgresClientProfile(zombie.characters.IsoPlayer,zombie.savefile.ApocBRPlayerRelationalReader.Profile,int,java.lang.String)
+  location: class zombie.savefile.ServerPlayerDB

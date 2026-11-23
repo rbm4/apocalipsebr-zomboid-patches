@@ -1,0 +1,17 @@
+diff --git a/zombie/entity/components/resources/LogisticsSystem.java b/zombie/entity/components/resources/LogisticsSystem.java
+index 565e1a8..eaf7095 100644
+--- a/zombie/entity/components/resources/LogisticsSystem.java
++++ b/zombie/entity/components/resources/LogisticsSystem.java
+@@ -12,11 +12,11 @@ import zombie.network.GameClient;
+ 
+ public class LogisticsSystem extends EngineSystem {
+     private EntityBucket resourcesEntities;
+ 
+     public LogisticsSystem(int updatePriority) {
+-        super(false, true, updatePriority);
++        super(false, false, updatePriority);
+     }
+ 
+     @Override
+     public void addedToEngine(Engine engine) {
+         this.resourcesEntities = engine.getBucket(Family.all(ComponentType.Resources).get());

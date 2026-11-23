@@ -1,0 +1,29 @@
+diff --git a/zombie/network/packets/TradingUIRemoveItemPacket.java b/zombie/network/packets/TradingUIRemoveItemPacket.java
+index e6b9013..01e3c55 100644
+--- a/zombie/network/packets/TradingUIRemoveItemPacket.java
++++ b/zombie/network/packets/TradingUIRemoveItemPacket.java
+@@ -30,20 +30,24 @@ public class TradingUIRemoveItemPacket extends PlayerRequestPacket {
+     }
+ 
+     @Override
+     public void parse(ByteBufferReader b, IConnection connection) {
+         super.parse(b, connection);
++        zombie.apocalipse.humans.ServerHumanTrading.resolveTarget(this.destination);
+         this.itemId = b.getInt();
+     }
+ 
+     @Override
+     public void processClient(UdpConnection connection) {
+         LuaEventManager.triggerEvent("TradingUIRemoveItem", this.sender.getPlayer(), this.destination.getPlayer(), this.itemId);
+     }
+ 
+     @Override
+     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
++        if (zombie.apocalipse.humans.ServerHumanTrading.removeItem(
++            this.sender.getPlayer(), this.destination.getPlayer(), connection, this.itemId
++        )) return;
+         if (!TradingManager.getInstance().isInvalid(this.sender.getPlayer(), this.destination.getPlayer())) {
+             if (TradingManager.getInstance().removeItem(this.sender.getPlayer(), this.itemId)) {
+                 this.sendToClient(PacketTypes.PacketType.TradingUIRemoveItem, this.destination.getPlayer());
+             }
+         }

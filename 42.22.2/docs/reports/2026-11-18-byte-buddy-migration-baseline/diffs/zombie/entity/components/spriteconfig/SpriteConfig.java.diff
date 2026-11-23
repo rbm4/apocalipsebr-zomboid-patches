@@ -1,0 +1,49 @@
+diff --git a/zombie/entity/components/spriteconfig/SpriteConfig.java b/zombie/entity/components/spriteconfig/SpriteConfig.java
+index e525b98..31cc759 100644
+--- a/zombie/entity/components/spriteconfig/SpriteConfig.java
++++ b/zombie/entity/components/spriteconfig/SpriteConfig.java
+@@ -4,11 +4,10 @@ package zombie.entity.components.spriteconfig;
+ import java.io.IOException;
+ import java.nio.ByteBuffer;
+ import java.util.ArrayList;
+ import zombie.UsedFromLua;
+ import zombie.core.network.ByteBufferReader;
+-import zombie.debug.DebugType;
+ import zombie.debug.objects.DebugClassFields;
+ import zombie.entity.Component;
+ import zombie.entity.ComponentType;
+ import zombie.entity.network.EntityPacketType;
+ import zombie.iso.IsoGridSquare;
+@@ -64,11 +63,10 @@ public class SpriteConfig extends Component {
+                     }
+                 }
+             }
+ 
+             if (!this.isValid()) {
+-                DebugType.General.warn("Invalid SpriteConfig object! scripted object = " + (this.objectInfo != null ? this.objectInfo.getName() : "null"));
+                 this.resetObjectInfo();
+             }
+         }
+     }
+ 
+@@ -275,20 +273,18 @@ public class SpriteConfig extends Component {
+     }
+ 
+     @Override
+     protected void load(ByteBuffer input, int worldVersion) throws IOException {
+         if (input.get() == 0) {
+-            DebugType.General.error("Sprite config has no script saved.");
+         } else {
+             SpriteConfigScript script = ScriptsDictionary.spriteConfigs.loadScript(input, worldVersion);
+             long scriptVersion = input.getLong();
+             this.wasLoadedAsMaster = input.get() != 0;
+             if (script != null) {
+                 this.readFromScript(script);
+                 if (script.getScriptVersion() != scriptVersion) {
+                 }
+             } else {
+-                DebugType.General.error("Could not load script for sprite config.");
+             }
+         }
+     }
+ }

@@ -1,0 +1,202 @@
+diff --git a/zombie/iso/IsoObject.java b/zombie/iso/IsoObject.java
+index 3f31a36..9aedde8 100644
+--- a/zombie/iso/IsoObject.java
++++ b/zombie/iso/IsoObject.java
+@@ -261,12 +261,31 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+     private boolean hasPower;
+     private static final Map<Byte, IsoObject.IsoObjectFactory> byteToObjectMap = new HashMap<>();
+     private static final Map<Integer, IsoObject.IsoObjectFactory> hashCodeToObjectMap = new HashMap<>();
+     private static final Map<String, IsoObject.IsoObjectFactory> nameToObjectMap = new HashMap<>();
+     private boolean removeFromWorldToMeta;
++    private static final boolean apocbrIdTelemetry = Boolean.parseBoolean(System.getProperty("apocbr.telemetry.entityIds.enabled", "true"));
++    private static final ClassValue<Boolean> apocbrNativeIdInputs = new ClassValue<>() {
++        @Override protected Boolean computeValue(Class<?> type) {
++            try {
++                return type.getMethod("getObjectIndex").getDeclaringClass() == IsoObject.class
++                    && type.getMethod("isFloor").getDeclaringClass() == IsoObject.class
++                    && type.getMethod("equals", Object.class).getDeclaringClass() == Object.class;
++            } catch (ReflectiveOperationException | SecurityException exception) { return false; }
++        }
++    };
++    private IsoGridSquare apocbrIdSquare;
++    private List<IsoObject> apocbrIdObjects;
++    private long apocbrIdVersion;
++    private long apocbrCachedEntityID = -1L;
++    private int apocbrIdX, apocbrIdY, apocbrIdZ;
++    private boolean apocbrIdFloor;
+     private long isoEntityNetId = -1L;
+     private int lastObjectIndex = -1;
++    /** Runtime-only identity revision for server-owned cached world observations. Never serialized. */
++    private transient long apocbrLifetimeRevision;
++    public final long getApocbrLifetimeRevision() { return this.apocbrLifetimeRevision; }
+     private final HashMap<Class<? extends ECSComponent>, ECSComponent> ecsComponentMap = new HashMap<>();
+     private static IsoObject.IsoObjectFactory factoryIsoObject;
+     private static IsoObject.IsoObjectFactory factoryVehicle;
+     private static final Set<IsoFlagType> NORTH_FLAGS = Set.of(
+         IsoFlagType.collideN,
+@@ -889,10 +908,13 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+         boolean serialise = b.get() != 0;
+         if (!serialise) {
+             return null;
+         } else {
+             byte classID = b.get();
++            if (classID == 22 && zombie.apocbr.power.IsoPowerBank.isPowerBankPayload(b)) {
++                return new zombie.apocbr.power.IsoPowerBank(cell);
++            }
+             return factoryFromFileInput(cell, classID);
+         }
+     }
+ 
+     public void sync() {
+@@ -1085,10 +1107,11 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+     /**
+      * 
+      * @param square the square to set
+      */
+     public void setSquare(IsoGridSquare square) {
++        if (this.square != square) this.apocbrLifetimeRevision++;
+         this.square = square;
+     }
+ 
+     public IsoChunk getChunk() {
+         IsoGridSquare square = this.getSquare();
+@@ -1108,11 +1131,13 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+             return this.sprite != null && this.sprite.getParentObjectName() != null ? this.sprite.getParentObjectName() : "IsoObject";
+         }
+     }
+ 
+     public final void load(ByteBuffer input, int worldVersion) throws IOException {
++        try(var dictionary=zombie.world.ApocBRWorldDictionaryDecode.enter(input)) {
+         this.load(input, worldVersion, false);
++            }
+     }
+ 
+     public void load(ByteBuffer input, int worldVersion, boolean isDebugSave) throws IOException {
+         int id = input.getInt();
+         id = IsoChunk.Fix2x(this.square, id);
+@@ -2303,10 +2328,11 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+         }
+     }
+ 
+     @Override
+     public void reset() {
++        this.apocbrLifetimeRevision++;
+         super.reset();
+         this.tintr = 1.0F;
+         this.tintg = 1.0F;
+         this.tintb = 1.0F;
+         this.name = null;
+@@ -2391,10 +2417,13 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+         this.objectRenderEffects = null;
+         this.sheetRope = false;
+         this.sheetRopeHealth = 100.0F;
+         this.movedThumpable = false;
+         this.isoEntityNetId = -1L;
++        this.apocbrIdSquare = null;
++        this.apocbrIdObjects = null;
++        this.apocbrCachedEntityID = -1L;
+         this.spriteModelName = null;
+         this.spriteModel = null;
+         this.spriteModelInit = null;
+         this.clockScript = null;
+         this.clockScriptInit = null;
+@@ -4699,10 +4728,11 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+         }
+     }
+ 
+     @Override
+     public void addToWorld() {
++        this.apocbrLifetimeRevision++;
+         super.addToWorld();
+         this.createContainersFromSpriteProperties();
+ 
+         for (int i = 0; i < this.getContainerCount(); i++) {
+             ItemContainer container = this.getContainerByIndex(i);
+@@ -4742,10 +4772,11 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+         }
+     }
+ 
+     @Override
+     public void removeFromWorld() {
++        this.apocbrLifetimeRevision++;
+         this.removeFromWorld(this.removeFromWorldToMeta);
+         IsoCell cell = this.getCell();
+         cell.addToProcessIsoObjectRemove(this);
+         cell.removeFromStaticUpdaterObjectList(this);
+ 
+@@ -4788,10 +4819,11 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+ 
+     public void reuseGridSquare() {
+     }
+ 
+     public void removeFromSquare() {
++        if (this.square != null) this.apocbrLifetimeRevision++;
+         if (this.square != null) {
+             this.square.getObjects().remove(this);
+             this.square.getSpecialObjects().remove(this);
+         }
+     }
+@@ -6086,10 +6118,50 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+         return GameEntityType.IsoObject;
+     }
+ 
+     @Override
+     public long getEntityNetID() {
++        if (!GameServer.server) {
++            this.apocbrIdSquare = null;
++            this.apocbrIdObjects = null;
++            return this.apocbrVanillaEntityNetID();
++        }
++        IsoGridSquare square = this.square;
++        List<IsoObject> objects = square == null ? null : square.getObjects();
++        zombie.util.list.MutationTrackedArrayList<?> tracked = objects instanceof zombie.util.list.MutationTrackedArrayList<?> list ? list : null;
++        boolean eligible = tracked != null && apocbrNativeIdInputs.get(this.getClass());
++        long version = eligible ? tracked.mutationVersion() : 0L;
++        int x = eligible ? square.getX() : 0, y = eligible ? square.getY() : 0, z = eligible ? square.getZ() : 0;
++        boolean floor = eligible && this.isFloor();
++        if (eligible && this.isoEntityNetId != -1L && this.isoEntityNetId == this.apocbrCachedEntityID
++            && square == this.apocbrIdSquare && objects == this.apocbrIdObjects && version == this.apocbrIdVersion
++            && x == this.apocbrIdX && y == this.apocbrIdY && z == this.apocbrIdZ && floor == this.apocbrIdFloor) {
++            if (apocbrIdTelemetry) zombie.ApocBRServerTelemetryLite.count("isoObjects.entityId.cacheHits", 1L);
++            return this.isoEntityNetId;
++        }
++        // Keep the original calculation and lazy map repair, including client semantics.
++        this.apocbrIdSquare = null;
++        this.apocbrIdObjects = null;
++        if (apocbrIdTelemetry) {
++            zombie.ApocBRServerTelemetryLite.count("isoObjects.entityId.vanillaChecks", 1L);
++        }
++        long id = this.apocbrVanillaEntityNetID();
++        if (eligible && id != -1L) {
++            // Snapshot taken BEFORE calculation: callback mutations force another check.
++            this.apocbrIdObjects = objects;
++            this.apocbrIdVersion = version;
++            this.apocbrCachedEntityID = id;
++            this.apocbrIdX = x; this.apocbrIdY = y; this.apocbrIdZ = z;
++            this.apocbrIdFloor = floor;
++            this.apocbrIdSquare = square;
++        } else {
++            this.apocbrIdObjects = null;
++        }
++        return id;
++    }
++
++    private long apocbrVanillaEntityNetID() {
+         if (this.getObjectIndex() == -1) {
+             this.isoEntityNetId = -1L;
+             return -1L;
+         } else {
+             if (this.isoEntityNetId == -1L || this.lastObjectIndex == -1 || this.lastObjectIndex != this.getObjectIndex()) {
+@@ -6105,10 +6177,12 @@ public class IsoObject extends GameEntity implements Serializable, ILuaIsoObject
+ 
+             return this.isoEntityNetId;
+         }
+     }
+ 
++
++
+     @Override
+     public boolean isEntityValid() {
+         return true;
+     }
+ 

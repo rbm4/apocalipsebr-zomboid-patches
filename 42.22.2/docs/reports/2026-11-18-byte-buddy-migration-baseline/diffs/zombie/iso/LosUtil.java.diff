@@ -1,0 +1,36 @@
+diff --git a/zombie/iso/LosUtil.java b/zombie/iso/LosUtil.java
+index 4934dc5..db5c3b8 100644
+--- a/zombie/iso/LosUtil.java
++++ b/zombie/iso/LosUtil.java
+@@ -5,15 +5,16 @@ import zombie.UsedFromLua;
+ import zombie.characters.IsoGameCharacter;
+ import zombie.core.math.PZMath;
+ 
+ @UsedFromLua
+ public final class LosUtil {
++    public static final int SLOT_COUNT = 4;
+     public static int sizeX = 200;
+     public static int sizeY = 200;
+     public static int sizeZ = 16;
+-    public static LosUtil.PerPlayerData[] cachedresults = new LosUtil.PerPlayerData[4];
+-    public static boolean[] cachecleared = new boolean[4];
++    public static LosUtil.PerPlayerData[] cachedresults = new LosUtil.PerPlayerData[SLOT_COUNT];
++    public static boolean[] cachecleared = new boolean[SLOT_COUNT];
+ 
+     public static void init(int width, int height) {
+         sizeX = Math.min(width, 200);
+         sizeY = Math.min(height, 200);
+     }
+@@ -783,11 +784,11 @@ public final class LosUtil {
+         isoGridSquareCollisionData.testResults = test;
+         return isoGridSquareCollisionData;
+     }
+ 
+     static {
+-        for (int n = 0; n < 4; n++) {
++        for (int n = 0; n < SLOT_COUNT; n++) {
+             cachecleared[n] = true;
+             cachedresults[n] = new LosUtil.PerPlayerData();
+         }
+     }
+ 
