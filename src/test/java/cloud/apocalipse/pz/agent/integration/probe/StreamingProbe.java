@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent.integration.probe;
 
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 
 import cloud.apocalipse.pz.agent.features.optimization.OptimizationVisitor;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.CellBorderModule;
@@ -58,6 +59,7 @@ public final class StreamingProbe {
     private static final String SAVE_JOB = LOADER + "$SaveUnloadedTask";
     private static final String SAVE = "chunk.saveWorker";
     private static final String WRITE = "chunk.writeWorker";
+    private static final String STORAGE_WRITE = "chunk.storageWrite";
     private static final String RELEASE = "chunk.saveRelease";
     private static final String LOAD = "cell.load";
     private static final String LOAD_HANDOFF = "cell.loadQueueToRecalcQueue";
@@ -73,6 +75,7 @@ public final class StreamingProbe {
 
     private static Path directory;
     private static StreamingWorkload workload;
+    private static ChunkStorageArm storageArm;
     private static boolean movingScenario;
     private static boolean compareVehicleCadence;
     private static boolean profileChunkLifecycle;
@@ -90,6 +93,7 @@ public final class StreamingProbe {
     static void install(Path output, Instrumentation instrumentation) {
         directory = output;
         workload = StreamingWorkload.from(System.getProperties());
+        storageArm = ChunkStorageArm.parse(System.getProperty(ChunkStorageArm.PROPERTY));
         movingScenario = Boolean.getBoolean("pz.it.movingObjects");
         compareVehicleCadence = Boolean.getBoolean(VehicleCadenceProbe.COMPARE_PROPERTY);
         profileChunkLifecycle = Boolean.getBoolean(ChunkLifecycleProbe.PROFILE_PROPERTY);
@@ -119,6 +123,9 @@ public final class StreamingProbe {
                 new Target(RELEASE, SAVE_JOB, "release"),
                 new Target("los.suspend", "zombie.network.ServerLOS", "suspend"),
                 new Target("los.resume", "zombie.network.ServerLOS", "resume")));
+        if (storageArm != null) {
+            targets.add(new Target(STORAGE_WRITE, LOADER, "writeChunk", "(Lzombie/network/ClientChunkRequest$Chunk;)V"));
+        }
         if (workload.vehicleStress()) {
             targets.addAll(VEHICLE_TARGETS);
             builder = builder.type(named("zombie.vehicles.BaseVehicle"))
@@ -137,6 +144,8 @@ public final class StreamingProbe {
         if (compareVehicleCadence) builder = VehicleCadenceProbe.configure(builder);
         if (EXPERIMENTAL_WORLD_SIMULATION) builder = WorldSimulation.configure(builder);
         if (profileChunkLifecycle) builder = ChunkLifecycleProbe.configure(builder, workload.chunkComparison());
+        builder = UnloadBreakdownProbe.configure(builder);
+        builder = UnloadSamplingProbe.configure(builder);
         builder.type(named(LOADER)).transform((dynamic, type, loader, module, domain) -> dynamic
             .visit(Advice.to(LoadQueued.class).on(named("addJob")
                 .and(hasDescriptor("(Lzombie/network/ServerMap$ServerCell;)V"))))
@@ -285,12 +294,19 @@ public final class StreamingProbe {
     }
 
     public static class Postupdate {
-        @Advice.OnMethodEnter public static long enter() { return start("map.postupdate"); }
+        @Advice.OnMethodEnter public static long enter(@Advice.Local("unloadProfile") long unloadProfile) {
+            UnloadSamplingProbe.beginPostupdate();
+            unloadProfile = UnloadBreakdownProbe.beginPostupdate();
+            return start("map.postupdate");
+        }
 
         @Advice.OnMethodExit(onThrowable = Throwable.class)
         public static void exit(@Advice.This Object map, @Advice.Enter long started,
-                                @Advice.Thrown Throwable failure) {
+                                @Advice.Thrown Throwable failure,
+                                @Advice.Local("unloadProfile") long unloadProfile) {
             finish("map.postupdate", started, failure);
+            UnloadBreakdownProbe.endPostupdate(unloadProfile);
+            UnloadSamplingProbe.endPostupdate();
             if (failure == null) afterPostupdate(map);
         }
     }
@@ -338,7 +354,9 @@ public final class StreamingProbe {
                 || SAFE_READ.equals(phase) || READ_PENDING.equals(phase)) {
             return "LoadChunk".equals(thread.getName()) ? System.nanoTime() : 0;
         }
-        if (WRITE.equals(phase)) return "SaveChunk".equals(thread.getName()) ? System.nanoTime() : 0;
+        if (WRITE.equals(phase) || STORAGE_WRITE.equals(phase)) {
+            return "SaveChunk".equals(thread.getName()) ? System.nanoTime() : 0;
+        }
         return thread == owner || SAVE.equals(phase) ? System.nanoTime() : 0;
     }
 
@@ -380,6 +398,7 @@ public final class StreamingProbe {
                 engine = (UdpEngine) GameServer.class.getField("udpEngine").get(null);
                 owner = Thread.currentThread();
                 UnloadScanChecks.verify(map, directory);
+                UnloadSamplingProbe.start();
                 if (workload.vehicleStress()) {
                     originalSpawnOverride = SystemDisabler.doVehiclesEverywhere;
                     require(SandboxOptions.instance.enableVehicles.getValue()
@@ -390,6 +409,9 @@ public final class StreamingProbe {
             require(GameServer.Players.isEmpty() && engine.connections.isEmpty(),
                 "Streaming fixture requires an empty server");
             if (active == null) {
+                if (storageArm != null && !Files.isRegularFile(directory.resolve("storage-start-" + completed.size()))) {
+                    return;
+                }
                 require(cellsAbsent(map, workload.cells()), "Fixture cells were already present");
                 active = new Cycle(completed.size());
             }
@@ -453,7 +475,29 @@ public final class StreamingProbe {
             }
             long generated = cycle.count(GENERATE);
             long saved = cycle.count(READ_SAVE);
-            require(cycle.count(READ_PENDING) == 0, "Unexpected pending-save load in cycle " + cycle.index);
+            long buffer = cycle.count(READ_PENDING);
+            boolean postgres = AgentConfiguration.postgresChunksEnabled();
+            if (storageArm != null) {
+                boolean first = cycle.index == 0;
+                long expectedGenerated = first && !storageArm.seeded() ? cycle.chunks : 0;
+                long expectedBuffer = postgres && !first ? cycle.chunks : 0;
+                require(postgres == storageArm.postgres() && generated == expectedGenerated
+                    && buffer == expectedBuffer && saved == cycle.chunks - expectedGenerated - expectedBuffer,
+                    "Unexpected chunk load path for " + storageArm + ", cycle " + cycle.index);
+                require(!postgres || cycle.count(WRITE) == 0, "PostgreSQL save must bypass disk writes");
+                require(cycle.count(STORAGE_WRITE) == cycle.chunks, "Expected one storage write attempt per chunk");
+            } else if (postgres) {
+                require(cycle.count(WRITE) == 0, "PostgreSQL save must bypass disk writes");
+                if (cycle.index == 0) {
+                    require(generated == 1 && saved == cycle.chunks - 1 && buffer == 0,
+                        "First PostgreSQL cycle must load the disk seed and generate one missing chunk");
+                } else {
+                    require(generated == 0 && saved == 0 && buffer == cycle.chunks,
+                        "Migrated reload must pass all chunks to the native buffer decoder");
+                }
+            } else {
+                require(buffer == 0, "Unexpected pending-save load in cycle " + cycle.index);
+            }
             require(cycle.count(SAFE_READ) == saved, "Saved-chunk reads must go through SafeRead");
             for (String phase : ChunkReadProbe.phases()) {
                 require(cycle.count(phase) == saved, phase + " count disagrees with saved-chunk reads");
@@ -467,8 +511,8 @@ public final class StreamingProbe {
                 require(cycle.count("cell.borderOracleMissing") > 0 && cycle.count("cell.borderOraclePresent") > 0,
                     "Expected transformed lookups to return both present and missing squares");
             }
-            require(generated + saved == cycle.chunks, "Load path counts disagree with loaded chunks");
-            require(cycle.index == 0 ? generated > 0 : generated == 0,
+            require(generated + saved + buffer == cycle.chunks, "Load path counts disagree with loaded chunks");
+            require(storageArm != null || (cycle.index == 0 ? generated > 0 : generated == 0),
                 "Expected generation only in the first cycle; cycle=" + cycle.index + ", generated=" + generated);
             cycle.record("wall.requestToLoaded", cycle.loaded - cycle.started, null);
             cycle.record("wall.releaseToDetached", cycle.detached - cycle.released, null);
@@ -489,9 +533,13 @@ public final class StreamingProbe {
             }
             completed.add(cycle);
             active = null;
-            if (movingScenario || completed.size() == workload.cycles()) {
+            if (storageArm != null) Files.createFile(directory.resolve("storage-drained-" + cycle.index));
+            int cycles = storageArm == null ? workload.cycles() : storageArm.cycles(workload);
+            if (movingScenario || completed.size() == cycles) {
                 restoreVehicleSettings();
                 writeCsv();
+                UnloadBreakdownProbe.write(directory);
+                UnloadSamplingProbe.finish(directory);
                 if (compareVehicleCadence) VehicleCadenceProbe.write(directory);
                 if (workload.chunkComparison()) ChunkLifecycleComparison.write(directory);
                 if (EXPERIMENTAL_WORLD_SIMULATION) {
@@ -581,6 +629,7 @@ public final class StreamingProbe {
     }
 
     private static void failed(Exception failure) {
+        UnloadSamplingProbe.discard();
         if (compareVehicleCadence) VehicleCadenceProbe.stop();
         if (EXPERIMENTAL_WORLD_SIMULATION) {
             try {

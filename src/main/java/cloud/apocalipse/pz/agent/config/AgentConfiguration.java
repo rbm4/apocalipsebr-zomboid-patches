@@ -177,6 +177,28 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     /** PostgreSQL feature: JDBC URL environment override; credentials remain outside YAML. */
     public static final String POSTGRES_URL_ENVIRONMENT = "APOCBR_POSTGRES_URL";
 
+    /** Experimental map chunk persistence switch: -Dapocbr.experimental.postgresChunks.enabled=true. */
+    public static final String POSTGRES_CHUNKS_ENABLED_PROPERTY = "apocbr.experimental.postgresChunks.enabled";
+    /** Experimental map save identity: -Dapocbr.experimental.postgresChunks.dataset=<unique-save-id>. */
+    public static final String POSTGRES_CHUNK_DATASET_PROPERTY = "apocbr.experimental.postgresChunks.dataset";
+    /** Agent schema owner connection: -Dapocbr.postgres.migrationUrl=<jdbc-url>. */
+    public static final String POSTGRES_MIGRATION_URL_PROPERTY = "apocbr.postgres.migrationUrl";
+    /** Agent schema owner connection environment override. */
+    public static final String POSTGRES_MIGRATION_URL_ENVIRONMENT = "APOCBR_POSTGRES_MIGRATION_URL";
+
+    public static boolean postgresChunksEnabled() {
+        return Boolean.parseBoolean(systemProperty(POSTGRES_CHUNKS_ENABLED_PROPERTY, "false"));
+    }
+
+    public static String postgresChunkDataset() {
+        return systemProperty(POSTGRES_CHUNK_DATASET_PROPERTY, "").strip();
+    }
+
+    public static String postgresMigrationUrl() {
+        String url = System.getenv(POSTGRES_MIGRATION_URL_ENVIRONMENT);
+        return url == null || url.isBlank() ? systemProperty(POSTGRES_MIGRATION_URL_PROPERTY) : url;
+    }
+
     /** Dictionary setup: {@code -Dapocbr.postgres.dictionary.enabled=true}; defaults to the master flag. */
     public static final String DICTIONARY_ENABLED_PROPERTY = "apocbr.postgres.dictionary.enabled";
     /** Dictionary allocation history: {@code -Dapocbr.postgres.dictionary.saveKey=...}; defaults to gameSaveWorld. */

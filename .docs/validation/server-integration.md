@@ -368,6 +368,23 @@ fallback, saved reload, unload and save drain.
 Results are in `chunk-lifecycle-comparison.csv` and `streaming.csv`.
 See the [chunk lifecycle report](../reports/2026-11-22-chunk-lifecycle.md).
 
+### Detailed unload attribution
+
+Enable `-Dpz.it.unloadBreakdown=true` with the isolated streaming fixture.
+The test-only probe writes `unload-postupdate.csv`, `unload-cell.csv`,
+`unload-phases.csv` and a UTC clock anchor. It reconciles exclusive owner
+time and lifecycle counts with the independent streaming probe. The detailed
+timers can affect fast callbacks, so pair the run with a probe-off control.
+See the [unload attribution and worker decision](../reports/2026-11-23-unload-attribution-plan.md)
+for stage definitions, search units and concurrency scenarios.
+
+For a lower-overhead run enable `-Dpz.it.unloadSampling=true` instead.
+The test child writes a JFR recording and the runner validates and exports
+the native unload intervals and their samples. Add
+`-Dpz.it.unloadSearchWork=true` to measure native array comparisons without
+instrumenting individual comparison steps. Run an otherwise matched control
+with the profiling settings omitted.
+
 ### Experimental world simulation
 
 ```powershell
@@ -528,10 +545,10 @@ cause of the much longer file opens in the live loader. The timings also
 exclude native decoding and world integration, so the SQL delta is a storage
 comparison on this host.
 
-A prospective in-server comparison can use the native
-`IsoChunk.LoadChunk(wx, wy, ByteBuffer)` buffer input. Fetch detached bytes
-in bounded batches at cell admission, then let the native loader own decode
-and handoff. Bound both pending data bytes and in-flight requests. Preserve
+The [live comparison](#live-chunk-storage-ab-benchmark) uses the native
+`IsoChunk.LoadChunk(wx, wy, ByteBuffer)` buffer input. A batched variant
+could fetch detached bytes at cell admission and let the native loader
+own decode and handoff. Bound both pending data bytes and in-flight requests. Preserve
 the current pending-save buffer's precedence, verify world/coordinate and
 revision before consumption, and expire a result when its cell is cancelled
 or an intervening write supersedes it. An isolated read-through experiment can
@@ -544,6 +561,87 @@ exceeds cache. Prewarming is advisory and cached blocks can be evicted.
 Virtual threads are an option for waiting on JDBC, while query count, pool
 limits and round-trip time still govern the fetch. Keep decoding on the
 native owner. [PostgreSQL pg_prewarm](https://www.postgresql.org/docs/17/pgprewarm.html) · [JDK 25 virtual threads](https://docs.oracle.com/en/java/javase/25/core/virtual-threads.html)
+
+## Disk-to-PostgreSQL chunk migration
+
+Run the four-cell disk fixture, then pass its completed run directory to the
+existing replay script with the experimental engine verification switch.
+
+```powershell
+$env:JAVA_HOME = (Resolve-Path ./jdk).Path
+mvn verify -Pserver-integration "-Dpz.it.streaming=true"
+./tools/Test-ChunkStorageReplay.ps1 -StreamingRun 'target/server-integration/run-...' -PostgresBin 'Z:/postgresql/bin' -VerifyEngineMigration
+```
+
+This keeps one original-JAR child per Maven invocation. In the second pass
+the script creates a separate database and distinct migration-owner and
+engine roles inside its disposable PostgreSQL cluster. The fixture copies
+255 of the baseline's 256 files into the new run directory. It requires the
+first cycle to read the disk seed and generate the one absent chunk, then
+requires five reload cycles to decode every chunk from a buffer after save
+drain, with zero native file reads or writes. The verifier checks the exact
+coordinate set in PostgreSQL, migration history and byte-identical legacy
+files. All writes stay in the disposable database and test run directory.
+The child shuts down through the regular suite lifecycle. The observer loads the
+lazy map-download worker without initializing it to check the two transformed
+methods. The scenario checks original-JAR origin and helper linkage after
+streaming, including the loader and saver classes that load during the run.
+
+## Live chunk storage A/B benchmark
+
+One Failsafe test drives the same native streaming fixture with the shaded
+agent and original game JAR. It starts one disposable loopback PostgreSQL
+cluster at 256 MB of shared buffers and runs four worlds sequentially, with
+one dedicated-server child alive at a time. Each child quits through the
+normal server lifecycle before the next starts.
+
+```powershell
+$env:JAVA_HOME = (Resolve-Path ./jdk).Path
+mvn verify -Pserver-integration "-Dit.test=ChunkStorageBenchmarkIT" "-Dpz.it.postgresBin=Z:/postgresql/bin"
+```
+
+The default workload is the 45-cell, 2,880-chunk `players30` fixture. Add
+`-Dpz.it.streamingProfile=smoke` for four cells. Give the runner the location
+of PostgreSQL's `initdb` and `pg_ctl` and an installation that provides
+`pg_prewarm`. On Linux run under an ordinary OS account that can initialize
+the disposable cluster. The engine and migration owner roles use generated
+fixture databases. The test disconnects and stops the cluster on exit.
+
+| Comparison | Disk control | Experimental PostgreSQL |
+| --- | --- | --- |
+| Generate and persist | Empty world, first generation and file saves | Empty world and database, first generation and PostgreSQL commits |
+| Read legacy saves and persist | Read seeded files and save to disk | Read the same seeded files and migrate to an initially empty PostgreSQL table |
+| Warm reload and persist | Five subsequent file reloads and saves | Five subsequent PostgreSQL reloads and saves |
+
+Both seeded arms use the disk generation arm's exact set of chunk files.
+The fixture pauses after each save drain. Before timing the next cycle, the
+runner reads every file for disk cache preparation or calls `pg_prewarm` for
+the PostgreSQL heap, primary index, and TOAST heap and index. Preparation time
+and bytes or warmed blocks appear in separate CSVs. Prewarmed pages can be
+evicted during the run. The live hook uses one query per coordinate and the
+regular save worker. The 64-row query timing belongs to the detached replay.
+
+The report under `target/chunk-storage-benchmark/run-*` contains the comparison
+CSV, per-cycle timings, cache preparation and paths to each server's logs and
+hook evidence. The generation and migration rows have one sample per arm.
+Warm rows show the median of five cycles. The report includes request-to-loaded,
+release-to-detached, release-to-save-drained, native chunk loading, integration,
+save-task time, and storage-write time. Store timing includes the native
+checksum/write check on disk or SQL upsert and commit on PostgreSQL.
+`chunk.loadWorker` measures native `IsoChunk.LoadChunk`, so PostgreSQL lookup
+time is included in request-to-loaded and excluded from that native-only row.
+Save drain includes fixture frame observation. The correctness checks cover
+source selection, full coordinate coverage, preserved legacy bytes, the
+original-JAR hook invocations and normal shutdown. Timings are diagnostic.
+
+The Windows run with original 42.22.2 and PostgreSQL 17.6 passed both
+fixture sizes. The full 2,880-chunk run is
+`target/chunk-storage-benchmark/run-15819614825557161225`. Its five prewarmed
+reloads reached loaded state in a median 2.52 s for both stores at this
+precision. Median release-to-save-drained time was 0.80 s for disk and 1.70 s
+for PostgreSQL. The storage-write phase measured 0.51 s and 1.44 s,
+respectively. The PostgreSQL cache preparation logged 534–1,404 warmed
+blocks per reload outside the timed cycles.
 
 ## Automatically discovered hook checks
 

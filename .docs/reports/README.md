@@ -16,6 +16,8 @@ Integration infrastructure: [2026-11-21 real-server integration validation](2026
 
 [Cell unload scan optimization and thread ownership](2026-11-23-unload-scan-and-async-review.md) records the scan ports and the async safety review.
 
+[Unload attribution and worker decision](2026-11-23-unload-attribution-plan.md) documents the detailed integration telemetry and tests for evaluating thread ownership changes.
+
 Current work: [2026-11-21 PostgreSQL and NPC vanilla compatibility audit](2026-11-21-postgresql-vanilla-audit.md).
 
 Implementation follow-up: [2026-11-21 PostgreSQL module and account hook registration](2026-11-21-postgresql-hook-registration.md).

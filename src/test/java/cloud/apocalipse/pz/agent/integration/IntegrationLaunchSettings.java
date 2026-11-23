@@ -3,6 +3,8 @@ package cloud.apocalipse.pz.agent.integration;
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
+import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
+import cloud.apocalipse.pz.agent.integration.probe.UnloadSamplingProbe;
 import cloud.apocalipse.pz.agent.integration.probe.ChunkLifecycleProbe;
 import cloud.apocalipse.pz.agent.integration.probe.VehicleCadenceProbe;
 import java.nio.file.Path;
@@ -34,6 +36,20 @@ final class IntegrationLaunchSettings {
         }
         if (moving && runner.getProperty("pz.it.streamingBaseline") != null) {
             throw new IllegalArgumentException("The one-cycle moving-object scenario has no warm streaming baseline");
+        }
+        if (Boolean.parseBoolean(runner.getProperty(UnloadBreakdownProbe.PROPERTY))) {
+            if (!streaming) throw new IllegalArgumentException("Unload breakdown requires the streaming fixture");
+            settings.put(UnloadBreakdownProbe.PROPERTY, "true");
+        }
+        boolean sampleUnload = Boolean.parseBoolean(runner.getProperty(UnloadSamplingProbe.PROPERTY));
+        boolean countSearches = Boolean.parseBoolean(runner.getProperty(UnloadSamplingProbe.SEARCH_PROPERTY));
+        if (sampleUnload) {
+            if (!streaming) throw new IllegalArgumentException("Unload sampling requires the streaming fixture");
+            settings.put(UnloadSamplingProbe.PROPERTY, "true");
+        }
+        if (countSearches) {
+            if (!sampleUnload) throw new IllegalArgumentException("Native search accounting requires unload sampling");
+            settings.put(UnloadSamplingProbe.SEARCH_PROPERTY, "true");
         }
         if (moving && !streaming) {
             throw new IllegalArgumentException("The moving-object scenario requires -Dpz.it.streaming=true");
@@ -94,6 +110,7 @@ final class IntegrationLaunchSettings {
                     settings.put(key, value);
                 });
         }
+        ChunkMigrationFixture.configure(runner, settings, streaming, configured);
         // Journal/replay state is owned by this run even when task service settings are reused.
         settings.put(AgentConfiguration.POSTGRES_JOURNAL_DIRECTORY_PROPERTY, run.resolve("journal").toString());
         return settings;
