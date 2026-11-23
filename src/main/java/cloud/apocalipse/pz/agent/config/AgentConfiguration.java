@@ -17,6 +17,8 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     /** XML hotfix: {@code -Dapocbr.hotfixes.xmlCaseInsensitive.enabled=true}; defaults to enabled. */
     public static final String XML_CASE_INSENSITIVE_HOTFIX_PROPERTY = "apocbr.hotfixes.xmlCaseInsensitive.enabled";
+    /** Server packet diagnostics: {@code -Dapocbr.networkDiagnostics.enabled=true}; defaults to enabled. */
+    public static final String NETWORK_DIAGNOSTICS_PROPERTY = "apocbr.networkDiagnostics.enabled";
 
     /** Zombie culling port, defaults to enabled. Set {@code -Dapocbr.optimization.zombieCulling.enabled=false} to disable. */
     public static final String ZOMBIE_CULLING_OPTIMIZATION = "apocbr.optimization.zombieCulling.enabled";

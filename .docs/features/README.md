@@ -6,6 +6,7 @@ No runtime performance improvement is established by this catalog.
 | Feature | Root implementation | Current scope and limits |
 | --- | --- | --- |
 | [Server hotfixes](hotfixes.md) | `features/hotfixes` | Case-insensitive XML folder/file lookup port for the original 42.22.2 JAR, enabled by default and reversible. |
+| [Server packet diagnostics](network-diagnostics.md) | `features/networkdiagnostics` | Rate-limits repeated invalid-slot errors and inconsistent-packet warnings on the original 42.22.2 JAR. |
 | [Workshop update checks and restart notification](server-lag-diagnostics.md) | `features/workshop` | Asynchronous engine query, bounded result processing, and existing restart delivery. Live Steam validation is pending. |
 | [Server telemetry](server-lag-diagnostics.md) | `features/telemetry` | Slowest-tick phase and callback attribution, Lua event timing, JVM/world gauges, and optimization metrics. |
 | [Java pathfinding lock](java-pathfinding.md) | `features/pathfinding` | Selects the built-in Java pathfinder by default, with dedicated-server worker cleanup. |

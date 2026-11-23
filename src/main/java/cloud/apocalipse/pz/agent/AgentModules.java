@@ -3,6 +3,7 @@ package cloud.apocalipse.pz.agent;
 import cloud.apocalipse.pz.agent.features.postgres.PostgresModule;
 import cloud.apocalipse.pz.agent.features.postgres.ServerShutdownModule;
 import cloud.apocalipse.pz.agent.features.hotfixes.XmlCaseModule;
+import cloud.apocalipse.pz.agent.features.networkdiagnostics.NetworkDiagnosticsModule;
 import cloud.apocalipse.pz.agent.features.npc.NpcModule;
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntityRemovalModule;
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntitySimulationModule;
@@ -35,7 +36,8 @@ public final class AgentModules {
         new ZombieCullingModule(), new LuaDispatchModule(), new PlayerNearVehicleModule(),
         new ZombiePacketPreparationModule(), new ThermalClothingModule(),
         new EntityRemovalModule(), new EntitySimulationModule(), new ServerLosModule(), new ZombieAsyncSendModule(),
-        new CellBorderModule(), new ParkedVehicleModule(), new ChunkContainerModule(), new ChunkAdjacencyModule());
+        new CellBorderModule(), new ParkedVehicleModule(), new ChunkContainerModule(), new ChunkAdjacencyModule(),
+        new NetworkDiagnosticsModule());
 
     private AgentModules() { }
 
