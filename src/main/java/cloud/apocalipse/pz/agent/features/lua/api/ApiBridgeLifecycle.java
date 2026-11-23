@@ -1,7 +1,6 @@
 package cloud.apocalipse.pz.agent.features.lua.api;
 
 import java.net.URI;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 import se.krka.kahlua.vm.KahluaTable;

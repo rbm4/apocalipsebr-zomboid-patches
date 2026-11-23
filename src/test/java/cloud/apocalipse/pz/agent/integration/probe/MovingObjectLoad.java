@@ -98,8 +98,7 @@ public final class MovingObjectLoad {
     private long vehiclePacketNanos;
     private long vehicleUpdateNanos;
     private int bulletSteps;
-    private final ThreadMXBean threadAllocations = ManagementFactory.getThreadMXBean() instanceof ThreadMXBean bean
-        && bean.isThreadAllocatedMemorySupported() && bean.isThreadAllocatedMemoryEnabled() ? bean : null;
+    private final ThreadMXBean threadAllocations = getThreadAllocations();
     private long schedulerStartEpochMs;
     private long schedulerEndEpochMs;
     private long schedulerStartBytes;
@@ -117,6 +116,14 @@ public final class MovingObjectLoad {
         EntityAllocations.appendColumns(samples);
         for (Phase phase : PHASES) samples.append(',').append(phase.name()).append("_ns");
         samples.append('\n');
+    }
+
+    private static ThreadMXBean getThreadAllocations() {
+        Object bean = ManagementFactory.getThreadMXBean();
+        if (!(bean instanceof ThreadMXBean)) return null;
+        ThreadMXBean allocationBean = (ThreadMXBean) bean;
+        return allocationBean.isThreadAllocatedMemorySupported() && allocationBean.isThreadAllocatedMemoryEnabled()
+            ? allocationBean : null;
     }
 
     boolean finished() { return finished; }
