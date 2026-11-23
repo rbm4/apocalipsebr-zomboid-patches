@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent.integration;
 
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
+import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
 import com.sun.net.httpserver.HttpServer;
 import java.io.File;
 import java.io.IOException;
@@ -136,6 +137,21 @@ public final class ServerTestContext implements AutoCloseable {
             "-Djava.library.path=" + nativePath));
         var childSettings = IntegrationLaunchSettings.properties(settings, directory, endpoint);
         childSettings.forEach((key, value) -> command.add("-D" + key + "=" + value));
+        boolean movingLoad = childSettings.containsKey(MovingObjectLoad.PROPERTY);
+        String youngHeap = settings.getProperty(MovingObjectLoad.YOUNG_HEAP_PROPERTY);
+        if (movingLoad) {
+            if (youngHeap != null) {
+                int mib = Integer.parseInt(youngHeap);
+                if (mib <= 0) throw new IllegalArgumentException(MovingObjectLoad.YOUNG_HEAP_PROPERTY + " must be positive");
+                command.add("-XX:+UseG1GC");
+                command.add("-Xmn" + mib + "m");
+            }
+            command.add("-Xlog:gc,safepoint:stderr:timemillis,level,tags");
+            if (Boolean.parseBoolean(settings.getProperty(MovingObjectLoad.JFR_PROPERTY))) {
+                command.add("-XX:StartFlightRecording=settings=profile,dumponexit=true,maxsize=128m,filename="
+                    + directory.resolve("moving-object-load.jfr").toAbsolutePath());
+            }
+        }
         command.addAll(List.of(
             "-javaagent:" + agent, "-javaagent:" + probe + "=" + directory.resolve("evidence"),
             "-cp", jarClasspath(probe), PROBE,
@@ -151,6 +167,9 @@ public final class ServerTestContext implements AutoCloseable {
         manifest.setProperty("native.path", nativePath);
         manifest.setProperty("server.port", Integer.toString(port));
         manifest.setProperty("server.udpPort", Integer.toString(udpPort));
+        if (movingLoad) manifest.setProperty(MovingObjectLoad.JFR_PROPERTY,
+            settings.getProperty(MovingObjectLoad.JFR_PROPERTY, "false"));
+        if (movingLoad && youngHeap != null) manifest.setProperty(MovingObjectLoad.YOUNG_HEAP_PROPERTY, youngHeap);
         if (!streamingSeed.isEmpty()) {
             var workload = StreamingWorkload.from(settings);
             manifest.setProperty("streaming.fixture", workload.id());
@@ -163,7 +182,8 @@ public final class ServerTestContext implements AutoCloseable {
                 manifest.setProperty("streaming.carSpawnRate", "5");
             }
             childSettings.forEach((key, value) -> {
-                if (IntegrationLaunchSettings.isOptimizationSwitch(key)) manifest.setProperty(key, value);
+                if (IntegrationLaunchSettings.isOptimizationSwitch(key) || key.equals(MovingObjectLoad.PROPERTY)
+                        || key.startsWith(MovingObjectLoad.PROPERTY + ".")) manifest.setProperty(key, value);
             });
         }
         try (var out = Files.newOutputStream(directory.resolve("runtime.properties"))) {

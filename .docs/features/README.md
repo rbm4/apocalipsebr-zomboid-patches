@@ -15,6 +15,7 @@ No runtime performance improvement is established by this catalog.
 | [PostgreSQL player authority](postgresql-players.md) | `features/postgres/player`, `features/postgres/PlayerJournal` | Profile/connect reconstruction, durable creation, live/final persistence and lifecycle hooks wired; defaults off, real database/client acceptance pending. |
 | [Server optimization ports](server-optimizations.md) | `features/optimization` | Five ports enabled by default and exercised in a forked original-JAR fixture. Live workload measurements remain open. |
 | [Server cell streaming](server-cell-streaming.md) | `features/optimization/streaming` | Frame relevance and four cell perimeter lookup sites, with separate startup flags. |
+| [Async chunk replies](chunk-async-send.md) | `features/optimization/streaming` | Dedicated-server download worker handles inline status replies. Disconnect retires the worker without joining it. |
 | [Chunk integration and detachment](../reports/2026-11-22-chunk-lifecycle.md) | `features/optimization/streaming` | Synchronous container and adjacency changes with independent startup switches and a paired real-server comparison. |
 | [Parked vehicle cadence](parked-vehicle-cadence.md) | `features/optimization/vehicle` | Original dedicated-server scheduler bucket selection, enabled by default with an independent startup flag. |
 | [Server simulation, LOS and zombie transmission](server-simulation-hotspots.md) | `features/optimization` | Enabled by default with independent startup flags. |

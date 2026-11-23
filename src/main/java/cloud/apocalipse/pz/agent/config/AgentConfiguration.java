@@ -17,6 +17,10 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     /** XML hotfix: {@code -Dapocbr.hotfixes.xmlCaseInsensitive.enabled=true}; defaults to enabled. */
     public static final String XML_CASE_INSENSITIVE_HOTFIX_PROPERTY = "apocbr.hotfixes.xmlCaseInsensitive.enabled";
+    /** Optional animation folders hotfix, defaults to enabled. Disable with {@code -Dapocbr.hotfixes.optionalAnimationFolders.enabled=false}. */
+    public static final String OPTIONAL_ANIMATION_FOLDERS_HOTFIX_PROPERTY = "apocbr.hotfixes.optionalAnimationFolders.enabled";
+    /** Asset diagnostics hotfix, defaults to enabled. Disable with {@code -Dapocbr.hotfixes.assetLogs.enabled=false}. */
+    public static final String ASSET_LOGS_HOTFIX_PROPERTY = "apocbr.hotfixes.assetLogs.enabled";
     /** Server packet diagnostics: {@code -Dapocbr.networkDiagnostics.enabled=true}; defaults to enabled. */
     public static final String NETWORK_DIAGNOSTICS_PROPERTY = "apocbr.networkDiagnostics.enabled";
 
@@ -30,8 +34,13 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String ZOMBIE_PACKET_OPTIMIZATION = "apocbr.optimization.zombiePacket.enabled";
     /** Thermal clothing port, defaults to enabled. Set {@code -Dapocbr.optimization.thermalClothing.enabled=false} to disable. */
     public static final String THERMAL_CLOTHING_OPTIMIZATION = "apocbr.optimization.thermalClothing.enabled";
+    /** Character stat lookup defaults on. Disable with {@code -Dapocbr.optimization.characterStats.enabled=false}. */
+    public static final String CHARACTER_STATS_OPTIMIZATION = "apocbr.optimization.characterStats.enabled";
     /** Dedicated parked-vehicle cadence defaults on. Disable with {@code -Dapocbr.optimization.parkedVehicle.enabled=false}. */
     public static final String PARKED_VEHICLE_OPTIMIZATION = "apocbr.optimization.parkedVehicle.enabled";
+
+    /** Primitive region cell lookup defaults on. Disable with {@code -Dapocbr.optimization.regionCellLookup.enabled=false}. */
+    public static final String REGION_CELL_LOOKUP_OPTIMIZATION = "apocbr.optimization.regionCellLookup.enabled";
 
     /** Chunk integration container checks default on. Disable with {@code -Dapocbr.optimization.chunkContainers.enabled=false}. */
     public static final String CHUNK_CONTAINER_OPTIMIZATION = "apocbr.optimization.chunkContainers.enabled";
@@ -75,6 +84,8 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String LOS_INTERVAL_PROPERTY = "apocbr.los.intervalMs";
     /** Async zombie transmission defaults on. Disable with {@code -Dapocbr.optimization.zombieAsyncSend.enabled=false}. */
     public static final String ZOMBIE_ASYNC_SEND_OPTIMIZATION = "apocbr.optimization.zombieAsyncSend.enabled";
+    /** Async chunk replies default on. Disable with {@code -Dapocbr.optimization.chunkAsyncSend.enabled=false}. */
+    public static final String CHUNK_ASYNC_SEND_OPTIMIZATION = "apocbr.optimization.chunkAsyncSend.enabled";
     /** Async zombie transmission, JVM argument {@code -Dapocbr.zombiePacketWorkers=6}. */
     public static final String ZOMBIE_SEND_WORKERS_PROPERTY = "apocbr.zombiePacketWorkers";
     /** Async zombie transmission, JVM argument {@code -Dapocbr.zombieSendCapacity=64}. */

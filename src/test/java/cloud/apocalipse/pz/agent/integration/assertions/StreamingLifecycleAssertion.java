@@ -10,6 +10,7 @@ import cloud.apocalipse.pz.agent.integration.ServerAssertion;
 import cloud.apocalipse.pz.agent.integration.ChunkMigrationFixture;
 import cloud.apocalipse.pz.agent.integration.ServerTestContext;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
+import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadSamplingProbe;
 import cloud.apocalipse.pz.agent.integration.probe.BucketUnloadProbe;
@@ -32,6 +33,7 @@ public final class StreamingLifecycleAssertion implements ServerAssertion {
 
     @Override public void verify(ServerTestContext server) throws Exception {
         assumeTrue(!WorldSimulation.enabled(), "The experimental assertion owns the streaming fixture");
+        assumeTrue(!Boolean.getBoolean(MovingObjectLoad.PROPERTY), "The moving-object load assertion owns the fixture");
         drive(server);
     }
 

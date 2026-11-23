@@ -41,7 +41,9 @@ public final class OptimizationTelemetry {
         ZOMBIE_SEND_BACKPRESSURE("zombies.async.backpressure"),
         ZOMBIE_SEND_FAILED("zombies.async.failed"),
         ZOMBIE_SEND_SUBMITTED("zombieJobs.submitted"),
-        ZOMBIE_SEND_BYTES("zombies.async.snapshotBytes");
+        ZOMBIE_SEND_BYTES("zombies.async.snapshotBytes"),
+        CHUNK_REPLY_BACKPRESSURE("network.chunks.async.backpressure"),
+        CHUNK_REPLY_SEND_FAILED("network.chunks.async.statusSendFailed");
 
         private final String key;
         private final LongAdder value = new LongAdder();
@@ -66,6 +68,11 @@ public final class OptimizationTelemetry {
         SIMULATION("simulation", "update"),
         VEHICLES("vehicles", "update"),
         DOWNLOADS("players", "relevanceAndDownloads", "downloadUpdate"),
+        CHUNK_DOWNLOAD_SERIALIZE("players", "relevanceAndDownloads", "downloadUpdate", "serialize"),
+        CHUNK_DOWNLOAD_PENDING("players", "relevanceAndDownloads", "downloadUpdate", "pending"),
+        CHUNK_DOWNLOAD_DEDUPLICATE("players", "relevanceAndDownloads", "downloadUpdate", "deduplicate"),
+        CHUNK_REPLY_TRANSPORT("network", "chunks", "async", "statusTransport"),
+        CHUNK_PAYLOAD_TRANSPORT("network", "chunks", "async", "payloadTransport"),
         BACKUP("backup", "onPeriod"),
         TRADING("world", "socialSystems", "trading"),
         WAR("world", "socialSystems", "war"),

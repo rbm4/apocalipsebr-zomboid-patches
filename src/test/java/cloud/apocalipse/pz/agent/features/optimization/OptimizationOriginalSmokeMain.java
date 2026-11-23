@@ -53,6 +53,7 @@ import zombie.core.skinnedmodel.visual.ItemVisuals;
 import zombie.debug.DebugOptions;
 import zombie.inventory.types.Clothing;
 import zombie.iso.Vector2;
+import zombie.iso.areas.isoregion.data.DataRoot;
 import zombie.network.NetworkVariables.WalkType;
 import zombie.network.NetworkVariables.ZombieState;
 import zombie.network.ServerMap;
@@ -70,7 +71,7 @@ public final class OptimizationOriginalSmokeMain {
         boolean enabled = Boolean.parseBoolean(arguments[1]);
         Path original = Path.of(arguments[0]).toRealPath();
         for (Class<?> target : List.of(SERVER, ZombieCountOptimiser.class, Event.class, IsoPlayer.class,
-                NetworkZombieAI.class, ZombiePacket.class, Thermoregulator.class)) {
+                NetworkZombieAI.class, ZombiePacket.class, Thermoregulator.class, Stats.class, DataRoot.class)) {
             Path source = Path.of(target.getProtectionDomain().getCodeSource().getLocation().toURI()).toRealPath();
             check(original.equals(source), "Game class came from " + source);
             target.getDeclaredMethods();

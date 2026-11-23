@@ -3,6 +3,7 @@ package cloud.apocalipse.pz.agent.integration;
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
+import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadSamplingProbe;
 import cloud.apocalipse.pz.agent.integration.probe.BucketUnloadProbe;
@@ -23,6 +24,14 @@ final class IntegrationLaunchSettings {
         Map<String, String> settings = new LinkedHashMap<>();
         boolean streaming = Boolean.parseBoolean(runner.getProperty("pz.it.streaming", "false"));
         boolean moving = Boolean.parseBoolean(runner.getProperty("pz.it.movingObjects", "false"));
+        if (Boolean.parseBoolean(runner.getProperty(MovingObjectLoad.PROPERTY))) {
+            if (!streaming || !"players30".equals(runner.getProperty(StreamingWorkload.PROFILE)) || moving
+                    || runner.getProperty("pz.it.streamingBaseline") != null) {
+                throw new IllegalArgumentException("Moving-object load requires its own players30 streaming run");
+            }
+            MovingObjectLoad.Settings.from(runner).forward(settings);
+            settings.put(AgentConfiguration.MOVING_OBJECT_TELEMETRY_PROPERTY, "true");
+        }
         if (Boolean.parseBoolean(runner.getProperty(WorldSimulation.PROPERTY))) {
             if (!streaming || !"vehicles72".equals(runner.getProperty(StreamingWorkload.PROFILE))
                     || Boolean.parseBoolean(runner.getProperty(VehicleCadenceProbe.COMPARE_PROPERTY))

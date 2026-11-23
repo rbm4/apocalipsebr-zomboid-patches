@@ -515,6 +515,238 @@ On Windows with the original 42.22.2 JAR, the fixture reported a
 samples for 293 scheduler updates. The injected callback returned normally,
 and the fixture completed unload, save drain and graceful shutdown.
 
+## Moving-object workload with simulated remote players
+
+Run the isolated original-JAR server with the same 45 cells as the
+`players30` streaming profile. This scenario registers real `IsoPlayer`
+instances with the server player list, online-ID map, and LOS manager after
+the cells load. It applies short remote position updates on the server
+thread and emits periodic world sounds during movement. Nearby animals use
+native behavior and forced zombies use the game's population path. Natural
+chunk population and vehicles remain enabled.
+
+```powershell
+mvn verify -Pserver-integration "-Dpz.it.streaming=true" "-Dpz.it.streamingProfile=players30" "-Dpz.it.movingObjectLoad=true" "-Dpz.it.heap=6g"
+```
+
+| Setting | Default | Accepted range |
+| --- | --- | --- |
+| `pz.it.movingObjectLoad.players` | 30 | 1–30 remote players |
+| `pz.it.movingObjectLoad.animals` | 120 | 0–120 additional Angus cows |
+| `pz.it.movingObjectLoad.zombies` | 120 | 0–300 additional zombies |
+| `pz.it.movingObjectLoad.frames` | 360 | 30–600 measured frames per workload |
+| `pz.it.movingObjectLoad.vehicle` | true | Add one vehicle and send physics updates during the moving workload |
+
+Set both population inputs to zero to use whatever the loaded chunks
+produce. Set `pz.it.movingObjectLoad.vehicle=false` to use their vehicle
+population without the fixture car. The workload measures idle players
+first, then moving players and the fixture vehicle,
+with 60 warmup frames before each measurement. It uses one world, so game
+state and population can evolve between workloads. The probe counts how many
+of the forced animals and zombies are still active on each measured frame.
+It then removes its actors and verifies native chunk unload and save drain.
+The existing injected-delay test is a separate scenario.
+
+- `moving-object-load.csv` has one row per measured simulation frame, using
+  the production timer totals on the server thread after map postupdate.
+  It includes surrounding simulation, cell and zombie population timers,
+  elapsed and thread CPU scheduler timers, and each callback stage and kind.
+  The `_ns` columns use nanoseconds. The timestamp is the sampling time after
+  map postupdate, before the remaining server-loop work.
+  The fixture also saves any collected rows if its workload times out.
+  The vehicle columns capture observed movement, the original server
+  packet dispatch duration, the fixture vehicle callback duration, and the
+  number of Bullet substeps reached on that frame.
+- `moving-object-load-summary.csv` gives p50, p95, max, total time and
+  how many frames registered a sample for each phase. For a worst frame,
+  compare CPU with wall time in that row, then inspect its callback columns.
+  Parent, child, CPU and Lua measurements may overlap. On hosts with a coarse
+  thread CPU clock, compare CPU and wall time across a group of frames.
+  HTTP phase summaries include per-callback call counts and maximums for
+  their reporting windows.
+- The run retains the normal HTTP telemetry and startup hook evidence.
+  Scheduler frames are recorded even when none reaches the production
+  slow-tick threshold. The short runs can finish within an HTTP reporting
+  window, so use the frame CSV for workload-specific timings.
+
+The scenario starts after login. For the fixture car it serializes a vanilla
+vehicle physics packet and invokes the original packet dispatcher with a
+synthetic authorized sender. Dispatch runs after map preupdate, separately
+from the incoming-queue phase. The empty RakNet connection list puts socket
+ingress, outgoing relay, and the queue drop policy outside this scenario.
+Coverage is remote-player simulation and LOS, world sounds, and native
+moving-object stages on the vanilla map. Dedicated-server zombies normally
+bypass the scheduler buckets. Consult the population and surrounding phase
+rows alongside the scheduler callbacks.
+
+In the original server, the socket receive loop runs on the network thread.
+The main loop drains high-priority and player updates before vehicle physics.
+Both vehicle physics packet types share the normal queue. The loop checks
+its 70 ms elapsed budget before every group of ten physics packets and
+discards the unprocessed tail when over budget. A drop therefore identifies
+a saturated incoming iteration. The same warning can follow unrelated
+high-priority packet work. Accepted physics packets can serialize state
+for relevant connected recipients on the server thread and take the
+connection send-buffer lock and the shared RakNet send lock before native
+send. This fixture times the receive dispatcher with zero recipients.
+
+The outer 100 ms update limiter resets its schedule when over three
+periods behind. The incoming queue drains and the ready-cell integration
+loop run without a per-iteration work cap. The active Bullet world has
+a separate fixed-step accumulator for 10 ms substeps with no explicit
+substep-count cap. Interpret that path using the recorded Bullet call
+count and the server mode being profiled.
+
+The Windows 42.22.2 run with 120 forced animals, 120 forced zombies and
+one moving car measured 360 frames per workload. All 360 moving frames
+applied an authorized vehicle update, moved the car, and ran its callback.
+There were 135 active animals, 465 active zombies and 32 vehicles.
+Scheduler update p95 was 7.64 ms idle and 7.22 ms moving. The moving peak
+was 61.97 ms, with 57.59 ms in player updates, 0.11 ms in the vehicle packet
+dispatch and 0.02 ms in the driven vehicle callback. The scheduler measured
+15.63 ms of thread CPU on that frame. Bullet calls were zero throughout.
+The 30-second telemetry window containing the peak reported 57 ms of
+young-generation collection time. Window data cannot timestamp the pause
+within the callback. The test completed chunk unload, save drain and
+graceful shutdown.
+
+An earlier Windows run with the original 42.22.2 JAR, 30 forced animals,
+and no fixture vehicle completed
+720 measured frames, unloaded the fixture cells, drained saves, and shut
+down cleanly. All 30 players changed position on every measured moving
+frame. There were 44 active animals, 28 vehicles, and 458 active zombies.
+Scheduler update p95 was 4.80 ms idle and 3.30 ms moving. The longest
+measured scheduler update was 9.77 ms. The largest whole tick in the
+captured telemetry was 1,458.12 ms during cell integration. A separate
+60-frame-per-workload run with both forced populations set to zero also
+passed. Its loaded cells supplied 24 animals, 33 vehicles, and 328 active
+zombies. Absolute timings depend on the runtime, hardware, and sampled
+world state.
+
+### JVM pauses and allocation during moving-object updates
+
+The moving-object scenario adds UTC epoch milliseconds for the scheduler
+update entry and exit to each frame row. Its child console includes GC and
+safepoint events with epoch-millisecond timestamps. Match each event's
+interval to `schedulerStartEpochMs` and `schedulerEndEpochMs`, then inspect
+the scheduler CPU and callback wall timings for the same frame.
+
+`schedulerAllocatedBytes` is the delta of the server thread's Java heap
+allocation counter across that scheduler update. A value of `-1` means
+the counter was unavailable. This covers the scheduler, including Java and
+Lua work it calls. Native memory, worker allocations, and allocations
+outside the scheduler are outside this counter.
+
+Append `"-Dpz.it.movingObjectLoad.jfr=true"` to enable the Java Flight
+Recorder profile in the isolated child. The recording is bounded to 128 MB
+and written to `moving-object-load.jfr` on graceful shutdown. The profile
+samples heap allocation stacks and CPU execution, and records GC pauses
+and longer monitor and park events. Use the CSV timestamps to restrict
+analysis to the relevant part of the workload because the recording also
+includes startup, fixture setup and shutdown. An allocation sample's
+weight is an estimate of bytes allocated at the sampled site. These JFR
+views summarize the whole recording.
+
+```powershell
+& .\jdk\bin\jfr.exe view allocation-by-site <recording.jfr>
+& .\jdk\bin\jfr.exe view contention-by-site <recording.jfr>
+& .\jdk\bin\jfr.exe view gc-pauses <recording.jfr>
+```
+
+The profiled Windows 42.22.2 run completed 720 measured frames and graceful
+shutdown. The scheduler allocated a median of approximately 212 KB per idle
+frame and 211 KB per moving frame. Its 73.61 ms high frame contained a
+66.82 ms G1 evacuation pause. The largest sampled allocation site was
+`Float` boxing in `Stats.get` through thermoregulation.
+`AnimalSynchronizationManager.setSendToClients` allocated set entries as
+well. These sites describe the isolated fixture. Connected relay allocation
+needs a workload with active clients and recipients.
+
+#### Character stat lookup comparison
+
+Use the same packaged agent and run the scenario twice with
+`-Dapocbr.optimization.characterStats.enabled=false` and
+`-Dapocbr.optimization.characterStats.enabled=true`. Leave JFR on for both
+runs. Each child starts from the same fixture settings in an isolated world.
+
+```powershell
+$fixture = @('-Pserver-integration', '-Dpz.it.streaming=true',
+    '-Dpz.it.streamingProfile=players30', '-Dpz.it.movingObjectLoad=true',
+    '-Dpz.it.movingObjectLoad.jfr=true', '-Dpz.it.heap=6g')
+mvn '-Djar.forceCreation=true' package
+mvn failsafe:integration-test failsafe:verify @fixture '-Dapocbr.optimization.characterStats.enabled=false'
+mvn failsafe:integration-test failsafe:verify @fixture '-Dapocbr.optimization.characterStats.enabled=true'
+```
+
+Compare `schedulerAllocatedBytes` across the measured idle and moving
+frames. Use the JFR pause intervals over the same measurement ranges.
+The CSV separates scheduler-only allocation from process-wide collections.
+The fixture checks default reads, updates, and a native save/load round trip
+in both arms. The hook inventory confirms installation in the enabled arm.
+
+On Windows with Java 25 and a 6 GiB heap, the two runs measured 720 frames
+each. Both used the same game and agent JAR hashes, 30 simulated players,
+120 forced cows, 120 forced zombies, and one fixture vehicle. Chunk-driven
+populations varied between the isolated worlds.
+
+| Scheduler measurement | Hook off | Hook on |
+| --- | ---: | ---: |
+| Median allocated bytes, idle | 209,632 | 40,656 |
+| Median allocated bytes, moving | 208,768 | 38,688 |
+| Total allocated bytes, both workloads | 159,139,272 | 32,686,472 |
+| Moving update p95 | 6.614 ms | 6.924 ms |
+| Moving update max | 12.845 ms | 11.981 ms |
+| JFR stop-the-world GC pauses in the measured windows | 0 | 0 |
+
+The heap-allocation difference was 79.5% over the sampled frames. JFR
+captured 52 scheduler allocation samples whose stacks included
+`Stats.get` in the baseline and zero in the enabled run. Remaining sampled
+paths included region cell ID boxing, boxed writes through `Stats.set`,
+and allocation of candidate arrays in the LOS hook. Pause frequency and
+scheduler elapsed time need longer or more memory-constrained runs to
+characterize separately. The test-only `pz.it.movingObjectLoad.youngMiB`
+setting selects G1 and sets the young generation size with `-Xmn`.
+For a constrained-heap comparison, use the same values in both arms, such
+as `-Dpz.it.heap=3g` and `-Dpz.it.movingObjectLoad.youngMiB=64`. The runtime
+manifest records both inputs.
+
+With an adaptive 3 GiB heap, the 720-frame pair allocated 158.75 MB with
+the hook off and 38.37 MB with it on. Neither run collected during the
+measured windows.
+
+The fixed-young-generation pair used a 3 GiB heap, a 64 MiB G1 young
+generation, and 240 frames per workload. Both runs passed. The baseline
+had 140 animals, 468 zombies, and 32 vehicles. The enabled run had 130
+animals, 447 zombies, and 39 vehicles.
+
+| Measured during the two workloads | Hook off | Hook on |
+| --- | ---: | ---: |
+| Median scheduler allocation, moving | 208,160 bytes | 39,096 bytes |
+| Total scheduler allocation | 105.76 MB | 24.75 MB |
+| JVM stop-the-world GC pauses | 3 | 1 |
+| Total JVM GC pause time | 26.47 ms | 10.60 ms |
+| Scheduler frames overlapping a GC pause | 2 | 0 |
+
+These GC counts describe one short pair under controlled heap pressure.
+The allocation drop repeated under adaptive and constrained settings. Region
+cell ID boxing through `DataRoot.getCell` remained the largest sampled
+scheduler allocation site with the hook enabled in all three comparisons.
+
+#### Region cell lookup comparison
+
+Run the moving-object fixture in both arms with
+`-Dapocbr.optimization.characterStats.enabled=true` and JFR enabled.
+Change only `-Dapocbr.optimization.regionCellLookup.enabled`. Repeat the
+adaptive 6 GiB and 3 GiB runs with 360 frames per workload and the fixed
+64 MiB young-generation run at 3 GiB with 240 frames per workload.
+
+Before sampling, the child exercises the original region selector against
+two independent roots. It checks misses, cell identity after creation,
+vanilla chunk traversal, reset isolation and repopulation. The hook
+inventory checks the constructor, lookup, insertion, and reset boundaries
+against the original JAR. The worker still exchanges entire roots through
+the existing buffer handoff.
+
 ## Chunk storage replay
 
 After a completed playerless streaming run, the Windows
@@ -790,6 +1022,12 @@ scenario providers; use `loadBeforeStartup` only when that non-initializing load
 is safe. Document any deliberate load/trigger. Test probes remain in test sources
 and never enter the production shaded artifact. Feature semantics still require
 separate registered `ServerAssertion` providers.
+
+The async chunk reply checks explicitly load `PlayerDownloadServer` and its
+`WorkerThread` without initializing them. A server without clients need not
+create a download worker. These checks observe installation only. The
+original-JAR `ChunkAsyncSendTest` drives the worker and simulates blocked
+transport without starting a dedicated server.
 
 Future PostgreSQL scenarios must provision an isolated real database and actual
 schema before startup, with distinct migration/engine roles and grants. Future
