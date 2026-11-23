@@ -1,0 +1,171 @@
+name: Project Zomboid server integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      steam_branch:
+        description: Steam branch for dedicated server app 380870
+        default: public
+        type: string
+      server_heap:
+        description: Maximum server heap (for example 6g or 8g)
+        default: 6g
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  server-integration:
+    runs-on: ${{ vars.PZ_INTEGRATION_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 110
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_DB: game_runtime
+          POSTGRES_PASSWORD: pz-ci-bootstrap
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d game_runtime"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      STEAM_BRANCH: ${{ inputs.steam_branch || 'public' }}
+      PZ_SERVER_HEAP: ${{ inputs.server_heap || '6g' }}
+      EXPECTED_JAR_SHA256: ${{ vars.PZ_LINUX_JAR_SHA256 || '3c4a7c5f149d784758c6fb5f8fa85f3a21d572e38bc081400e89035f8120d287' }}
+      EXPECTED_STEAM_BUILD_ID: ${{ vars.PZ_STEAM_BUILD_ID || '26486687' }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '25'
+          cache: maven
+
+      - name: Install Linux runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lib32gcc-s1 libgl1 libglu1-mesa libxi6 libxrender1 libxtst6 postgresql-client
+
+      - name: Download and verify the original dedicated server
+        shell: bash
+        run: |
+          [[ "$STEAM_BRANCH" =~ ^[a-zA-Z0-9._-]+$ ]]
+          [[ "$EXPECTED_JAR_SHA256" =~ ^[a-fA-F0-9]{64}$ ]]
+          [[ "$PZ_SERVER_HEAP" =~ ^[1-9][0-9]*[mg]$ ]]
+          steamcmd="$(mktemp -d "$RUNNER_TEMP/pz-steamcmd.XXXXXX")"
+          pz_home="$(mktemp -d "$RUNNER_TEMP/pz-server.XXXXXX")"
+          mkdir -p target/ci
+          curl --fail --silent --show-error --location --retry 4 \
+            https://steamcdn-a.akamaihd.net/client/installer/steamcmd_linux.tar.gz |
+            tar -xz -C "$steamcmd"
+          branch_args=()
+          if [[ "$STEAM_BRANCH" != public ]]; then
+            branch_args=(-beta "$STEAM_BRANCH")
+          fi
+          pz_jar="$pz_home/java/projectzomboid.jar"
+          manifest="$pz_home/steamapps/appmanifest_380870.acf"
+          installed=false
+          for attempt in 1 2 3; do
+            if timeout 15m "$steamcmd/steamcmd.sh" +@sSteamCmdForcePlatformType linux \
+              +force_install_dir "$pz_home" +login anonymous +app_info_update 1 \
+              +app_update 380870 "${branch_args[@]}" validate +quit | tee "target/ci/steamcmd-$attempt.log" &&
+              [[ -s "$pz_jar" && -d "$pz_home/media" && -d "$pz_home/linux64" && -s "$manifest" ]]; then
+              installed=true
+              break
+            fi
+            echo "::warning::SteamCMD attempt $attempt did not complete the dedicated server installation."
+          done
+          if [[ "$installed" != true ]]; then
+            echo "::error::SteamCMD could not install the Linux dedicated server for branch $STEAM_BRANCH."
+            exit 1
+          fi
+          build_id="$(awk -F '"' '$2 == "buildid" { print $4 }' "$manifest")"
+          [[ "$build_id" =~ ^[0-9]+$ ]]
+          printf 'Steam branch: %s\nSteam build: %s\n' "$STEAM_BRANCH" "$build_id" > target/ci/runtime.txt
+          sha256sum "$pz_jar" | tee -a target/ci/runtime.txt
+          if [[ -n "$EXPECTED_STEAM_BUILD_ID" && "$build_id" != "$EXPECTED_STEAM_BUILD_ID" ]]; then
+            echo "::error::Steam returned build $build_id instead of the expected $EXPECTED_STEAM_BUILD_ID."
+            exit 1
+          fi
+          if ! printf '%s  %s\n' "${EXPECTED_JAR_SHA256,,}" "$pz_jar" | sha256sum --check --status; then
+            echo "::error::The downloaded JAR does not match the expected original build. Check the Steam branch and PZ_LINUX_JAR_SHA256."
+            exit 1
+          fi
+          printf 'PZ_HOME=%s\nPZ_GAME_JAR=%s\nLD_LIBRARY_PATH=%s\n' \
+            "$pz_home" "$pz_jar" "$pz_home:$pz_home/linux64:$pz_home/java" >> "$GITHUB_ENV"
+
+      - name: Run stable original-JAR integration suite
+        run: bash tools/run-server-integration-ci.sh
+
+      - name: Verify PostgreSQL account bootstrap
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: ${{ job.services.postgres.ports['5432'] }}
+          PGDATABASE: game_runtime
+          PGUSER: postgres
+          PGPASSWORD: pz-ci-bootstrap
+        shell: bash
+        run: |
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE apocalipsebr NOLOGIN;
+          CREATE ROLE pz_server_01 LOGIN PASSWORD 'pz-ci-engine';
+          GRANT CREATE, USAGE ON SCHEMA public TO apocalipsebr;
+          GRANT USAGE ON SCHEMA public TO pz_server_01;
+          SQL
+          {
+            echo 'SET ROLE apocalipsebr;'
+            cat src/test/resources/db/V2__Create_Server_Accounts.sql
+            echo 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO pz_server_01;'
+            echo 'GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO pz_server_01;'
+          } | psql -X -v ON_ERROR_STOP=1 --single-transaction
+
+          export PGUSER=pz_server_01 PGPASSWORD=pz-ci-engine
+          test "$(psql -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.whitelist")" = 0
+
+          export APOCBR_POSTGRES_URL="jdbc:postgresql://127.0.0.1:$PGPORT/game_runtime?user=pz_server_01&password=pz-ci-engine"
+          mvn --batch-mode --no-transfer-progress -Pserver-integration \
+            "-Dpz.game.jar=$PZ_GAME_JAR" "-Dpz.it.home=$PZ_HOME" \
+            -Dpz.it.serverLogs=false -Dpz.it.experimentalWorldSimulation=false \
+            -Dpz.it.useTaskConfiguration=true -Dapocbr.postgres.enabled=true \
+            -Dapocbr.postgres.serverDatabase.enabled=true -Dapocbr.postgres.players.enabled=false \
+            -Dapocbr.postgres.dictionary.enabled=false -Dapocbr.postgres.loginHistory.enabled=false \
+            -Dapocbr.npc.persistence.enabled=false -Dapocbr.restart.enabled=false \
+            failsafe:integration-test failsafe:verify | tee target/ci/postgres-bootstrap.log
+
+          test "$(psql -XAt -v ON_ERROR_STOP=1 -c "
+            SELECT count(*)
+            FROM public.whitelist AS account
+            JOIN public.role AS role ON role.id = account.role
+            JOIN public.defaultroles AS defaults ON defaults.role = role.id
+            WHERE account.username = 'integration-admin'
+              AND account.world = 'agent-integration'
+              AND account.id > 0 AND length(account.password) > 0
+              AND defaults.name = 'defaultForAdmin'
+          ")" = 1
+          echo 'Verified persistent administrator bootstrap using the test engine role.'
+
+      - name: Upload integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pz-server-integration-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          path: |
+            target/ci/
+            target/surefire-reports/
+            target/failsafe-reports/
+            target/server-integration/run-*/runtime.properties
+            target/server-integration/run-*/console.log
+            target/server-integration/run-*/evidence/
+            target/server-integration/run-*/telemetry-*.json
+            target/server-integration/run-*/*.csv
+            target/server-integration/run-*/*.txt

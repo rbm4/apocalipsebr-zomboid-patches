@@ -59,6 +59,42 @@ continues to belong in `AgentConfiguration`. Do not pass production database or
 API settings into ordinary isolated runs. The configured-services task below
 explicitly opts into its selected external settings.
 
+### GitHub Actions
+
+Run **Project Zomboid server integration** from the repository's Actions tab.
+The [workflow](../../.github/workflows/server-integration.yml) downloads Steam
+app `380870` anonymously into a temporary Linux installation. It checks the
+original JAR digest and Steam build ID before building. The default is
+Steam build `26486687`. A fresh Linux download of that build matched the
+original 42.22.2 JAR digest used by the local benchmarks.
+If Steam advances the public branch, select a branch that serves the target
+build. For a deliberately updated or platform-specific baseline, set the
+`PZ_LINUX_JAR_SHA256` repository variable from a verified original Linux
+installation and `PZ_STEAM_BUILD_ID` to the corresponding server build ID.
+
+The workflow builds once and runs the stable
+[benchmark sequence](../../tools/run-server-integration-ci.sh) on one runner.
+This covers the 30-position comparisons, moving-object telemetry, parked
+vehicle cadence, chunk lifecycle and the hook-off smoke test. Experimental
+world simulation and the chunk storage replay are outside the sequence.
+The default heap is 6 GiB. For larger workloads or repeatable absolute
+timings, set `PZ_INTEGRATION_RUNNER` to a dedicated Linux runner label and
+choose a heap that leaves room for the operating system and test JVM.
+
+The PostgreSQL check uses a fresh service container with a separate schema
+owner and engine login. It applies the test copy of the manager's account
+migration, `V2__Create_Server_Accounts.sql`, from `rbm4/pzmanager` commit
+`622ccf093a0c592e46937fcffe4ae36b4c5e865f`. The engine starts through
+Failsafe using local, disposable credentials. The workflow checks that
+startup through the installed agent writes the administrator row with its
+default role, and reads that row as the engine role. This covers account
+bootstrap. Player persistence and dictionary storage require their own
+schemas and scenarios. The streaming benchmarks use the isolated fixture
+with PostgreSQL disabled.
+
+The workflow retains test reports, runtime hashes, hook evidence, telemetry,
+and CSV measurements in its Actions artifact.
+
 ### VS Code configured-services task
 
 The global file `C:\Users\ricar\AppData\Roaming\Code\User\tasks.json` contains
@@ -344,16 +380,20 @@ A due result resets the vehicle's brake accumulator when the server consumes
 it, which can be a later parts pass. The fixture drains results between
 timing windows and before releasing cells.
 
-The Java replacement covers `Vehicles.Update.EngineDoor`, whose vanilla body
-is empty. A mod override of that name is bypassed during the experiment for
-the matching EngineDoor part. Spawn callbacks and other update hooks are
-outside this experiment. The worker executes no Lua, Bullet, or whole-vehicle
-simulation. A held-job case verifies that a later server frame sees the part
-busy, the worker publishes the native timestamp, and the server consumes it
-once. There is no connected-client or packet parity assertion.
+The worker publishes the elapsed minutes with its result. The server then
+resolves and invokes the existing `Vehicles.Update.EngineDoor` function with
+the original vehicle, part and elapsed-minutes arguments. Existing overrides
+use the same function name. This uses the experiment's completion handoff
+because vanilla's queued event dispatcher handles event subscribers, while
+vehicle scripts use named Lua functions. The callback can run on a later
+parts pass or during the fixture drain. Results for a part no longer attached
+to its vehicle are discarded. Spawn and other update hooks follow their
+original paths. The held-job case substitutes an observed override through
+the real Kahlua lookup and verifies the expected arguments, published native
+timestamp, server thread, and exactly one delivery. Coverage is headless.
 
 `experimental-world-simulation.csv` reports alternating inline and worker
-windows within each warm cycle, with scheduler median and p95 time, the p95
+32-frame windows within each warm cycle, with scheduler median and p95 time, the p95
 span between the fixture's server-map preupdate and postupdate hooks, offers,
 admissions, completions, busy observations, and the separate end-of-window
 drain count and time. The scheduler and span timings include dispatch

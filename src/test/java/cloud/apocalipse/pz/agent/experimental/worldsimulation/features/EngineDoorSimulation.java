@@ -2,9 +2,12 @@ package cloud.apocalipse.pz.agent.experimental.worldsimulation.features;
 
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.features.optimization.OptimizationVisitor;
+import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
+import java.lang.invoke.MethodType;
 import java.lang.invoke.VarHandle;
-import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.HashSet;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CountDownLatch;
@@ -21,23 +24,26 @@ import zombie.GameTime;
 import zombie.MovingObjectUpdateScheduler;
 import zombie.vehicles.BaseVehicle;
 import zombie.vehicles.VehiclePart;
+import zombie.vehicles.VehicleParts;
 
 import static net.bytebuddy.jar.asm.Opcodes.ASM9;
 import static net.bytebuddy.matcher.ElementMatchers.hasDescriptor;
 import static net.bytebuddy.matcher.ElementMatchers.named;
 
-/** Moves only the live EngineDoor part clock. Vanilla's matching Lua update body is empty. */
+/** Moves the live EngineDoor part clock and resumes the named update callback on the server. */
 public final class EngineDoorSimulation {
     private static final String VEHICLE = "zombie.vehicles.BaseVehicle";
     private static final String PART = "zombie.vehicles.VehiclePart";
     private static final String CALLBACK = "Vehicles.Update.EngineDoor";
-    private static final IdentityHashMap<VehiclePart, Pending> pending = new IdentityHashMap<>();
+    private static final LinkedHashMap<VehiclePart, Pending> pending = new LinkedHashMap<>();
+    private static final HashSet<VehiclePart> delivering = new HashSet<>();
     private static ThreadPoolExecutor worker;
     private static CountDownLatch hold;
     private static VehiclePart heldPart;
     private static long heldFrame;
     private static boolean observedBusyOnLaterFrame;
     private static int heldResults;
+    private static EngineDoorCallbackProbe callbackProbe;
 
     private EngineDoorSimulation() {}
 
@@ -64,15 +70,17 @@ public final class EngineDoorSimulation {
     }
 
     public static Boolean update(VehiclePart part) {
-        if (!WorldSimulation.isActive() || !eligible(part)) return null;
+        if (WorldSimulation.isOwner() && delivering.contains(part)) return false;
+        if (!WorldSimulation.isActive() || !eligible(part) || !isAttached(part)) return null;
         float now = (float) GameTime.getInstance().getWorldAgeHours();
         if (!WorldSimulation.asynchronous()) {
             WorldSimulation.record(true, 1, false);
-            return advance(part, part.getLastUpdated(), now).due();
+            return deliver(part, advance(part, part.getLastUpdated(), now));
         }
 
         Pending previous = pending.get(part);
-        Result completed = null;
+        boolean consumed = false;
+        boolean updated = false;
         if (previous != null) {
             if (!previous.future().ready) {
                 if (part == heldPart && MovingObjectUpdateScheduler.instance.getFrameCounter() > heldFrame) {
@@ -83,12 +91,13 @@ public final class EngineDoorSimulation {
                 return false;
             }
             pending.remove(part);
-            completed = result(previous);
+            updated = deliver(part, result(previous));
+            consumed = true;
             if (part == heldPart) heldResults++;
         }
 
         if (WorldSimulation.correctnessScenario() && heldPart == part) {
-            return completed != null && completed.due();
+            return updated;
         }
 
         CountDownLatch gate = null;
@@ -96,8 +105,14 @@ public final class EngineDoorSimulation {
             heldPart = part;
             heldFrame = MovingObjectUpdateScheduler.instance.getFrameCounter();
             part.setLastUpdated(now - 1.0F);
+            callbackProbe = new EngineDoorCallbackProbe(CALLBACK, part, now);
             gate = new CountDownLatch(1);
             hold = gate;
+        }
+        // Lua delivery can change the part or remove the vehicle.
+        if (!eligible(part) || !isAttached(part)) {
+            WorldSimulation.record(false, consumed ? 1 : 0, false);
+            return updated;
         }
         CountDownLatch delay = gate;
         float previousTimestamp = part.getLastUpdated();
@@ -111,11 +126,33 @@ public final class EngineDoorSimulation {
             executor().execute(job);
             pending.put(part, new Pending(part, job));
         } catch (RejectedExecutionException full) {
-            WorldSimulation.record(true, completed == null ? 1 : 2, false);
-            return advance(part, previousTimestamp, now).due() || completed != null && completed.due();
+            WorldSimulation.record(true, consumed ? 2 : 1, false);
+            return deliver(part, advance(part, previousTimestamp, now)) || updated;
         }
-        WorldSimulation.record(true, completed == null ? 0 : 1, false);
-        return completed != null && completed.due();
+        WorldSimulation.record(true, consumed ? 1 : 0, false);
+        return updated;
+    }
+
+    private static boolean isAttached(VehiclePart part) {
+        BaseVehicle vehicle = (BaseVehicle) part.getOwner();
+        return !vehicle.isRemovedFromWorld() && vehicle.getPartById(part.getId()) == part;
+    }
+
+    private static boolean deliver(VehiclePart part, Result update) {
+        if (!update.due() || !eligible(part) || !isAttached(part)) return false;
+        BaseVehicle vehicle = (BaseVehicle) part.getOwner();
+        delivering.add(part);
+        try {
+            Fields.CALL_LUA.invokeExact(vehicle.getParts(), CALLBACK, (Object) vehicle, (Object) part,
+                (Object) update.elapsedMinutes());
+        } catch (RuntimeException | Error failure) {
+            throw failure;
+        } catch (Throwable failure) {
+            throw new IllegalStateException("Original vehicle Lua call failed", failure);
+        } finally {
+            delivering.remove(part);
+        }
+        return true;
     }
 
     private static Result advance(VehiclePart part, float previous, float now) {
@@ -124,7 +161,7 @@ public final class EngineDoorSimulation {
         float next = due ? now : adjusted;
         // The worker owns only this scalar. A concurrent native setter/load wins over an obsolete calculation.
         boolean changed = Fields.LAST_UPDATED.compareAndSet(part, previous, next);
-        return new Result(changed && due, next, Thread.currentThread());
+        return new Result(changed && due, next, (double) ((now - adjusted) * 60.0F), Thread.currentThread());
     }
 
     private static ThreadPoolExecutor executor() {
@@ -157,22 +194,24 @@ public final class EngineDoorSimulation {
         // Between benchmark windows and before unload only. Account for a due result even if the part
         // was never scheduled again to return it to BaseVehicle.updateParts().
         if (hold != null) hold.countDown();
-        for (Pending job : pending.values()) {
-            if (result(job).due()) Fields.BRAKE_SPEED.set((BaseVehicle) job.part().getOwner(), 0.0F);
-        }
-        int drained = pending.size();
+        var jobs = java.util.List.copyOf(pending.values());
         pending.clear();
-        return drained;
+        for (Pending job : jobs) {
+            if (deliver(job.part(), result(job))) Fields.BRAKE_SPEED.set((BaseVehicle) job.part().getOwner(), 0.0F);
+        }
+        if (callbackProbe != null) callbackProbe.close();
+        return jobs.size();
     }
 
     public static String correctnessEvidence() {
-        if (!observedBusyOnLaterFrame || heldResults != 1) {
-            throw new IllegalStateException("Expected a busy part on a later server frame and exactly one result");
+        if (!observedBusyOnLaterFrame || heldResults != 1 || callbackProbe == null || !callbackProbe.deliveredOnce()) {
+            throw new IllegalStateException("Expected one server-thread Lua delivery for the held part and one result");
         }
-        return "busy across server frame; native timestamp published; consumed once\n";
+        return "busy across server frame; native timestamp published; Lua override called once on server thread\n";
     }
 
     public static void stop() {
+        if (callbackProbe != null) callbackProbe.close();
         if (hold != null) hold.countDown();
         pending.values().forEach(job -> job.future().cancel(true));
         pending.clear();
@@ -190,7 +229,7 @@ public final class EngineDoorSimulation {
     }
 
     private record Pending(VehiclePart part, Completion future) {}
-    private record Result(boolean due, float timestamp, Thread thread) {}
+    private record Result(boolean due, float timestamp, Double elapsedMinutes, Thread thread) {}
 
     private static final class Completion extends FutureTask<Result> {
         volatile boolean ready;
@@ -209,6 +248,17 @@ public final class EngineDoorSimulation {
     private static final class Fields {
         static final VarHandle LAST_UPDATED = field(VehiclePart.class, "lastUpdated", true);
         static final VarHandle BRAKE_SPEED = field(BaseVehicle.class, "brakeBetweenUpdatesSpeed", false);
+        static final MethodHandle CALL_LUA = luaCall();
+
+        private static MethodHandle luaCall() {
+            try {
+                return MethodHandles.privateLookupIn(VehicleParts.class, MethodHandles.lookup()).findVirtual(
+                    VehicleParts.class, "callLuaVoid", MethodType.methodType(void.class,
+                        String.class, Object.class, Object.class, Object.class));
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException("Missing original vehicle Lua call", failure);
+            }
+        }
 
         private static VarHandle field(Class<?> owner, String name, boolean requireVolatile) {
             try {

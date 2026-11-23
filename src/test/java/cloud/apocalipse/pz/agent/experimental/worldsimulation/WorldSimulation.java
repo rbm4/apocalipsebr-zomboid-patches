@@ -13,8 +13,9 @@ public final class WorldSimulation {
     public static final String PROPERTY = "pz.it.experimentalWorldSimulation";
     public static final String REPORT = "experimental-world-simulation.csv";
     private static final int WARMUP = 20;
-    private static final int WINDOW_FRAMES = 16;
-    private static final int CORRECTNESS_FRAMES = 4 * WINDOW_FRAMES;
+    static final int WINDOW_FRAMES = 32;
+    static final int WINDOWS_PER_CYCLE = 2;
+    private static final int CORRECTNESS_FRAMES = WINDOWS_PER_CYCLE * WINDOW_FRAMES;
     private static final List<Window> windows = new ArrayList<>();
     private static Window window;
     private static Thread owner;
@@ -32,7 +33,11 @@ public final class WorldSimulation {
     }
 
     public static boolean isActive() {
-        return active && Thread.currentThread() == owner;
+        return isOwner() && active;
+    }
+
+    public static boolean isOwner() {
+        return Thread.currentThread() == owner;
     }
 
     public static boolean asynchronous() {
@@ -52,7 +57,7 @@ public final class WorldSimulation {
 
         int offset = held - WARMUP;
         int block = offset / WINDOW_FRAMES;
-        if (released || cycle == 0 || offset < 0 || block >= 4) {
+        if (released || cycle == 0 || offset < 0 || block >= WINDOWS_PER_CYCLE) {
             if (active) {
                 active = false;
                 drainWindow();
@@ -61,8 +66,9 @@ public final class WorldSimulation {
             return;
         }
         if (window == null || window.cycle != cycle || window.block != block) {
+            active = false;
             drainWindow();
-            boolean asynchronous = (block == 1 || block == 2) ^ (cycle % 2 == 0);
+            boolean asynchronous = (block == 1) ^ (cycle % 2 == 0);
             window = new Window(cycle, block, asynchronous);
             windows.add(window);
         }
