@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent.integration.assertions;
 
 import cloud.apocalipse.pz.agent.features.optimization.vehicle.ParkedVehicleModule;
+import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkAdjacencyModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkContainerModule;
 import cloud.apocalipse.pz.agent.integration.ServerAssertion;
@@ -24,6 +25,11 @@ public final class StreamingLifecycleAssertion implements ServerAssertion {
     @Override public String name() { return "Playerless streaming loads, unloads, and drains saves"; }
 
     @Override public void verify(ServerTestContext server) throws Exception {
+        assumeTrue(!WorldSimulation.enabled(), "The experimental assertion owns the streaming fixture");
+        drive(server);
+    }
+
+    public static void drive(ServerTestContext server) throws Exception {
         assumeTrue(Boolean.getBoolean("pz.it.streaming"), "Enable with -Dpz.it.streaming=true");
         var workload = StreamingWorkload.from(System.getProperties());
         Path directory = server.directory();

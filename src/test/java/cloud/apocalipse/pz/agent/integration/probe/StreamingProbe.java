@@ -1,5 +1,7 @@
 package cloud.apocalipse.pz.agent.integration.probe;
 
+import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
+
 import cloud.apocalipse.pz.agent.features.optimization.OptimizationVisitor;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.CellBorderModule;
 import java.io.IOException;
@@ -29,6 +31,7 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 /** Drives native streaming on the server thread and measures the same boundaries in both A/B runs. */
 public final class StreamingProbe {
+    private static final boolean EXPERIMENTAL_WORLD_SIMULATION = Boolean.getBoolean("pz.it.experimentalWorldSimulation");
     private static final int CHURN_BATCH = 9;
     private static final int CHURN_FRAMES = 10;
     private static final List<Target> VEHICLE_TARGETS = List.of(
@@ -132,6 +135,7 @@ public final class StreamingProbe {
         }
         if (movingScenario) builder = MovingObjectSpike.configure(builder, output);
         if (compareVehicleCadence) builder = VehicleCadenceProbe.configure(builder);
+        if (EXPERIMENTAL_WORLD_SIMULATION) builder = WorldSimulation.configure(builder);
         if (profileChunkLifecycle) builder = ChunkLifecycleProbe.configure(builder, workload.chunkComparison());
         builder.type(named(LOADER)).transform((dynamic, type, loader, module, domain) -> dynamic
             .visit(Advice.to(LoadQueued.class).on(named("addJob")
@@ -404,6 +408,7 @@ public final class StreamingProbe {
                 }
             }
             if (compareVehicleCadence) VehicleCadenceProbe.frame(cycle.index, cycle.holdFrames, cycle.released != 0);
+            if (EXPERIMENTAL_WORLD_SIMULATION) WorldSimulation.frame(cycle.index, cycle.holdFrames, cycle.released != 0);
         } catch (Exception failure) {
             failed(failure);
         }
@@ -412,6 +417,7 @@ public final class StreamingProbe {
     public static void afterPostupdate(Object serverMap) {
         Cycle cycle = active;
         if (cycle == null) return;
+        if (EXPERIMENTAL_WORLD_SIMULATION) WorldSimulation.endFrame();
         ServerMap map = (ServerMap) serverMap;
         try {
             long now = System.nanoTime();
@@ -487,6 +493,10 @@ public final class StreamingProbe {
                 writeCsv();
                 if (compareVehicleCadence) VehicleCadenceProbe.write(directory);
                 if (workload.chunkComparison()) ChunkLifecycleComparison.write(directory);
+                if (EXPERIMENTAL_WORLD_SIMULATION) {
+                    WorldSimulation.write(directory);
+                    WorldSimulation.stop();
+                }
                 Files.createFile(directory.resolve("streaming-complete"));
                 done = true;
             }
@@ -571,6 +581,13 @@ public final class StreamingProbe {
 
     private static void failed(Exception failure) {
         if (compareVehicleCadence) VehicleCadenceProbe.stop();
+        if (EXPERIMENTAL_WORLD_SIMULATION) {
+            try {
+                WorldSimulation.stop();
+            } catch (RuntimeException shutdownFailure) {
+                failure.addSuppressed(shutdownFailure);
+            }
+        }
         restoreVehicleSettings();
         active = null;
         done = true;

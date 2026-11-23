@@ -325,6 +325,42 @@ fallback, saved reload, unload and save drain.
 Results are in `chunk-lifecycle-comparison.csv` and `streaming.csv`.
 See the [chunk lifecycle report](../reports/2026-11-22-chunk-lifecycle.md).
 
+### Experimental world simulation
+
+```powershell
+mvn verify -Pserver-integration "-Dpz.it.streaming=true" "-Dpz.it.streamingProfile=vehicles72" "-Dpz.it.experimentalWorldSimulation=true" "-Dpz.it.heap=8g"
+```
+
+This opt-in scenario packages the experimental classes only into the test
+observer JAR. It uses the original 42.22.2 vehicle update and part-update
+entry points and forces a parts pass for matching engine doors in both arms.
+The worker writes the existing part's elapsed-time field. The field is volatile
+in this test JVM, including its direct vanilla save/load accesses. The worker
+updates it only if it still matches the value at submission. One pending
+result per part uses a volatile completion flag so the server can skip busy
+work and consume a completion once without waiting during a scheduled pass.
+The server can see the previous completed clock until the worker writes it.
+A due result resets the vehicle's brake accumulator when the server consumes
+it, which can be a later parts pass. The fixture drains results between
+timing windows and before releasing cells.
+
+The Java replacement covers `Vehicles.Update.EngineDoor`, whose vanilla body
+is empty. A mod override of that name is bypassed during the experiment for
+the matching EngineDoor part. Spawn callbacks and other update hooks are
+outside this experiment. The worker executes no Lua, Bullet, or whole-vehicle
+simulation. A held-job case verifies that a later server frame sees the part
+busy, the worker publishes the native timestamp, and the server consumes it
+once. There is no connected-client or packet parity assertion.
+
+`experimental-world-simulation.csv` reports alternating inline and worker
+windows within each warm cycle, with scheduler median and p95 time, the p95
+span between the fixture's server-map preupdate and postupdate hooks, offers,
+admissions, completions, busy observations, and the separate end-of-window
+drain count and time. The scheduler and span timings include dispatch
+and measurement overhead. They do not cover the entire server tick or measure
+a full vehicle update offload. The assertion checks that both arms execute,
+without requiring the worker to be faster.
+
 ### Parked vehicle cadence comparison
 
 ```powershell

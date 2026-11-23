@@ -199,16 +199,24 @@ public final class ServerTestContext implements AutoCloseable {
     private Path createProbeJar() throws Exception {
         Path testClasses = Path.of(ServerTestContext.class.getProtectionDomain().getCodeSource().getLocation().toURI());
         Path probeClasses = testClasses.resolve("cloud/apocalipse/pz/agent/integration/probe");
+        var packages = new java.util.ArrayList<>(java.util.List.of(probeClasses));
+        if (Boolean.getBoolean("pz.it.experimentalWorldSimulation")) {
+            packages.add(testClasses.resolve("cloud/apocalipse/pz/agent/experimental"));
+        }
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
         manifest.getMainAttributes().putValue("Premain-Class", PROBE);
         Path jar = directory.resolve("hook-probe.jar");
-        try (var out = new JarOutputStream(Files.newOutputStream(jar), manifest);
-             var files = Files.walk(probeClasses)) {
-            for (Path file : files.filter(path -> path.toString().endsWith(".class")).toList()) {
-                out.putNextEntry(new JarEntry(testClasses.relativize(file).toString().replace('\\', '/')));
-                Files.copy(file, out);
-                out.closeEntry();
+        try (var out = new JarOutputStream(Files.newOutputStream(jar), manifest)) {
+            for (Path directory : packages) {
+                try (var files = Files.walk(directory)) {
+                    for (Path file : files.filter(path -> path.toString().endsWith(".class")
+                            && !path.getFileName().toString().endsWith("Assertion.class")).toList()) {
+                        out.putNextEntry(new JarEntry(testClasses.relativize(file).toString().replace('\\', '/')));
+                        Files.copy(file, out);
+                        out.closeEntry();
+                    }
+                }
             }
         }
         return jar;

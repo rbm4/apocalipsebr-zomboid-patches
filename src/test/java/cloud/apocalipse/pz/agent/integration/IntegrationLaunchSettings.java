@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent.integration;
 
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
+import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
 import cloud.apocalipse.pz.agent.integration.probe.ChunkLifecycleProbe;
 import cloud.apocalipse.pz.agent.integration.probe.VehicleCadenceProbe;
@@ -19,6 +20,14 @@ final class IntegrationLaunchSettings {
         Map<String, String> settings = new LinkedHashMap<>();
         boolean streaming = Boolean.parseBoolean(runner.getProperty("pz.it.streaming", "false"));
         boolean moving = Boolean.parseBoolean(runner.getProperty("pz.it.movingObjects", "false"));
+        if (Boolean.parseBoolean(runner.getProperty(WorldSimulation.PROPERTY))) {
+            if (!streaming || !"vehicles72".equals(runner.getProperty(StreamingWorkload.PROFILE))
+                    || Boolean.parseBoolean(runner.getProperty(VehicleCadenceProbe.COMPARE_PROPERTY))
+                    || Boolean.parseBoolean(runner.getProperty(ChunkLifecycleProbe.COMPARE_PROPERTY))) {
+                throw new IllegalArgumentException("Experimental world simulation requires its own vehicles72 streaming run");
+            }
+            settings.put(WorldSimulation.PROPERTY, "true");
+        }
         if (Boolean.parseBoolean(runner.getProperty(ChunkLifecycleProbe.COMPARE_PROPERTY))
                 && (!streaming || !"vehicles72".equals(runner.getProperty(StreamingWorkload.PROFILE)))) {
             throw new IllegalArgumentException("Chunk comparison requires streaming and the vehicles72 profile");
