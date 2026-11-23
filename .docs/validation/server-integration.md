@@ -92,8 +92,12 @@ bootstrap. Player persistence and dictionary storage require their own
 schemas and scenarios. The streaming benchmarks use the isolated fixture
 with PostgreSQL disabled.
 
-The workflow retains test reports, runtime hashes, hook evidence, telemetry,
-and CSV measurements in its Actions artifact.
+The workflow run's **Summary** tab shows Surefire totals, per-stage Failsafe
+totals, and expandable results for named tests, startup hooks, and gameplay
+assertions. It also shows the PostgreSQL bootstrap step outcome, which includes
+the SQL verification. The summary is published on failed runs and indicates
+when reports are unavailable. The workflow retains the XML reports, runtime
+hashes, hook evidence, telemetry, and CSV measurements in its Actions artifact.
 
 ### VS Code configured-services task
 
