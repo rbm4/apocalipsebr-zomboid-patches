@@ -73,6 +73,21 @@ class IntegrationInfrastructureTest {
         assertFalse(child.containsKey("APOCBR_UNRELATED"));
     }
 
+    @Test void vehiclePressureKeepsAReproduciblePoolAndChangesTheWarmSubsets() {
+        String profile = cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload.PROFILE;
+        var config = new java.util.Properties();
+        config.setProperty(profile, "vehicles72");
+        var workload = cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload.from(config);
+        assertEquals(72, new HashSet<>(workload.cellsFor(0)).size());
+        assertEquals(100, workload.holdFrames());
+        for (int cycle = 1; cycle < workload.cycles(); cycle++) {
+            assertEquals(54, new HashSet<>(workload.cellsFor(cycle)).size());
+            assertTrue(workload.cells().containsAll(workload.cellsFor(cycle)));
+            assertEquals(workload.cellsFor(cycle), workload.cellsFor(cycle));
+        }
+        assertNotEquals(new HashSet<>(workload.cellsFor(1)), new HashSet<>(workload.cellsFor(2)));
+    }
+
     @Test void streamingForwardsOnlyBooleanOptimizationSwitchesInIsolation() {
         var runner = new java.util.Properties();
         String flag = AgentConfiguration.SERVER_LOS_OPTIMIZATION;

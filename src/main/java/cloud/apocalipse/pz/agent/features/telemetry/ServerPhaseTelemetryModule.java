@@ -39,6 +39,7 @@ public final class ServerPhaseTelemetryModule implements AgentModule {
         new Target(Phase.STEAM_PUMP, "zombie.core.znet.SteamUtils", "runLoop"),
         new Target(Phase.WORLD, "zombie.iso.IsoWorld", "update"),
         new Target(Phase.CELL, "zombie.iso.IsoCell", "update"),
+        new Target(Phase.MOVING_SETUP, "zombie.MovingObjectUpdateScheduler", "startFrame"),
         new Target(Phase.MOVING, "zombie.MovingObjectUpdateScheduler", "update"),
         new Target(Phase.CONTACTS, "zombie.CollisionManager", "ResolveContacts"),
         new Target(Phase.WORLD_PHYSICS, "zombie.core.physics.WorldSimulation", "update"),

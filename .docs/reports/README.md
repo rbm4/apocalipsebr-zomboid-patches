@@ -10,6 +10,10 @@ Pre-port audit: [2026-11-21 bot engine vanilla dependency map](2026-11-21-npc-de
 
 Integration infrastructure: [2026-11-21 real-server integration validation](2026-11-21-server-integration.md).
 
+[Vehicle simulation and streaming pressure](2026-11-22-vehicle-simulation-pressure.md) traces the original dedicated-server vehicle load, update and relay boundaries and records the pressure fixture.
+
+[Chunk integration and detachment](2026-11-22-chunk-lifecycle.md) measures the original-JAR hot paths and traces the world-owner and worker boundaries.
+
 Current work: [2026-11-21 PostgreSQL and NPC vanilla compatibility audit](2026-11-21-postgresql-vanilla-audit.md).
 
 Implementation follow-up: [2026-11-21 PostgreSQL module and account hook registration](2026-11-21-postgresql-hook-registration.md).

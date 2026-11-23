@@ -1,6 +1,9 @@
 package cloud.apocalipse.pz.agent.integration;
 
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
+import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
+import cloud.apocalipse.pz.agent.integration.probe.ChunkLifecycleProbe;
+import cloud.apocalipse.pz.agent.integration.probe.VehicleCadenceProbe;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -15,6 +18,17 @@ final class IntegrationLaunchSettings {
     static Map<String, String> properties(Properties runner, Path run, String localEndpoint) {
         Map<String, String> settings = new LinkedHashMap<>();
         boolean streaming = Boolean.parseBoolean(runner.getProperty("pz.it.streaming", "false"));
+        boolean moving = Boolean.parseBoolean(runner.getProperty("pz.it.movingObjects", "false"));
+        if (Boolean.parseBoolean(runner.getProperty(ChunkLifecycleProbe.COMPARE_PROPERTY))
+                && (!streaming || !"vehicles72".equals(runner.getProperty(StreamingWorkload.PROFILE)))) {
+            throw new IllegalArgumentException("Chunk comparison requires streaming and the vehicles72 profile");
+        }
+        if (moving && runner.getProperty("pz.it.streamingBaseline") != null) {
+            throw new IllegalArgumentException("The one-cycle moving-object scenario has no warm streaming baseline");
+        }
+        if (moving && !streaming) {
+            throw new IllegalArgumentException("The moving-object scenario requires -Dpz.it.streaming=true");
+        }
         boolean configured = Boolean.parseBoolean(runner.getProperty(TASK_CONFIGURATION, "false"));
         if (streaming && configured) {
             throw new IllegalArgumentException("The streaming scenario requires the isolated server fixture");
@@ -31,7 +45,37 @@ final class IntegrationLaunchSettings {
             settings.put(AgentConfiguration.RESTART_URL_PROPERTY, localEndpoint + "/restart");
         }
         if (streaming) {
+            var workload = StreamingWorkload.from(runner);
+            if (workload.chunkComparison()) {
+                if (Boolean.parseBoolean(runner.getProperty(VehicleCadenceProbe.COMPARE_PROPERTY))
+                        || runner.getProperty("pz.it.streamingBaseline") != null
+                        || !Boolean.parseBoolean(runner.getProperty(AgentConfiguration.CHUNK_CONTAINER_OPTIMIZATION, "true"))
+                        || !Boolean.parseBoolean(runner.getProperty(AgentConfiguration.CHUNK_ADJACENCY_OPTIMIZATION, "true"))) {
+                    throw new IllegalArgumentException("Chunk comparison requires both hooks and its own paired workload");
+                }
+                settings.put(ChunkLifecycleProbe.COMPARE_PROPERTY, "true");
+            }
+            if (workload.chunkComparison() || Boolean.parseBoolean(runner.getProperty(ChunkLifecycleProbe.PROFILE_PROPERTY))) {
+                settings.put(ChunkLifecycleProbe.PROFILE_PROPERTY, "true");
+            }
+            if (Boolean.parseBoolean(runner.getProperty(VehicleCadenceProbe.COMPARE_PROPERTY))) {
+                if (!workload.vehicleStress() || !Boolean.parseBoolean(
+                        runner.getProperty(AgentConfiguration.PARKED_VEHICLE_OPTIMIZATION, "true"))) {
+                    throw new IllegalArgumentException("The parked cadence comparison requires vehicles72 and the parked vehicle hook");
+                }
+                settings.put(VehicleCadenceProbe.COMPARE_PROPERTY, "true");
+            }
+            if (workload.vehicleStress()) {
+                if (moving) throw new IllegalArgumentException("vehicles72 measures natural vehicle work without a synthetic spike");
+                settings.put(StreamingWorkload.VEHICLE_SEED, Long.toString(workload.vehicleSeed()));
+                settings.put(AgentConfiguration.MOVING_OBJECT_TELEMETRY_PROPERTY, "true");
+            }
             settings.put("pz.it.streaming", "true");
+            if (moving) {
+                settings.put("pz.it.movingObjects", "true");
+                settings.put(AgentConfiguration.MOVING_OBJECT_TELEMETRY_PROPERTY, "true");
+            }
+            settings.put(StreamingWorkload.PROFILE, runner.getProperty(StreamingWorkload.PROFILE, "smoke"));
             runner.stringPropertyNames().stream().filter(IntegrationLaunchSettings::isOptimizationSwitch).sorted()
                 .forEach(key -> {
                     String value = runner.getProperty(key);

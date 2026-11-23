@@ -19,6 +19,10 @@ public final class OptimizationTelemetry {
         NEAR_VEHICLE_QUERY_SKIPPED("players.nearVehicle.queriesSkipped"),
         PACKET_PATH_SQRT_SKIPPED("zombies.packet.pathSquareRootsSkipped"),
         CLOTHING_REBUILT("players.thermal.clothingRebuilt"),
+        VEHICLE_FULL_CADENCE("vehicles.scheduler.fullChecks"),
+        VEHICLE_PARKED_CADENCE("vehicles.scheduler.sixteenthChecks"),
+        CHUNK_CONTAINER_CHECK_SKIPPED("map.chunk.containerChecksSkipped"),
+        CHUNK_INTERIOR_UNLINK_SKIPPED("map.chunk.interiorUnlinksSkipped"),
         ENTITY_REMOVAL_INDEXED("entities.removal.indexed"),
         ENTITY_CATCHUP_TICKS("entities.simulationCatchupTicks"),
         ENTITY_META_NOT_DUE("entities.metaNotDue"),
@@ -67,6 +71,29 @@ public final class OptimizationTelemetry {
         WORLD("simulation", "world"),
         CELL("simulation", "cell"),
         MOVING("simulation", "movingObjects", "update"),
+        MOVING_SETUP("simulation", "movingObjects", "startFrame"),
+        MOVING_UPDATE_CPU("simulation", "movingObjects", "cpu", "update"),
+        MOVING_POSTUPDATE_CPU("simulation", "movingObjects", "cpu", "postupdate"),
+        MOVING_PREUPDATE_PLAYER("simulation", "movingObjects", "callbacks", "preupdate", "player"),
+        MOVING_PREUPDATE_VEHICLE("simulation", "movingObjects", "callbacks", "preupdate", "vehicle"),
+        MOVING_PREUPDATE_ANIMAL("simulation", "movingObjects", "callbacks", "preupdate", "animal"),
+        MOVING_PREUPDATE_ZOMBIE("simulation", "movingObjects", "callbacks", "preupdate", "zombie"),
+        MOVING_PREUPDATE_OTHER("simulation", "movingObjects", "callbacks", "preupdate", "other"),
+        MOVING_FRAME_STEP_PLAYER("simulation", "movingObjects", "callbacks", "frameStep", "player"),
+        MOVING_FRAME_STEP_VEHICLE("simulation", "movingObjects", "callbacks", "frameStep", "vehicle"),
+        MOVING_FRAME_STEP_ANIMAL("simulation", "movingObjects", "callbacks", "frameStep", "animal"),
+        MOVING_FRAME_STEP_ZOMBIE("simulation", "movingObjects", "callbacks", "frameStep", "zombie"),
+        MOVING_FRAME_STEP_OTHER("simulation", "movingObjects", "callbacks", "frameStep", "other"),
+        MOVING_UPDATE_PLAYER("simulation", "movingObjects", "callbacks", "update", "player"),
+        MOVING_UPDATE_VEHICLE("simulation", "movingObjects", "callbacks", "update", "vehicle"),
+        MOVING_UPDATE_ANIMAL("simulation", "movingObjects", "callbacks", "update", "animal"),
+        MOVING_UPDATE_ZOMBIE("simulation", "movingObjects", "callbacks", "update", "zombie"),
+        MOVING_UPDATE_OTHER("simulation", "movingObjects", "callbacks", "update", "other"),
+        MOVING_POSTUPDATE_PLAYER("simulation", "movingObjects", "callbacks", "postupdate", "player"),
+        MOVING_POSTUPDATE_VEHICLE("simulation", "movingObjects", "callbacks", "postupdate", "vehicle"),
+        MOVING_POSTUPDATE_ANIMAL("simulation", "movingObjects", "callbacks", "postupdate", "animal"),
+        MOVING_POSTUPDATE_ZOMBIE("simulation", "movingObjects", "callbacks", "postupdate", "zombie"),
+        MOVING_POSTUPDATE_OTHER("simulation", "movingObjects", "callbacks", "postupdate", "other"),
         MAP_SAVE_COMPLETIONS("map", "saveCompletions"),
         MOVING_POST("simulation", "movingObjects", "postupdate"),
         SPOTTED_ROOMS("simulation", "spottedRooms"),
@@ -119,7 +146,10 @@ public final class OptimizationTelemetry {
         }
 
         public void recordSince(long started) {
-            long nanos = System.nanoTime() - started;
+            recordNanos(System.nanoTime() - started);
+        }
+
+        void recordNanos(long nanos) {
             totalNanos.add(nanos);
             maxNanos.accumulate(nanos);
             calls.increment();

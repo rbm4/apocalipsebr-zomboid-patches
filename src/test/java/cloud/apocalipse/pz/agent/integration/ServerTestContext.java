@@ -1,5 +1,6 @@
 package cloud.apocalipse.pz.agent.integration;
 
+import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
 import com.sun.net.httpserver.HttpServer;
 import java.io.File;
 import java.io.IOException;
@@ -75,7 +76,7 @@ public final class ServerTestContext implements AutoCloseable {
         Path config = Files.createDirectories(cache.resolve("Server"));
         int port = availablePort();
         int udpPort;
-        do { udpPort = availablePort(); } while (udpPort == port);
+        do { udpPort = availablePort(); } while (Math.abs(udpPort - port) < 2);
         String streamingSeed = Boolean.getBoolean("pz.it.streaming") ? "ApocBRStreamingFixture42" : "";
         Files.writeString(config.resolve("agent-integration.ini"), """
             Public=false
@@ -90,6 +91,11 @@ public final class ServerTestContext implements AutoCloseable {
             Map=Muldraugh, KY
             MaxPlayers=2
             """ + "DefaultPort=" + port + "\nUDPPort=" + udpPort + "\nSeed=" + streamingSeed + "\n");
+
+        if (!streamingSeed.isEmpty() && StreamingWorkload.from(System.getProperties()).vehicleStress()) {
+            Files.writeString(config.resolve("agent-integration_SandboxVars.lua"),
+                "SandboxVars = { VERSION = 6, EnableVehicles = true, CarSpawnRate = 5 }\n");
+        }
 
         receiver = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         receiver.createContext("/api/v1/telemetry", exchange -> {
@@ -139,8 +145,16 @@ public final class ServerTestContext implements AutoCloseable {
         manifest.setProperty("server.port", Integer.toString(port));
         manifest.setProperty("server.udpPort", Integer.toString(udpPort));
         if (!streamingSeed.isEmpty()) {
-            manifest.setProperty("streaming.fixture", "muldraugh-165-155-2x2-v1");
+            var workload = StreamingWorkload.from(System.getProperties());
+            manifest.setProperty("streaming.fixture", workload.id());
+            manifest.setProperty("streaming.positions", Integer.toString(workload.positions().size()));
+            manifest.setProperty("streaming.cells", Integer.toString(workload.cells().size()));
+            manifest.setProperty("streaming.heap", System.getProperty("pz.it.heap", "2g"));
             manifest.setProperty("streaming.seed", streamingSeed);
+            if (workload.vehicleStress()) {
+                manifest.setProperty("streaming.vehicleSeed", workload.vehicleSeed().toString());
+                manifest.setProperty("streaming.carSpawnRate", "5");
+            }
             settings.forEach((key, value) -> {
                 if (IntegrationLaunchSettings.isOptimizationSwitch(key)) manifest.setProperty(key, value);
             });

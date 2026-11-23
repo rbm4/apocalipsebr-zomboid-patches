@@ -63,6 +63,30 @@ measurements are still open, including per-packet drain counts, cell
 boundary/recalculation substeps, and counters or phases inside unported
 optimization paths. Existing agent optimization metrics continue to be emitted.
 
+## Moving-object stalls
+
+`simulation.movingObjects.update` measures the server scheduler update,
+including the virtual `preupdate`, `frameStep` and `update` calls in each
+bucket. `simulation.movingObjects.startFrame` measures the earlier bucket
+setup in the cell, and `postupdate` is a separate pass. Vanilla 42.22.2
+takes the dedicated-server zombie tracking branch when filling buckets, so
+the snapshot zombie gauge alone does not identify the scheduler workload.
+
+Enable `-Dapocbr.telemetry.movingObjects.enabled=true` at startup to add
+callback wall time by stage and kind. The names have the form
+`simulation.movingObjects.callbacks.update.vehicle`. Inspect the
+slowest tick's phase rows to identify the expensive stage and kind, and
+look at the window's call count and maximum call to distinguish a single
+stall from repeated work. Scheduler `cpu.update` and `cpu.postupdate`
+sample the owner thread's CPU clock when available. A large wall-to-CPU
+gap can include blocking, scheduler descheduling or a JVM pause. It does
+not identify the wait by itself.
+
+The hook uses the original virtual calls and only records when the
+diagnostic server-loop thread is active. Inline postupdate is covered.
+Postupdate on an optional animation thread is outside this timing.
+See the [original-JAR integration scenario](../validation/server-integration.md#moving-object-scheduler-scenario).
+
 ## Validation
 
 The Maven tests verify the registered hook calls against the original 42.22.2

@@ -8,6 +8,13 @@ import org.yaml.snakeyaml.Yaml;
 import org.yaml.snakeyaml.constructor.SafeConstructor;
 
 public record AgentConfiguration(String profile, URI telemetryEndpoint, URI restartEndpoint, boolean restartEnabled) {
+    /** Per-kind scheduler callback timing. Enable with {@code -Dapocbr.telemetry.movingObjects.enabled=true}. */
+    public static final String MOVING_OBJECT_TELEMETRY_PROPERTY = "apocbr.telemetry.movingObjects.enabled";
+
+    public static boolean movingObjectTelemetryEnabled() {
+        return Boolean.parseBoolean(systemProperty(MOVING_OBJECT_TELEMETRY_PROPERTY, "false"));
+    }
+
     /** XML hotfix: {@code -Dapocbr.hotfixes.xmlCaseInsensitive.enabled=true}; defaults to enabled. */
     public static final String XML_CASE_INSENSITIVE_HOTFIX_PROPERTY = "apocbr.hotfixes.xmlCaseInsensitive.enabled";
 
@@ -21,6 +28,20 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String ZOMBIE_PACKET_OPTIMIZATION = "apocbr.optimization.zombiePacket.enabled";
     /** Thermal clothing port, defaults to enabled. Set {@code -Dapocbr.optimization.thermalClothing.enabled=false} to disable. */
     public static final String THERMAL_CLOTHING_OPTIMIZATION = "apocbr.optimization.thermalClothing.enabled";
+    /** Dedicated parked-vehicle cadence defaults on. Disable with {@code -Dapocbr.optimization.parkedVehicle.enabled=false}. */
+    public static final String PARKED_VEHICLE_OPTIMIZATION = "apocbr.optimization.parkedVehicle.enabled";
+
+    /** Chunk integration container checks default on. Disable with {@code -Dapocbr.optimization.chunkContainers.enabled=false}. */
+    public static final String CHUNK_CONTAINER_OPTIMIZATION = "apocbr.optimization.chunkContainers.enabled";
+    /** Chunk detachment adjacency cleanup defaults on. Disable with {@code -Dapocbr.optimization.chunkAdjacency.enabled=false}. */
+    public static final String CHUNK_ADJACENCY_OPTIMIZATION = "apocbr.optimization.chunkAdjacency.enabled";
+
+    /** Opt-in same-cell perimeter lookups. Enable with {@code -Dapocbr.optimization.cellBorder.enabled=true}. */
+    public static final String CELL_BORDER_OPTIMIZATION = "apocbr.optimization.cellBorder.enabled";
+
+    public static boolean cellBorderOptimizationEnabled() {
+        return Boolean.parseBoolean(systemProperty(CELL_BORDER_OPTIMIZATION, "false"));
+    }
 
     /** Engine entity removal index defaults on. Disable with {@code -Dapocbr.optimization.entityRemoval.enabled=false}. */
     public static final String ENTITY_REMOVAL_OPTIMIZATION = "apocbr.optimization.entityRemoval.enabled";
