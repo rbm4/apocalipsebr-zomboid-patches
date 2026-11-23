@@ -71,6 +71,11 @@ public final class ServerHumanFactory {
     }
     public static boolean ready(){var current=INSTANCE;return current!=null&&current.owner==Thread.currentThread()&&!current.stopping;}
 
+    static ServerHumanFurniture furnitureOnOwner() {
+        var current = INSTANCE;
+        return current != null && current.owner == Thread.currentThread() ? current.furniture : null;
+    }
+
     public static ServerHumanFactory getInstance() {
         if(INSTANCE==null)throw new IllegalStateException("NPC factory not initialized");
         return INSTANCE;

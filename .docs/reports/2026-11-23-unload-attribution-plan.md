@@ -229,7 +229,7 @@ These costs occur on the native object teardown path even during the
 playerless streaming fixture. This identifies an existing agent extension
 to measure in isolation before changing native unload or threading it.
 See [the hook](../../src/main/java/cloud/apocalipse/pz/agent/features/npc/NpcModule.java#L139)
-and [the lifetime tracker](../../src/main/java/cloud/apocalipse/pz/agent/features/npc/NpcObjectLifetime.java#L17).
+and the [current replacement for that historical tracker](../features/npc-engine.md#furniture-token-lifetime).
 
 The slowest warm postupdate measured 463.11 ms wall and about 328.13 ms owner
 CPU. A 120.65 ms GC pause overlapped this window. The median warm postupdate

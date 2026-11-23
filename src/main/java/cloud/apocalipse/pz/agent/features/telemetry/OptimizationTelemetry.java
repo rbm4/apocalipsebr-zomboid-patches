@@ -26,6 +26,8 @@ public final class OptimizationTelemetry {
         CHUNK_CONTAINER_CHECK_SKIPPED("map.chunk.containerChecksSkipped"),
         CHUNK_INTERIOR_UNLINK_SKIPPED("map.chunk.interiorUnlinksSkipped"),
         ENTITY_REMOVAL_INDEXED("entities.removal.indexed"),
+        NPC_FURNITURE_OBJECT_INVALIDATED("npc.furniture.bindingsInvalidatedByObject"),
+        NPC_FURNITURE_CELL_INVALIDATED("npc.furniture.bindingsInvalidatedByCell"),
         ENTITY_CATCHUP_TICKS("entities.simulationCatchupTicks"),
         ENTITY_META_NOT_DUE("entities.metaNotDue"),
         ENTITY_BUCKET_SKIPPED("entities.simulationSkippedByIndex"),

@@ -22,7 +22,11 @@ public final class NpcFactoryFixtureMain {
                 catch(java.io.IOException failure){throw new ClassNotFoundException(name,failure);}
             }
         }){
-            String main=args[0].equals("hit-default")?NpcOrdinaryHitSmokeMain.class.getName():NpcHookSmokeMain.class.getName();
+            String main = switch (args[0]) {
+                case "hit-default" -> NpcOrdinaryHitSmokeMain.class.getName();
+                case "furniture" -> NpcAdaptersTest.class.getName();
+                default -> NpcHookSmokeMain.class.getName();
+            };
             try{loader.loadClass(main).getMethod("main",String[].class).invoke(null,(Object)args);}
             catch(InvocationTargetException failure){throw new AssertionError("Factory fixture failed",failure.getCause());}
         }

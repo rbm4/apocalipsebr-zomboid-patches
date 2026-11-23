@@ -1,38 +1,107 @@
 package cloud.apocalipse.pz.agent.features.npc.furniture;
 
-import java.util.*;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import cloud.apocalipse.pz.agent.features.npc.furniture.FurnitureAffordances.Token;
 
-/** Server-private identity bindings; detached tokens never carry their native object. */
+/** Server-owned bindings for issued tokens, indexed by the area that owns them. */
 public final class FurnitureBindings<T> {
-    private record Binding<T>(T object,Object revision,int x,int y,int z,long generation) { }
-    private final Thread owner=Thread.currentThread();
-    private final IdentityHashMap<T,Binding<T>> objects=new IdentityHashMap<>();
-    private final LinkedHashMap<Long,Binding<T>> generations=new LinkedHashMap<>();
+    private record Binding<T>(T object, Object revision, long area, Token token) {}
+
+    private final Thread owner = Thread.currentThread();
+    private final IdentityHashMap<T, Binding<T>> objects = new IdentityHashMap<>();
+    private final LinkedHashMap<Long, Binding<T>> generations = new LinkedHashMap<>();
+    private final Map<Long, Set<Binding<T>>> areas = new HashMap<>();
     private final int capacity;
     private long sequence;
-    public FurnitureBindings(int capacity){if(capacity<1||capacity>2048)throw new IllegalArgumentException("Invalid binding capacity");this.capacity=capacity;}
-    private void check(){if(Thread.currentThread()!=owner)throw new IllegalStateException("Furniture binding requires server owner");}
-    public Token bind(T object,Object revision,int x,int y,int z,String slot) {
-        check();Objects.requireNonNull(object);Objects.requireNonNull(revision);
-        var binding=objects.get(object);
-        if(binding==null||binding.x!=x||binding.y!=y||binding.z!=z||!binding.revision.equals(revision)) {
-            // Validate before invalidating an accepted binding or consuming a generation.
-            new Token(Math.addExact(sequence,1),x,y,z,slot);
-            remove(object);
-            if(objects.size()==capacity)remove(generations.values().iterator().next().object);
-            binding=new Binding<>(object,revision,x,y,z,++sequence);objects.put(object,binding);generations.put(binding.generation,binding);
+
+    public FurnitureBindings(int capacity) {
+        if (capacity < 1 || capacity > 2048) throw new IllegalArgumentException("Invalid binding capacity");
+        this.capacity = capacity;
+    }
+
+    private void check() {
+        if (Thread.currentThread() != owner) throw new IllegalStateException("Furniture binding requires server owner");
+    }
+
+    public Token bind(T object, Object revision, long area, int x, int y, int z, String slot) {
+        check();
+        Objects.requireNonNull(object);
+        Objects.requireNonNull(revision);
+        var binding = objects.get(object);
+        if (binding != null && binding.area == area && binding.token.x() == x && binding.token.y() == y
+                && binding.token.z() == z && binding.revision.equals(revision)) {
+            return binding.token.slot().equals(slot) ? binding.token : new Token(binding.token.generation(), x, y, z, slot);
         }
-        return new Token(binding.generation,x,y,z,slot);
+
+        // Validate the token before evicting an accepted binding or advancing the sequence.
+        var token = new Token(Math.addExact(sequence, 1), x, y, z, slot);
+        remove(object);
+        if (objects.size() == capacity) remove(generations.firstEntry().getValue().object);
+        sequence = token.generation();
+        binding = new Binding<>(object, revision, area, token);
+        objects.put(object, binding);
+        generations.put(sequence, binding);
+        areas.computeIfAbsent(area, key -> Collections.newSetFromMap(new IdentityHashMap<>())).add(binding);
+        return token;
     }
-    /** The native adapter must still validate live membership/revision before an effect. */
+
+    private Binding<T> find(Token token) {
+        check();
+        Objects.requireNonNull(token);
+        var binding = generations.get(token.generation());
+        return binding != null && binding.token.x() == token.x() && binding.token.y() == token.y() && binding.token.z() == token.z()
+            ? binding : null;
+    }
+
+    /** The native adapter still validates live membership and the furniture descriptor before an effect. */
     public T resolve(Token token) {
-        check();Objects.requireNonNull(token);var binding=generations.get(token.generation());
-        return binding!=null&&binding.x==token.x()&&binding.y==token.y()&&binding.z==token.z()?binding.object:null;
+        var binding = find(token);
+        return binding == null ? null : binding.object;
     }
-    /** Private-adapter stamp, never an observation or a worker message. */
-    public Object revision(Token token){check();var binding=generations.get(token.generation());return resolve(token)==null?null:binding.revision;}
-    public void remove(T object){check();var binding=objects.remove(object);if(binding!=null)generations.remove(binding.generation);}
-    public void clear(){check();objects.clear();generations.clear();}
-    public int size(){check();return objects.size();}
+
+    public Object revision(Token token) {
+        var binding = find(token);
+        return binding == null ? null : binding.revision;
+    }
+
+    public boolean remove(Object object) {
+        check();
+        var binding = objects.remove(object);
+        if (binding == null) return false;
+        generations.remove(binding.token.generation());
+        var group = areas.get(binding.area);
+        group.remove(binding);
+        if (group.isEmpty()) areas.remove(binding.area);
+        return true;
+    }
+
+    /** Retires only issued bindings in this area, even when the native object is later reused. */
+    public int removeArea(long area) {
+        check();
+        var group = areas.remove(area);
+        if (group == null) return 0;
+        for (var binding : group) {
+            objects.remove(binding.object);
+            generations.remove(binding.token.generation());
+        }
+        return group.size();
+    }
+
+    public void clear() {
+        check();
+        objects.clear();
+        generations.clear();
+        areas.clear();
+    }
+
+    public boolean isEmpty() {
+        check();
+        return objects.isEmpty();
+    }
 }
