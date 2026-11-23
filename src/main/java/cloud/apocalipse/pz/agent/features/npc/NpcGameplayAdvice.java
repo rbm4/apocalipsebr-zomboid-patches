@@ -8,16 +8,28 @@ public final class NpcGameplayAdvice {
         @Advice.OnMethodEnter public static void enter(){NpcRuntime.worldReset();}
     }
     public static class Lifetime {
-        @Advice.OnMethodEnter public static void enter(@Advice.This Object object){NpcObjectLifetime.changed(object);}
+        @Advice.OnMethodEnter public static void enter(@Advice.This Object object){NpcFurnitureHooks.invalidate(object);}
+    }
+    public static class RemoveFromWorld {
+        @Advice.OnMethodEnter public static void enter(@Advice.This Object object, @Advice.FieldValue("square") Object square) {
+            NpcFurnitureHooks.removedFromWorld(object, square);
+        }
+    }
+    public static class FurnitureCellUnload {
+        @Advice.OnMethodEnter public static Object enter(@Advice.FieldValue("wx") int x, @Advice.FieldValue("wy") int y) {
+            return NpcFurnitureHooks.beginCellUnload(x, y);
+        }
+        @Advice.OnMethodExit(onThrowable = Throwable.class)
+        public static void exit(@Advice.Enter Object scope) { NpcFurnitureHooks.endCellUnload(scope); }
     }
     public static class SetSquare {
         @Advice.OnMethodEnter public static void enter(@Advice.This Object object,@Advice.FieldValue("square") Object old,@Advice.Argument(0) Object next){
-            if(old!=next)NpcObjectLifetime.changed(object);
+            if(old!=next)NpcFurnitureHooks.invalidate(object);
         }
     }
     public static class RemoveSquare {
         @Advice.OnMethodEnter public static void enter(@Advice.This Object object,@Advice.FieldValue("square") Object square){
-            if(square!=null)NpcObjectLifetime.changed(object);
+            if(square!=null)NpcFurnitureHooks.invalidate(object);
         }
     }
     public static class Slot {

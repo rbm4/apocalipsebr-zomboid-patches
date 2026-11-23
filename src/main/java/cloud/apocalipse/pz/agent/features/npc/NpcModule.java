@@ -24,7 +24,7 @@ public final class NpcModule implements AgentModule {
         "zombie.network.packets.TradingUIUpdateStatePacket","zombie.popman.NetworkZombieManager",
         "zombie.popman.NetworkZombiePacker","zombie.network.packets.character.ZombiePacket","zombie.characters.IsoGameCharacter",
         "zombie.network.packets.hit.PlayerHitPlayerPacket","zombie.network.packets.hit.PlayerHitPacket",
-        "zombie.network.packets.hit.HitCharacter","zombie.network.fields.hit.Hit","zombie.characters.BodyDamage.BodyPart","zombie.iso.IsoWorld");
+        "zombie.network.packets.hit.HitCharacter","zombie.network.fields.hit.Hit","zombie.characters.BodyDamage.BodyPart","zombie.iso.IsoWorld","zombie.network.ServerMap$ServerCell");
     @Override public String name() { return "npc-engine"; }
     @Override public String disabledReason() {
         if (settings == null) throw new IllegalStateException("NPC module not initialized");
@@ -42,8 +42,12 @@ public final class NpcModule implements AgentModule {
             checks.add(new HookCheck("npc-membership","zombie.iso.IsoCell","<init>",NpcMembershipSet.class.getName(),"wrap",false));
             checks.add(new HookCheck("npc-world-reset","zombie.iso.IsoWorld","KillCell",runtime,"worldReset",false));
             checks.add(new HookCheck("npc-cell-dispose","zombie.iso.IsoCell","Dispose",runtime,"worldReset",false));
-            for(String method:List.of("setSquare","reset","addToWorld","removeFromWorld","removeFromSquare"))
-                checks.add(new HookCheck("npc-lifetime-"+method,"zombie.iso.IsoObject",method,NpcObjectLifetime.class.getName(),"changed",false));
+            String furniture = NpcFurnitureHooks.class.getName();
+            for (String method : List.of("setSquare", "reset", "addToWorld", "removeFromSquare"))
+                checks.add(new HookCheck("npc-furniture-" + method, "zombie.iso.IsoObject", method, furniture, "invalidate", false));
+            checks.add(new HookCheck("npc-furniture-removeFromWorld", "zombie.iso.IsoObject", "removeFromWorld", furniture, "removedFromWorld", false));
+            checks.add(new HookCheck("npc-furniture-cell-unload", "zombie.network.ServerMap$ServerCell", "Unload", furniture, "beginCellUnload", false));
+            checks.add(new HookCheck("npc-furniture-cell-unload-exit", "zombie.network.ServerMap$ServerCell", "Unload", furniture, "endCellUnload", false));
             checks.add(new HookCheck("npc-walk-only","zombie.pathfind.PMMover","set",hooks,"walkOnly",false));
             checks.add(new HookCheck("npc-data","zombie.network.packets.character.PlayerDataRequestPacket","processServer",hooks,"dataRequest",false));
             checks.add(new HookCheck("npc-trade-parse","zombie.network.packets.PlayerRequestPacket","parse",hooks,"resolveTrade",false));
@@ -136,7 +140,10 @@ public final class NpcModule implements AgentModule {
             case "zombie.iso.IsoObject"->builder
                 .visit(Advice.to(NpcGameplayAdvice.SetSquare.class).on(named("setSquare").and(takesArguments(1))))
                 .visit(Advice.to(NpcGameplayAdvice.RemoveSquare.class).on(named("removeFromSquare").and(takesArguments(0))))
-                .visit(Advice.to(NpcGameplayAdvice.Lifetime.class).on(namedOneOf("reset","addToWorld","removeFromWorld").and(takesArguments(0))));
+                .visit(Advice.to(NpcGameplayAdvice.Lifetime.class).on(namedOneOf("reset","addToWorld").and(takesArguments(0))))
+                .visit(Advice.to(NpcGameplayAdvice.RemoveFromWorld.class).on(named("removeFromWorld").and(hasDescriptor("()V"))));
+            case "zombie.network.ServerMap$ServerCell" -> builder
+                .visit(Advice.to(NpcGameplayAdvice.FurnitureCellUnload.class).on(named("Unload").and(hasDescriptor("()V"))));
             case "zombie.pathfind.PMMover"->builder.visit(Advice.to(NpcGameplayAdvice.WalkOnly.class).on(named("set").and(takesArguments(1)).and(takesArgument(0,named("zombie.pathfind.PathFindRequest")))));
             case "zombie.network.packets.character.PlayerDataRequestPacket"->builder.visit(Advice.to(NpcGameplayAdvice.DataRequest.class).on(named("processServer").and(takesArguments(2))));
             case "zombie.network.packets.PlayerRequestPacket"->builder.visit(Advice.to(NpcGameplayAdvice.TradeParse.class).on(named("parse").and(takesArguments(2))));

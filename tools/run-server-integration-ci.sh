@@ -19,10 +19,8 @@ run_stage() {
     local output="target/ci/$stage"
     mkdir -p "$output"
     printf '\n=== %s ===\n' "$stage"
-    mvn "${common[@]}" "$@" | tee "$output/maven.log" || status=$?
-    if [[ -d target/failsafe-reports ]]; then
-        cp -r target/failsafe-reports "$output/"
-    fi
+    mvn "${common[@]}" "-Dpz.it.reportsDirectory=$PWD/$output/failsafe-reports" "$@" |
+        tee "$output/maven.log" || status=$?
     if (( status != 0 )); then
         return "$status"
     fi

@@ -28,7 +28,8 @@ All installation contracts are declared in `hookChecks()` for automatic discover
 | `GameServer.getFreeSlot()` | Preserve slot ordering while excluding connection slots 192–255, including not-yet-issued NPC IDs. |
 | `PlayerDataRequestPacket.processServer(...)` | Consume known NPC requests and announce only to relevant connected recipients; otherwise continue ordinary lookup. |
 | `IsoCell.objectList` initialization | Wrap the original set before the constructor publishes the cell/starts workers. Direct, bulk and iterator mutations track membership tokens, including remove/re-add. The existing field/type remains unchanged. |
-| `IsoObject.setSquare/reset/addToWorld/removeFromWorld/removeFromSquare` | Weak identity lifetime revisions replace the added legacy member, including conditional square/removal increments. Furniture scanning uses its supported untracked-list fallback. |
+| `ServerMap.ServerCell.Unload()` | Retire issued furniture tokens for the cell on the server owner before native detachment. Restore the retirement scope on return or exception. |
+| `IsoObject.setSquare/reset/addToWorld/removeFromWorld/removeFromSquare` | Invalidate an issued binding for an individual object change. Base `removeFromWorld` skips the binding lookup for objects in the retiring cell. Furniture scanning uses its supported untracked-list fallback. |
 | `PMMover.set(PathFindRequest)` | Handle only agent-owned walk-only movers, copy level/bound restrictions, disable crawl/thump/fence capabilities; retain ordinary requests and the other overload. |
 | Declaring `PlayerRequestPacket.parse(...)` | Resolve only destinations for six exact trading families after native sender parsing, covering inherited request/accept/reject parses. |
 | Six trading `processServer(...)` methods | Consume handled/rejected NPC sessions through migrated authorization/activity/durable-sale logic; retain ordinary player-to-player behavior. |
@@ -40,6 +41,52 @@ All installation contracts are declared in `hookChecks()` for automatic discover
 | Packer `updateAuth/applyZombie/getZombieData`, `ZombiePacket.set`, character `hitConsequences` | Preserve frame ordering, accepted-owner receive handling and native packet preparation; append eligible controlled relays and NPC/corpse overlays. Frame relay selection is shared across viewers. |
 
 `NpcChat` constructs native say/shout messages with original channel/member/range eligibility, without fake accounts or arbitrary broadcasts. Factory ticks reinstall trusted `ApocBRHumanAPI` version 5 and the seating facade when the Lua environment changes. Announcements use the existing agent Lua/events provider. These trusted server APIs do not authorize arbitrary client commands.
+
+## Furniture token lifetime
+
+The NPC observer creates a detached token after discovery finds a usable
+furniture candidate. The server-owned binding table indexes only issued
+tokens, by native identity, generation and server cell. Observers and
+reservations share the same generation for the same live seat. Rediscovery
+of an unchanged seat reuses its detached token.
+Eviction from the bounded table, individual native object changes and
+cell retirement remove all corresponding lookup entries. There is no
+world-wide object revision table.
+
+The native cell hook invalidates the cell's bindings before detachment starts.
+During that scope, furniture discovery cannot issue a token for the cell.
+The ordinary object removal hook skips the identity lookup for that cell.
+A callback affecting a different live cell still uses individual invalidation.
+The scope closes even if vanilla throws, and invalidated tokens stay invalid.
+When no furniture session exists, the hooks return before touching any
+binding table. When a session has no issued bindings, the unload hook does
+not look up an area or any object in the table.
+
+Old detached tokens can still appear in observation frames until refresh.
+Effect-time resolution rejects them. Reusing the same object at the same
+coordinates after reload creates a new generation. Normal server chunk reuse
+is handed to the worker after owner-thread detachment. New hooks only access
+bindings on that owner. Seating validity and reservations continue to use
+the existing owner-thread checks and cleanup paths.
+
+Schema-3 counters `npc.furniture.bindingsInvalidatedByCell` and
+`npc.furniture.bindingsInvalidatedByObject` count actual issued-token
+invalidations. An unload with active actors, seating and connected viewers
+still needs a dedicated scenario. See the
+[previous unload attribution](../reports/2026-11-23-unload-attribution-plan.md#30-position-sampled-results)
+for the historical WeakReference-map workload.
+
+The transformed-hook fixture checked conditional object invalidation,
+unchanged-token reuse, isolation between adjacent cell bindings, failure
+unwinding, and rejection of the old token after the same object is rebound.
+The packaged agent passed the original 42.22.2 `players30` streaming
+fixture and graceful shutdown in `target/server-integration/run-9539608491399370042`.
+Across five warm batches of 45 cells and 2,880 chunks each, median sampled
+cell unload was 155.60 ms. The earlier sampled run reported 275.78 ms and
+191 warm owner samples in the former tracker. The new recording contained
+zero samples in that tracker. The runs used the same original game build
+and fixture seed. The elapsed difference comes from sequential runs of
+different agent builds.
 
 ## NPC persistence
 

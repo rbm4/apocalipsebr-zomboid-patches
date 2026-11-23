@@ -21,9 +21,15 @@ public final class OptimizationTelemetry {
         CLOTHING_REBUILT("players.thermal.clothingRebuilt"),
         VEHICLE_FULL_CADENCE("vehicles.scheduler.fullChecks"),
         VEHICLE_PARKED_CADENCE("vehicles.scheduler.sixteenthChecks"),
+        CELL_RELEVANCE_SCAN_SKIPPED("map.cell.relevanceScansSkipped"),
+        BUCKET_REMOVAL_USING_PLAYER_INDEX("entities.removal.usingPlayerBucketIndexed"),
+        ENTITY_BUCKET_REUSE_POSITION("entities.bucketRemoval.indexed"),
+        ENTITY_BUCKET_POSITION_BUILD("entities.bucketRemoval.indexBuilds"),
         CHUNK_CONTAINER_CHECK_SKIPPED("map.chunk.containerChecksSkipped"),
         CHUNK_INTERIOR_UNLINK_SKIPPED("map.chunk.interiorUnlinksSkipped"),
         ENTITY_REMOVAL_INDEXED("entities.removal.indexed"),
+        NPC_FURNITURE_OBJECT_INVALIDATED("npc.furniture.bindingsInvalidatedByObject"),
+        NPC_FURNITURE_CELL_INVALIDATED("npc.furniture.bindingsInvalidatedByCell"),
         ENTITY_CATCHUP_TICKS("entities.simulationCatchupTicks"),
         ENTITY_META_NOT_DUE("entities.metaNotDue"),
         ENTITY_BUCKET_SKIPPED("entities.simulationSkippedByIndex"),
@@ -35,7 +41,9 @@ public final class OptimizationTelemetry {
         ZOMBIE_SEND_BACKPRESSURE("zombies.async.backpressure"),
         ZOMBIE_SEND_FAILED("zombies.async.failed"),
         ZOMBIE_SEND_SUBMITTED("zombieJobs.submitted"),
-        ZOMBIE_SEND_BYTES("zombies.async.snapshotBytes");
+        ZOMBIE_SEND_BYTES("zombies.async.snapshotBytes"),
+        CHUNK_REPLY_BACKPRESSURE("network.chunks.async.backpressure"),
+        CHUNK_REPLY_SEND_FAILED("network.chunks.async.statusSendFailed");
 
         private final String key;
         private final LongAdder value = new LongAdder();
@@ -60,6 +68,11 @@ public final class OptimizationTelemetry {
         SIMULATION("simulation", "update"),
         VEHICLES("vehicles", "update"),
         DOWNLOADS("players", "relevanceAndDownloads", "downloadUpdate"),
+        CHUNK_DOWNLOAD_SERIALIZE("players", "relevanceAndDownloads", "downloadUpdate", "serialize"),
+        CHUNK_DOWNLOAD_PENDING("players", "relevanceAndDownloads", "downloadUpdate", "pending"),
+        CHUNK_DOWNLOAD_DEDUPLICATE("players", "relevanceAndDownloads", "downloadUpdate", "deduplicate"),
+        CHUNK_REPLY_TRANSPORT("network", "chunks", "async", "statusTransport"),
+        CHUNK_PAYLOAD_TRANSPORT("network", "chunks", "async", "payloadTransport"),
         BACKUP("backup", "onPeriod"),
         TRADING("world", "socialSystems", "trading"),
         WAR("world", "socialSystems", "war"),

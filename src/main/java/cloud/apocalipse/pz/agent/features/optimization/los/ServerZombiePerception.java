@@ -1,9 +1,9 @@
 package cloud.apocalipse.pz.agent.features.optimization.los;
 
+import cloud.apocalipse.pz.agent.features.optimization.los.perception.PerceptionBuckets;
 import cloud.apocalipse.pz.agent.features.telemetry.OptimizationTelemetry;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Stack;
 import zombie.GameTime;
@@ -20,7 +20,7 @@ import zombie.popman.NetworkZombieManager;
 /** Owner-thread view used only by dedicated-server LOS completion. */
 public final class ServerZombiePerception {
     private static final int SIDE = 16;
-    private static final HashMap<Long, List<Candidate>> CELLS = new HashMap<>();
+    private static final PerceptionBuckets<Candidate> CELLS = new PerceptionBuckets<>();
     private static TrackedZombieList indexed;
     private static long version;
     private static boolean finitePositions;
@@ -105,10 +105,7 @@ public final class ServerZombiePerception {
         // Include one extra tile at the edges to retain float-rounding boundary candidates.
         for (int column = tile(x - radius) - 1; column <= tile(x + radius) + 1; column++) {
             for (int row = tile(y - radius) - 1; row <= tile(y + radius) + 1; row++) {
-                var members = CELLS.get(key(column, row));
-                if (members != null) {
-                    nearby.addAll(members);
-                }
+                CELLS.append(key(column, row), nearby);
             }
         }
         nearby.sort(Comparator.comparingInt(Candidate::position));
@@ -132,8 +129,7 @@ public final class ServerZombiePerception {
                     CELLS.clear();
                     break;
                 }
-                CELLS.computeIfAbsent(key(tile(x), tile(y)), ignored -> new ArrayList<>())
-                    .add(new Candidate(position, zombie));
+                CELLS.add(key(tile(x), tile(y)), new Candidate(position, zombie));
             }
         }
         indexed = tracked;

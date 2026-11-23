@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$StreamingRun,
-    [Parameter(Mandatory)][string]$PostgresBin
+    [Parameter(Mandatory)][string]$PostgresBin,
+    [switch]$VerifyEngineMigration
 )
 
 $ErrorActionPreference = 'Stop'
@@ -44,6 +45,25 @@ try {
     $isStarted = $true
     & $java --class-path $driver $source $map $port | Tee-Object -FilePath (Join-Path $output 'replay.log')
     if ($LASTEXITCODE -ne 0) { throw 'Chunk replay failed' }
+    if ($VerifyEngineMigration) {
+        $psql = Join-Path $bin 'psql.exe'
+        & $psql -X -h 127.0.0.1 -p $port -U benchmark_migrator -d postgres -v ON_ERROR_STOP=1 `
+            -c 'CREATE ROLE chunk_migrator LOGIN' `
+            -c 'CREATE ROLE chunk_engine LOGIN' `
+            -c 'CREATE DATABASE chunk_migration OWNER chunk_migrator'
+        if ($LASTEXITCODE -ne 0) { throw 'Isolated chunk migration database setup failed' }
+        $previousJavaHome = $env:JAVA_HOME
+        Push-Location -LiteralPath $root
+        try {
+            $env:JAVA_HOME = Split-Path -Parent (Split-Path -Parent $java)
+            & mvn verify -Pserver-integration '-Dpz.it.streaming=true' '-Dpz.it.serverLogs=false' `
+                "-Dpz.it.chunkMigrationSeed=$run" "-Dpz.it.chunkMigrationPort=$port"
+            if ($LASTEXITCODE -ne 0) { throw 'Engine chunk migration integration failed' }
+        } finally {
+            $env:JAVA_HOME = $previousJavaHome
+            Pop-Location
+        }
+    }
 } finally {
     if ($isStarted -or (Test-Path -LiteralPath (Join-Path $data 'postmaster.pid'))) {
         & $pgCtl -D $data -m fast -w stop

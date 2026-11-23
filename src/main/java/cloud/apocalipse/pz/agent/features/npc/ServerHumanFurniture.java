@@ -17,6 +17,9 @@ final class ServerHumanFurniture {
     boolean available(ServerHuman human){check();var observer=actors.get(human);return actors.containsKey(human)&&(observer==null||!observer.failed&&!observer.closed);}
     void retain(ServerHuman human){check();if(!actors.containsKey(human))throw new IllegalStateException("Unknown furniture actor");retained.add(human);}
     void release(ServerHuman human){check();retained.remove(human);if(scheduler.size()==0&&retained.isEmpty())world.clear();}
+    void invalidate(Object object) { world.invalidate(object); }
+    void removedFromWorld(Object object, Object square) { world.removedFromWorld(object, square); }
+    ServerHumanFurnitureWorld.Unload beginCellUnload(int x, int y) { return world.beginCellUnload(x, y); }
     List<IsoPlayer> bodies(){check();return actors.keySet().stream().map(h->h.player).toList();}
     zombie.iso.IsoObject resolve(cloud.apocalipse.pz.agent.features.npc.furniture.FurnitureAffordances.Token token){check();return world.resolve(token);}
     cloud.apocalipse.pz.agent.features.npc.furniture.FurnitureAffordances.Candidate candidate(cloud.apocalipse.pz.agent.features.npc.furniture.FurnitureAffordances.Token token,long now){check();return world.candidate(token,now);}

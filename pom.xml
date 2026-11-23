@@ -197,6 +197,11 @@
                         <artifactId>maven-failsafe-plugin</artifactId>
                         <version>3.5.4</version>
                         <configuration>
+                            <reportsDirectory>${pz.it.reportsDirectory}</reportsDirectory>
+                            <summaryFile>${pz.it.reportsDirectory}/failsafe-summary.xml</summaryFile>
+                            <statelessTestsetReporter implementation="org.apache.maven.plugin.surefire.extensions.junit5.JUnit5Xml30StatelessReporter">
+                                <usePhrasedTestCaseMethodName>true</usePhrasedTestCaseMethodName>
+                            </statelessTestsetReporter>
                             <includes>
                                 <include>**/integration/ServerIntegrationIT.java</include>
                             </includes>
@@ -213,6 +218,9 @@
                     </plugin>
                 </plugins>
             </build>
+            <properties>
+                <pz.it.reportsDirectory>${project.build.directory}/failsafe-reports</pz.it.reportsDirectory>
+            </properties>
         </profile>
     </profiles>
 </project>

@@ -1,4 +1,16 @@
-# Server cell perimeter lookups
+# Server cell streaming
+
+## Frame relevance and unload
+
+The cell relevance hook reuses validated positions in the native frame relevance
+list for renewed requests and eviction decisions. Evictions still run in the
+original map postupdate. The relevance hook is opt-in through
+`-Dapocbr.optimization.cellRelevance.enabled=true` because the first matched
+streaming run showed higher request cost per call.
+See the [unload report](../reports/2026-11-23-unload-scan-and-async-review.md)
+for indexed bucket teardown, validation, and the async safety review.
+
+## Server cell perimeter lookups
 
 The `cell-border-lookup` module ports the same-cell lookup portion of the
 legacy 42.22.2 perimeter optimization to the original JAR. It uses the original

@@ -41,7 +41,10 @@ public final class UsingPlayerIndex {
         if (!GameServer.server || GameClient.client) {
             return false;
         }
-        var index = BUCKETS.computeIfAbsent(bucket, UsingPlayerIndex::new);
+        var index = BUCKETS.computeIfAbsent(bucket, key -> {
+            BucketRemovalIndex.release(key);
+            return new UsingPlayerIndex(key);
+        });
         int position = -1;
         int visited = 0;
         try {
@@ -74,10 +77,10 @@ public final class UsingPlayerIndex {
         }
     }
 
-    static void removing(EntityBucket bucket, Array<GameEntity> entries, GameEntity entity, boolean identity) {
+    static int removing(EntityBucket bucket, Array<GameEntity> entries, GameEntity entity, boolean identity) {
         var index = BUCKETS.get(bucket);
         if (index == null) {
-            return;
+            return -1;
         }
         Slot removed = index.slots.get(entity);
         Slot tail = entries.size == 0 ? null : index.slots.get(entries.peek());
@@ -85,7 +88,7 @@ public final class UsingPlayerIndex {
                 || entries.get(removed.position) != entity) {
             index.slots.keySet().forEach(index::detach);
             BUCKETS.remove(bucket);
-            return;
+            return -1;
         }
 
         index.slots.remove(entity);
@@ -96,6 +99,7 @@ public final class UsingPlayerIndex {
             tail.position = removed.position;
             index.refresh(tail);
         }
+        return removed.position;
     }
 
     public static void changed(Object instance) {

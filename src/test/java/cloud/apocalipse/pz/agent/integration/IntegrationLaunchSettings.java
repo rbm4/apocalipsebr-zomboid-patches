@@ -3,6 +3,11 @@ package cloud.apocalipse.pz.agent.integration;
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
+import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
+import cloud.apocalipse.pz.agent.integration.probe.EntityAllocations;
+import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
+import cloud.apocalipse.pz.agent.integration.probe.UnloadSamplingProbe;
+import cloud.apocalipse.pz.agent.integration.probe.BucketUnloadProbe;
 import cloud.apocalipse.pz.agent.integration.probe.ChunkLifecycleProbe;
 import cloud.apocalipse.pz.agent.integration.probe.VehicleCadenceProbe;
 import java.nio.file.Path;
@@ -20,6 +25,17 @@ final class IntegrationLaunchSettings {
         Map<String, String> settings = new LinkedHashMap<>();
         boolean streaming = Boolean.parseBoolean(runner.getProperty("pz.it.streaming", "false"));
         boolean moving = Boolean.parseBoolean(runner.getProperty("pz.it.movingObjects", "false"));
+        if (Boolean.parseBoolean(runner.getProperty(MovingObjectLoad.PROPERTY))) {
+            if (!streaming || !"players30".equals(runner.getProperty(StreamingWorkload.PROFILE)) || moving
+                    || runner.getProperty("pz.it.streamingBaseline") != null) {
+                throw new IllegalArgumentException("Moving-object load requires its own players30 streaming run");
+            }
+            MovingObjectLoad.Settings.from(runner).forward(settings);
+            if (Boolean.parseBoolean(runner.getProperty(EntityAllocations.PROPERTY))) {
+                settings.put(EntityAllocations.PROPERTY, "true");
+            }
+            settings.put(AgentConfiguration.MOVING_OBJECT_TELEMETRY_PROPERTY, "true");
+        }
         if (Boolean.parseBoolean(runner.getProperty(WorldSimulation.PROPERTY))) {
             if (!streaming || !"vehicles72".equals(runner.getProperty(StreamingWorkload.PROFILE))
                     || Boolean.parseBoolean(runner.getProperty(VehicleCadenceProbe.COMPARE_PROPERTY))
@@ -34,6 +50,27 @@ final class IntegrationLaunchSettings {
         }
         if (moving && runner.getProperty("pz.it.streamingBaseline") != null) {
             throw new IllegalArgumentException("The one-cycle moving-object scenario has no warm streaming baseline");
+        }
+        if (Boolean.parseBoolean(runner.getProperty(UnloadBreakdownProbe.PROPERTY))) {
+            if (!streaming) throw new IllegalArgumentException("Unload breakdown requires the streaming fixture");
+            settings.put(UnloadBreakdownProbe.PROPERTY, "true");
+        }
+        boolean sampleUnload = Boolean.parseBoolean(runner.getProperty(UnloadSamplingProbe.PROPERTY));
+        boolean countSearches = Boolean.parseBoolean(runner.getProperty(UnloadSamplingProbe.SEARCH_PROPERTY));
+        if (sampleUnload) {
+            if (!streaming) throw new IllegalArgumentException("Unload sampling requires the streaming fixture");
+            settings.put(UnloadSamplingProbe.PROPERTY, "true");
+        }
+        if (countSearches) {
+            if (!sampleUnload) throw new IllegalArgumentException("Native search accounting requires unload sampling");
+            settings.put(UnloadSamplingProbe.SEARCH_PROPERTY, "true");
+        }
+        if (Boolean.parseBoolean(runner.getProperty(BucketUnloadProbe.PROPERTY))) {
+            if (!sampleUnload || !countSearches || !Boolean.parseBoolean(
+                    runner.getProperty(AgentConfiguration.ENTITY_SIMULATION_OPTIMIZATION, "true"))) {
+                throw new IllegalArgumentException("Bucket profiling requires unload sampling, native search counting and entity simulation hooks");
+            }
+            settings.put(BucketUnloadProbe.PROPERTY, "true");
         }
         if (moving && !streaming) {
             throw new IllegalArgumentException("The moving-object scenario requires -Dpz.it.streaming=true");
@@ -94,6 +131,7 @@ final class IntegrationLaunchSettings {
                     settings.put(key, value);
                 });
         }
+        ChunkMigrationFixture.configure(runner, settings, streaming, configured);
         // Journal/replay state is owned by this run even when task service settings are reused.
         settings.put(AgentConfiguration.POSTGRES_JOURNAL_DIRECTORY_PROPERTY, run.resolve("journal").toString());
         return settings;

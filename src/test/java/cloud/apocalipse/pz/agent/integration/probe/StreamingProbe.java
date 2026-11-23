@@ -1,6 +1,7 @@
 package cloud.apocalipse.pz.agent.integration.probe;
 
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 
 import cloud.apocalipse.pz.agent.features.optimization.OptimizationVisitor;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.CellBorderModule;
@@ -58,6 +59,7 @@ public final class StreamingProbe {
     private static final String SAVE_JOB = LOADER + "$SaveUnloadedTask";
     private static final String SAVE = "chunk.saveWorker";
     private static final String WRITE = "chunk.writeWorker";
+    private static final String STORAGE_WRITE = "chunk.storageWrite";
     private static final String RELEASE = "chunk.saveRelease";
     private static final String LOAD = "cell.load";
     private static final String LOAD_HANDOFF = "cell.loadQueueToRecalcQueue";
@@ -73,7 +75,9 @@ public final class StreamingProbe {
 
     private static Path directory;
     private static StreamingWorkload workload;
+    private static ChunkStorageArm storageArm;
     private static boolean movingScenario;
+    private static MovingObjectLoad movingLoad;
     private static boolean compareVehicleCadence;
     private static boolean profileChunkLifecycle;
     private static long nextRequestPoll;
@@ -90,6 +94,7 @@ public final class StreamingProbe {
     static void install(Path output, Instrumentation instrumentation) {
         directory = output;
         workload = StreamingWorkload.from(System.getProperties());
+        storageArm = ChunkStorageArm.parse(System.getProperty(ChunkStorageArm.PROPERTY));
         movingScenario = Boolean.getBoolean("pz.it.movingObjects");
         compareVehicleCadence = Boolean.getBoolean(VehicleCadenceProbe.COMPARE_PROPERTY);
         profileChunkLifecycle = Boolean.getBoolean(ChunkLifecycleProbe.PROFILE_PROPERTY);
@@ -119,7 +124,10 @@ public final class StreamingProbe {
                 new Target(RELEASE, SAVE_JOB, "release"),
                 new Target("los.suspend", "zombie.network.ServerLOS", "suspend"),
                 new Target("los.resume", "zombie.network.ServerLOS", "resume")));
-        if (workload.vehicleStress()) {
+        if (storageArm != null) {
+            targets.add(new Target(STORAGE_WRITE, LOADER, "writeChunk", "(Lzombie/network/ClientChunkRequest$Chunk;)V"));
+        }
+        if (workload.vehicleStress() || Boolean.getBoolean(MovingObjectLoad.PROPERTY)) {
             targets.addAll(VEHICLE_TARGETS);
             builder = builder.type(named("zombie.vehicles.BaseVehicle"))
                 .transform((dynamic, type, loader, module, domain) -> dynamic
@@ -133,10 +141,19 @@ public final class StreamingProbe {
                 dynamic.visit(Advice.withCustomMapping().bind(PhaseName.class, target.phase())
                     .to(advice).on(named(target.method()).and(hasDescriptor(target.descriptor())))));
         }
+        if (Boolean.getBoolean(MovingObjectLoad.PROPERTY)) {
+            builder = builder.type(named("zombie.MovingObjectUpdateScheduler"))
+                .transform((dynamic, type, loader, module, domain) -> dynamic.visit(Advice.to(SchedulerSample.class)
+                    .on(named("update").and(hasDescriptor("()V")))));
+        }
+        builder = EntityAllocations.configure(builder);
         if (movingScenario) builder = MovingObjectSpike.configure(builder, output);
         if (compareVehicleCadence) builder = VehicleCadenceProbe.configure(builder);
         if (EXPERIMENTAL_WORLD_SIMULATION) builder = WorldSimulation.configure(builder);
         if (profileChunkLifecycle) builder = ChunkLifecycleProbe.configure(builder, workload.chunkComparison());
+        builder = UnloadBreakdownProbe.configure(builder);
+        builder = UnloadSamplingProbe.configure(builder);
+        builder = BucketUnloadProbe.configure(builder);
         builder.type(named(LOADER)).transform((dynamic, type, loader, module, domain) -> dynamic
             .visit(Advice.to(LoadQueued.class).on(named("addJob")
                 .and(hasDescriptor("(Lzombie/network/ServerMap$ServerCell;)V"))))
@@ -219,6 +236,7 @@ public final class StreamingProbe {
     public static void stepPhysics(float delta, int maximumSubsteps, float fixedStep) {
         long started = start("vehicle.physics.step");
         try {
+            if (movingLoad != null && onStreamingOwner()) movingLoad.recordBulletStep();
             zombie.core.physics.Bullet.stepSimulation(delta, maximumSubsteps, fixedStep);
         } finally {
             finish("vehicle.physics.step", started, null);
@@ -247,6 +265,20 @@ public final class StreamingProbe {
         }
     }
 
+    public static class SchedulerSample {
+        @Advice.OnMethodEnter
+        public static void enter() { sampleScheduler(true); }
+
+        @Advice.OnMethodExit(onThrowable = Throwable.class)
+        public static void exit() { sampleScheduler(false); }
+    }
+
+    public static void sampleScheduler(boolean starting) {
+        if (movingLoad == null || !onStreamingOwner()) return;
+        if (starting) movingLoad.beginScheduler();
+        else movingLoad.endScheduler();
+    }
+
     public static class VehicleUpdate {
         @Advice.OnMethodEnter public static long enter(@Advice.This Object vehicle) {
             return beginVehicleUpdate(vehicle);
@@ -270,6 +302,7 @@ public final class StreamingProbe {
         if (started == 0 || cycle == null) return;
         long elapsed = System.nanoTime() - started;
         cycle.record("vehicle.steady.update", elapsed, error);
+        if (movingLoad != null) movingLoad.recordVehicleUpdate(vehicle, elapsed);
         if (compareVehicleCadence) VehicleCadenceProbe.recordVehicleUpdate(vehicle, elapsed);
     }
 
@@ -285,14 +318,29 @@ public final class StreamingProbe {
     }
 
     public static class Postupdate {
-        @Advice.OnMethodEnter public static long enter() { return start("map.postupdate"); }
+        @Advice.OnMethodEnter public static long enter(@Advice.Local("unloadProfile") long unloadProfile) {
+            UnloadSamplingProbe.beginPostupdate();
+            unloadProfile = UnloadBreakdownProbe.beginPostupdate();
+            sampleMapPostupdate(true);
+            return start("map.postupdate");
+        }
 
         @Advice.OnMethodExit(onThrowable = Throwable.class)
         public static void exit(@Advice.This Object map, @Advice.Enter long started,
-                                @Advice.Thrown Throwable failure) {
+                                @Advice.Thrown Throwable failure,
+                                @Advice.Local("unloadProfile") long unloadProfile) {
+            sampleMapPostupdate(false);
             finish("map.postupdate", started, failure);
+            UnloadBreakdownProbe.endPostupdate(unloadProfile);
+            UnloadSamplingProbe.endPostupdate();
             if (failure == null) afterPostupdate(map);
         }
+    }
+
+    public static void sampleMapPostupdate(boolean starting) {
+        if (movingLoad == null || !onStreamingOwner()) return;
+        if (starting) movingLoad.beginMapPostupdate();
+        else movingLoad.endMapPostupdate();
     }
 
     // Advice signatures stay free of game types so Byte Buddy can read them during class definition.
@@ -338,7 +386,9 @@ public final class StreamingProbe {
                 || SAFE_READ.equals(phase) || READ_PENDING.equals(phase)) {
             return "LoadChunk".equals(thread.getName()) ? System.nanoTime() : 0;
         }
-        if (WRITE.equals(phase)) return "SaveChunk".equals(thread.getName()) ? System.nanoTime() : 0;
+        if (WRITE.equals(phase) || STORAGE_WRITE.equals(phase)) {
+            return "SaveChunk".equals(thread.getName()) ? System.nanoTime() : 0;
+        }
         return thread == owner || SAVE.equals(phase) ? System.nanoTime() : 0;
     }
 
@@ -379,6 +429,9 @@ public final class StreamingProbe {
                 // The runner compiles alongside a GameServer double with a different field descriptor.
                 engine = (UdpEngine) GameServer.class.getField("udpEngine").get(null);
                 owner = Thread.currentThread();
+                if (Boolean.getBoolean(MovingObjectLoad.PROPERTY)) movingLoad = new MovingObjectLoad();
+                UnloadScanChecks.verify(map, directory);
+                UnloadSamplingProbe.start();
                 if (workload.vehicleStress()) {
                     originalSpawnOverride = SystemDisabler.doVehiclesEverywhere;
                     require(SandboxOptions.instance.enableVehicles.getValue()
@@ -386,9 +439,13 @@ public final class StreamingProbe {
                     SystemDisabler.doVehiclesEverywhere = true;
                 }
             }
-            require(GameServer.Players.isEmpty() && engine.connections.isEmpty(),
-                "Streaming fixture requires an empty server");
+            require(engine.connections.isEmpty()
+                && (movingLoad == null ? GameServer.Players.isEmpty() : movingLoad.ownsPlayers()),
+                "Streaming fixture requires an isolated server and only fixture-owned players");
             if (active == null) {
+                if (storageArm != null && !Files.isRegularFile(directory.resolve("storage-start-" + completed.size()))) {
+                    return;
+                }
                 require(cellsAbsent(map, workload.cells()), "Fixture cells were already present");
                 active = new Cycle(completed.size());
             }
@@ -397,7 +454,9 @@ public final class StreamingProbe {
                 MovingObjectSpike.arm();
             }
             boolean waitForTelemetry = movingScenario && !Files.isRegularFile(directory.resolve("moving-object-release"));
-            if (cycle.holdFrames < workload.holdFrames() || waitForTelemetry) {
+            boolean waitForMovingLoad = movingLoad != null && !movingLoad.finished();
+            if (waitForMovingLoad && cycle.loaded != 0) movingLoad.drive();
+            if (cycle.holdFrames < workload.holdFrames() || waitForTelemetry || waitForMovingLoad) {
                 // Native relevance is cleared by preupdate. Renew before postupdate can cancel loading.
                 renewRelevance(map, cycle.cells);
             } else {
@@ -422,7 +481,8 @@ public final class StreamingProbe {
         try {
             long now = System.nanoTime();
             require(cycle.failure == null, String.valueOf(cycle.failure));
-            require(now - cycle.started < TimeUnit.SECONDS.toNanos(workload.cycleTimeoutSeconds()), "Streaming cycle timed out");
+            int deadline = workload.cycleTimeoutSeconds() + (movingLoad == null ? 0 : 300);
+            require(now - cycle.started < TimeUnit.SECONDS.toNanos(deadline), "Streaming cycle timed out");
             if (cycle.released == 0) {
                 int chunks = countChunks(map, cycle.cells);
                 if (chunks == 0) {
@@ -438,6 +498,18 @@ public final class StreamingProbe {
                     }
                 }
                 require(chunks == cycle.chunks, "Chunk coverage changed while holding relevance");
+                if (cycle.index == 0 && AgentConfiguration.chunkObjectMutationsEnabled()) {
+                    if (cycle.holdFrames == 0) {
+                        ChunkObjectMutationProbe.add(groundSquare(map, cycle.cells.getFirst()),
+                            groundSquare(map, cycle.cells.get(1)));
+                    } else if (cycle.holdFrames == 1) {
+                        ChunkObjectMutationProbe.changeAndRemove(directory);
+                    }
+                }
+                if (movingLoad != null) {
+                    if (cycle.holdFrames == 0) movingLoad.start(map, workload.positions());
+                    else movingLoad.sample(directory);
+                }
                 if (cycle.holdFrames < workload.holdFrames()) cycle.holdFrames++;
                 return;
             }
@@ -452,7 +524,29 @@ public final class StreamingProbe {
             }
             long generated = cycle.count(GENERATE);
             long saved = cycle.count(READ_SAVE);
-            require(cycle.count(READ_PENDING) == 0, "Unexpected pending-save load in cycle " + cycle.index);
+            long buffer = cycle.count(READ_PENDING);
+            boolean postgres = AgentConfiguration.postgresChunksEnabled();
+            if (storageArm != null) {
+                boolean first = cycle.index == 0;
+                long expectedGenerated = first && !storageArm.seeded() ? cycle.chunks : 0;
+                long expectedBuffer = postgres && !first ? cycle.chunks : 0;
+                require(postgres == storageArm.postgres() && generated == expectedGenerated
+                    && buffer == expectedBuffer && saved == cycle.chunks - expectedGenerated - expectedBuffer,
+                    "Unexpected chunk load path for " + storageArm + ", cycle " + cycle.index);
+                require(!postgres || cycle.count(WRITE) == 0, "PostgreSQL save must bypass disk writes");
+                require(cycle.count(STORAGE_WRITE) == cycle.chunks, "Expected one storage write attempt per chunk");
+            } else if (postgres) {
+                require(cycle.count(WRITE) == 0, "PostgreSQL save must bypass disk writes");
+                if (cycle.index == 0) {
+                    require(generated == 1 && saved == cycle.chunks - 1 && buffer == 0,
+                        "First PostgreSQL cycle must load the disk seed and generate one missing chunk");
+                } else {
+                    require(generated == 0 && saved == 0 && buffer == cycle.chunks,
+                        "Migrated reload must pass all chunks to the native buffer decoder");
+                }
+            } else {
+                require(buffer == 0, "Unexpected pending-save load in cycle " + cycle.index);
+            }
             require(cycle.count(SAFE_READ) == saved, "Saved-chunk reads must go through SafeRead");
             for (String phase : ChunkReadProbe.phases()) {
                 require(cycle.count(phase) == saved, phase + " count disagrees with saved-chunk reads");
@@ -466,8 +560,8 @@ public final class StreamingProbe {
                 require(cycle.count("cell.borderOracleMissing") > 0 && cycle.count("cell.borderOraclePresent") > 0,
                     "Expected transformed lookups to return both present and missing squares");
             }
-            require(generated + saved == cycle.chunks, "Load path counts disagree with loaded chunks");
-            require(cycle.index == 0 ? generated > 0 : generated == 0,
+            require(generated + saved + buffer == cycle.chunks, "Load path counts disagree with loaded chunks");
+            require(storageArm != null || (cycle.index == 0 ? generated > 0 : generated == 0),
                 "Expected generation only in the first cycle; cycle=" + cycle.index + ", generated=" + generated);
             cycle.record("wall.requestToLoaded", cycle.loaded - cycle.started, null);
             cycle.record("wall.releaseToDetached", cycle.detached - cycle.released, null);
@@ -488,9 +582,14 @@ public final class StreamingProbe {
             }
             completed.add(cycle);
             active = null;
-            if (movingScenario || completed.size() == workload.cycles()) {
+            if (storageArm != null) Files.createFile(directory.resolve("storage-drained-" + cycle.index));
+            int cycles = storageArm == null ? workload.cycles() : storageArm.cycles(workload);
+            if (movingScenario || movingLoad != null || completed.size() == cycles) {
                 restoreVehicleSettings();
                 writeCsv();
+                UnloadBreakdownProbe.write(directory);
+                UnloadSamplingProbe.finish(directory);
+                BucketUnloadProbe.write(directory);
                 if (compareVehicleCadence) VehicleCadenceProbe.write(directory);
                 if (workload.chunkComparison()) ChunkLifecycleComparison.write(directory);
                 if (EXPERIMENTAL_WORLD_SIMULATION) {
@@ -580,6 +679,19 @@ public final class StreamingProbe {
     }
 
     private static void failed(Exception failure) {
+        if (movingLoad != null) {
+            try {
+                movingLoad.writeSamples(directory);
+            } catch (IOException evidenceFailure) {
+                failure.addSuppressed(evidenceFailure);
+            }
+            try {
+                movingLoad.cleanup();
+            } catch (RuntimeException cleanupFailure) {
+                failure.addSuppressed(cleanupFailure);
+            }
+        }
+        UnloadSamplingProbe.discard();
         if (compareVehicleCadence) VehicleCadenceProbe.stop();
         if (EXPERIMENTAL_WORLD_SIMULATION) {
             try {

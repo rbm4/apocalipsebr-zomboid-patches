@@ -21,7 +21,7 @@ $classpath = $original + [IO.Path]::PathSeparator + $agent
 $testRoot = Join-Path $repo 'src/test/java/cloud/apocalipse/pz/agent'
 $probeMain = 'cloud.apocalipse.pz.agent.integration.probe.HookProbe'
 $smokeMain = 'cloud.apocalipse.pz.agent.features.optimization.OptimizationOriginalSmokeMain'
-& (Join-Path $jdkBin 'javac') -cp $classpath -d $classes `
+& (Join-Path $jdkBin 'javac') -cp $classpath -sourcepath (Join-Path $repo 'src/test/java') -d $classes `
     (Join-Path $testRoot 'features/optimization/OptimizationOriginalSmokeMain.java') `
     (Join-Path $testRoot 'features/optimization/LegacyHotspotsOriginalSmoke.java') `
     (Join-Path $testRoot 'integration/probe/HookProbe.java')
@@ -71,8 +71,8 @@ function Invoke-OptimizationFixture([string]$State, [bool]$CheckHotspots = $fals
         $original, $State, $cache, $evidence, $CheckHotspots.ToString().ToLowerInvariant()
     )
     if ($State -eq 'false') {
-        $switches = @('zombieCulling', 'luaDispatch', 'playerNearVehicle', 'zombiePacket', 'thermalClothing',
-            'serverLos', 'entityRemoval', 'entitySimulation', 'zombieAsyncSend') |
+        $switches = @('zombieCulling', 'luaDispatch', 'playerNearVehicle', 'zombiePacket', 'thermalClothing', 'characterStats', 'actorUpdateAllocation', 'regionCellLookup', 'animalGrowthGene', 'blendDirections', 'perceptionBuckets',
+            'serverLos', 'entityRemoval', 'entitySimulation', 'zombieAsyncSend', 'parkedVehicle', 'chunkContainers', 'chunkAdjacency') |
             ForEach-Object { "-Dapocbr.optimization.$_.enabled=false" }
         $arguments = $switches + $arguments
     }

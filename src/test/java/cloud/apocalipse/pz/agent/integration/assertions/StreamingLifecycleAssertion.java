@@ -1,12 +1,19 @@
 package cloud.apocalipse.pz.agent.integration.assertions;
 
+import cloud.apocalipse.pz.agent.experimental.chunks.PostgresChunksModule;
 import cloud.apocalipse.pz.agent.features.optimization.vehicle.ParkedVehicleModule;
+import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkAdjacencyModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkContainerModule;
 import cloud.apocalipse.pz.agent.integration.ServerAssertion;
+import cloud.apocalipse.pz.agent.integration.ChunkMigrationFixture;
 import cloud.apocalipse.pz.agent.integration.ServerTestContext;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
+import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
+import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
+import cloud.apocalipse.pz.agent.integration.probe.UnloadSamplingProbe;
+import cloud.apocalipse.pz.agent.integration.probe.BucketUnloadProbe;
 import cloud.apocalipse.pz.agent.integration.probe.VehicleCadenceProbe;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +33,7 @@ public final class StreamingLifecycleAssertion implements ServerAssertion {
 
     @Override public void verify(ServerTestContext server) throws Exception {
         assumeTrue(!WorldSimulation.enabled(), "The experimental assertion owns the streaming fixture");
+        assumeTrue(!Boolean.getBoolean(MovingObjectLoad.PROPERTY), "The moving-object load assertion owns the fixture");
         drive(server);
     }
 
@@ -41,7 +49,26 @@ public final class StreamingLifecycleAssertion implements ServerAssertion {
         server.await("playerless streaming cycles", Duration.ofSeconds(workload.runTimeoutSeconds()),
             () -> Files.isRegularFile(complete) || Files.isRegularFile(error));
         if (Files.isRegularFile(error)) fail(Files.readString(error));
+        if (ChunkMigrationFixture.enabled()) {
+            ChunkMigrationFixture.verify(directory);
+            ChunkMigrationFixture.verifyObjectMutations(server);
+            for (var hook : new PostgresChunksModule().hookChecks()) {
+                server.assertHook(hook.targetClass(), hook.method(), hook.helperClass(), hook.helperMethod());
+            }
+            return;
+        }
+        if (Boolean.getBoolean(UnloadBreakdownProbe.PROPERTY)) UnloadBreakdownAssertions.verify(directory);
+        if (Boolean.getBoolean(UnloadSamplingProbe.PROPERTY)) UnloadSamplingAssertions.verify(directory);
+        if (Boolean.getBoolean(BucketUnloadProbe.PROPERTY)) BucketUnloadAssertions.verify(directory);
         if (movingScenario) return;
+        if (AgentConfiguration.cellRelevanceOptimizationEnabled()) {
+            assertTrue(Files.isRegularFile(directory.resolve("cell-relevance-oracle")));
+            assertTrue(server.telemetrySnapshots().stream().anyMatch(json -> json.contains("\"map.cell.relevanceScansSkipped\"")));
+        }
+        if (AgentConfiguration.optimizationEnabled(AgentConfiguration.ENTITY_SIMULATION_OPTIMIZATION)) {
+            assertTrue(Files.isRegularFile(directory.resolve("bucket-removal-oracle")));
+            assertTrue(server.telemetrySnapshots().stream().anyMatch(json -> json.contains("\"entities.removal.usingPlayerBucketIndexed\"")));
+        }
         if (Boolean.getBoolean(VehicleCadenceProbe.COMPARE_PROPERTY)) verifyVehicleCadence(server, workload);
         if (workload.chunkComparison()) verifyChunkLifecycle(server, workload);
         Map<String, List<Sample>> results = readSamples(directory, workload);

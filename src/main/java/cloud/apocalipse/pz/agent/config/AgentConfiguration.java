@@ -17,6 +17,12 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     /** XML hotfix: {@code -Dapocbr.hotfixes.xmlCaseInsensitive.enabled=true}; defaults to enabled. */
     public static final String XML_CASE_INSENSITIVE_HOTFIX_PROPERTY = "apocbr.hotfixes.xmlCaseInsensitive.enabled";
+    /** Optional animation folders hotfix, defaults to enabled. Disable with {@code -Dapocbr.hotfixes.optionalAnimationFolders.enabled=false}. */
+    public static final String OPTIONAL_ANIMATION_FOLDERS_HOTFIX_PROPERTY = "apocbr.hotfixes.optionalAnimationFolders.enabled";
+    /** Asset diagnostics hotfix, defaults to enabled. Disable with {@code -Dapocbr.hotfixes.assetLogs.enabled=false}. */
+    public static final String ASSET_LOGS_HOTFIX_PROPERTY = "apocbr.hotfixes.assetLogs.enabled";
+    /** Server packet diagnostics: {@code -Dapocbr.networkDiagnostics.enabled=true}; defaults to enabled. */
+    public static final String NETWORK_DIAGNOSTICS_PROPERTY = "apocbr.networkDiagnostics.enabled";
 
     /** Zombie culling port, defaults to enabled. Set {@code -Dapocbr.optimization.zombieCulling.enabled=false} to disable. */
     public static final String ZOMBIE_CULLING_OPTIMIZATION = "apocbr.optimization.zombieCulling.enabled";
@@ -28,16 +34,37 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String ZOMBIE_PACKET_OPTIMIZATION = "apocbr.optimization.zombiePacket.enabled";
     /** Thermal clothing port, defaults to enabled. Set {@code -Dapocbr.optimization.thermalClothing.enabled=false} to disable. */
     public static final String THERMAL_CLOTHING_OPTIMIZATION = "apocbr.optimization.thermalClothing.enabled";
+    /** Character stat lookup defaults on. Disable with {@code -Dapocbr.optimization.characterStats.enabled=false}. */
+    public static final String CHARACTER_STATS_OPTIMIZATION = "apocbr.optimization.characterStats.enabled";
+    /** Actor update allocation reduction defaults on. Disable with {@code -Dapocbr.optimization.actorUpdateAllocation.enabled=false}. */
+    public static final String ACTOR_UPDATE_ALLOCATION_OPTIMIZATION = "apocbr.optimization.actorUpdateAllocation.enabled";
     /** Dedicated parked-vehicle cadence defaults on. Disable with {@code -Dapocbr.optimization.parkedVehicle.enabled=false}. */
     public static final String PARKED_VEHICLE_OPTIMIZATION = "apocbr.optimization.parkedVehicle.enabled";
+
+    /** Animal growth gene key defaults on. Disable with {@code -Dapocbr.optimization.animalGrowthGene.enabled=false}. */
+    public static final String ANIMAL_GROWTH_GENE_OPTIMIZATION = "apocbr.optimization.animalGrowthGene.enabled";
+    /** Chunk blend direction reuse defaults on. Disable with {@code -Dapocbr.optimization.blendDirections.enabled=false}. */
+    public static final String BLEND_DIRECTIONS_OPTIMIZATION = "apocbr.optimization.blendDirections.enabled";
+    /** Primitive LOS buckets default on. Disable with {@code -Dapocbr.optimization.perceptionBuckets.enabled=false}. */
+    public static final String PERCEPTION_BUCKETS_OPTIMIZATION = "apocbr.optimization.perceptionBuckets.enabled";
+
+    /** Primitive region cell lookup defaults on. Disable with {@code -Dapocbr.optimization.regionCellLookup.enabled=false}. */
+    public static final String REGION_CELL_LOOKUP_OPTIMIZATION = "apocbr.optimization.regionCellLookup.enabled";
 
     /** Chunk integration container checks default on. Disable with {@code -Dapocbr.optimization.chunkContainers.enabled=false}. */
     public static final String CHUNK_CONTAINER_OPTIMIZATION = "apocbr.optimization.chunkContainers.enabled";
     /** Chunk detachment adjacency cleanup defaults on. Disable with {@code -Dapocbr.optimization.chunkAdjacency.enabled=false}. */
     public static final String CHUNK_ADJACENCY_OPTIMIZATION = "apocbr.optimization.chunkAdjacency.enabled";
 
+    /** Opt-in frame relevance index. Enable with {@code -Dapocbr.optimization.cellRelevance.enabled=true}. */
+    public static final String CELL_RELEVANCE_OPTIMIZATION = "apocbr.optimization.cellRelevance.enabled";
+
     /** Opt-in same-cell perimeter lookups. Enable with {@code -Dapocbr.optimization.cellBorder.enabled=true}. */
     public static final String CELL_BORDER_OPTIMIZATION = "apocbr.optimization.cellBorder.enabled";
+
+    public static boolean cellRelevanceOptimizationEnabled() {
+        return Boolean.parseBoolean(systemProperty(CELL_RELEVANCE_OPTIMIZATION, "false"));
+    }
 
     public static boolean cellBorderOptimizationEnabled() {
         return Boolean.parseBoolean(systemProperty(CELL_BORDER_OPTIMIZATION, "false"));
@@ -45,6 +72,13 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     /** Engine entity removal index defaults on. Disable with {@code -Dapocbr.optimization.entityRemoval.enabled=false}. */
     public static final String ENTITY_REMOVAL_OPTIMIZATION = "apocbr.optimization.entityRemoval.enabled";
+    /** On-demand entity bucket positions default on. Disable with {@code -Dapocbr.optimization.entityBucketRemoval.enabled=false}. */
+    public static final String ENTITY_BUCKET_REMOVAL_OPTIMIZATION = "apocbr.optimization.entityBucketRemoval.enabled";
+
+    public static boolean entityBucketRemovalIndexEnabled() {
+        return optimizationEnabled(ENTITY_BUCKET_REMOVAL_OPTIMIZATION);
+    }
+
     /** Entity catch-up and meta cadence default on. Disable with {@code -Dapocbr.optimization.entitySimulation.enabled=false}. */
     public static final String ENTITY_SIMULATION_OPTIMIZATION = "apocbr.optimization.entitySimulation.enabled";
     /** Entity simulation port, JVM argument {@code -Dapocbr.metaSimulationInterval=10}. */
@@ -59,6 +93,8 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String LOS_INTERVAL_PROPERTY = "apocbr.los.intervalMs";
     /** Async zombie transmission defaults on. Disable with {@code -Dapocbr.optimization.zombieAsyncSend.enabled=false}. */
     public static final String ZOMBIE_ASYNC_SEND_OPTIMIZATION = "apocbr.optimization.zombieAsyncSend.enabled";
+    /** Async chunk replies default on. Disable with {@code -Dapocbr.optimization.chunkAsyncSend.enabled=false}. */
+    public static final String CHUNK_ASYNC_SEND_OPTIMIZATION = "apocbr.optimization.chunkAsyncSend.enabled";
     /** Async zombie transmission, JVM argument {@code -Dapocbr.zombiePacketWorkers=6}. */
     public static final String ZOMBIE_SEND_WORKERS_PROPERTY = "apocbr.zombiePacketWorkers";
     /** Async zombie transmission, JVM argument {@code -Dapocbr.zombieSendCapacity=64}. */
@@ -167,6 +203,34 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String POSTGRES_JOURNAL_DIRECTORY_PROPERTY = "apocbr.postgres.journalDirectory";
     /** PostgreSQL feature: JDBC URL environment override; credentials remain outside YAML. */
     public static final String POSTGRES_URL_ENVIRONMENT = "APOCBR_POSTGRES_URL";
+
+    /** Experimental map chunk persistence switch: -Dapocbr.experimental.postgresChunks.enabled=true. */
+    public static final String POSTGRES_CHUNKS_ENABLED_PROPERTY = "apocbr.experimental.postgresChunks.enabled";
+    /** Direct capture of ordinary map-object changes: -Dapocbr.experimental.chunkObjectMutations.enabled=true. */
+    public static final String CHUNK_OBJECT_MUTATIONS_PROPERTY = "apocbr.experimental.chunkObjectMutations.enabled";
+    /** Experimental map save identity: -Dapocbr.experimental.postgresChunks.dataset=<unique-save-id>. */
+    public static final String POSTGRES_CHUNK_DATASET_PROPERTY = "apocbr.experimental.postgresChunks.dataset";
+    /** Agent schema owner connection: -Dapocbr.postgres.migrationUrl=<jdbc-url>. */
+    public static final String POSTGRES_MIGRATION_URL_PROPERTY = "apocbr.postgres.migrationUrl";
+    /** Agent schema owner connection environment override. */
+    public static final String POSTGRES_MIGRATION_URL_ENVIRONMENT = "APOCBR_POSTGRES_MIGRATION_URL";
+
+    public static boolean postgresChunksEnabled() {
+        return Boolean.parseBoolean(systemProperty(POSTGRES_CHUNKS_ENABLED_PROPERTY, "false"));
+    }
+
+    public static boolean chunkObjectMutationsEnabled() {
+        return Boolean.parseBoolean(systemProperty(CHUNK_OBJECT_MUTATIONS_PROPERTY, "false"));
+    }
+
+    public static String postgresChunkDataset() {
+        return systemProperty(POSTGRES_CHUNK_DATASET_PROPERTY, "").strip();
+    }
+
+    public static String postgresMigrationUrl() {
+        String url = System.getenv(POSTGRES_MIGRATION_URL_ENVIRONMENT);
+        return url == null || url.isBlank() ? systemProperty(POSTGRES_MIGRATION_URL_PROPERTY) : url;
+    }
 
     /** Dictionary setup: {@code -Dapocbr.postgres.dictionary.enabled=true}; defaults to the master flag. */
     public static final String DICTIONARY_ENABLED_PROPERTY = "apocbr.postgres.dictionary.enabled";
