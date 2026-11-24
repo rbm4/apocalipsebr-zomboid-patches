@@ -176,7 +176,9 @@ readable when colors are removed. The raw `console.log` is unaffected.
 4. The probe reads the same `AgentModules` registry used by the production agent,
    writes the initialized module/hook inventory, loads enabled checks marked
    `loadBeforeStartup` without initialization, then invokes real `GameServer.main`.
-   Currently Workshop `ItemQueryJava` is the only explicitly loaded lazy target.
+   This includes the command registry `CommandBase` for `servercommand`.
+   The probe loads that class without initializing the registry or issuing an
+   RCON command.
 5. The context waits for the vanilla `*** SERVER STARTED ****` message and checks
    child liveness and transformation/probe errors. This is a startup boundary,
    not a guarantee that a player has joined or every subsystem is ready.

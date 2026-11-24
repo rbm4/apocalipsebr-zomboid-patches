@@ -42,6 +42,14 @@ public final class LuaRuntime {
         LuaHookManager.AddEvent(PowerBankBackup.HOOK);
         LuaEventManager.AddEvent("OnApocBRLobbyEventDue");
     }
+    public static void registerServerCommandEvent() {
+        if (GameServer.server) {
+            LuaEventManager.AddEvent(ServerCommand.EVENT);
+        }
+    }
+    static boolean isServerLuaThread() {
+        return GameServer.server && !closed && Thread.currentThread() == owner;
+    }
     public static void exposed() {
         if(GameServer.server) PowerBankLuaBindings.install();
     }

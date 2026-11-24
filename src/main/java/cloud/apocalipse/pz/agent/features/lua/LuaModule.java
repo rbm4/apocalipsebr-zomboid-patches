@@ -14,7 +14,7 @@ public final class LuaModule implements AgentModule {
     private boolean enabled;
     public static final List<String> TARGETS=List.of("zombie.Lua.LuaManager$Exposer","zombie.Lua.LuaManager",
         "zombie.network.GameServer","zombie.network.ServerMap","zombie.popman.LoadedAreas",
-        "zombie.iso.objects.IsoGenerator","zombie.iso.IsoObject");
+        "zombie.iso.objects.IsoGenerator","zombie.iso.IsoObject","zombie.commands.CommandBase");
     @Override public String name() { return "server-lua"; }
     @Override public void initialize() {
         enabled=AgentConfiguration.luaEnabled();
@@ -42,6 +42,10 @@ public final class LuaModule implements AgentModule {
             "cloud.apocalipse.pz.agent.features.lua.LuaRuntime","renewGeneratorPrewarms",false));
         checks.add(new HookCheck("lua-mod-entities",TARGETS.get(1),"init",
             "cloud.apocalipse.pz.agent.features.lua.entities.ApocBRModEntities","install",false));
+        checks.add(new HookCheck("lua-server-command-event",TARGETS.get(1),"init",
+            "cloud.apocalipse.pz.agent.features.lua.LuaRuntime","registerServerCommandEvent",false));
+        checks.add(new HookCheck("lua-server-command-registry","zombie.commands.CommandBase","<clinit>",
+            "cloud.apocalipse.pz.agent.features.lua.ServerCommand","appendToRegistry",true));
         return List.copyOf(checks);
     }
     @Override public AgentBuilder configure(AgentBuilder builder) {
@@ -54,6 +58,7 @@ public final class LuaModule implements AgentModule {
             case "zombie.Lua.LuaManager$Exposer" -> dynamic.visit(new LuaExposureVisitor())
                 .visit(Advice.to(LuaAdvice.Expose.class).on(named("exposeAll").and(takesArguments(0))));
             case "zombie.Lua.LuaManager" -> dynamic.visit(Advice.to(LuaAdvice.Init.class).on(named("init").and(takesArguments(0))));
+            case "zombie.commands.CommandBase" -> dynamic.visit(Advice.to(LuaAdvice.CommandRegistry.class).on(isTypeInitializer()));
             case "zombie.network.GameServer" -> dynamic.visit(new LuaBoundaryVisitor(type))
                 .visit(Advice.to(LuaAdvice.Startup.class).on(named("startServer").and(takesArguments(0))))
                 .visit(Advice.to(LuaAdvice.PlayerAccepted.class).on(named("receivePlayerConnect").and(takesArguments(3))))
