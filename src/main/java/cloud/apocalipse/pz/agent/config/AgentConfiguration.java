@@ -63,6 +63,14 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
         return Boolean.parseBoolean(systemProperty(CLIENT_CHUNK_MAP_OPTIMIZATION, "false"));
     }
 
+    /** Opt-in local building reconciliation indexes. Enable with {@code -Dapocbr.optimization.clientBuildingReconciliation.enabled=true}. */
+    public static final String CLIENT_BUILDING_RECONCILIATION_OPTIMIZATION =
+        "apocbr.optimization.clientBuildingReconciliation.enabled";
+
+    public static boolean clientBuildingReconciliationOptimizationEnabled() {
+        return Boolean.parseBoolean(systemProperty(CLIENT_BUILDING_RECONCILIATION_OPTIMIZATION, "false"));
+    }
+
     /** Opt-in frame relevance index. Enable with {@code -Dapocbr.optimization.cellRelevance.enabled=true}. */
     public static final String CELL_RELEVANCE_OPTIMIZATION = "apocbr.optimization.cellRelevance.enabled";
 

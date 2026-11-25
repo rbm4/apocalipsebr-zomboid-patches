@@ -156,6 +156,7 @@ jobs:
             "-Dpz.game.jar=$PZ_GAME_JAR" "-Dpz.it.home=$PZ_HOME" \
             "-Dpz.it.reportsDirectory=$PWD/target/ci/postgres-bootstrap/failsafe-reports" \
             -Dpz.it.serverLogs=false -Dpz.it.experimentalWorldSimulation=false \
+            -Dpz.it.verifyStartupHooks=false \
             -Dpz.it.useTaskConfiguration=true -Dapocbr.postgres.enabled=true \
             -Dapocbr.postgres.serverDatabase.enabled=true -Dapocbr.postgres.players.enabled=false \
             -Dapocbr.postgres.dictionary.enabled=false -Dapocbr.postgres.loginHistory.enabled=false \

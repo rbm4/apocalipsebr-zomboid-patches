@@ -53,6 +53,7 @@ resources must exist at `pz.it.home/media`.
 | `pz.it.serverLogs` | `true`; stream child output to Maven with a `[PZ]` prefix; `false` keeps only the raw log |
 | `pz.it.color` | ANSI green/red/yellow result lines by default, unless `NO_COLOR` exists; explicit `true`/`false` overrides that default |
 | `pz.it.useTaskConfiguration` | `false`; when `true`, forwards explicit runner `apocbr.*` properties and recognized service environment settings to the child |
+| `pz.it.verifyStartupHooks` | `true`; generates the startup inventory checks. Set to `false` for a scenario-only run with strict scenario hook evidence still available. |
 
 These are test-harness settings read only by test code. Production configuration
 continues to belong in `AgentConfiguration`. Do not pass production database or
@@ -77,6 +78,9 @@ The workflow builds once and runs the stable
 This covers the 30-position comparisons, moving-object telemetry, parked
 vehicle cadence, chunk lifecycle and the hook-off smoke test. Experimental
 world simulation and the chunk storage replay are outside the sequence.
+The `players30-baseline` stage runs the generic startup hook checks once. Every
+stage, including PostgreSQL bootstrap, runs its registered scenario assertions
+and retains the bytecode evidence they require.
 The default heap is 6 GiB. For larger workloads or repeatable absolute
 timings, set `PZ_INTEGRATION_RUNNER` to a dedicated Linux runner label and
 choose a heap that leaves room for the operating system and test JVM.
@@ -186,19 +190,20 @@ readable when colors are removed. The raw `console.log` is unaffected.
    The child classpath contains only the selected game JAR and probe JAR. The JVM
    makes agent classes available through the agent mechanism. Unit-test doubles
    and JUnit classes are absent from the child.
-4. The probe reads the same `AgentModules` registry used by the production agent,
-   writes the initialized module/hook inventory, loads enabled checks marked
+4. With startup checks enabled, the probe reads the same `AgentModules` registry
+   used by the production agent, writes its inventory, and loads enabled checks marked
    `loadBeforeStartup` without initialization, then invokes real `GameServer.main`.
    This includes the command registry `CommandBase` for `servercommand`.
    The probe loads that class without initializing the registry or issuing an
-   RCON command.
+   RCON command. Scenario-only runs start the same server and observe naturally
+   loaded classes.
 5. The context waits for the vanilla `*** SERVER STARTED ****` message and checks
    child liveness and transformation/probe errors. This is a startup boundary,
    not a guarantee that a player has joined or every subsystem is ready.
-6. `@TestFactory` generates a separate named dynamic test for every declared
-   `HookCheck`, and discovers registered `ServerAssertion` providers for additional
-   scenarios. They run sequentially against the same server. Disabled module
-   checks are explicitly skipped with the configuration reason. Failures do not
+6. `@TestFactory` discovers registered `ServerAssertion` providers for each run.
+   With startup checks enabled, it also generates a test for each declared
+   `HookCheck` and checks inventory coverage. They run sequentially against the
+   same server. Disabled module checks are skipped with the configuration reason. Failures do not
    intentionally abort later assertions. Each result prints a colored status,
    name, and (for passes) elapsed time, followed by a suite summary.
 7. `@AfterAll` sends `quit` through the child's console, waits for normal exit,
@@ -1056,8 +1061,8 @@ the child JVM, not separately instantiated or inferred from test configuration.
 The declarations describe installation contracts only; they do not add runtime
 control APIs or change instrumentation/lifecycle ordering.
 
-Every new declaration automatically produces a separate test on the next
-integration run. There is no second test-side target list or per-hook test file
+Every new declaration automatically produces a separate test on the next run
+with startup hook checks enabled. There is no second test-side target list or per-hook test file
 to maintain. The probe rejects duplicate module/hook identifiers or empty module
 check lists. The lightweight unit checks validate this inventory without starting
 a server. Declare additional contracts when adding hooks to an existing module.
@@ -1187,11 +1192,12 @@ dependencies for all integration runs or add production backdoors to observe the
 Each `target/server-integration/run-*` directory retains:
 
 - `runtime.properties`: selected runtime paths, Java executable, JAR and agent
-  SHA-256, allocated ports.
+  SHA-256, allocated ports, startup hook verification setting.
 - `pid.txt`, `console.log`, and the isolated `cache/` world/config/log files.
 - `hook-probe.jar` and `evidence/*.properties`: observed method/helper invocations
-  and original class code sources; `evidence/inventory.properties` records module
-  state and hook contracts; probe failures produce `probe-error.txt`.
+  and original class code sources. On startup verification runs,
+  `evidence/inventory.properties` records module state and hook contracts.
+  Probe failures produce `probe-error.txt`.
 - `telemetry-*.json` when snapshots arrive at the local receiver.
 - `streaming.csv` and a completion or error marker for opt-in streaming runs.
 

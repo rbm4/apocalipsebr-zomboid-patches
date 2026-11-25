@@ -3,6 +3,7 @@ package cloud.apocalipse.pz.agent.integration;
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
+import cloud.apocalipse.pz.agent.integration.probe.HookProbe;
 import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
 import cloud.apocalipse.pz.agent.integration.probe.EntityAllocations;
 import cloud.apocalipse.pz.agent.integration.probe.UnloadBreakdownProbe;
@@ -23,6 +24,7 @@ final class IntegrationLaunchSettings {
 
     static Map<String, String> properties(Properties runner, Path run, String localEndpoint) {
         Map<String, String> settings = new LinkedHashMap<>();
+        settings.put(HookProbe.VERIFY_STARTUP_HOOKS, Boolean.toString(HookProbe.verifiesStartupHooks(runner)));
         boolean streaming = Boolean.parseBoolean(runner.getProperty("pz.it.streaming", "false"));
         boolean moving = Boolean.parseBoolean(runner.getProperty("pz.it.movingObjects", "false"));
         if (Boolean.parseBoolean(runner.getProperty(MovingObjectLoad.PROPERTY))) {

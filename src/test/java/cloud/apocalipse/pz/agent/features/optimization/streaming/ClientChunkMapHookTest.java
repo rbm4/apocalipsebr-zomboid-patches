@@ -3,6 +3,7 @@ package cloud.apocalipse.pz.agent.features.optimization.streaming;
 import cloud.apocalipse.pz.agent.ApocBrAgent;
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import java.io.File;
+import java.net.JarURLConnection;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -18,6 +19,7 @@ import zombie.iso.IsoChunkMap;
 import zombie.network.GameServer;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -43,7 +45,11 @@ class ClientChunkMapHookTest {
         }
 
         Path testClasses = Path.of(getClass().getProtectionDomain().getCodeSource().getLocation().toURI());
-        Path original = Path.of(IsoChunkMap.class.getProtectionDomain().getCodeSource().getLocation().toURI());
+        // Resolve the archive without defining signed game classes in the JVM that hosts test doubles.
+        var gameClass = getClass().getClassLoader().getResource("zombie/iso/IsoChunkMap.class");
+        assertNotNull(gameClass);
+        var gameArchive = assertInstanceOf(JarURLConnection.class, gameClass.openConnection());
+        Path original = Path.of(gameArchive.getJarFileURL().toURI()).toRealPath();
         var entries = new ArrayList<String>();
         entries.add(probe.toString());
         String testClasspath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));

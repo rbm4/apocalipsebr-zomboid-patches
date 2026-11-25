@@ -29,8 +29,9 @@ run_stage() {
 }
 
 integration=(failsafe:integration-test failsafe:verify)
-run_stage players30-baseline verify -Dpz.it.streamingProfile=players30
+run_stage players30-baseline verify -Dpz.it.streamingProfile=players30 -Dpz.it.verifyStartupHooks=true
 baseline=$artifact
+common+=(-Dpz.it.verifyStartupHooks=false)
 players30=(-Dpz.it.streamingProfile=players30 "-Dpz.it.streamingBaseline=$baseline")
 run_stage cell-border "${integration[@]}" "${players30[@]}" -Dapocbr.optimization.cellBorder.enabled=true
 run_stage entity-removal-off "${integration[@]}" "${players30[@]}" -Dapocbr.optimization.entityRemoval.enabled=false
