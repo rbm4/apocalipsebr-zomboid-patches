@@ -10,7 +10,14 @@ public final class LuaAdvice {
     public static class Init {
         @Advice.OnMethodExit public static void exit() {
             LuaRuntime.luaInitialized();
+            LuaRuntime.registerServerCommandEvent();
             cloud.apocalipse.pz.agent.features.lua.entities.ApocBRModEntities.install();
+        }
+    }
+    public static class CommandRegistry {
+        @Advice.OnMethodExit public static void exit(@Advice.FieldValue(value = "childrenClasses", readOnly = false)
+                Class<?>[] commands) {
+            commands = ServerCommand.appendToRegistry(commands);
         }
     }
     public static class Startup {

@@ -79,6 +79,7 @@ before the transformer exists.
 | --- | --- |
 | `LuaManager.Exposer.exposeAll()`, immediately before its collected-type iteration and at normal exit | Adds server classes only after all original registrations, preserving native network enum IDs. Uses native `setExposed`, then installs the Lua-only generator compatibility methods after vanilla exposure. |
 | `LuaManager.init()` normal exit | Initializes server-owned generator/backup/streaming state and registers `OnPowerBankUpdate`, `OnPowerBankBackupUpdate`, `OnApocBRLobbyEventDue`. Original initialization runs first. |
+| `CommandBase` static initializer and `LuaManager.init()` normal exit | Appends the annotated `servercommand` to the native registry and registers `OnApocBRServerCommand` in server Lua. |
 | `GameServer.startServer()` entry | Starts configured event polling, API dispatch, radio delivery and login-audit journal before native `OnServerStarted`. Native socket/startup work continues. |
 | `GameServer.main`, immediately before native `LoginQueue.update()` | Drains API callbacks, installs event snapshots, dispatches due events and reconciles managed generators even on empty/paused servers. A separate registered hook drains account/admin continuations. |
 | `GameServer.main`, immediately after `ServerMap.preupdate()` | Renews active managed-generator cell requests after native pre-update clears the frame relevance set and before `ServerMap.postupdate()` can cancel out-of-range loading. |
@@ -97,6 +98,36 @@ before the transformer exists.
 
 All native members retain their original structure. Helpers, advice and the
 bounded invocation visitors are agent-owned; there are no complete-class native replacements.
+
+## RCON command for server Lua
+
+Send `servercommand {"action":"event start"}` over the existing authenticated
+RCON connection. The dedicated-server console accepts the same command.
+Register a listener in a server-side Lua file under `media/lua/server`.
+
+```lua
+Events.OnApocBRServerCommand.Add(function(metadata)
+    -- Handle the metadata string here.
+end)
+```
+
+The event receives one string on the server thread. Leading whitespace between
+the command name and the payload is skipped. The remaining text is preserved,
+including quotes, internal spaces and trailing spaces. Empty payloads return
+usage. `Server command dispatched.` acknowledges event dispatch. Lua callback
+return values do not become RCON responses.
+
+Vanilla RCON hands work to the server thread through its existing queue, so
+dispatch requires no online players. In-game connections cannot execute this
+command. The native capability check uses `DisplayServerMessage`, as
+`servermsg` does. Setting `-Dapocbr.lua.enabled=false` disables the command
+and event along with the other server Lua hooks.
+
+The packaged Lua smoke fixture uses the original 42.22.2 JAR and exercises
+`GameServer.rcon` through native command lookup and a real Lua listener. It
+checks help discovery, payload preservation, rejected calls, and vanilla
+`servermsg` registration. Live dedicated-server RCON socket acceptance remains
+pending.
 
 ## Ownership, bounds and failure behavior
 

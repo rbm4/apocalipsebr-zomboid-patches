@@ -49,6 +49,7 @@ public final class LuaOriginalSmokeMain {
         if(!serverEnumId.equals(clientEnumId))throw new AssertionError("Custom endpoint registration shifted vanilla network enum IDs");
         server.getField("server").setBoolean(null,true);
         lua.getMethod("init").invoke(null);
+        verifyServerCommand(server, (KahluaTable) lua.getField("env").get(null));
         Class<?> cell=Class.forName("zombie.iso.IsoCell"),object=Class.forName("zombie.iso.IsoObject");
         Class<?> sprites=Class.forName("zombie.iso.sprite.IsoSpriteManager");
         Object manager=sprites.getField("instance").get(null);
@@ -113,5 +114,57 @@ public final class LuaOriginalSmokeMain {
         Class.forName("cloud.apocalipse.pz.agent.features.lua.events.EventOriginalAssertions").getMethod("verify").invoke(null);
         if(fixture.getField("ticks").getInt(null)!=1)throw new AssertionError("Loop skipped native body");
         System.out.println("ORIGINAL_LUA_SMOKE_PASS");
+    }
+
+    private static void verifyServerCommand(Class<?> server, KahluaTable env) throws Exception {
+        Class.forName("zombie.characters.Roles").getMethod("addStatic").invoke(null);
+        var rcon = server.getMethod("rcon", String.class);
+        if (!ServerCommand.USAGE.equals(rcon.invoke(null, "help servercommand"))) {
+            throw new AssertionError("Vanilla help did not discover servercommand");
+        }
+        if (!rcon.invoke(null, "help").toString().contains("* servercommand")) {
+            throw new AssertionError("Vanilla help listing omitted servercommand");
+        }
+        Class<?> registry = Class.forName("zombie.commands.CommandBase");
+        var find = registry.getMethod("findCommandCls", String.class);
+        if (find.invoke(null, "servermsg") != Class.forName("zombie.commands.serverCommands.ServerMessageCommand")) {
+            throw new AssertionError("Vanilla servermsg registration changed");
+        }
+        runLua("""
+            serverCommandCalls = 0
+            Events.OnApocBRServerCommand.Add(function(metadata)
+                serverCommandCalls = serverCommandCalls + 1
+                serverCommandMetadata = metadata
+            end)
+            """);
+        String metadata = "{\"action\":\"event start\",\"value\":\"two  spaces\"} ";
+        if (!"Server command dispatched.".equals(rcon.invoke(null, "SERVERCOMMAND " + metadata))
+                || !metadata.equals(env.rawget("serverCommandMetadata"))) {
+            throw new AssertionError("RCON did not deliver the raw metadata to server Lua");
+        }
+        for (String invalid : new String[]{"servercommand", "servercommand   ", "servercommand!"}) {
+            if (!ServerCommand.USAGE.equals(rcon.invoke(null, invalid))) {
+                throw new AssertionError("Expected usage for " + invalid);
+            }
+        }
+        Class<?> connectionType = Class.forName("zombie.core.raknet.UdpConnection");
+        Object connection = connectionType.getConstructor(Class.forName("zombie.core.raknet.UdpEngine"),
+            long.class, int.class).newInstance(null, 1L, 0);
+        connectionType.getField("isCoopHost").setBoolean(connection, true);
+        var handle = server.getDeclaredMethod("handleServerCommand", String.class, connectionType);
+        handle.setAccessible(true);
+        if (!"servercommand is available through RCON and the server console."
+                .equals(handle.invoke(null, "servercommand from-player", connection))) {
+            throw new AssertionError("Player-originated command was accepted");
+        }
+        try (var executor = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            var response = executor.submit(() -> rcon.invoke(null, "servercommand wrong-thread"));
+            if (!"Server Lua is unavailable on this thread.".equals(response.get(5, java.util.concurrent.TimeUnit.SECONDS))) {
+                throw new AssertionError("Server command reached Lua from the wrong thread");
+            }
+        }
+        if (!Double.valueOf(1).equals(env.rawget("serverCommandCalls"))) {
+            throw new AssertionError("Rejected commands must leave the Lua listener untouched");
+        }
     }
 }
