@@ -6,11 +6,12 @@
 
     <groupId>cloud.apocalipse.pz</groupId>
     <artifactId>apocbr-agent</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>${revision}</version>
     <name>ApocalipseBR Project Zomboid Agent</name>
     <description>Incremental Byte Buddy instrumentation alongside existing PZ class patches.</description>
 
     <properties>
+        <revision>0.1.0-SNAPSHOT</revision>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <maven.compiler.release>25</maven.compiler.release>
         <byte-buddy.version>1.18.17</byte-buddy.version>
@@ -143,6 +144,7 @@
                                 <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
                                     <manifestEntries>
                                         <Premain-Class>cloud.apocalipse.pz.agent.ApocBrAgent</Premain-Class>
+                                        <Implementation-Version>${project.version}</Implementation-Version>
                                         <Multi-Release>true</Multi-Release>
                                     </manifestEntries>
                                 </transformer>

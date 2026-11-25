@@ -99,6 +99,19 @@ the SQL verification. The summary is published on failed runs and indicates
 when reports are unavailable. The workflow retains the XML reports, runtime
 hashes, hook evidence, telemetry, and CSV measurements in its Actions artifact.
 
+Pushes to `master` automatically run both integration stages and publish a
+GitHub release after they pass. Manual runs are test-only by default. Select
+**Publish the tested agent as the latest release** when dispatching from the
+default branch to publish after a manual run.
+
+Release builds use Maven version `0.1.<workflow run number>` and Git tag
+`agent-v0.1.<workflow run number>`. Run numbers can skip when a run fails or
+only validates. Reruns reuse the same version, and an older run cannot replace
+a newer agent release as Latest. Local builds default to `0.1.0-SNAPSHOT`.
+The publish job attaches `apocbr-agent.jar` after comparing its checksum with
+the agent recorded by the integration runs. Both the release asset name and
+the local build output use the same stable filename.
+
 ### VS Code configured-services task
 
 The global file `C:\Users\ricar\AppData\Roaming\Code\User\tasks.json` contains

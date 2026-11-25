@@ -1,8 +1,14 @@
 name: Project Zomboid server integration
 
 on:
+  push:
+    branches: [master]
   workflow_dispatch:
     inputs:
+      publish_release:
+        description: Publish the tested agent as the latest release (default branch only)
+        default: false
+        type: boolean
       steam_branch:
         description: Steam branch for dedicated server app 380870
         default: public
@@ -19,6 +25,9 @@ jobs:
   server-integration:
     runs-on: ${{ vars.PZ_INTEGRATION_RUNNER || 'ubuntu-24.04' }}
     timeout-minutes: 110
+    outputs:
+      release-version: ${{ steps.version.outputs.release-version }}
+      release-artifact-id: ${{ steps.release-artifact.outputs.artifact-id }}
     services:
       postgres:
         image: postgres:17
@@ -49,6 +58,15 @@ jobs:
           distribution: temurin
           java-version: '25'
           cache: maven
+
+      - name: Set Maven release version
+        id: version
+        if: github.ref_name == github.event.repository.default_branch && (github.event_name == 'push' || inputs.publish_release)
+        shell: bash
+        run: |
+          version="0.1.$GITHUB_RUN_NUMBER"
+          printf 'MAVEN_ARGS=-Drevision=%s\n' "$version" >> "$GITHUB_ENV"
+          printf 'release-version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Install Linux runtime dependencies
         run: |
@@ -178,3 +196,72 @@ jobs:
             target/server-integration/run-*/telemetry-*.json
             target/server-integration/run-*/*.csv
             target/server-integration/run-*/*.txt
+
+      - name: Verify release JAR matches the integration runs
+        if: steps.version.outputs.release-version != ''
+        shell: bash
+        run: |
+          shopt -s nullglob
+          manifests=(target/server-integration/run-*/runtime.properties)
+          test "${#manifests[@]}" -gt 0
+          mkdir -p target/release
+          cp target/apocbr-agent.jar target/release/
+          cd target/release
+          sha256sum apocbr-agent.jar > apocbr-agent.jar.sha256
+          read -r digest _ < apocbr-agent.jar.sha256
+          for manifest in "${manifests[@]}"; do
+            if ! grep -Fxq "agent.sha256=$digest" "../../$manifest"; then
+              echo "::error::Release JAR does not match the agent recorded in $manifest."
+              exit 1
+            fi
+          done
+
+      - name: Upload tested release JAR
+        id: release-artifact
+        if: steps.version.outputs.release-version != ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: apocbr-agent-release-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: |
+            target/release/apocbr-agent.jar
+            target/release/apocbr-agent.jar.sha256
+
+  publish-release:
+    needs: server-integration
+    if: needs.server-integration.outputs.release-artifact-id != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: apocbr-agent-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ needs.server-integration.outputs.release-artifact-id }}
+
+      - name: Publish latest GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_VERSION: ${{ needs.server-integration.outputs.release-version }}
+        shell: bash
+        run: |
+          sha256sum --check apocbr-agent.jar.sha256
+          tag="agent-v$RELEASE_VERSION"
+          published_run="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" |
+            jq -s '[.[][] | select(.draft == false and .prerelease == false) | .tag_name |
+              capture("^agent-v[0-9]+\\.[0-9]+\\.(?<run>[0-9]+)$").run | tonumber] | max // 0')"
+          if (( published_run >= GITHUB_RUN_NUMBER )); then
+            echo "Agent release run $published_run has already been published."
+            exit 0
+          fi
+          existing_tag="$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/$tag" |
+            jq -r --arg ref "refs/tags/$tag" '.[] | select(.ref == $ref) | .object.sha')"
+          if [[ -n "$existing_tag" && "$existing_tag" != "$GITHUB_SHA" ]]; then
+            echo "::error::Tag $tag already points to a different commit."
+            exit 1
+          fi
+          gh release create "$tag" apocbr-agent.jar --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" --title "ApocalipseBR Agent $RELEASE_VERSION" --latest \
+            --notes "Validated by [integration run $GITHUB_RUN_NUMBER]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID)."
