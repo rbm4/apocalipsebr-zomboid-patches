@@ -56,6 +56,13 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     /** Chunk detachment adjacency cleanup defaults on. Disable with {@code -Dapocbr.optimization.chunkAdjacency.enabled=false}. */
     public static final String CHUNK_ADJACENCY_OPTIMIZATION = "apocbr.optimization.chunkAdjacency.enabled";
 
+    /** Opt-in client chunk-map cap. Enable with {@code -Dapocbr.optimization.clientChunkMap.enabled=true}. */
+    public static final String CLIENT_CHUNK_MAP_OPTIMIZATION = "apocbr.optimization.clientChunkMap.enabled";
+
+    public static boolean clientChunkMapOptimizationEnabled() {
+        return Boolean.parseBoolean(systemProperty(CLIENT_CHUNK_MAP_OPTIMIZATION, "false"));
+    }
+
     /** Opt-in frame relevance index. Enable with {@code -Dapocbr.optimization.cellRelevance.enabled=true}. */
     public static final String CELL_RELEVANCE_OPTIMIZATION = "apocbr.optimization.cellRelevance.enabled";
 
