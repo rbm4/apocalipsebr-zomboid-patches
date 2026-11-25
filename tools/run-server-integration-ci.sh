@@ -4,40 +4,82 @@ set -euo pipefail
 : "${PZ_HOME:?Path to the original dedicated server installation}"
 : "${PZ_GAME_JAR:?Path to its original projectzomboid.jar}"
 : "${PZ_SERVER_HEAP:=6g}"
+stage=${1:?Specify the integration scenario}
+baseline=target/players30-baseline
+startup_hooks=false
+scenario=()
 
-common=(
-    --batch-mode --no-transfer-progress -Dstyle.color=never -Pserver-integration
-    "-Dpz.game.jar=$PZ_GAME_JAR" "-Dpz.it.home=$PZ_HOME" "-Dpz.it.heap=$PZ_SERVER_HEAP"
-    -Dpz.it.streaming=true -Dpz.it.serverLogs=false -Dpz.it.color=false
-    -Dpz.it.experimentalWorldSimulation=false
-)
-artifact=
+case "$stage" in
+    players30-baseline)
+        startup_hooks=true
+        scenario=(-Dpz.it.streamingProfile=players30)
+        ;;
+    cell-border|entity-removal-off|los-off)
+        scenario=(-Dpz.it.streamingProfile=players30 "-Dpz.it.streamingBaseline=$PWD/$baseline")
+        case "$stage" in
+            cell-border) scenario+=(-Dapocbr.optimization.cellBorder.enabled=true) ;;
+            entity-removal-off) scenario+=(-Dapocbr.optimization.entityRemoval.enabled=false) ;;
+            los-off) scenario+=(-Dapocbr.optimization.serverLos.enabled=false) ;;
+        esac
+        ;;
+    moving-object-attribution)
+        scenario=(-Dpz.it.streamingProfile=players30 -Dpz.it.movingObjects=true)
+        ;;
+    parked-vehicle-cadence)
+        scenario=(-Dpz.it.streamingProfile=vehicles72 -Dpz.it.parkedVehicleComparison=true)
+        ;;
+    chunk-lifecycle)
+        scenario=(-Dpz.it.streamingProfile=vehicles72 -Dpz.it.chunkLifecycleComparison=true)
+        ;;
+    hook-rollback)
+        scenario=(-Dpz.it.streamingProfile=smoke -Dpz.it.chunkLifecycle=true
+            -Dapocbr.optimization.parkedVehicle.enabled=false -Dapocbr.optimization.chunkContainers.enabled=false
+            -Dapocbr.optimization.chunkAdjacency.enabled=false)
+        ;;
+    postgres-bootstrap)
+        : "${APOCBR_POSTGRES_URL:?PostgreSQL bootstrap requires the isolated test database URL}"
+        scenario=(-Dpz.it.useTaskConfiguration=true -Dapocbr.postgres.enabled=true
+            -Dapocbr.postgres.serverDatabase.enabled=true -Dapocbr.postgres.players.enabled=false
+            -Dapocbr.postgres.dictionary.enabled=false -Dapocbr.postgres.loginHistory.enabled=false
+            -Dapocbr.npc.persistence.enabled=false -Dapocbr.restart.enabled=false)
+        ;;
+    *)
+        echo "Unknown integration scenario: $stage" >&2
+        exit 2
+        ;;
+esac
 
-run_stage() {
-    local stage=$1 status=0
-    shift
-    local output="target/ci/$stage"
-    mkdir -p "$output"
-    printf '\n=== %s ===\n' "$stage"
-    mvn "${common[@]}" "-Dpz.it.reportsDirectory=$PWD/$output/failsafe-reports" "$@" |
-        tee "$output/maven.log" || status=$?
-    if (( status != 0 )); then
-        return "$status"
-    fi
-    artifact="$(sed -n 's/^\[Server-IT\] Artifacts: //p' "$output/maven.log" | tail -n 1)"
-    [[ -n "$artifact" && -d "$artifact" ]] || { echo "Missing run directory for $stage" >&2; return 1; }
-}
+(cd target && sha256sum --check apocbr-agent.jar.sha256)
+read -r digest _ < target/apocbr-agent.jar.sha256
+case "$stage" in
+    cell-border|entity-removal-off|los-off)
+        test -f "$baseline/streaming-complete"
+        test -s "$baseline/streaming.csv"
+        grep -Fxq "agent.sha256=$digest" "$baseline/runtime.properties"
+        ;;
+esac
 
-integration=(failsafe:integration-test failsafe:verify)
-run_stage players30-baseline verify -Dpz.it.streamingProfile=players30
-baseline=$artifact
-players30=(-Dpz.it.streamingProfile=players30 "-Dpz.it.streamingBaseline=$baseline")
-run_stage cell-border "${integration[@]}" "${players30[@]}" -Dapocbr.optimization.cellBorder.enabled=true
-run_stage entity-removal-off "${integration[@]}" "${players30[@]}" -Dapocbr.optimization.entityRemoval.enabled=false
-run_stage los-off "${integration[@]}" "${players30[@]}" -Dapocbr.optimization.serverLos.enabled=false
-run_stage moving-object-attribution "${integration[@]}" -Dpz.it.streamingProfile=players30 -Dpz.it.movingObjects=true
-run_stage parked-vehicle-cadence "${integration[@]}" -Dpz.it.streamingProfile=vehicles72 -Dpz.it.parkedVehicleComparison=true
-run_stage chunk-lifecycle "${integration[@]}" -Dpz.it.streamingProfile=vehicles72 -Dpz.it.chunkLifecycleComparison=true
-run_stage hook-rollback "${integration[@]}" -Dpz.it.streamingProfile=smoke -Dpz.it.chunkLifecycle=true \
-    -Dapocbr.optimization.parkedVehicle.enabled=false -Dapocbr.optimization.chunkContainers.enabled=false \
-    -Dapocbr.optimization.chunkAdjacency.enabled=false
+if [[ "$stage" != postgres-bootstrap ]]; then
+    scenario+=(-Dpz.it.streaming=true "-Dpz.it.heap=$PZ_SERVER_HEAP")
+fi
+
+output="target/ci/$stage"
+mkdir -p "$output"
+mvn --batch-mode --no-transfer-progress -Dstyle.color=never -Pserver-integration \
+    "-Dpz.game.jar=$PZ_GAME_JAR" "-Dpz.it.home=$PZ_HOME" \
+    "-Dpz.it.reportsDirectory=$PWD/$output/failsafe-reports" \
+    -Dpz.it.serverLogs=false -Dpz.it.color=false -Dpz.it.experimentalWorldSimulation=false \
+    "-Dpz.it.verifyStartupHooks=$startup_hooks" "${scenario[@]}" \
+    failsafe:integration-test failsafe:verify | tee "$output/maven.log"
+
+artifact="$(sed -n 's/^\[Server-IT\] Artifacts: //p' "$output/maven.log" | tail -n 1)"
+[[ -n "$artifact" && -d "$artifact" ]] || { echo "Missing run directory for $stage" >&2; exit 1; }
+if ! grep -Fxq "agent.sha256=$digest" "$artifact/runtime.properties"; then
+    echo "::error::Scenario $stage did not record the shared agent digest."
+    exit 1
+fi
+
+if [[ "$stage" == players30-baseline ]]; then
+    mkdir -p "$baseline"
+    cp "$artifact/runtime.properties" "$artifact/streaming-complete" "$artifact/streaming.csv" "$baseline/"
+fi

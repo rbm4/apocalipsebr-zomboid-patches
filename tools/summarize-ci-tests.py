@@ -1,6 +1,7 @@
 """Render Maven test reports as a GitHub Actions job summary."""
 
 import os
+import sys
 import xml.etree.ElementTree as ET
 from collections import Counter
 from html import escape
@@ -54,42 +55,32 @@ def print_details(label, cases, unreadable, unit_tests):
 
 
 def main():
-    ci = Path("target/ci")
-    postgres = ci / "postgres-bootstrap"
-    stages = sorted(log.parent for log in ci.glob("*/maven.log") if log.parent != postgres)
-    reports = [
-        ("Unit tests (Surefire)", Path("target/surefire-reports")),
-        *((stage.name, stage / "failsafe-reports") for stage in stages),
-        ("PostgreSQL account bootstrap (Failsafe)", postgres / "failsafe-reports"),
-    ]
+    unit_tests = len(sys.argv) == 1
+    if unit_tests:
+        label, directory = "Unit tests (Surefire)", Path("target/surefire-reports")
+    else:
+        stage = sys.argv[1]
+        label = "PostgreSQL account bootstrap and SQL verification" if stage == "postgres-bootstrap" else stage
+        directory = Path("target/ci") / stage / "failsafe-reports"
 
     print("## Test results\n")
-    for label, variable in (
-        ("Stable original-JAR suite", "STABLE_SUITE_OUTCOME"),
-        ("PostgreSQL account bootstrap and SQL verification", "POSTGRES_BOOTSTRAP_OUTCOME"),
-    ):
-        outcome = os.environ.get(variable, "").capitalize() or "Unknown"
-        print(f"- {label} — **{escape(outcome)}**")
-
+    outcome = os.environ.get("TEST_OUTCOME", "") or "unavailable"
+    print(f"{escape(label)} · **{escape(outcome.capitalize())}**")
     print("\n| Suite or stage | Passed | Failed | Errors | Skipped | Total |")
     print("| --- | ---: | ---: | ---: | ---: | ---: |")
-    details = []
-    for index, (label, directory) in enumerate(reports):
-        cases, unreadable = read_cases(directory)
-        if cases:
-            counts = Counter(case[0] for case in cases)
-            total = f"{len(cases)} (partial)" if unreadable else str(len(cases))
-            print(f"| {cell(label)} | {counts['Passed']} | {counts['Failed']} | "
-                  f"{counts['Error']} | {counts['Skipped']} | {total} |")
-        else:
-            print(f"| {cell(label)} | — | — | — | — | No test results |")
-        if cases or unreadable:
-            details.append((label, cases, unreadable, index == 0))
 
-    print("\nThe stable sequence stops at the first failing stage. "
-          "Full reports and logs are in the integration diagnostics artifact.\n")
-    for detail in details:
-        print_details(*detail)
+    cases, unreadable = read_cases(directory)
+    if cases:
+        counts = Counter(case[0] for case in cases)
+        total = f"{len(cases)} (partial)" if unreadable else str(len(cases))
+        print(f"| {cell(label)} | {counts['Passed']} | {counts['Failed']} | "
+              f"{counts['Error']} | {counts['Skipped']} | {total} |")
+    else:
+        print(f"| {cell(label)} | — | — | — | — | No test results |")
+
+    print("\nFull reports and logs are in the job's diagnostics artifact.\n")
+    if cases or unreadable:
+        print_details(label, cases, unreadable, unit_tests)
 
 
 if __name__ == "__main__":

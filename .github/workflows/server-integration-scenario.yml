@@ -1,0 +1,159 @@
+name: Run a Project Zomboid integration scenario
+
+on:
+  workflow_call:
+    inputs:
+      scenario:
+        required: true
+        type: string
+      steam-branch:
+        required: true
+        type: string
+      server-heap:
+        required: true
+        type: string
+      revision:
+        required: true
+        type: string
+      build-artifact-id:
+        required: true
+        type: string
+      baseline-artifact-id:
+        type: string
+    outputs:
+      baseline-artifact-id:
+        value: ${{ jobs.scenario.outputs.baseline-artifact-id }}
+
+permissions:
+  contents: read
+
+jobs:
+  scenario:
+    name: ${{ inputs.scenario }}
+    runs-on: ${{ vars.PZ_INTEGRATION_RUNNER || 'ubuntu-24.04' }}
+    timeout-minutes: 110
+    outputs:
+      baseline-artifact-id: ${{ steps.baseline.outputs.artifact-id }}
+    services:
+      postgres:
+        image: ${{ inputs.scenario == 'postgres-bootstrap' && 'postgres:17' || '' }}
+        env:
+          POSTGRES_DB: game_runtime
+          POSTGRES_PASSWORD: pz-ci-bootstrap
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd "pg_isready -U postgres -d game_runtime"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      STEAM_BRANCH: ${{ inputs.steam-branch }}
+      PZ_SERVER_HEAP: ${{ inputs.server-heap }}
+      EXPECTED_JAR_SHA256: ${{ vars.PZ_LINUX_JAR_SHA256 || '3c4a7c5f149d784758c6fb5f8fa85f3a21d572e38bc081400e89035f8120d287' }}
+      EXPECTED_STEAM_BUILD_ID: ${{ vars.PZ_STEAM_BUILD_ID || '26486687' }}
+      SCENARIO: ${{ inputs.scenario }}
+      MAVEN_ARGS: -Drevision=${{ inputs.revision }}
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ inputs.build-artifact-id }}
+          path: target
+
+      - uses: ./.github/actions/setup-pz-integration
+
+      - name: Download the players30 baseline
+        if: inputs.baseline-artifact-id != ''
+        uses: actions/download-artifact@v8
+        with:
+          artifact-ids: ${{ inputs.baseline-artifact-id }}
+          path: target/players30-baseline
+
+      - name: Run scenario assertions
+        if: inputs.scenario != 'postgres-bootstrap'
+        id: suite
+        shell: bash
+        run: bash tools/run-server-integration-ci.sh "$SCENARIO"
+
+      - name: Verify PostgreSQL account bootstrap
+        if: inputs.scenario == 'postgres-bootstrap'
+        id: postgres-bootstrap
+        env:
+          PGHOST: 127.0.0.1
+          PGPORT: ${{ job.services.postgres.ports['5432'] }}
+          PGDATABASE: game_runtime
+          PGUSER: postgres
+          PGPASSWORD: pz-ci-bootstrap
+        shell: bash
+        run: |
+          sudo apt-get install -y postgresql-client
+          psql -X -v ON_ERROR_STOP=1 <<'SQL'
+          CREATE ROLE apocalipsebr NOLOGIN;
+          CREATE ROLE pz_server_01 LOGIN PASSWORD 'pz-ci-engine';
+          GRANT CREATE, USAGE ON SCHEMA public TO apocalipsebr;
+          GRANT USAGE ON SCHEMA public TO pz_server_01;
+          SQL
+          {
+            echo 'SET ROLE apocalipsebr;'
+            cat src/test/resources/db/V2__Create_Server_Accounts.sql
+            echo 'GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO pz_server_01;'
+            echo 'GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO pz_server_01;'
+          } | psql -X -v ON_ERROR_STOP=1 --single-transaction
+
+          export PGUSER=pz_server_01 PGPASSWORD=pz-ci-engine
+          test "$(psql -XAt -v ON_ERROR_STOP=1 -c "SELECT count(*) FROM public.whitelist")" = 0
+
+          export APOCBR_POSTGRES_URL="jdbc:postgresql://127.0.0.1:$PGPORT/game_runtime?user=pz_server_01&password=pz-ci-engine"
+          bash tools/run-server-integration-ci.sh "$SCENARIO"
+
+          test "$(psql -XAt -v ON_ERROR_STOP=1 -c "
+            SELECT count(*)
+            FROM public.whitelist AS account
+            JOIN public.role AS role ON role.id = account.role
+            JOIN public.defaultroles AS defaults ON defaults.role = role.id
+            WHERE account.username = 'integration-admin'
+              AND account.world = 'agent-integration'
+              AND account.id > 0 AND length(account.password) > 0
+              AND defaults.name = 'defaultForAdmin'
+          ")" = 1
+          echo 'Verified persistent administrator bootstrap using the test engine role.'
+
+      - name: Upload baseline inputs for comparisons
+        if: inputs.scenario == 'players30-baseline'
+        id: baseline
+        uses: actions/upload-artifact@v6
+        with:
+          name: players30-baseline-${{ github.run_attempt }}
+          if-no-files-found: error
+          path: |
+            target/players30-baseline/runtime.properties
+            target/players30-baseline/streaming-complete
+            target/players30-baseline/streaming.csv
+
+      - name: Publish scenario summary
+        if: always()
+        env:
+          TEST_OUTCOME: ${{ inputs.scenario == 'postgres-bootstrap' && steps.postgres-bootstrap.outcome || steps.suite.outcome }}
+        shell: bash
+        run: |
+          python3 tools/summarize-ci-tests.py "$SCENARIO" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: pz-integration-${{ inputs.scenario }}-${{ github.run_attempt }}
+          if-no-files-found: ignore
+          path: |
+            target/ci/
+            target/server-integration/run-*/runtime.properties
+            target/server-integration/run-*/console.log
+            target/server-integration/run-*/evidence/
+            target/server-integration/run-*/telemetry-*.json
+            target/server-integration/run-*/*.csv
+            target/server-integration/run-*/*.txt

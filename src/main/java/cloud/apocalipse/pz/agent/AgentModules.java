@@ -21,6 +21,7 @@ import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkAdjacencyM
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkContainerModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ChunkAsyncSendModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.ClientChunkMapModule;
+import cloud.apocalipse.pz.agent.features.optimization.streaming.BuildingReconciliationModule;
 import cloud.apocalipse.pz.agent.features.optimization.streaming.blending.BlendDirectionsModule;
 import cloud.apocalipse.pz.agent.features.optimization.lua.LuaDispatchModule;
 import cloud.apocalipse.pz.agent.features.optimization.vehicle.ParkedVehicleModule;
@@ -52,7 +53,7 @@ public final class AgentModules {
         new ActorUpdateAllocationModule(), new AnimalGrowthGeneModule(), new BlendDirectionsModule(),
         new EntityRemovalModule(), new EntitySimulationModule(), new ServerLosModule(), new ZombieAsyncSendModule(),
         new CellBorderModule(), new CellRelevanceModule(), new RegionCellLookupModule(), new ParkedVehicleModule(), new ChunkContainerModule(),
-        new ChunkAdjacencyModule(), new ChunkAsyncSendModule(), new ClientChunkMapModule(),
+        new ChunkAdjacencyModule(), new ChunkAsyncSendModule(), new ClientChunkMapModule(), new BuildingReconciliationModule(),
         new NetworkDiagnosticsModule(), new PostgresChunksModule(), new ChunkObjectMutationsModule());
 
     private AgentModules() { }

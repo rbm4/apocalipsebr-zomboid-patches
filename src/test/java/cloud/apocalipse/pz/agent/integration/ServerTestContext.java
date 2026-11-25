@@ -1,5 +1,7 @@
 package cloud.apocalipse.pz.agent.integration;
 
+import cloud.apocalipse.pz.agent.integration.probe.HookProbe;
+
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
 import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
 import com.sun.net.httpserver.HttpServer;
@@ -167,6 +169,7 @@ public final class ServerTestContext implements AutoCloseable {
         manifest.setProperty("native.path", nativePath);
         manifest.setProperty("server.port", Integer.toString(port));
         manifest.setProperty("server.udpPort", Integer.toString(udpPort));
+        manifest.setProperty(HookProbe.VERIFY_STARTUP_HOOKS, childSettings.get(HookProbe.VERIFY_STARTUP_HOOKS));
         if (movingLoad) manifest.setProperty(MovingObjectLoad.JFR_PROPERTY,
             settings.getProperty(MovingObjectLoad.JFR_PROPERTY, "false"));
         if (movingLoad && youngHeap != null) manifest.setProperty(MovingObjectLoad.YOUNG_HEAP_PROPERTY, youngHeap);
@@ -269,6 +272,8 @@ public final class ServerTestContext implements AutoCloseable {
     public record RuntimeHook(String module, String id, String target, String method, String helper, String invocation) {
         public String name() { return "Startup hook " + module + "/" + id + " -> " + target + "." + method; }
     }
+
+    boolean verifiesStartupHooks() { return HookProbe.verifiesStartupHooks(settings); }
 
     public Properties hookInventory() throws IOException {
         Properties inventory = new Properties();

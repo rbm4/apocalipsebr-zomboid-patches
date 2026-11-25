@@ -35,14 +35,18 @@ class ServerIntegrationIT {
         assertFalse(assertions.isEmpty(), "No server assertions registered");
         assertEquals(assertions.size(), assertions.stream().map(ServerAssertion::name).distinct().count(),
             "Server assertion names must be unique");
+        var scenarios = assertions.stream()
+            .map(assertion -> reported(assertion.name(), () -> assertion.verify(server)));
+        if (!server.verifiesStartupHooks()) return scenarios;
+
         var inventory = server.hookInventory();
         var hooks = server.hooks().stream().map(hook -> reported(hook.name(), () -> {
             String state = inventory.getProperty("module." + hook.module());
             org.junit.jupiter.api.Assumptions.assumeTrue("ENABLED".equals(state), state);
             server.assertStartupHook(hook.target(), hook.method(), hook.helper(), hook.invocation());
         }));
-        return Stream.concat(hooks, assertions.stream()
-            .map(assertion -> reported(assertion.name(), () -> assertion.verify(server))));
+        var coverage = reported("Transformed classes have declared installation checks", server::assertInventoryCoverage);
+        return Stream.concat(Stream.concat(hooks, scenarios), Stream.of(coverage));
     }
 
     private static DynamicTest reported(String name, Executable assertion) {

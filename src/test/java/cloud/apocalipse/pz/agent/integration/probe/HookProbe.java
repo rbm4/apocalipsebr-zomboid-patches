@@ -14,9 +14,15 @@ import net.bytebuddy.jar.asm.Opcodes;
 
 /** Test-only observer with an optional, isolated streaming scenario. */
 public final class HookProbe {
+    public static final String VERIFY_STARTUP_HOOKS = "pz.it.verifyStartupHooks";
+
+    public static boolean verifiesStartupHooks(Properties settings) {
+        return Boolean.parseBoolean(settings.getProperty(VERIFY_STARTUP_HOOKS, "true"));
+    }
+
     public static void premain(String evidenceDirectory, Instrumentation instrumentation) {
         Path directory = Path.of(evidenceDirectory);
-        writeInventory(directory);
+        if (verifiesStartupHooks(System.getProperties())) writeInventory(directory);
         instrumentation.addTransformer(new ClassFileTransformer() {
             @Override public byte[] transform(ClassLoader loader, String className, Class<?> redefining,
                     ProtectionDomain domain, byte[] bytes) {
@@ -93,8 +99,9 @@ public final class HookProbe {
 
     public static void main(String[] arguments) throws Exception {
         // No Steam calls or game object construction: make this lazy target eligible for transformation.
-        for (var module : AgentModules.all()) {
-            if (module.disabledReason() == null) {
+        if (verifiesStartupHooks(System.getProperties())) {
+            for (var module : AgentModules.all()) {
+                if (module.disabledReason() != null) continue;
                 for (var check : module.hookChecks()) {
                     if (check.loadBeforeStartup()) {
                         Class.forName(check.targetClass(), false, ClassLoader.getSystemClassLoader());

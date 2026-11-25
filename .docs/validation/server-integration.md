@@ -53,6 +53,7 @@ resources must exist at `pz.it.home/media`.
 | `pz.it.serverLogs` | `true`; stream child output to Maven with a `[PZ]` prefix; `false` keeps only the raw log |
 | `pz.it.color` | ANSI green/red/yellow result lines by default, unless `NO_COLOR` exists; explicit `true`/`false` overrides that default |
 | `pz.it.useTaskConfiguration` | `false`; when `true`, forwards explicit runner `apocbr.*` properties and recognized service environment settings to the child |
+| `pz.it.verifyStartupHooks` | `true`; generates the startup inventory checks. Set to `false` for a scenario-only run with strict scenario hook evidence still available. |
 
 These are test-harness settings read only by test code. Production configuration
 continues to belong in `AgentConfiguration`. Do not pass production database or
@@ -72,14 +73,27 @@ build. For a deliberately updated or platform-specific baseline, set the
 `PZ_LINUX_JAR_SHA256` repository variable from a verified original Linux
 installation and `PZ_STEAM_BUILD_ID` to the corresponding server build ID.
 
-The workflow builds once and runs the stable
-[benchmark sequence](../../tools/run-server-integration-ci.sh) on one runner.
-This covers the 30-position comparisons, moving-object telemetry, parked
-vehicle cadence, chunk lifecycle and the hook-off smoke test. Experimental
-world simulation and the chunk storage replay are outside the sequence.
-The default heap is 6 GiB. For larger workloads or repeatable absolute
-timings, set `PZ_INTEGRATION_RUNNER` to a dedicated Linux runner label and
-choose a heap that leaves room for the operating system and test JVM.
+The build job runs Surefire and packages the agent once. Each
+[scenario job](../../.github/workflows/server-integration-scenario.yml) downloads
+that agent and the compiled Maven classes, installs its own verified game
+runtime, and calls Failsafe directly through the
+[scenario script](../../tools/run-server-integration-ci.sh). Each server
+records the agent hash, and the job verifies it against the build checksum.
+
+The `players30-baseline` job runs the generic startup hook checks once and
+uploads the baseline manifest, completion marker and measurements. Cell border,
+entity removal off and LOS off wait for those inputs before running in parallel.
+Moving-object attribution, parked vehicle cadence, chunk lifecycle, hook rollback
+and PostgreSQL bootstrap can start after the build. Each job runs its registered
+scenario assertions and retains the bytecode evidence they require. Experimental
+world simulation and chunk storage replay remain outside the workflow.
+
+The default GitHub-hosted runners allow two active jobs per matrix. The two
+matrices can overlap on separate VMs. With a custom `PZ_INTEGRATION_RUNNER`
+label, each matrix has one active job to limit concurrency on shared hardware.
+Each job runs a single server, with a 6 GiB heap limit by default for streaming
+workloads. Choose a heap that leaves room for the operating system, JVM native
+memory and Maven. Cross-runner timing deltas can include hardware variance.
 
 The PostgreSQL check uses a fresh service container with a separate schema
 owner and engine login. It applies the test copy of the manager's account
@@ -92,15 +106,14 @@ bootstrap. Player persistence and dictionary storage require their own
 schemas and scenarios. The streaming benchmarks use the isolated fixture
 with PostgreSQL disabled.
 
-The workflow run's **Summary** tab shows Surefire totals, per-stage Failsafe
-totals, and expandable results for named tests, startup hooks, and gameplay
-assertions. It also shows the PostgreSQL bootstrap step outcome, which includes
-the SQL verification. The summary is published on failed runs and indicates
-when reports are unavailable. The workflow retains the XML reports, runtime
-hashes, hook evidence, telemetry, and CSV measurements in its Actions artifact.
+The workflow run's **Summary** tab shows Surefire and per-job Failsafe totals,
+with expandable results for named tests, startup hooks and gameplay assertions.
+The PostgreSQL job outcome includes SQL verification. A failed matrix job
+allows its peers to finish. Each job keeps its XML reports, runtime hashes,
+hook evidence, telemetry and CSV measurements in a separate diagnostics artifact.
 
-Pushes to `master` automatically run both integration stages and publish a
-GitHub release after they pass. Manual runs are test-only by default. Select
+Pushes to `master` run all integration jobs and publish a GitHub release after
+they pass. Manual runs are test-only by default. Select
 **Publish the tested agent as the latest release** when dispatching from the
 default branch to publish after a manual run.
 
@@ -108,9 +121,9 @@ Release builds use Maven version `0.1.<workflow run number>` and Git tag
 `agent-v0.1.<workflow run number>`. Run numbers can skip when a run fails or
 only validates. Reruns reuse the same version, and an older run cannot replace
 a newer agent release as Latest. Local builds default to `0.1.0-SNAPSHOT`.
-The publish job attaches `apocbr-agent.jar` after comparing its checksum with
-the agent recorded by the integration runs. Both the release asset name and
-the local build output use the same stable filename.
+The publish job downloads the same build artifact verified by the scenario
+jobs and checks its checksum again before attaching `apocbr-agent.jar`.
+The release asset and local build output use the same filename.
 
 ### VS Code configured-services task
 
@@ -186,19 +199,20 @@ readable when colors are removed. The raw `console.log` is unaffected.
    The child classpath contains only the selected game JAR and probe JAR. The JVM
    makes agent classes available through the agent mechanism. Unit-test doubles
    and JUnit classes are absent from the child.
-4. The probe reads the same `AgentModules` registry used by the production agent,
-   writes the initialized module/hook inventory, loads enabled checks marked
+4. With startup checks enabled, the probe reads the same `AgentModules` registry
+   used by the production agent, writes its inventory, and loads enabled checks marked
    `loadBeforeStartup` without initialization, then invokes real `GameServer.main`.
    This includes the command registry `CommandBase` for `servercommand`.
    The probe loads that class without initializing the registry or issuing an
-   RCON command.
+   RCON command. Scenario-only runs start the same server and observe naturally
+   loaded classes.
 5. The context waits for the vanilla `*** SERVER STARTED ****` message and checks
    child liveness and transformation/probe errors. This is a startup boundary,
    not a guarantee that a player has joined or every subsystem is ready.
-6. `@TestFactory` generates a separate named dynamic test for every declared
-   `HookCheck`, and discovers registered `ServerAssertion` providers for additional
-   scenarios. They run sequentially against the same server. Disabled module
-   checks are explicitly skipped with the configuration reason. Failures do not
+6. `@TestFactory` discovers registered `ServerAssertion` providers for each run.
+   With startup checks enabled, it also generates a test for each declared
+   `HookCheck` and checks inventory coverage. They run sequentially against the
+   same server. Disabled module checks are skipped with the configuration reason. Failures do not
    intentionally abort later assertions. Each result prints a colored status,
    name, and (for passes) elapsed time, followed by a suite summary.
 7. `@AfterAll` sends `quit` through the child's console, waits for normal exit,
@@ -1056,8 +1070,8 @@ the child JVM, not separately instantiated or inferred from test configuration.
 The declarations describe installation contracts only; they do not add runtime
 control APIs or change instrumentation/lifecycle ordering.
 
-Every new declaration automatically produces a separate test on the next
-integration run. There is no second test-side target list or per-hook test file
+Every new declaration automatically produces a separate test on the next run
+with startup hook checks enabled. There is no second test-side target list or per-hook test file
 to maintain. The probe rejects duplicate module/hook identifiers or empty module
 check lists. The lightweight unit checks validate this inventory without starting
 a server. Declare additional contracts when adding hooks to an existing module.
@@ -1187,11 +1201,12 @@ dependencies for all integration runs or add production backdoors to observe the
 Each `target/server-integration/run-*` directory retains:
 
 - `runtime.properties`: selected runtime paths, Java executable, JAR and agent
-  SHA-256, allocated ports.
+  SHA-256, allocated ports, startup hook verification setting.
 - `pid.txt`, `console.log`, and the isolated `cache/` world/config/log files.
 - `hook-probe.jar` and `evidence/*.properties`: observed method/helper invocations
-  and original class code sources; `evidence/inventory.properties` records module
-  state and hook contracts; probe failures produce `probe-error.txt`.
+  and original class code sources. On startup verification runs,
+  `evidence/inventory.properties` records module state and hook contracts.
+  Probe failures produce `probe-error.txt`.
 - `telemetry-*.json` when snapshots arrive at the local receiver.
 - `streaming.csv` and a completion or error marker for opt-in streaming runs.
 
