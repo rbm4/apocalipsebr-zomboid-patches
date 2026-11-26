@@ -1,11 +1,15 @@
 package cloud.apocalipse.pz.agent.features.clientmenu;
 
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
+import com.google.gson.Gson;
 import java.io.IOException;
 import java.net.URI;
 import java.time.Duration;
+import java.util.Base64;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import se.krka.kahlua.vm.JavaFunction;
 import se.krka.kahlua.vm.KahluaTable;
@@ -18,6 +22,9 @@ import zombie.network.GameServer;
 
 /** Client-owned Lua bindings and Steam identity snapshot. Worker threads never access Lua or Steam. */
 public final class ClientMenuRuntime {
+    private static final String STEAM_AUTH_IDENTITY = "apocalipsebr-auth";
+    private static final String STEAM_AUTH_PATH = "/api/v1/client-menu/auth";
+    private static final Gson JSON = new Gson();
     private static final int MAX_IN_FLIGHT = 8;
     private static final int MAX_COMPLETED = 32;
     private static final int MAX_TICKET_RESULTS = 8;
@@ -58,6 +65,7 @@ public final class ClientMenuRuntime {
     private final java.util.concurrent.ConcurrentLinkedQueue<String> completedOrder = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final java.util.concurrent.ConcurrentLinkedQueue<String> ticketResultOrder = new java.util.concurrent.ConcurrentLinkedQueue<>();
     private final AtomicInteger pending = new AtomicInteger();
+    private SteamAuthorizationAttempt steamAuthorization;
     private volatile boolean steamReady;
     private volatile String steamId;
     private volatile boolean closed;
@@ -127,6 +135,8 @@ public final class ClientMenuRuntime {
         bind(api, "poll", 1, frame -> poll(text(frame, 0)));
         bind(api, "requestSteamTicket", 1, frame -> requestSteamTicket(text(frame, 0)));
         bind(api, "pollSteamTicket", 1, frame -> pollSteamTicket(text(frame, 0)));
+        bind(api, "requestSteamAuthorization", 0, frame -> requestSteamAuthorization());
+        bind(api, "pollSteamAuthorization", 1, frame -> pollSteamAuthorization(text(frame, 0)));
         this.environment.rawset("ApocBRClientApi", api);
     }
 
@@ -249,6 +259,85 @@ public final class ClientMenuRuntime {
         return value;
     }
 
+    private Object requestSteamAuthorization() {
+        if (!this.steamReady || this.transport == null || this.steamAuthorization != null) return null;
+        var attempt = new SteamAuthorizationAttempt(UUID.randomUUID().toString(), new CompletableFuture<>());
+        if (!SteamWebApiTicketProbe.requestTicketForExchange(STEAM_AUTH_IDENTITY, ticket -> {
+            if (!ticket.successful()) {
+                attempt.result().complete(SteamAuthorization.failed("STEAM_TICKET_FAILED", ticket.steamResult()));
+            } else if (this.closed) {
+                attempt.result().cancel(false);
+            } else {
+                startSteamExchange(attempt.result(), ticket);
+            }
+            return attempt.result();
+        })) return null;
+        this.steamAuthorization = attempt;
+        return attempt.id();
+    }
+
+    private void startSteamExchange(CompletableFuture<SteamAuthorization> completion,
+            SteamWebApiTicketProbe.TicketResult ticket) {
+        try {
+            Thread worker = Thread.ofVirtual().name("ApocBR-Steam-Authorization")
+                .inheritInheritableThreadLocals(false)
+                .unstarted(() -> completion.complete(exchangeSteamTicket(ticket)));
+            completion.completeOnTimeout(SteamAuthorization.failed("BACKEND_TIMEOUT", 0), 15, TimeUnit.SECONDS)
+                .whenComplete((result, failure) -> {
+                    if (failure != null || "BACKEND_TIMEOUT".equals(result.error())) worker.interrupt();
+                });
+            worker.start();
+        } catch (RuntimeException failure) {
+            completion.complete(SteamAuthorization.failed("WORKER_START_FAILED", 0));
+        }
+    }
+
+    private SteamAuthorization exchangeSteamTicket(SteamWebApiTicketProbe.TicketResult ticket) {
+        Result response;
+        try {
+            String body = JSON.toJson(java.util.Map.of("ticket", Base64.getEncoder().encodeToString(ticket.ticket())));
+            response = this.transport.request("POST", STEAM_AUTH_PATH, body);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return SteamAuthorization.failed("INTERRUPTED", 0);
+        } catch (IOException | RuntimeException failure) {
+            return SteamAuthorization.failed("TRANSPORT_ERROR", 0);
+        }
+
+        if (response.status() != 201 || !response.ok()) {
+            return SteamAuthorization.failed("BACKEND_REJECTED", response.status());
+        }
+        try {
+            var body = JSON.fromJson(response.body(), SteamAuthorizationResponse.class);
+            if (body != null && body.token() != null && !body.token().isBlank() && body.expiresInSeconds() > 0) {
+                long expiresAt = System.nanoTime() + TimeUnit.SECONDS.toNanos(body.expiresInSeconds());
+                return new SteamAuthorization(body.token(), expiresAt, null, 201);
+            }
+        } catch (com.google.gson.JsonParseException ignored) {
+            // Backend response bodies can contain credentials and are omitted from diagnostics.
+        }
+        return SteamAuthorization.failed("INVALID_BACKEND_RESPONSE", 201);
+    }
+
+    private Object pollSteamAuthorization(String requestId) {
+        SteamAuthorizationAttempt attempt = this.steamAuthorization;
+        if (attempt == null || !attempt.id().equals(requestId) || !attempt.result().isDone()) return null;
+        this.steamAuthorization = null;
+        SteamAuthorization result = attempt.result().join();
+        double remainingSeconds = 0;
+        if (result.token() != null) {
+            remainingSeconds = (result.expiresAtNanos() - System.nanoTime()) / 1_000_000_000.0;
+            if (remainingSeconds <= 0) result = SteamAuthorization.failed("AUTHORIZATION_EXPIRED", 0);
+        }
+        KahluaTable value = LuaManager.platform.newTable();
+        value.rawset("ok", result.token() != null);
+        value.rawset("token", result.token());
+        value.rawset("expiresInSeconds", Math.max(0, remainingSeconds));
+        value.rawset("error", result.error());
+        value.rawset("status", (double) result.status());
+        return value;
+    }
+
     private void requireOwner() {
         if (this.closed || Thread.currentThread() != this.luaOwner || LuaManager.env != this.environment)
             throw new IllegalStateException("ApocBRClientApi must be called on the active client Lua thread");
@@ -277,6 +366,7 @@ public final class ClientMenuRuntime {
     private void close() {
         if (this.closed) return;
         this.closed = true;
+        if (this.steamAuthorization != null) this.steamAuthorization.result().cancel(false);
         if (this.transport != null) this.transport.close();
         this.inFlight.clear();
         this.results.clear();
@@ -286,6 +376,13 @@ public final class ClientMenuRuntime {
     }
 
     private record Result(boolean ok, int status, String body) {}
+    private record SteamAuthorizationAttempt(String id, CompletableFuture<SteamAuthorization> result) {}
+    private record SteamAuthorizationResponse(String token, long expiresInSeconds) {}
+    private record SteamAuthorization(String token, long expiresAtNanos, String error, int status) {
+        static SteamAuthorization failed(String error, int status) {
+            return new SteamAuthorization(null, 0, error, status);
+        }
+    }
 
     private static final class ClientApiTransport implements AutoCloseable {
         private final URI base;
@@ -311,7 +408,7 @@ public final class ClientMenuRuntime {
                 || "::1".equals(host) || "[::1]".equals(host);
             String endpointPath = endpoint.getRawPath();
             boolean supportedPath = endpointPath == null || endpointPath.isEmpty() || "/".equals(endpointPath)
-                || "/api/v1/client-menu/auth".equals(endpointPath);
+                || STEAM_AUTH_PATH.equals(endpointPath);
             if (host == null || endpoint.getUserInfo() != null || endpoint.getRawQuery() != null
                     || endpoint.getRawFragment() != null || !supportedPath
                     || !("https".equalsIgnoreCase(endpoint.getScheme())
