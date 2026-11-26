@@ -21,7 +21,6 @@ import zombie.network.GameServer;
 public final class SteamWebApiTicketProbe {
     private static final int CALLBACK_ID = 100 + 68;
     private static final int CALLBACK_BYTES = 12 + 2_560;
-    private static final String IDENTITY = "apocalipsebr-auth";
     private static final long TIMEOUT_NANOS = Duration.ofSeconds(30).toNanos();
     private static final AtomicReference<String> STATUS = new AtomicReference<>("NOT_STARTED");
     private static final AtomicReference<String> LAST_REQUEST_DIAGNOSTIC = new AtomicReference<>("NOT_REQUESTED");
@@ -51,15 +50,7 @@ public final class SteamWebApiTicketProbe {
 
     static void start() {
         steamThread = Thread.currentThread();
-        STATUS.set("STARTING");
-        if (!requestTicket(IDENTITY, result -> {
-            STATUS.set(result.successful() ? "SUCCEEDED" : "FAILED");
-            DebugLog.log(result.successful()
-                ? "[ApocBR][ClientMenu] Steam Web API ticket probe succeeded; ticket discarded"
-                : "[ApocBR][ClientMenu] Steam Web API ticket probe failed; result=" + result.steamResult());
-        })) {
-            STATUS.set("NATIVE_BRIDGE_UNAVAILABLE");
-        } else STATUS.set("WAITING_FOR_CALLBACK");
+        STATUS.set("READY");
     }
 
     /**
@@ -97,6 +88,8 @@ public final class SteamWebApiTicketProbe {
                 return false;
             }
             LAST_REQUEST_DIAGNOSTIC.set("REQUEST_ACCEPTED");
+            STATUS.set("WAITING_FOR_CALLBACK");
+            DebugLog.log("[ApocBR][ClientMenu] Steam accepted ticket request, waiting for callback");
             return true;
         } catch (Throwable failure) {
             if (request != null) finish(request, new TicketResult(false, -1, new byte[0]));
@@ -107,13 +100,18 @@ public final class SteamWebApiTicketProbe {
     }
 
     /** Runs after SteamUtils.runLoop returns, so native callback dispatch has unwound before freeing memory. */
-    static void afterSteamLoop() {
+    public static void afterSteamLoop() {
         Pending request = active;
         if (request == null) return;
         if (request.completed) {
             boolean success = request.result == 1 && request.ticketLength > 0 && request.ticket != null;
+            STATUS.set(success ? "SUCCEEDED" : "FAILED");
+            DebugLog.log("[ApocBR][ClientMenu] Steam ticket callback completed, result=" + request.result
+                + ", ticketReceived=" + success);
             finish(request, new TicketResult(success, request.result, success ? request.ticket : new byte[0]));
         } else if (System.nanoTime() - request.startedNanos >= TIMEOUT_NANOS) {
+            STATUS.set("CALLBACK_TIMED_OUT");
+            DebugLog.log("[ApocBR][ClientMenu] Steam ticket callback timed out after 30 seconds");
             finish(request, new TicketResult(false, -1, new byte[0]));
         }
     }

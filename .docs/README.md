@@ -17,7 +17,7 @@ Each session selects one bounded feature; no migration queue is authorized here.
 - [Server Lua APIs, solar power and bounded service workers](features/server-lua.md)
 - [Opt-in client chunk-map cap](features/client-chunk-map.md)
 - [Opt-in client building reconciliation](features/client-building-reconciliation.md)
-- [Client startup logo skip](features/client-menu-startup-logo-skip.md)
+- [Client startup skips](features/client-menu-startup-logo-skip.md)
 
 - [Agent architecture and original-JAR development](architecture/README.md)
 - [Feature implementation catalog](features/README.md)

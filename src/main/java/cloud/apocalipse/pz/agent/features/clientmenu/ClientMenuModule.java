@@ -9,11 +9,13 @@ import net.bytebuddy.asm.Advice;
 
 import static net.bytebuddy.matcher.ElementMatchers.*;
 
-/** Client-only Lua/backend bridge for the future custom main menu. */
+/** Client startup hooks and Lua/backend bridge for the custom main menu. */
 public final class ClientMenuModule implements AgentModule {
     private static final String STEAM = "zombie.core.znet.SteamUtils";
     private static final String LUA = "zombie.Lua.LuaManager";
     private static final String GAME_STATE_MACHINE = "zombie.gameStates.GameStateMachine";
+    private static final String GAME_WINDOW = "zombie.GameWindow";
+    private static final String WARNING_METHOD = "doEpilepsyWarningText";
     private boolean enabled;
 
     @Override public String name() { return "client-menu-api"; }
@@ -33,7 +35,8 @@ public final class ClientMenuModule implements AgentModule {
             new HookCheck("steam-callback-pump", STEAM, "runLoop", "cloud.apocalipse.pz.agent.features.clientmenu.SteamWebApiTicketProbe", "afterSteamLoop", false),
             new HookCheck("steam-shutdown", STEAM, "shutdown", runtime, "shutdown", false),
             new HookCheck("client-lua-api", LUA, "init", runtime, "luaInitialized", false),
-            new HookCheck("startup-logo-skip", GAME_STATE_MACHINE, "update", runtime, "skipStartupLogos", false)
+            new HookCheck("startup-logo-skip", GAME_STATE_MACHINE, "update", runtime, "skipStartupLogos", false),
+            new HookCheck("startup-warning-skip", GAME_WINDOW, WARNING_METHOD, runtime, "skipPhotosensitivityWarning", false)
         );
     }
 
@@ -48,7 +51,9 @@ public final class ClientMenuModule implements AgentModule {
             .type(named(LUA)).transform((dynamic, type, loader, module, domain) ->
                 dynamic.visit(Advice.to(LuaInitialized.class).on(named("init").and(isStatic()).and(takesArguments(0)))))
             .type(named(GAME_STATE_MACHINE)).transform((dynamic, type, loader, module, domain) ->
-                dynamic.visit(Advice.to(StartupLogos.class).on(named("update").and(takesArguments(0)))));
+                dynamic.visit(Advice.to(StartupLogos.class).on(named("update").and(takesArguments(0)))))
+            .type(named(GAME_WINDOW)).transform((dynamic, type, loader, module, domain) ->
+                dynamic.visit(Advice.to(StartupWarning.class).on(named(WARNING_METHOD).and(isStatic()).and(hasDescriptor("()V")))));
     }
 
     public static final class SteamInitialized {
@@ -94,6 +99,17 @@ public final class ClientMenuModule implements AgentModule {
         public static void enter(@Advice.This Object machine) {
             try { ClientMenuRuntime.skipStartupLogos(machine); }
             catch (RuntimeException | LinkageError ignored) { }
+        }
+    }
+
+    public static final class StartupWarning {
+        @Advice.OnMethodEnter(skipOn = Advice.OnNonDefaultValue.class)
+        public static boolean enter() {
+            try {
+                return ClientMenuRuntime.skipPhotosensitivityWarning();
+            } catch (RuntimeException | LinkageError ignored) {
+                return false;
+            }
         }
     }
 }
