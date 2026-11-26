@@ -88,9 +88,12 @@ and PostgreSQL bootstrap can start after the build. Each job runs its registered
 scenario assertions and retains the bytecode evidence they require. Experimental
 world simulation and chunk storage replay remain outside the workflow.
 
-The default GitHub-hosted runners allow two active jobs per matrix. The two
-matrices can overlap on separate VMs. With a custom `PZ_INTEGRATION_RUNNER`
-label, each matrix has one active job to limit concurrency on shared hardware.
+GitHub-hosted runners can run all five independent scenarios as soon as the
+build finishes and all three comparison scenarios once the baseline is ready.
+The matrices can overlap on separate VMs. With a custom
+`PZ_INTEGRATION_RUNNER` label, each matrix allows one active job. The setup
+restores Maven dependencies as before and tries the runner's existing APT
+indexes before refreshing them.
 Each job runs a single server, with a 6 GiB heap limit by default for streaming
 workloads. Choose a heap that leaves room for the operating system, JVM native
 memory and Maven. Cross-runner timing deltas can include hardware variance.
