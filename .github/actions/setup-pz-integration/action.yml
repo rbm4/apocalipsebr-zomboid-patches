@@ -12,8 +12,11 @@ runs:
     - name: Install Linux runtime dependencies
       shell: bash
       run: |
-        sudo apt-get update
-        sudo apt-get install -y lib32gcc-s1 libgl1 libglu1-mesa libxi6 libxrender1 libxtst6
+        packages=(lib32gcc-s1 libgl1 libglu1-mesa libxi6 libxrender1 libxtst6)
+        if ! sudo apt-get install -y "${packages[@]}"; then
+          sudo apt-get update
+          sudo apt-get install -y "${packages[@]}"
+        fi
 
     - name: Download and verify the original dedicated server
       shell: bash

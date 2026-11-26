@@ -137,6 +137,8 @@ public final class ClientMenuRuntime {
         bind(api, "pollSteamTicket", 1, frame -> pollSteamTicket(text(frame, 0)));
         bind(api, "requestSteamAuthorization", 0, frame -> requestSteamAuthorization());
         bind(api, "pollSteamAuthorization", 1, frame -> pollSteamAuthorization(text(frame, 0)));
+        bind(api, "requestSteamUsername", 2, frame -> requestSteamUsername(text(frame, 0), text(frame, 1)));
+        bind(api, "pollSteamUsername", 1, frame -> pollSteamUsername(text(frame, 0)));
         this.environment.rawset("ApocBRClientApi", api);
     }
 
@@ -164,6 +166,16 @@ public final class ClientMenuRuntime {
     }
 
     private Object request(String method, String path, String body) {
+        return request(method, path, body, null);
+    }
+
+    private Object requestSteamUsername(String steamId, String token) {
+        if (!steamId.matches("[0-9]{17,20}")
+                || !token.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) return null;
+        return request("GET", STEAM_AUTH_PATH + "/username?steamId=" + steamId, null, token);
+    }
+
+    private Object request(String method, String path, String body, String bearerToken) {
         if (this.closed) return null;
         if (method == null || path == null) return null;
         String normalizedMethod = method.toUpperCase(java.util.Locale.ROOT);
@@ -183,7 +195,7 @@ public final class ClientMenuRuntime {
         String requestBody = body == null ? "" : body;
         try {
             Thread.ofVirtual().name("ApocBR-Client-API").inheritInheritableThreadLocals(false)
-                .start(() -> execute(requestId, normalizedMethod, path, requestBody));
+                .start(() -> execute(requestId, normalizedMethod, path, requestBody, bearerToken));
         } catch (RuntimeException failure) {
             this.inFlight.remove(requestId);
             this.pending.decrementAndGet();
@@ -192,10 +204,11 @@ public final class ClientMenuRuntime {
         return requestId;
     }
 
-    private void execute(String requestId, String method, String path, String body) {
+    private void execute(String requestId, String method, String path, String body, String bearerToken) {
         Result result;
         try {
-            result = this.transport.request(method, path, body);
+            result = this.transport.request(method, path, body, bearerToken);
+            if (bearerToken != null) result = steamUsernameResult(result);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             result = new Result(false, 0, "INTERRUPTED");
@@ -219,12 +232,44 @@ public final class ClientMenuRuntime {
     }
 
     private Object poll(String requestId) {
-        Result result = this.results.remove(requestId);
+        Result result = takeResult(requestId);
         if (result == null) return null;
         KahluaTable value = LuaManager.platform.newTable();
         value.rawset("ok", result.ok());
         value.rawset("status", (double) result.status());
         value.rawset("body", result.body());
+        return value;
+    }
+
+    private Result takeResult(String requestId) {
+        Result result = this.results.remove(requestId);
+        if (result != null) this.completedOrder.remove(requestId);
+        return result;
+    }
+
+    private static Result steamUsernameResult(Result response) {
+        if (response.status() != 200 || !response.ok()) {
+            return new Result(false, response.status(), "USERNAME_LOOKUP_FAILED");
+        }
+        try {
+            var decoded = JSON.fromJson(response.body(), SteamUsernameResponse.class);
+            if (decoded != null && decoded.username() != null && !decoded.username().isBlank()) {
+                return new Result(true, 200, decoded.username());
+            }
+        } catch (com.google.gson.JsonParseException ignored) {
+            // The client reports a fixed error code for invalid response bodies.
+        }
+        return new Result(false, 200, "INVALID_USERNAME_RESPONSE");
+    }
+
+    private Object pollSteamUsername(String requestId) {
+        Result result = takeResult(requestId);
+        if (result == null) return null;
+        KahluaTable value = LuaManager.platform.newTable();
+        value.rawset("ok", result.ok());
+        value.rawset("status", (double) result.status());
+        if (result.ok()) value.rawset("username", result.body());
+        else value.rawset("error", result.body());
         return value;
     }
 
@@ -376,6 +421,7 @@ public final class ClientMenuRuntime {
     }
 
     private record Result(boolean ok, int status, String body) {}
+    private record SteamUsernameResponse(String username) {}
     private record SteamAuthorizationAttempt(String id, CompletableFuture<SteamAuthorization> result) {}
     private record SteamAuthorizationResponse(String token, long expiresInSeconds) {}
     private record SteamAuthorization(String token, long expiresAtNanos, String error, int status) {
@@ -423,6 +469,11 @@ public final class ClientMenuRuntime {
         }
 
         Result request(String method, String path, String body) throws IOException, InterruptedException {
+            return request(method, path, body, null);
+        }
+
+        Result request(String method, String path, String body, String bearerToken)
+                throws IOException, InterruptedException {
             if (this.closed) return new Result(false, 0, "CLIENT_CLOSED");
             if (!path.matches("/api/v1/[A-Za-z0-9_./?=&%-]{1,512}")
                     || path.contains("..") || path.contains("//") || path.contains("#"))
@@ -430,6 +481,7 @@ public final class ClientMenuRuntime {
             URI uri = this.base.resolve(path);
             java.net.http.HttpRequest.Builder builder = java.net.http.HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(10)).header("Accept", "application/json");
+            if (bearerToken != null) builder.header("Authorization", "Bearer " + bearerToken);
             if (method.equals("POST")) {
                 builder.header("Content-Type", "application/json; charset=utf-8")
                     .POST(java.net.http.HttpRequest.BodyPublishers.ofString(body));
