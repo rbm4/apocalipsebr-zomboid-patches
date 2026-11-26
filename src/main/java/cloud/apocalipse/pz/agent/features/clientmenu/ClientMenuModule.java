@@ -13,6 +13,7 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 public final class ClientMenuModule implements AgentModule {
     private static final String STEAM = "zombie.core.znet.SteamUtils";
     private static final String LUA = "zombie.Lua.LuaManager";
+    private static final String GAME_STATE_MACHINE = "zombie.gameStates.GameStateMachine";
     private boolean enabled;
 
     @Override public String name() { return "client-menu-api"; }
@@ -31,7 +32,8 @@ public final class ClientMenuModule implements AgentModule {
             new HookCheck("steam-ready", STEAM, "init", runtime, "steamInitialized", false),
             new HookCheck("steam-callback-pump", STEAM, "runLoop", "cloud.apocalipse.pz.agent.features.clientmenu.SteamWebApiTicketProbe", "afterSteamLoop", false),
             new HookCheck("steam-shutdown", STEAM, "shutdown", runtime, "shutdown", false),
-            new HookCheck("client-lua-api", LUA, "init", runtime, "luaInitialized", false)
+            new HookCheck("client-lua-api", LUA, "init", runtime, "luaInitialized", false),
+            new HookCheck("startup-logo-skip", GAME_STATE_MACHINE, "update", runtime, "skipStartupLogos", false)
         );
     }
 
@@ -44,7 +46,9 @@ public final class ClientMenuModule implements AgentModule {
                     .visit(Advice.to(SteamLoop.class).on(named("runLoop").and(isStatic()).and(takesArguments(0))))
                     .visit(Advice.to(SteamShutdown.class).on(named("shutdown").and(isStatic()).and(takesArguments(0)))))
             .type(named(LUA)).transform((dynamic, type, loader, module, domain) ->
-                dynamic.visit(Advice.to(LuaInitialized.class).on(named("init").and(isStatic()).and(takesArguments(0)))));
+                dynamic.visit(Advice.to(LuaInitialized.class).on(named("init").and(isStatic()).and(takesArguments(0)))))
+            .type(named(GAME_STATE_MACHINE)).transform((dynamic, type, loader, module, domain) ->
+                dynamic.visit(Advice.to(StartupLogos.class).on(named("update").and(takesArguments(0)))));
     }
 
     public static final class SteamInitialized {
@@ -82,6 +86,14 @@ public final class ClientMenuModule implements AgentModule {
                 try { SteamWebApiTicketProbe.afterSteamLoop(); }
                 catch (RuntimeException | LinkageError ignored) { }
             }
+        }
+    }
+
+    public static final class StartupLogos {
+        @Advice.OnMethodEnter
+        public static void enter(@Advice.This zombie.gameStates.GameStateMachine machine) {
+            try { ClientMenuRuntime.skipStartupLogos(machine); }
+            catch (RuntimeException | LinkageError ignored) { }
         }
     }
 }
