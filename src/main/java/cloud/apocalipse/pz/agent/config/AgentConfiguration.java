@@ -452,7 +452,7 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     /** Client menu API bridge; JVM argument {@code -Dapocbr.clientMenu.enabled=false} disables it. Defaults enabled. */
     public static final String CLIENT_MENU_ENABLED_PROPERTY = "apocbr.clientMenu.enabled";
-    /** Client menu API base URL; JVM argument {@code -Dapocbr.clientMenu.apiBaseUrl=https://...}. */
+    /** Client menu API base URL; defaults to the auth endpoint and accepts an origin override. */
     public static final String CLIENT_MENU_API_BASE_URL_PROPERTY = "apocbr.clientMenu.apiBaseUrl";
 
     public static boolean clientMenuEnabled() {
@@ -460,7 +460,8 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     }
 
     public static String clientMenuApiBaseUrl() {
-        return systemProperty(CLIENT_MENU_API_BASE_URL_PROPERTY,"https://plataforma.apocalipse.cloud/api/v1/client-menu/auth");
+        return systemProperty(CLIENT_MENU_API_BASE_URL_PROPERTY,
+            "https://plataforma.apocalipse.cloud/api/v1/client-menu/auth");
     }
 
     public static long longProperty(String name, long fallback) {
