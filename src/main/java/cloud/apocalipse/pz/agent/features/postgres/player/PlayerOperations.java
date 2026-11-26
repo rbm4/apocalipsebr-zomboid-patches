@@ -33,6 +33,11 @@ public final class PlayerOperations {
         public void apply() throws SQLException {
             var effective = DATABASE.creationBatch(batch); var graph = effective.snapshot() == null ? null : DATABASE.projectLive(effective);
             if (!DATABASE.applyFields(effective, graph)) throw new SQLException("Live capture deferred", "40001");
+            if(graph!=null&&graph.canRetainInventory()){
+                for(var failure:graph.itemFailures())PlayerJournal.reportItemFailure(graph.character(),batch.candidate().slot(),
+                    failure.fullType(),failure.nativeId(),failure.code(),failure.detail());
+                PlayerCapture.requireComplete(graph,"live_inventory");
+            }
         }
     }
     static String key(String world, String identity, int slot, boolean coop) { return world.length() + ":" + world + ":" + coop + ":" + identity.length() + ":" + identity + ":" + slot; }

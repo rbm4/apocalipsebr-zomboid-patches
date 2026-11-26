@@ -110,7 +110,16 @@ class PlayerHookTest {
             "-cp", String.join(File.pathSeparator, paths), name, directory.resolve("cache").toString())
             .directory(gameInstall.toFile())
             .redirectErrorStream(true).redirectOutput(output.toFile()).start();
-        try { assertTrue(child.waitFor(45, TimeUnit.SECONDS), "player fixture timed out"); assertEquals(0, child.exitValue(), new String(Files.readAllBytes(output), java.nio.charset.StandardCharsets.UTF_8)); }
+        try {
+            assertTrue(child.waitFor(45, TimeUnit.SECONDS), "player fixture timed out");
+            String log = Files.readString(output);
+            assertEquals(0, child.exitValue(), log);
+            assertTrue(log.lines().anyMatch(line -> line.contains("LIVE_ITEM_PERSISTENCE_FAILED")
+                && line.contains("item=Base.Fixture") && line.contains("issue=NATIVE_COMPONENT_CAPTURE_FAILED_CraftLogic")
+                && line.contains("detail=NATIVE_COMPONENT_DICTIONARY_UNAVAILABLE")
+                && line.contains("characterState=applied") && line.contains("inventory=last_committed")), log);
+            assertTrue(log.contains("Generic carried component fallback passed"), log);
+        }
         finally { if (child.isAlive()) child.destroyForcibly(); }
     }
 }

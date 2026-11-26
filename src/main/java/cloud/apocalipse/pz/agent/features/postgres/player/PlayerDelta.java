@@ -47,6 +47,36 @@ final class PlayerDelta {
         for(var row:rows)if(result.put(key(row.table(),row.values()),row.values())!=null)throw new IllegalStateException("Duplicate mutation row");
         return result;
     }
+    static Map<Key,Map<String,Object>> retainInventory(Map<Key,Map<String,Object>> baseline,List<PlayerCapture.Row> rows) {
+        var captured=index(rows.stream().filter(row -> independent(row.table())).toList());
+        Map<Key,Map<String,Object>> result=new LinkedHashMap<>(baseline);
+        result.keySet().removeIf(key -> independent(key.table()));
+        for(var entry:captured.entrySet()) {
+            Key key=entry.getKey();
+            Map<String,Object> row=entry.getValue();
+            if(key.table().equals("character_state")&&baseline.containsKey(key)){
+                row=new LinkedHashMap<>(row);
+                row.put("inventory_container_id",baseline.get(key).get("inventory_container_id"));
+            }
+            result.put(key,row);
+        }
+        return result;
+    }
+    private static boolean independent(String table) {
+        return KEYS.get(table).getFirst().equals("character_id")
+            && !Set.of("equipment","human_visual","visual_body_value").contains(table);
+    }
+    static long retainedBytes(Map<Key,Map<String,Object>> rows) {
+        long bytes=0;
+        for(var row:rows.values()) {
+            bytes+=512;
+            for(Object value:row.values())bytes+=valueBytes(value);
+        }
+        return bytes;
+    }
+    private static long valueBytes(Object value) {
+        return 64+(value instanceof String text?text.length()*2L:value instanceof byte[] bytes?bytes.length:0);
+    }
     static List<Change> diff(Map<Key,Map<String,Object>> before,Map<Key,Map<String,Object>> after) {
         List<Change> changes=new ArrayList<>();Set<Key> keys=new LinkedHashSet<>(before.keySet());keys.addAll(after.keySet());
         for(Key key:keys) {
@@ -78,7 +108,7 @@ final class PlayerDelta {
                     for(int i=0;i<columns.size();i++) {
                         var column=columns.get(i);Object value=rows.getObject(i+1);
                         if(value instanceof Number n)value=switch(column.type()){case "real"->n.floatValue();case "double precision"->n.doubleValue();case "integer"->n.intValue();case "bigint"->n.longValue();default->value;};
-                        row.put(column.name(),value);bytes+=64+(value instanceof String s?s.length()*2L:value instanceof byte[] b?b.length:0);
+                        row.put(column.name(),value);bytes+=valueBytes(value);
                     }
                     if(result.put(key(table,row),Collections.unmodifiableMap(row))!=null)throw new SQLException("Duplicate mutation baseline","21000");
                     if(bytes>PlayerLimits.GRAPH_BYTES||result.size()>PlayerLimits.ROWS)throw new SQLException("Mutation baseline size budget","54000");

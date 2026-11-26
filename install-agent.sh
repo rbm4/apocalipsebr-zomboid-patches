@@ -5,6 +5,8 @@
 # Default service: pzextraction.service. Does not change launcher configuration.
 set -euo pipefail
 
+git pull
+
 if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
     echo "Usage: sudo bash install-agent.sh [service-name]"
     echo "Installs target/apocbr-agent.jar into /opt/pzserver/agents/ and restarts the service."

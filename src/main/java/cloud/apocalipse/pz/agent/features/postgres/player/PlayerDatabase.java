@@ -237,7 +237,11 @@ final class PlayerDatabase {
     boolean applyFields(PlayerMutations.Batch batch) throws SQLException {return applyFields(batch,null);}
     boolean applyFields(PlayerMutations.Batch batch,PlayerCapture.Graph graph) throws SQLException {
         if(graph!=null&&!graph.character().equals(batch.character()))throw new SQLException("Live graph life mismatch","40001");
-        if(graph!=null&&!graph.issues().isEmpty()){sqlMetrics.incomplete(graph.issues());PlayerCapture.requireComplete(graph,"live_fields");}
+        boolean retainInventory=graph!=null&&graph.canRetainInventory();
+        if(graph!=null&&!graph.issues().isEmpty()){
+            sqlMetrics.incomplete(graph.issues());
+            if(!retainInventory)PlayerCapture.requireComplete(graph,"live_fields");
+        }
         Candidate candidate=batch.candidate();
         try(Connection connection=connections.open()) {
             try {
@@ -274,8 +278,9 @@ final class PlayerDatabase {
                 if(graph!=null) {
                     if(cached!=null&&cached.head.equals(head)&&cached.revision==revision)baseline=cached.rows;
                     else {cacheMisses++;baseline=PlayerDelta.load(connection,head,deadline);}
-                    updated=PlayerDelta.index(graph.rows());changes=PlayerDelta.diff(baseline,updated);
-                    if(changes.isEmpty()&&batch.fields().isEmpty()){connection.commit();sqlMetrics.changed(batch,List.of());unchangedGraphs++;remember(character,head,revision,updated,graph.bytes());return true;}
+                    updated=retainInventory?PlayerDelta.retainInventory(baseline,graph.rows()):PlayerDelta.index(graph.rows());
+                    changes=PlayerDelta.diff(baseline,updated);
+                    if(changes.isEmpty()&&batch.fields().isEmpty()){connection.commit();sqlMetrics.changed(batch,List.of());unchangedGraphs++;remember(character,head,revision,updated,retainInventory?PlayerDelta.retainedBytes(updated):graph.bytes());return true;}
                 }
                 if(!"live_fields".equals(reason)) {
                     UUID live=UUID.randomUUID();
@@ -303,9 +308,11 @@ final class PlayerDatabase {
                         identities.add(values("id",change.after().get("id"),"kind",change.after().get("kind"),"created_at",Instant.now(),"retired_at",null));
                     insertBatch(connection,"object_identity",identities," ON CONFLICT (id) DO NOTHING",deadline);
                     PlayerDelta.apply(connection,head,changes,deadline);
-                    updateAliases(connection,candidate,character,changes,deadline);
-                    try(PreparedStatement counts=statement(connection,"UPDATE player_rel.snapshot SET expected_object_count=?,expected_item_count=?,expected_container_count=?,expected_edge_count=? WHERE id=?")) {
-                        counts.setInt(1,graph.objects());counts.setInt(2,graph.items());counts.setInt(3,graph.containers());counts.setInt(4,graph.edges());counts.setObject(5,head);if(counts.executeUpdate()!=1)throw new SQLException("Missing live counts","P0001");
+                    if(!retainInventory) {
+                        updateAliases(connection,candidate,character,changes,deadline);
+                        try(PreparedStatement counts=statement(connection,"UPDATE player_rel.snapshot SET expected_object_count=?,expected_item_count=?,expected_container_count=?,expected_edge_count=? WHERE id=?")) {
+                            counts.setInt(1,graph.objects());counts.setInt(2,graph.items());counts.setInt(3,graph.containers());counts.setInt(4,graph.edges());counts.setObject(5,head);if(counts.executeUpdate()!=1)throw new SQLException("Missing live counts","P0001");
+                        }
                     }
                 }
                 record RowKey(String table,String key) {}
@@ -343,7 +350,8 @@ final class PlayerDatabase {
                         var key=PlayerDelta.key(f.table(),keyValues);var old=next.get(key);
                         if(old!=null){var row=new LinkedHashMap<>(old);row.put(f.column(),field.getValue().value());next.put(key,Collections.unmodifiableMap(row));}
                     }
-                    remember(character,head,revision+1,next,graph!=null?graph.bytes():cached.bytes);
+                    long bytes=graph==null?cached.bytes:retainInventory?PlayerDelta.retainedBytes(next):graph.bytes();
+                    remember(character,head,revision+1,next,bytes);
                 }
                 return true;
             } catch(SQLException|RuntimeException error){try{connection.rollback();}catch(SQLException ignored){}throw error;}

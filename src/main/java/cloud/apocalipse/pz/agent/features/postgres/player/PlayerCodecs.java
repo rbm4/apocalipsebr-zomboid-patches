@@ -1,13 +1,16 @@
 package cloud.apocalipse.pz.agent.features.postgres.player;
 
-import cloud.apocalipse.pz.agent.config.AgentConfiguration;
-import cloud.apocalipse.pz.agent.features.postgres.PlayerJournal;
 import cloud.apocalipse.pz.agent.features.postgres.dictionary.*;
 
+import java.lang.reflect.InvocationTargetException;
+import java.nio.BufferOverflowException;
+import java.nio.ByteBuffer;
 import java.util.*;
+import zombie.entity.Component;
+import zombie.iso.IsoWorld;
 import static cloud.apocalipse.pz.agent.features.postgres.player.PlayerAccess.*;
 
-/** Reviewed 42.21.0 native save contracts. Temporary native reads are detached by Snapshot. */
+/** Native component and embedded animal save contracts. Snapshot detaches state before replay. */
 final class PlayerCodecs {
     private static final Map<String,String> EMPTY=Map.of(
         "LuaComponent","zombie.entity.components.lua.LuaComponent",
@@ -18,10 +21,13 @@ final class PlayerCodecs {
         "ContextMenuConfig","zombie.entity.components.contextmenuconfig.ContextMenuConfig",
         "CraftBenchSounds","zombie.entity.components.sounds.CraftBenchSounds",
         "WallCoveringConfig","zombie.entity.components.crafting.WallCoveringConfig");
+    private static final Set<String> NATIVE = Set.of(
+        "zombie.entity.components.resources.Resources", "zombie.entity.components.crafting.DryingCraftLogic");
     static boolean supports(Object component) {
         String name=component instanceof PlayerSnapshot.Node node?node.runtimeClass:component.getClass().getName();
         return EMPTY.containsValue(name)||name.equals("zombie.entity.components.ui.UiConfig")||name.equals("zombie.entity.components.crafting.CraftBench")
-            ||name.equals("zombie.entity.components.spriteconfig.SpriteConfig");
+            ||name.equals("zombie.entity.components.spriteconfig.SpriteConfig")
+            ||name.equals("zombie.entity.components.spriteconfig.SpriteOverlayConfig")||NATIVE.contains(name);
     }
     static Map<String,Object> component(Object component) {
         if(!supports(component))throw new IllegalArgumentException("UNSUPPORTED_COMPONENT_STATE");
@@ -38,6 +44,12 @@ final class PlayerCodecs {
                     state.put("wasLoadedAsMaster",call(component,"isMultiSquareMaster"));
                 }
             }
+            case "SpriteOverlayConfig" -> {
+                Object script=get(component,"configScript");
+                state.put("scriptFullType",script==null?null:call(script,"getScriptObjectFullType"));
+                state.put("appliedStyle",script==null?null:get(component,"appliedStyle"));
+            }
+            case "Resources", "DryingCraftLogic" -> state.put("nativePayload", saveComponent(component));
             case "UiConfig" -> fields(state,component,"xuiSkinName","entityStyleName","uiEnabled");
             case "CraftBench" -> {
                 fields(state,component,"recipeTagQuery");
@@ -50,6 +62,101 @@ final class PlayerCodecs {
             default -> { /* Explicit whitelist: these inherit Component.save/load with zero payload. */ }
         }
         return state;
+    }
+    static Map<String,Object> fallbackComponent(Object value) {
+        if (!(value instanceof Component component) || component.getComponentType().GetComponentClass()!=component.getClass())
+            throw new IllegalStateException("UNREGISTERED_NATIVE_COMPONENT");
+        return Map.of("nativeFallbackType",component.getComponentType().name(),"nativePayload",saveComponent(component));
+    }
+    private static byte[] saveComponent(Object component) {
+        var origin = DictionaryRuntime.localEncoding();
+        if(origin==null)throw new IllegalStateException("NATIVE_COMPONENT_DICTIONARY_UNAVAILABLE");
+        int worldVersion = IsoWorld.getWorldVersion();
+        checkEmbeddedItems(component, origin, worldVersion, Collections.newSetFromMap(new IdentityHashMap<>()));
+        int limit = PlayerLimits.SOURCE_BYTES;
+        for (int capacity = 4096;;capacity = Math.min(limit, capacity * 2)) {
+            ByteBuffer output = ByteBuffer.allocate(capacity);
+            try {
+                componentMethod(component, "save", new Class<?>[]{ByteBuffer.class}, output);
+                byte[] bytes = Arrays.copyOf(output.array(), output.position());
+                PayloadProvenance.remember(bytes, new PayloadProvenance.Metadata(origin, worldVersion));
+                return bytes;
+            } catch (BufferOverflowException overflow) {
+                if (capacity == limit) throw new IllegalStateException("NATIVE_COMPONENT_PAYLOAD_TOO_LARGE", overflow);
+            }
+        }
+    }
+    private static void checkEmbeddedItems(Object component, DictionaryOrigin origin, int version, Set<Object> seen) {
+        if(typeName(component).equals("Resources")){
+            for(Object resource:list(call(component,"getResources")))if(typeName(resource).equals("ResourceItem"))
+                for(Object item:list(call(resource,"getStoredItems")))checkEmbeddedItem(item,origin,version,seen);
+        } else if(typeNames(component).contains("CraftLogic")) {
+            for(Object recipe:list(get(component,"craftDataInProgress")))checkRecipeItems(recipe,origin,version,seen);
+        } else if(Set.of("FurnaceLogic","DryingLogic","MashingLogic").contains(typeName(component))
+                && get(component,"currentRecipe")!=null) {
+            checkRecipeItems(get(component,"craftData"),origin,version,seen);
+        }
+    }
+    private static void checkRecipeItems(Object recipe,DictionaryOrigin origin,int version,Set<Object> seen) {
+        for(Object input:list(get(recipe,"inputs"))){
+            for(Object item:list(get(input,"appliedItems")))checkEmbeddedItem(item,origin,version,seen);
+            checkEmbeddedItem(get(input,"mostRecentItem"),origin,version,seen);
+        }
+    }
+    private static void checkEmbeddedItem(Object item,DictionaryOrigin origin,int version,Set<Object> seen) {
+        if(item==null)return;
+        if(seen.size()>=64||!seen.add(item))throw new IllegalStateException("NATIVE_COMPONENT_INVALID_EMBEDDED_ITEM_GRAPH");
+        try {
+            Object bytes=get(item,"byteData");
+            if(bytes!=null&&!new PayloadProvenance.Metadata(origin,version).equals(PayloadProvenance.metadata(bytes)))
+                throw new IllegalStateException("NATIVE_COMPONENT_EMBEDDED_ITEM_PROVENANCE");
+            var types=typeNames(item);
+            if(types.contains("InventoryContainer"))for(Object child:list(get(get(item,"container"),"items")))
+                checkEmbeddedItem(child,origin,version,seen);
+            if(types.contains("HandWeapon"))for(Object child:list(get(item,"attachmentList")))
+                checkEmbeddedItem(child,origin,version,seen);
+            for(int index=0;index<number(get(item,"componentSize"));index++)
+                checkEmbeddedItems(call(item,"getComponentForIndex",index),origin,version,seen);
+        } finally { seen.remove(item); }
+    }
+    static void restoreNativeComponent(Object component, byte[] payload) {
+        if(!NATIVE.contains(component.getClass().getName()))throw new IllegalStateException("Unknown native component codec");
+        loadComponent(component,payload,false);
+    }
+    static void restoreFallbackComponent(Object value,String type,byte[] payload) {
+        if(!(value instanceof Component component)||component.getComponentType().GetComponentClass()!=component.getClass()
+                ||!component.getComponentType().name().equals(type))
+            throw new IllegalStateException("Native fallback component type mismatch");
+        loadComponent(component,payload,true);
+    }
+    private static void loadComponent(Object component,byte[] payload,boolean sameServer) {
+        var metadata = PayloadProvenance.metadata(payload);
+        if (payload == null || payload.length > PlayerLimits.SOURCE_BYTES
+                || metadata == null || metadata.origin() == null || metadata.worldVersion() == null)
+            throw new IllegalStateException("Invalid native component payload");
+        var local = DictionaryRuntime.localEncoding();
+        if(sameServer&&(local==null||local.serverId()!=metadata.origin().serverId()))
+            throw new IllegalStateException("Native fallback component requires its source server");
+        ByteBuffer input = ByteBuffer.wrap(payload);
+        PayloadProvenance.copy(payload, input);
+        try (var scope = DictionaryDecode.enter(input)) {
+            componentMethod(component, "load", new Class<?>[]{ByteBuffer.class, int.class}, input, metadata.worldVersion());
+            if (input.hasRemaining()) throw new IllegalStateException("Native component did not consume its saved payload");
+        }
+    }
+    private static void componentMethod(Object component, String name, Class<?>[] signature, Object... args) {
+        try {
+            // Invoking the base declaration dispatches to the concrete or inherited vanilla codec.
+            var method = Component.class.getDeclaredMethod(name, signature);
+            method.setAccessible(true);
+            method.invoke(component, args);
+        } catch (InvocationTargetException error) {
+            if (error.getCause() instanceof BufferOverflowException overflow) throw overflow;
+            if(name.equals("save"))throw new IllegalStateException("NATIVE_COMPONENT_SAVE_FAILED",error.getCause());
+            throw new IllegalStateException("Native component load failed", error.getCause());
+        } catch (ReflectiveOperationException error) {
+            throw new IllegalStateException("Missing native component " + name, error);
+        }
     }
     static Map<String,Object> animal(Object animal,long gameTimeMillis) {
         Objects.requireNonNull(animal,"Missing embedded animal");

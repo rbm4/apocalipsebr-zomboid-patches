@@ -76,6 +76,33 @@ receipt and which need separate investigation. Quarantined records stay on disk
 and are excluded from automatic replay. Inspect the PostgreSQL constraint before
 retrying one against newer player state.
 
+When a live capture can attribute its graph issues to carried items, replay
+commits the independent character rows and preserves the last committed
+inventory, equipment and graph counts. Inventory moves and removals cannot be
+inferred from a partial item graph. The original capture goes to quarantine
+after the transactional receipt commits. A restart between that commit and
+quarantine recognizes the receipt and archives the capture without applying it
+twice. `LIVE_ITEM_PERSISTENCE_FAILED` includes the operation and character
+UUIDs, slot, item type, native item ID, and capture issue.
+
+Carried sprite overlays store their script name and applied style. Resources
+and drying logic use bounded vanilla component payloads with the source
+dictionary view and world version. The payload includes resource group contents
+and native drying recipe progress and wetness. Embedded opaque item data with
+unknown or mixed provenance causes the inventory capture to be retained for
+inspection. Historical incomplete captures may lack the component state
+required for reconstruction.
+
+Other carried components can use the same native writer when the relational
+codec is missing or cannot capture its state. The fallback stores the registered
+vanilla component type with the bounded payload, world version and exact
+dictionary view. Reconstruction verifies the registered type and source server,
+invokes the native loader, and checks that it consumed the payload before
+finishing component attachment. These generic payloads are supported on the
+source server. Cross-server loading of generic payloads remains outside this
+contract. If encoding fails, the live save retains the last committed inventory
+and logs the failure while applying independent character changes.
+
 Progress and health reports are limited to one every 30 seconds during a steady
 state. The worker also logs startup, the first retry and recovery immediately.
 Reports include shared Hikari active, idle, total and waiting counts, and reuse
@@ -178,6 +205,18 @@ The mutation-window fixture runs the transformed player traversal with two
 different first-observation times. It verifies distinct deadlines, coalescing,
 changed-column SQL on the journal worker across successive windows, and no scalar
 write for an unchanged window.
+Carried-component scenario A saves an item with `CraftLogic` while the native
+fallback's source dictionary is unavailable
+through original `ServerPlayerDB.save()` and transformed `saveFinishWait()`.
+It verifies position updates, the native mirror, the item failure log, quarantine
+and restored slot availability. Scenario B uses a synthetic item with the original
+overlay, resources and drying components. It compares vanilla item serialization
+with relational capture and reconstruction, then checks that the save reaches
+the journal worker without an additional quarantine. The generic fallback case
+round-trips `CraftLogic` and `MetaTag` native state and verifies a later save in
+the same session reaches the inventory writer. The fixture uses a real
+journal and fake JDBC. Real database state after restart and a connected client
+remain part of dedicated-server acceptance.
 It exercises relational capture/reconstruction, source-ID remapping, nested opaque
 provenance, pooled item reuse, profile absence/presence/corruption, native reply
 parsing/player loading, durable creation handoff, retransmission coalescing and

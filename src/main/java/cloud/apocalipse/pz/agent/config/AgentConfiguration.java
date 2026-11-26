@@ -450,6 +450,19 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     public static boolean luaEnabled() { return Boolean.parseBoolean(systemProperty(LUA_ENABLED_PROPERTY, "true")); }
 
+    /** Client menu API bridge; JVM argument {@code -Dapocbr.clientMenu.enabled=false} disables it. Defaults enabled. */
+    public static final String CLIENT_MENU_ENABLED_PROPERTY = "apocbr.clientMenu.enabled";
+    /** Client menu API base URL; JVM argument {@code -Dapocbr.clientMenu.apiBaseUrl=https://...}. */
+    public static final String CLIENT_MENU_API_BASE_URL_PROPERTY = "apocbr.clientMenu.apiBaseUrl";
+
+    public static boolean clientMenuEnabled() {
+        return Boolean.parseBoolean(systemProperty(CLIENT_MENU_ENABLED_PROPERTY, "true"));
+    }
+
+    public static String clientMenuApiBaseUrl() {
+        return systemProperty(CLIENT_MENU_API_BASE_URL_PROPERTY);
+    }
+
     public static long longProperty(String name, long fallback) {
         String value = systemProperty(name);
         if (value == null) return fallback;
