@@ -15,6 +15,9 @@ import zombie.core.znet.SteamUser;
 import zombie.core.znet.SteamUtils;
 import zombie.debug.DebugLog;
 import zombie.network.GameServer;
+import zombie.GameWindow;
+import zombie.gameStates.GameStateMachine;
+import zombie.gameStates.TISLogoState;
 
 /** Client-owned Lua bindings and Steam identity snapshot. Worker threads never access Lua or Steam. */
 public final class ClientMenuRuntime {
@@ -24,6 +27,14 @@ public final class ClientMenuRuntime {
     private static final int MAX_BODY_CHARS = 32_768;
     private static final long MAX_RESPONSE_BYTES = 65_536;
     private static volatile ClientMenuRuntime instance;
+
+    /** Remove the initial logo entry before vanilla selects and enters its first state. */
+    public static void skipStartupLogos(GameStateMachine machine) {
+        if (machine == null || GameServer.server || !AgentConfiguration.clientMenuEnabled()
+                || !AgentConfiguration.clientMenuSkipLogos() || machine != GameWindow.states
+                || !machine.firstrun || machine.stateIndex != 0 || machine.states.isEmpty()) return;
+        if (machine.states.get(0) instanceof TISLogoState) machine.states.remove(0);
+    }
 
     private final Thread luaOwner = Thread.currentThread();
     private final KahluaTable environment;
@@ -125,6 +136,7 @@ public final class ClientMenuRuntime {
         value.rawset("apiConfigured", this.transport != null);
         value.rawset("pending", (double) this.pending.get());
         value.rawset("steamTicketProbe", SteamWebApiTicketProbe.status());
+        value.rawset("steamTicketRequest", SteamWebApiTicketProbe.lastRequestDiagnostic());
         return value;
     }
 

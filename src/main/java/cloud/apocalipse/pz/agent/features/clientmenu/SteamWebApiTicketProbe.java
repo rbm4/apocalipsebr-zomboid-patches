@@ -24,6 +24,7 @@ public final class SteamWebApiTicketProbe {
     private static final String IDENTITY = "apocalipsebr-auth";
     private static final long TIMEOUT_NANOS = Duration.ofSeconds(30).toNanos();
     private static final AtomicReference<String> STATUS = new AtomicReference<>("NOT_STARTED");
+    private static final AtomicReference<String> LAST_REQUEST_DIAGNOSTIC = new AtomicReference<>("NOT_REQUESTED");
     private static volatile Pending active;
     private static volatile Thread steamThread;
 
@@ -42,6 +43,7 @@ public final class SteamWebApiTicketProbe {
     }
 
     public static String status() { return STATUS.get(); }
+    public static String lastRequestDiagnostic() { return LAST_REQUEST_DIAGNOSTIC.get(); }
 
     static void steamUnavailable() {
         STATUS.compareAndSet("NOT_STARTED", "STEAM_UNAVAILABLE");
@@ -68,9 +70,19 @@ public final class SteamWebApiTicketProbe {
      * @return true if Steam accepted the request for callback delivery
      */
     public static synchronized boolean requestTicket(String identity, Consumer<TicketResult> completion) {
-        if (GameServer.server || !SteamUtils.isSteamModeEnabled() || active != null
-                || identity == null || identity.isBlank() || completion == null
-                || steamThread == null || Thread.currentThread() != steamThread) return false;
+        String rejection = null;
+        if (GameServer.server) rejection = "SERVER_PROCESS";
+        else if (!SteamUtils.isSteamModeEnabled()) rejection = "STEAM_MODE_DISABLED";
+        else if (identity == null || identity.isBlank()) rejection = "IDENTITY_MISSING";
+        else if (completion == null) rejection = "COMPLETION_MISSING";
+        else if (steamThread == null) rejection = "STEAM_CALLBACK_THREAD_NOT_READY";
+        else if (Thread.currentThread() != steamThread) rejection = "WRONG_THREAD";
+        else if (active != null) rejection = "TICKET_REQUEST_ALREADY_ACTIVE";
+        if (rejection != null) {
+            LAST_REQUEST_DIAGNOSTIC.set(rejection);
+            DebugLog.log("[ApocBR][ClientMenu] Steam ticket request rejected: " + rejection);
+            return false;
+        }
         Pending request = null;
         try {
             request = new Pending(identity, completion);
@@ -80,11 +92,15 @@ public final class SteamWebApiTicketProbe {
             request.handle = handle;
             if (handle == 0) {
                 finish(request, new TicketResult(false, -1, new byte[0]));
+                LAST_REQUEST_DIAGNOSTIC.set("STEAM_RETURNED_INVALID_HANDLE");
+                DebugLog.log("[ApocBR][ClientMenu] Steam ticket request returned an invalid handle");
                 return false;
             }
+            LAST_REQUEST_DIAGNOSTIC.set("REQUEST_ACCEPTED");
             return true;
         } catch (Throwable failure) {
             if (request != null) finish(request, new TicketResult(false, -1, new byte[0]));
+            LAST_REQUEST_DIAGNOSTIC.set("NATIVE_REQUEST_FAILED: " + failure.getClass().getSimpleName());
             DebugLog.log("[ApocBR][ClientMenu] Steam Web API ticket request could not start: " + failure);
             return false;
         }
