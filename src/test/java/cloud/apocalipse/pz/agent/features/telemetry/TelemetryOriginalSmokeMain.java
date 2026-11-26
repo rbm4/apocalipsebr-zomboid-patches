@@ -10,10 +10,15 @@ import se.krka.kahlua.vm.KahluaThread;
 import se.krka.kahlua.vm.Platform;
 import zombie.Lua.Event;
 import zombie.ZomboidFileSystem;
+import zombie.core.Core;
 
 /** Run with the original archive ahead of test fixtures on the classpath. */
 public final class TelemetryOriginalSmokeMain {
     public static void main(String[] args) throws Exception {
+        String gameVersion = Core.getInstance().getVersionNumber();
+        if (gameVersion.isBlank() || !gameVersion.equals(TelemetryWorldSnapshot.gameVersion())) {
+            throw new AssertionError("Could not read the original Core game version");
+        }
         Class<?> lua = Class.forName("zombie.Lua.LuaManager");
         Platform platform = (Platform) lua.getField("platform").get(null);
         KahluaTable environment = platform.newTable();

@@ -1,32 +1,41 @@
 package cloud.apocalipse.pz.agent.features.clientmenu;
 
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
-import zombie.core.network.ByteBufferReader;
-import zombie.network.packets.connection.LoginPacket;
+import org.junit.jupiter.api.io.TempDir;
+import se.krka.kahlua.vm.KahluaThread;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class SteamLoginPacketPayloadTest {
-    @Test void originalLoginPacketParsesThePayload() throws ReflectiveOperationException {
-        String username = "João";
-        String token = "00000000-0000-4000-8000-000000000001";
-        String version = "fixture-build";
-        byte[] payload = SteamLoginPacketPayload.serialize(username, token, version);
-        ByteBuffer buffer = ByteBuffer.wrap(payload);
-        LoginPacket packet = new LoginPacket();
-        packet.parse(new ByteBufferReader(buffer), null);
+    @Test void originalLoginPacketParsesThePayload(@TempDir Path directory) throws Exception {
+        Path gameJar = classLocation(KahluaThread.class);
+        Path agentClasses = classLocation(SteamLoginPacketPayload.class);
+        String main = SteamLoginPacketPayloadOriginalMain.class.getName();
+        String resource = main.replace('.', '/') + ".class";
+        Path fixture = directory.resolve(resource);
+        Files.createDirectories(fixture.getParent());
+        try (var input = getClass().getClassLoader().getResourceAsStream(resource)) {
+            Files.copy(input, fixture);
+        }
 
-        assertEquals(username, field(packet, "username"));
-        assertEquals(token, field(packet, "password"));
-        assertEquals(version, field(packet, "clientVersion"));
-        assertEquals(0x41504252, field(packet, "authType"));
-        assertEquals(0, buffer.remaining());
-        assertArrayEquals("APBR".getBytes(StandardCharsets.US_ASCII),
-            java.util.Arrays.copyOfRange(payload, payload.length - Integer.BYTES, payload.length));
+        // Keep the signed game classes outside Surefire's JVM and exclude all test doubles.
+        String classpath = String.join(File.pathSeparator, gameJar.toString(), agentClasses.toString(), directory.toString());
+        Path log = directory.resolve("packet-format.log");
+        Process process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+            "-Xverify:all", "-cp", classpath, main, gameJar.toString())
+            .directory(directory.toFile()).redirectErrorStream(true).redirectOutput(log.toFile()).start();
+        try {
+            assertTrue(process.waitFor(30, TimeUnit.SECONDS), () -> "Original login packet check timed out: " + log);
+            assertEquals(0, process.exitValue(), Files.readString(log));
+        } finally {
+            if (process.isAlive()) process.destroyForcibly();
+        }
     }
 
     @Test void rejectsFieldsVanillaWouldTrimOrCannotRepresent() {
@@ -36,9 +45,7 @@ class SteamLoginPacketPayloadTest {
             () -> SteamLoginPacketPayload.serialize("user", "é".repeat(16_384), "build"));
     }
 
-    private static Object field(LoginPacket packet, String name) throws ReflectiveOperationException {
-        var field = LoginPacket.class.getDeclaredField(name);
-        field.setAccessible(true);
-        return field.get(packet);
+    private static Path classLocation(Class<?> type) throws Exception {
+        return Path.of(type.getProtectionDomain().getCodeSource().getLocation().toURI()).toRealPath();
     }
 }
