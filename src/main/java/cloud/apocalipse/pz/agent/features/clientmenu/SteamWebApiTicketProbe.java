@@ -11,7 +11,9 @@ import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodType;
 import java.time.Duration;
 import java.util.Optional;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
+import java.util.function.Function;
 import java.util.concurrent.atomic.AtomicReference;
 import zombie.core.znet.SteamUtils;
 import zombie.debug.DebugLog;
@@ -61,6 +63,15 @@ public final class SteamWebApiTicketProbe {
      * @return true if Steam accepted the request for callback delivery
      */
     public static synchronized boolean requestTicket(String identity, Consumer<TicketResult> completion) {
+        return requestTicketForExchange(identity, completion == null ? null : result -> {
+            completion.accept(result);
+            return CompletableFuture.completedFuture(null);
+        });
+    }
+
+    /** Keeps the successful ticket alive until the consumer finishes using it. */
+    static synchronized boolean requestTicketForExchange(String identity,
+            Function<TicketResult, CompletableFuture<?>> completion) {
         String rejection = null;
         if (GameServer.server) rejection = "SERVER_PROCESS";
         else if (!SteamUtils.isSteamModeEnabled()) rejection = "STEAM_MODE_DISABLED";
@@ -100,15 +111,30 @@ public final class SteamWebApiTicketProbe {
     }
 
     /** Runs after SteamUtils.runLoop returns, so native callback dispatch has unwound before freeing memory. */
-    public static void afterSteamLoop() {
+    public static synchronized void afterSteamLoop() {
         Pending request = active;
         if (request == null) return;
+        if (request.exchange != null) {
+            if (request.exchange.isDone()) finish(request, null);
+            return;
+        }
         if (request.completed) {
             boolean success = request.result == 1 && request.ticketLength > 0 && request.ticket != null;
             STATUS.set(success ? "SUCCEEDED" : "FAILED");
             DebugLog.log("[ApocBR][ClientMenu] Steam ticket callback completed, result=" + request.result
                 + ", ticketReceived=" + success);
-            finish(request, new TicketResult(success, request.result, success ? request.ticket : new byte[0]));
+            TicketResult result = new TicketResult(success, request.result, success ? request.ticket : null);
+            if (!success) {
+                finish(request, result);
+                return;
+            }
+            try {
+                request.exchange = request.completion.apply(result);
+                if (request.exchange == null || request.exchange.isDone()) finish(request, null);
+            } catch (RuntimeException failure) {
+                finish(request, null);
+                DebugLog.log("[ApocBR][ClientMenu] Steam ticket completion failed: " + failure.getClass().getSimpleName());
+            }
         } else if (System.nanoTime() - request.startedNanos >= TIMEOUT_NANOS) {
             STATUS.set("CALLBACK_TIMED_OUT");
             DebugLog.log("[ApocBR][ClientMenu] Steam ticket callback timed out after 30 seconds");
@@ -118,7 +144,7 @@ public final class SteamWebApiTicketProbe {
 
     static synchronized void shutdown() {
         Pending request = active;
-        if (request != null) finish(request, new TicketResult(false, -1, new byte[0]));
+        if (request != null) finish(request, request.exchange == null ? new TicketResult(false, -1, null) : null);
         steamThread = null;
     }
 
@@ -128,14 +154,15 @@ public final class SteamWebApiTicketProbe {
         try { request.unregisterAndCancel(); }
         catch (Throwable ignored) { /* Shutdown and probe diagnostics must not affect vanilla Steam teardown. */ }
         request.close();
-        try { request.completion.accept(result); }
+        try { if (result != null) request.completion.apply(result); }
         catch (Throwable failure) { DebugLog.log("[ApocBR][ClientMenu] Steam ticket completion failed: " + failure); }
     }
 
     private static void callbackRun(MemorySegment self, MemorySegment data) {
         try {
             Pending request = active;
-            if (request == null || request.callbackObject.address() != self.address() || data.address() == 0) return;
+            if (request == null || request.completed || request.callbackObject.address() != self.address()
+                    || data.address() == 0) return;
             MemorySegment payload = data.reinterpret(CALLBACK_BYTES);
             int callbackHandle = payload.get(ValueLayout.JAVA_INT, 0);
             int result = payload.get(ValueLayout.JAVA_INT, 4);
@@ -175,7 +202,8 @@ public final class SteamWebApiTicketProbe {
         final MemorySegment callbackResultStub;
         final MemorySegment callbackSizeStub;
         final String identity;
-        final Consumer<TicketResult> completion;
+        final Function<TicketResult, CompletableFuture<?>> completion;
+        CompletableFuture<?> exchange;
         final MethodHandle registerCallback;
         final MethodHandle unregisterCallback;
         final MethodHandle getAuthTicketForWebApi;
@@ -187,7 +215,7 @@ public final class SteamWebApiTicketProbe {
         volatile boolean registered;
         volatile byte[] ticket;
 
-        Pending(String identity, Consumer<TicketResult> completion) throws Throwable {
+        Pending(String identity, Function<TicketResult, CompletableFuture<?>> completion) throws Throwable {
             this.identity = identity;
             this.completion = completion;
             SymbolLookup symbols = SymbolLookup.loaderLookup();
