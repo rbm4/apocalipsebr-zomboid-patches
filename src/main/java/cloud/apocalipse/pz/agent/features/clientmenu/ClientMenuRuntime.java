@@ -25,6 +25,11 @@ public final class ClientMenuRuntime {
     private static final long MAX_RESPONSE_BYTES = 65_536;
     private static volatile ClientMenuRuntime instance;
 
+    public static boolean skipPhotosensitivityWarning() {
+        return AgentConfiguration.clientMenuEnabled() && AgentConfiguration.clientMenuSkipPhotosensitivityWarning()
+            && !GameServer.server;
+    }
+
     /** Remove the initial logo entry before vanilla selects and enters its first state. */
     public static void skipStartupLogos(Object machine) {
         if (machine == null || GameServer.server || !AgentConfiguration.clientMenuEnabled()

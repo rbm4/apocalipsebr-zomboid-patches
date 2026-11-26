@@ -2,7 +2,6 @@ package cloud.apocalipse.pz.agent.features.clientmenu;
 
 import cloud.apocalipse.pz.agent.HookCheck;
 import java.io.File;
-import java.lang.instrument.Instrumentation;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.jar.Attributes;
@@ -23,10 +22,18 @@ class ClientMenuLogoHookTest {
     @TempDir Path directory;
 
     @Test void registeredLogoHookTransformsOriginalSignature() throws Exception {
+        assertStartupHook("startup-logo-skip");
+    }
+
+    @Test void registeredWarningHookTransformsOriginalSignature() throws Exception {
+        assertStartupHook("startup-warning-skip");
+    }
+
+    private void assertStartupHook(String id) throws Exception {
         ClientMenuModule module = new ClientMenuModule();
         module.initialize();
         var transformer = module.configure(new AgentBuilder.Default().disableClassFormatChanges()).makeRaw();
-        HookCheck check = module.hookChecks().stream().filter(value -> value.id().equals("startup-logo-skip"))
+        HookCheck check = module.hookChecks().stream().filter(value -> value.id().equals(id))
             .findFirst().orElseThrow();
         try (var locator = ClassFileLocator.ForJarFile.of(originalJar().toFile())) {
             byte[] transformed = transformer.transform(getClass().getClassLoader(),
@@ -44,11 +51,11 @@ class ClientMenuLogoHookTest {
                     };
                 }
             }, ClassReader.SKIP_DEBUG | ClassReader.SKIP_FRAMES);
-            assertTrue(calls.contains("update:" + check.helperClass() + ":" + check.helperMethod()));
+            assertTrue(calls.contains(check.method() + ":" + check.helperClass() + ":" + check.helperMethod()));
         }
     }
 
-    @Test void transformedOriginalGameStateMachineSkipsLogoAndEntersNextState() throws Exception {
+    @Test void transformedOriginalClientStartupSkipsLogosAndHonorsWarningSetting() throws Exception {
         Path agent = directory.resolve("logo-fixture-agent.jar");
         Manifest manifest = new Manifest();
         manifest.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
@@ -64,6 +71,7 @@ class ClientMenuLogoHookTest {
             String output = Files.readString(log);
             assertEquals(0, process.exitValue(), output);
             assertTrue(output.contains("Client-menu startup logo hook passed"), output);
+            assertTrue(output.contains("Client-menu startup warning hook passed"), output);
         } finally {
             if (process.isAlive()) process.destroyForcibly();
         }

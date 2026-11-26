@@ -454,6 +454,8 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String CLIENT_MENU_ENABLED_PROPERTY = "apocbr.clientMenu.enabled";
     /** Client menu quality-of-life: JVM argument {@code -Dapocbr.clientMenu.skipLogos=false} keeps the startup logos. Defaults enabled. */
     public static final String CLIENT_MENU_SKIP_LOGOS_PROPERTY = "apocbr.clientMenu.skipLogos";
+    /** Client menu startup: JVM argument {@code -Dapocbr.clientMenu.skipPhotosensitivityWarning=false} restores the warning. Defaults to true. */
+    public static final String CLIENT_MENU_SKIP_PHOTOSENSITIVITY_WARNING_PROPERTY = "apocbr.clientMenu.skipPhotosensitivityWarning";
     /** Client menu API base URL; defaults to the auth endpoint and accepts an origin override. */
     public static final String CLIENT_MENU_API_BASE_URL_PROPERTY = "apocbr.clientMenu.apiBaseUrl";
 
@@ -463,6 +465,10 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     public static boolean clientMenuSkipLogos() {
         return Boolean.parseBoolean(systemProperty(CLIENT_MENU_SKIP_LOGOS_PROPERTY, "true"));
+    }
+
+    public static boolean clientMenuSkipPhotosensitivityWarning() {
+        return Boolean.parseBoolean(systemProperty(CLIENT_MENU_SKIP_PHOTOSENSITIVITY_WARNING_PROPERTY, "true"));
     }
 
     public static String clientMenuApiBaseUrl() {

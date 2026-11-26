@@ -1,4 +1,4 @@
-# Client startup logo skip
+# Client startup skips
 
 The client-menu agent module can remove the vanilla startup `TISLogoState` before
 the initial `GameStateMachine.update()` selects its first state. This skips both
@@ -19,3 +19,10 @@ Validation uses a forked fixture against the original 42.22.2 archive. It checks
 the transformed vanilla `GameStateMachine.update()` entry point and confirms the
 next startup state becomes current without entering the logo state. This does
 not replace a live client startup check.
+
+The photosensitivity warning has its own hook on
+`GameWindow.doEpilepsyWarningText()`. The client skips it by default. Set
+`-Dapocbr.clientMenu.skipPhotosensitivityWarning=false` to restore it. The
+warning setting and logo setting are independent. The forked fixture checks the
+warning's default skip, explicit opt-out and dedicated server guard on the
+transformed original method.
