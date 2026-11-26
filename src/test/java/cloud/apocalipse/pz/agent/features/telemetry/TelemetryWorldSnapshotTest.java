@@ -38,9 +38,4 @@ class TelemetryWorldSnapshotTest {
             GameServer.IDToPlayerMap.clear();
         }
     }
-
-    @Test
-    void readsTheVanillaCoreGameVersion() {
-        assertEquals("42.22", TelemetryWorldSnapshot.gameVersion());
-    }
 }

@@ -63,6 +63,13 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
         return Boolean.parseBoolean(systemProperty(CLIENT_CHUNK_MAP_OPTIMIZATION, "false"));
     }
 
+    /** Experimental client Lua prefetch. Enable with {@code -Dapocbr.experimental.asyncLuaPreparation.enabled=true}. */
+    public static final String ASYNC_LUA_PREPARATION_PROPERTY = "apocbr.experimental.asyncLuaPreparation.enabled";
+
+    public static boolean asyncLuaPreparationEnabled() {
+        return Boolean.parseBoolean(systemProperty(ASYNC_LUA_PREPARATION_PROPERTY, "false"));
+    }
+
     /** Opt-in local building reconciliation indexes. Enable with {@code -Dapocbr.optimization.clientBuildingReconciliation.enabled=true}. */
     public static final String CLIENT_BUILDING_RECONCILIATION_OPTIMIZATION =
         "apocbr.optimization.clientBuildingReconciliation.enabled";

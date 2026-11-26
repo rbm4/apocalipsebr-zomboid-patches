@@ -18,6 +18,7 @@ Each session selects one bounded feature; no migration queue is authorized here.
 - [Opt-in client chunk-map cap](features/client-chunk-map.md)
 - [Opt-in client building reconciliation](features/client-building-reconciliation.md)
 - [Client startup skips](features/client-menu-startup-logo-skip.md)
+- [Experimental client Lua preparation](features/async-client-lua-preparation.md)
 
 - [Agent architecture and original-JAR development](architecture/README.md)
 - [Feature implementation catalog](features/README.md)
