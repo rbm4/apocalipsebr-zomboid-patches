@@ -91,7 +91,7 @@ public final class ClientMenuModule implements AgentModule {
 
     public static final class StartupLogos {
         @Advice.OnMethodEnter
-        public static void enter(@Advice.This zombie.gameStates.GameStateMachine machine) {
+        public static void enter(@Advice.This Object machine) {
             try { ClientMenuRuntime.skipStartupLogos(machine); }
             catch (RuntimeException | LinkageError ignored) { }
         }

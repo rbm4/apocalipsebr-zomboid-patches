@@ -15,9 +15,6 @@ import zombie.core.znet.SteamUser;
 import zombie.core.znet.SteamUtils;
 import zombie.debug.DebugLog;
 import zombie.network.GameServer;
-import zombie.GameWindow;
-import zombie.gameStates.GameStateMachine;
-import zombie.gameStates.TISLogoState;
 
 /** Client-owned Lua bindings and Steam identity snapshot. Worker threads never access Lua or Steam. */
 public final class ClientMenuRuntime {
@@ -29,11 +26,22 @@ public final class ClientMenuRuntime {
     private static volatile ClientMenuRuntime instance;
 
     /** Remove the initial logo entry before vanilla selects and enters its first state. */
-    public static void skipStartupLogos(GameStateMachine machine) {
+    public static void skipStartupLogos(Object machine) {
         if (machine == null || GameServer.server || !AgentConfiguration.clientMenuEnabled()
-                || !AgentConfiguration.clientMenuSkipLogos() || machine != GameWindow.states
-                || !machine.firstrun || machine.stateIndex != 0 || machine.states.isEmpty()) return;
-        if (machine.states.get(0) instanceof TISLogoState) machine.states.remove(0);
+                || !AgentConfiguration.clientMenuSkipLogos()) return;
+        try {
+            ClassLoader loader = machine.getClass().getClassLoader();
+            Class<?> gameWindow = Class.forName("zombie.GameWindow", false, loader);
+            if (gameWindow.getField("states").get(null) != machine) return;
+            if (!machine.getClass().getField("firstrun").getBoolean(machine)
+                    || machine.getClass().getField("stateIndex").getInt(machine) != 0) return;
+            @SuppressWarnings("unchecked")
+            java.util.List<Object> states = (java.util.List<Object>) machine.getClass().getField("states").get(machine);
+            if (states.isEmpty() || !"zombie.gameStates.TISLogoState".equals(states.get(0).getClass().getName())) return;
+            states.remove(0);
+        } catch (ReflectiveOperationException | RuntimeException ignored) {
+            // Startup must proceed normally if this build changes its state-machine shape.
+        }
     }
 
     private final Thread luaOwner = Thread.currentThread();
