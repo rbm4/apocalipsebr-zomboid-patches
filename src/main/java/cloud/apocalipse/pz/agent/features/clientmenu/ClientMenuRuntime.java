@@ -280,15 +280,23 @@ public final class ClientMenuRuntime {
             String configured = AgentConfiguration.clientMenuApiBaseUrl();
             if (configured == null || configured.isBlank())
                 throw new IllegalArgumentException("Missing client API base URL");
-            URI base = URI.create(configured);
-            String host = base.getHost();
+            URI endpoint = URI.create(configured);
+            String host = endpoint.getHost();
             boolean loopback = "localhost".equalsIgnoreCase(host) || "127.0.0.1".equals(host)
                 || "::1".equals(host) || "[::1]".equals(host);
-            if (host == null || base.getUserInfo() != null || base.getRawQuery() != null
-                    || base.getRawFragment() != null || !("/".equals(base.getRawPath()) || base.getRawPath().isEmpty())
-                    || !("https".equalsIgnoreCase(base.getScheme())
-                        || ("http".equalsIgnoreCase(base.getScheme()) && loopback)))
-                throw new IllegalArgumentException("Client API base URL must be HTTPS and contain only an origin");
+            String endpointPath = endpoint.getRawPath();
+            boolean supportedPath = endpointPath == null || endpointPath.isEmpty() || "/".equals(endpointPath)
+                || "/api/v1/client-menu/auth".equals(endpointPath);
+            if (host == null || endpoint.getUserInfo() != null || endpoint.getRawQuery() != null
+                    || endpoint.getRawFragment() != null || !supportedPath
+                    || !("https".equalsIgnoreCase(endpoint.getScheme())
+                        || ("http".equalsIgnoreCase(endpoint.getScheme()) && loopback)))
+                throw new IllegalArgumentException(
+                    "Client API URL must be HTTPS and contain only an origin or the client-menu auth endpoint");
+
+            // The transport receives individual /api/v1/... paths, so normalize the configured
+            // endpoint back to its origin before resolving those paths.
+            URI base = endpoint.resolve("/");
             return new ClientApiTransport(base);
         }
 
