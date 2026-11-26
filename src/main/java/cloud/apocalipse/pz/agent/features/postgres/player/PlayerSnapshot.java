@@ -63,6 +63,7 @@ final class PlayerSnapshot {
             if(!fields.containsKey(path))throw new IllegalStateException("Missing snapshot field "+path);
             return fields.get(path);
         }
+        Object optional(String path) { return fields.get(path); }
     }
     // Preserve Lua table identity and kind, including shared/cyclic references for codec rejection.
     static final class Table implements java.io.Serializable {
@@ -200,7 +201,17 @@ final class PlayerSnapshot {
         Node node=projected(source,"container");put(node,"items",sequence(get(source,"items"),v->item(v,depth+1)));return node;
     }
     private Object item(Object source,int depth) {
-        return capture("snapshot.item","depth["+depth+"]",source,()->itemState(source,depth));
+        try {
+            return capture("snapshot.item","depth["+depth+"]",source,()->itemState(source,depth));
+        } catch(CaptureFailure failure) {
+            if(!live||!(source instanceof InventoryItem)||failure.getCause() instanceof LinkageError)throw failure;
+            Node rejected=copies.get(source) instanceof Node existing?existing:begin(source);
+            put(rejected,"itemCaptureFailure",failure.diagnostic());
+            put(rejected,"id",scalar(get(source,"id")));
+            put(rejected,"getFullType",scalar(get(source,"getFullType")));
+            inventoryCaptureFailed=true;
+            return rejected;
+        }
     }
     private Object itemState(Object source,int depth) {
         if(source==null)return null;
@@ -260,7 +271,22 @@ final class PlayerSnapshot {
         ArrayList<Object> components=new ArrayList<>();
         for(int i=0;i<number(get(source,"componentSize"));i++) {
             Object component=call(source,"getComponentForIndex",i);Node c=begin(component);
-            switch(component.getClass().getSimpleName()) {
+            if(!copyComponent(c,component)) {
+                try { put(c,"fallbackState",structured(PlayerCodecs.fallbackComponent(component),0)); }
+                catch(PlayerLimits.SizeExceeded limit) { throw limit; }
+                catch(RuntimeException failure) {
+                    var reason=failure.getMessage();
+                    put(c,"captureFailure",reason!=null&&reason.matches("NATIVE_COMPONENT_[A-Z_]+|UNREGISTERED_NATIVE_COMPONENT")
+                        ?reason:failure.getClass().getSimpleName());
+                }
+            }
+            components.add(c);
+        }
+        put(node,"components",List.copyOf(components));return node;
+    }
+    private boolean copyComponent(Node c,Object component) {
+        try {
+            switch(typeName(component)) {
                 case "AttributeContainer","EntityScriptInfo" -> put(c,"state",structured(componentState(component),0));
                 case "Durability" -> {fields(c,component,"currentHitPoints","maxHitPoints");put(c,"material",scalar(get(component,"material").toString()));}
                 case "FluidContainer" -> {
@@ -271,11 +297,17 @@ final class PlayerSnapshot {
                         if(f!=null){fields(f,value,"filterType");for(String path:new String[]{"fluidEnums","fluidStrings","categories"})put(f,path,sequence(get(value,path),this::scalar));}put(c,filter,f);
                     }
                 }
-                default -> {if(PlayerCodecs.supports(component))put(c,"state",structured(PlayerCodecs.component(component),0));}
+                default -> {
+                    if(!PlayerCodecs.supports(component))return false;
+                    put(c,"state",structured(PlayerCodecs.component(component),0));
+                }
             }
-            components.add(c);
+            return true;
+        } catch(PlayerLimits.SizeExceeded limit) { throw limit; }
+        catch(RuntimeException failure) {
+            c.fields.clear();
+            return false;
         }
-        put(node,"components",List.copyOf(components));return node;
     }
     private Object attachment(Object source,int depth) {
         Object result=item(source,depth);if(result instanceof Node node)fields(node,source,"partType");return result;
@@ -401,7 +433,7 @@ final class PlayerSnapshot {
         Set<Node> seen=Collections.newSetFromMap(new IdentityHashMap<>());Set<Integer> ids=new LinkedHashSet<>();Deque<Node> pending=new ArrayDeque<>();
         Node inventory=(Node)snapshot.player().get("inventory");for(Object item:list(inventory.get("items")))pending.add((Node)item);
         while(!pending.isEmpty()) {
-            Node item=pending.removeFirst();if(!seen.add(item))continue;
+            Node item=pending.removeFirst();if(!seen.add(item)||item.optional("itemCaptureFailure")!=null)continue;
             if(seen.size()>10_000)throw new IllegalStateException("LIVE_ITEM_LIMIT");ids.add(number(item.get("id")));
             if(item.types.contains("InventoryContainer")){Node bag=(Node)item.get("container");for(Object child:list(bag.get("items")))pending.add((Node)child);}
             if(item.types.contains("HandWeapon"))for(Object child:list(item.get("attachmentList")))pending.add((Node)child);
@@ -460,9 +492,10 @@ final class PlayerSnapshot {
             // External Lua references are valid runtime state, but not player-owned data.
             Object target=copy.copies.get(entry.getKey());entry.getValue().target=target instanceof Node node?node:null;
         }
-        if(tracker!=null)tracker.identify(player,copy,Objects.requireNonNull(character),aliases);
+        if(tracker!=null&&!copy.inventoryCaptureFailed)tracker.identify(player,copy,Objects.requireNonNull(character),aliases);
         for(Object value:copy.copies.values())if(value instanceof Node node)node.fields=Collections.unmodifiableMap(node.fields);
         return new Snapshot(p,captured,copy.bytes);
     }
+    private boolean inventoryCaptureFailed;
     private PlayerSnapshot() {}
 }

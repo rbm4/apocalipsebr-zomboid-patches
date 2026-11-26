@@ -49,6 +49,15 @@ public final class PlayerJournal {
             statement.setQueryTimeout(2); statement.setObject(1, id); return statement.executeUpdate() != 0;
         }
     }
+    public static void reportItemFailure(UUID character,int slot,String item,int nativeId,String code,String detail) {
+        log("LIVE_ITEM_PERSISTENCE_FAILED; operation="+OPERATION.get()+"; character="+character+"; slot="+slot
+            +"; item="+logToken(item)+"; nativeItemId="+nativeId+"; issue="+logToken(code)+"; detail="+logToken(detail)
+            +"; characterState=applied; inventory=last_committed");
+    }
+    private static String logToken(String value) {
+        String token=value.replaceAll("[^A-Za-z0-9_.:$-]","_");
+        return token.substring(0,Math.min(token.length(),160));
+    }
     private void run() {
         report("REPLAY_OPENED", null, "NONE", true);
         boolean retrying = false;

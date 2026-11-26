@@ -24,8 +24,13 @@ final class PlayerCapture {
     record Row(String table,Map<String,Object> values) {
         Row { values=Collections.unmodifiableMap(new LinkedHashMap<>(values)); }
     }
-    record Graph(UUID snapshot,UUID character,Instant capturedAt,List<Row> rows,List<String> issues,int bytes,int objects,int items,int containers,int edges) {
-        Graph { rows=List.copyOf(rows); issues=List.copyOf(issues); }
+    record ItemFailure(String code,String fullType,int nativeId,String detail) {}
+    record Graph(UUID snapshot,UUID character,Instant capturedAt,List<Row> rows,List<String> issues,List<ItemFailure> itemFailures,
+            int bytes,int objects,int items,int containers,int edges) {
+        Graph { rows=List.copyOf(rows); issues=List.copyOf(issues); itemFailures=List.copyOf(itemFailures); }
+        boolean canRetainInventory() {
+            return !itemFailures.isEmpty() && issues.stream().allMatch(code -> itemFailures.stream().anyMatch(f -> code.equals(f.code())));
+        }
     }
     static final class IncompleteGraphException extends java.sql.SQLException {
         private final String stage,issueCodes;
@@ -47,6 +52,7 @@ final class PlayerCapture {
     private final Instant captured=Instant.now();
     private final ArrayList<Row> rows=new ArrayList<>();
     private final ArrayList<String> issues=new ArrayList<>();
+    private final ArrayList<ItemFailure> itemFailures=new ArrayList<>();
     private final IdentityHashMap<Object,UUID> itemIds=new IdentityHashMap<>();
     // Reuse itemIds for items; this map only adds the player and inventory containers.
     private final IdentityHashMap<Object,UUID> ownedIds=new IdentityHashMap<>();
@@ -109,7 +115,7 @@ final class PlayerCapture {
     }
     Graph capture(PlayerSnapshot.Snapshot source,List<String> loadIssues) {
         Graph graph=capture(source.player(),loadIssues);
-        return new Graph(graph.snapshot(),graph.character(),source.capturedAt(),graph.rows(),graph.issues(),graph.bytes(),graph.objects(),graph.items(),graph.containers(),graph.edges());
+        return new Graph(graph.snapshot(),graph.character(),source.capturedAt(),graph.rows(),graph.issues(),graph.itemFailures(),graph.bytes(),graph.objects(),graph.items(),graph.containers(),graph.edges());
     }
     Graph capture(Object player,List<String> loadIssues) {
         issues.addAll(loadIssues); object(character,"character");ownedIds.put(player,character);
@@ -163,7 +169,7 @@ final class PlayerCapture {
             values.put("reference_object_id",target);rows.set(reference.row(),new Row(row.table(),values));
         }
         check();
-        return new Graph(snapshot,character,captured,rows,issues,bytes,objects,itemIds.size(),containers,edges);
+        return new Graph(snapshot,character,captured,rows,issues,itemFailures,bytes,objects,itemIds.size(),containers,edges);
     }
     private void perks(Object player,Object descriptor) {
         Map<String,Map<String,Object>> values=new LinkedHashMap<>();
@@ -250,8 +256,21 @@ final class PlayerCapture {
         int position=0; for(Object item:list(get(container,"items"))) item(item,id,null,position++,depth+1);
     }
     private void item(Object item,UUID container,UUID parent,int position,int depth) {
-        check(); if(item==null || depth>64 || itemIds.size()>=10_000) throw new IllegalStateException("Invalid/oversized item graph");
-        if(itemIds.containsKey(item)) throw new IllegalStateException("Cyclic or duplicate owned item");
+        check();
+        if(item instanceof PlayerSnapshot.Node node&&node.optional("itemCaptureFailure") instanceof String failure){
+            itemIssue(item,"ITEM_CAPTURE_FAILED",failure);
+            return;
+        }
+        if(item==null||depth>64||itemIds.size()>=10_000||itemIds.containsKey(item))
+            throw new IllegalStateException("Invalid or oversized item ownership graph");
+        try { projectItem(item,container,parent,position,depth); }
+        catch(PlayerLimits.SizeExceeded|TimeBudgetExceeded failure) { throw failure; }
+        catch(RuntimeException failure) {
+            if(!(item instanceof PlayerSnapshot.Node))throw failure;
+            itemIssue(item,"ITEM_PROJECTION_FAILED",failure.getClass().getSimpleName());
+        }
+    }
+    private void projectItem(Object item,UUID container,UUID parent,int position,int depth) {
         int nativeId=number(get(item,"id"));
         if(!nativeIds.add(nativeId)) {
             // Match vanilla ItemContainer.AddItem's keep-existing/reject-incoming rule.
@@ -284,11 +303,11 @@ final class PlayerCapture {
         }
         Object track=get(item,"animalTracks"); if(track!=null) project("animal_track",track,"item_id",id);
         if(item instanceof PlayerSnapshot.Node n) {
-            if(!(boolean)n.get("supportedWriter")){componentValue(id,"item.unknownSubtype",null,"unsupported");issue("UNSUPPORTED_ITEM_SUBTYPE");}
+            if(!(boolean)n.get("supportedWriter")){componentValue(id,"item.unknownSubtype",null,"unsupported");itemIssue(item,"UNSUPPORTED_ITEM_SUBTYPE",n.runtimeClass);}
         } else if(item instanceof zombie.inventory.InventoryItem) try {
             String writer=item.getClass().getMethod("save",ByteBuffer.class,boolean.class).getDeclaringClass().getSimpleName();
             if(!Set.of("InventoryItem","InventoryContainer","HandWeapon","Food","Clothing","Literature","AlarmClock","AlarmClockClothing","Key","Moveable","MapItem","Radio","AnimalInventoryItem").contains(writer)) {
-                componentValue(id,"item.unknownSubtype",null,"unsupported");issue("UNSUPPORTED_ITEM_SUBTYPE");
+                componentValue(id,"item.unknownSubtype",null,"unsupported");itemIssue(item,"UNSUPPORTED_ITEM_SUBTYPE",writer);
             }
         } catch(NoSuchMethodException error) { throw new IllegalStateException("Missing item writer",error); }
         for(String type:typeNames(item)) switch(type) {
@@ -325,7 +344,14 @@ final class PlayerCapture {
         componentValue(id,"item.entityComponents",true,"complete");
         for(int index=0;index<count;index++) {
             Object c=call(item,"getComponentForIndex",index); String kind=typeName(c);
-            if(kind.equals("FluidContainer")) fluid(c,id);
+            Object fallback=c instanceof PlayerSnapshot.Node node?node.optional("fallbackState"):null;
+            Object failure=c instanceof PlayerSnapshot.Node node?node.optional("captureFailure"):null;
+            if(fallback!=null)componentValue(id,"entity."+kind,fallback,"complete");
+            else if(failure!=null){
+                componentValue(id,"entity."+kind,null,"unsupported");
+                itemIssue(item,"NATIVE_COMPONENT_CAPTURE_FAILED_"+kind,failure.toString());
+            }
+            else if(kind.equals("FluidContainer")) fluid(c,id);
             else if(kind.equals("AttributeContainer")||kind.equals("EntityScriptInfo")) {
                 Object state=c instanceof PlayerSnapshot.Node node?node.get("state"):PlayerSnapshot.componentState(c);
                 componentValue(id,"entity."+kind,state,"complete");
@@ -335,9 +361,22 @@ final class PlayerCapture {
                 value.put("currentHitPoints",get(c,"currentHitPoints"));value.put("maxHitPoints",get(c,"maxHitPoints"));value.put("material",get(c,"material").toString());
                 componentValue(id,"entity.Durability",value,"complete");
             }
-            else if(PlayerCodecs.supports(c))componentValue(id,"entity."+kind,c instanceof PlayerSnapshot.Node node?node.get("state"):PlayerCodecs.component(c),"complete");
-            else { componentValue(id,"entity."+kind,null,"unsupported"); issue("UNSUPPORTED_COMPONENT_"+kind); }
+            else {
+                Object state=null;
+                if(PlayerCodecs.supports(c))state=c instanceof PlayerSnapshot.Node node?node.optional("state"):PlayerCodecs.component(c);
+                if(state!=null)componentValue(id,"entity."+kind,state,"complete");
+                else {
+                    componentValue(id,"entity."+kind,null,"unsupported");
+                    itemIssue(item,"UNSUPPORTED_COMPONENT_"+kind,"missing_codec_state");
+                }
+            }
         }
+    }
+    private void itemIssue(Object item,String code,String detail) {
+        issue(code);
+        var failure = new ItemFailure(code,Objects.toString(get(item,"getFullType")),number(get(item,"id")),detail);
+        // Retain at least one sample for every distinct issue, even with many repeated items.
+        if(itemFailures.size()<32||itemFailures.stream().noneMatch(previous -> previous.code().equals(code)))itemFailures.add(failure);
     }
     static Map<String,Object> savedItemRgb(Object item) {
         float[] rgb=item instanceof PlayerSnapshot.Node node?node.itemRgb:

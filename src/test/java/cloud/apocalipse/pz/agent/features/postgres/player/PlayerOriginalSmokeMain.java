@@ -15,6 +15,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 import javax.sql.DataSource;
 import zombie.core.network.ByteBufferWriter;
 import zombie.core.raknet.*;
+import zombie.entity.ComponentType;
+import zombie.entity.components.crafting.CraftMode;
+import zombie.entity.components.crafting.DryingCraftLogic;
+import zombie.entity.components.crafting.recipe.CraftRecipeData;
+import zombie.entity.components.resources.*;
+import zombie.entity.util.enums.EnumBitStore;
+import zombie.inventory.InventoryItem;
+import zombie.inventory.InventoryItemFactory;
+import zombie.scripting.entity.components.crafting.CraftRecipe;
+import zombie.scripting.entity.components.spriteconfig.SpriteOverlayConfigScript;
 import cloud.apocalipse.pz.agent.features.postgres.*;
 import cloud.apocalipse.pz.agent.features.postgres.dictionary.*;
 import cloud.apocalipse.pz.agent.features.lua.login.*;
@@ -27,6 +37,7 @@ public final class PlayerOriginalSmokeMain {
     static final UUID slotId = UUID.randomUUID(), headId = UUID.randomUUID();
     static volatile UUID liveCharacter, liveDataset;
     static final AtomicInteger nativeWrites = new AtomicInteger(), graphWrites = new AtomicInteger();
+    static final AtomicInteger liveInventoryWrites = new AtomicInteger(), livePositionWrites = new AtomicInteger(), liveHealthWrites = new AtomicInteger();
     static final List<String> respawnWrites = new java.util.concurrent.CopyOnWriteArrayList<>();
     private record ScalarWrite(String sql, float x, boolean onServerThread) {}
     private static final List<ScalarWrite> scalarWrites = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -71,6 +82,11 @@ public final class PlayerOriginalSmokeMain {
                 return proxy(PreparedStatement.class, (s, method, args) -> {
                     if (method.getName().startsWith("set")) { if (!method.getName().equals("setQueryTimeout")) bindings.put((Integer) args[0], args[1]); return null; }
                     if (method.getName().equals("addBatch")) {
+                        if (sql.startsWith("INSERT INTO player_rel.item (")) liveInventoryWrites.incrementAndGet();
+                        if (sql.startsWith("INSERT INTO player_rel.character_state (")
+                                || sql.startsWith("UPDATE player_rel.character_state SET x")) livePositionWrites.incrementAndGet();
+                        if (sql.startsWith("INSERT INTO player_rel.body_damage (")
+                                || sql.startsWith("UPDATE player_rel.body_damage SET ")) liveHealthWrites.incrementAndGet();
                         if (sql.startsWith("UPDATE player_rel.character_state SET x")) {
                             scalarWrites.add(new ScalarWrite(sql, ((Number) bindings.get(1)).floatValue(), Thread.currentThread() == ownerThread));
                         }
@@ -360,12 +376,219 @@ public final class PlayerOriginalSmokeMain {
         zombie.savefile.ServerPlayerDB.getInstance().saveFinishWait();
         check(PlayerSync.readable("player-fixture", "fixture", 0, false), "final capture remained pending");
         check(nativeWrites.get() == 2, "native final snapshot did not reach persistence");
+        CarriedComponents.failedFallbackScenario(connection, created);
+        CarriedComponents.roundTripScenario(connection, created);
+        CarriedComponents.genericFallbackScenario(connection, created);
         respawnScenario(connection, created);
         var abandoned=new zombie.characters.SurvivorDesc();PlayerReconstruction.set(request,"survivorDescriptor",abandoned);request.processServer(null,connection);
         @SuppressWarnings("unchecked") var connections=(List<UdpConnection>)PlayerAccess.get(GameServer.class.getField("udpEngine").get(null),"connections");connections.clear();
         PlayerCreation.update(System.nanoTime()+1_000_000_000L);connections.add(connection);
         var descriptors=(Map<?,?>)IsoWorld.class.getField("survivorDescriptors").get(IsoWorld.instance);
         check(!descriptors.containsKey(abandoned.getID()),"cancelled creation retained its parsed descriptor");
+    }
+
+    // Resolve component and item signatures only after premain installs the dictionary hooks.
+    static final class CarriedComponents {
+        static void failedFallbackScenario(ConnectionFixture connection, IsoPlayer player) throws Exception {
+            var item = InventoryItemFactory.CreateItem("Base.Fixture");
+            attach(item, ComponentType.CraftLogic);
+            player.getInventory().AddItem(item);
+            float previousX = player.getX();
+            float previousHealth = player.getBodyDamage().getOverallBodyHealth();
+            int mirrors = nativeWrites.get(), inventory = liveInventoryWrites.get(), positions = livePositionWrites.get();
+            int health = liveHealthWrites.get();
+            var local = DictionaryRuntime.class.getDeclaredField("local");
+            local.setAccessible(true);
+            Object published = local.get(null);
+            local.set(null, null);
+            try {
+                player.setX(previousX + 1);
+                player.getBodyDamage().setOverallBodyHealth(previousHealth - 5);
+                var snapshot = PlayerSnapshot.copyLive(player);
+                var graph = new PlayerCapture(liveCharacter, Map.of(), Long.MAX_VALUE).capture(snapshot, List.of());
+                check(graph.issues().equals(List.of("NATIVE_COMPONENT_CAPTURE_FAILED_CraftLogic")), "unexpected component issues: " + graph.issues());
+                saveAndDrain(connection, player);
+                check(quarantineRecords() == 1, "unsupported item capture must be quarantined");
+                check(PlayerSync.readable("player-fixture", "fixture", 0, false),
+                    "quarantined capture must clear the pending slot after drain");
+                check(nativeWrites.get() == mirrors + 1, "native byte snapshot did not reach its mirror");
+                check(liveInventoryWrites.get() == inventory && livePositionWrites.get() == positions + 1
+                    && liveHealthWrites.get() == health + 1, "position and health must be applied while keeping the last committed inventory");
+            } finally {
+                local.set(null, published);
+                player.getInventory().Remove(item);
+                player.setX(previousX);
+                player.getBodyDamage().setOverallBodyHealth(previousHealth);
+            }
+        }
+
+        static void genericFallbackScenario(ConnectionFixture connection, IsoPlayer player) throws Exception {
+            var item = InventoryItemFactory.CreateItem("Base.Fixture");
+            var crafting = attach(item, ComponentType.CraftLogic);
+            PlayerReconstruction.set(crafting, "inputsGroupName", "fixture-input");
+            PlayerReconstruction.set(crafting, "actionAnimOverride", "FixtureCrafting");
+            var marker = attach(item, ComponentType.MetaTag);
+            PlayerReconstruction.set(marker, "storedId", 12345678L);
+            player.getInventory().AddItem(item);
+            try {
+                var graph = new PlayerCapture(liveCharacter, Map.of(), Long.MAX_VALUE).capture(PlayerSnapshot.copyLive(player), List.of());
+                PlayerCapture.requireComplete(graph, "generic-native-component");
+                var saved = profile(graph);
+                var restored = PlayerReconstruction.reconstruct(saved, 0);
+                try {
+                    var loadedItem = restored.getInventory().getItems().getFirst();
+                    var loadedCraft = loadedItem.getComponent(ComponentType.CraftLogic);
+                    var loadedMarker = loadedItem.getComponent(ComponentType.MetaTag);
+                    check("fixture-input".equals(PlayerAccess.get(loadedCraft, "inputsGroupName"))
+                        && "FixtureCrafting".equals(PlayerAccess.get(loadedCraft, "actionAnimOverride"))
+                        && Long.valueOf(12345678L).equals(PlayerAccess.get(loadedMarker, "storedId")),
+                        "generic fallback lost native component fields");
+                } finally { PlayerRuntime.discard(restored); }
+                var state = PlayerCodecs.fallbackComponent(crafting);
+                var local = DictionaryRuntime.class.getDeclaredField("local");
+                local.setAccessible(true);
+                var current=(DictionaryDatabase.Published)local.get(null);
+                local.set(null,new DictionaryDatabase.Published(current.namespace(),current.view(),current.revision(),
+                    current.serverId()+1,"foreign-fixture"));
+                try {
+                    PlayerCodecs.restoreFallbackComponent(crafting,(String)state.get("nativeFallbackType"),(byte[])state.get("nativePayload"));
+                    throw new AssertionError("generic fallback decoded on another server");
+                } catch(IllegalStateException expected) {
+                    check(expected.getMessage().contains("requires its source server"),"unexpected foreign fallback failure: "+expected);
+                } finally { local.set(null,current); }
+                int items = liveInventoryWrites.get();
+                saveAndDrain(connection, player);
+                check(quarantineRecords() == 1 && liveInventoryWrites.get() == items + 1,
+                    "same-session save through the generic fallback must reach the inventory writer");
+                System.out.println("Generic carried component fallback passed");
+            } finally { player.getInventory().Remove(item); }
+        }
+
+        @SuppressWarnings("unchecked")
+        static void roundTripScenario(ConnectionFixture connection, IsoPlayer player) throws Exception {
+            var item = InventoryItemFactory.CreateItem("Base.Fixture");
+            var module = item.getScriptItem().getModule();
+            var overlay = attach(item, ComponentType.SpriteOverlayConfig);
+            var script = (SpriteOverlayConfigScript) PlayerReconstruction.create(SpriteOverlayConfigScript.class.getName());
+            script.setModule(module);
+            script.InitLoadPP("FixtureOverlay");
+            script.getAllStyleNames().add("Dry_3");
+            var style = PlayerReconstruction.create(SpriteOverlayConfigScript.OverlayStyle.class.getName());
+            ((Map<String,Object>) PlayerAccess.get(script, "allStyles")).put("Dry_3", style);
+            var register = zombie.world.ScriptsDictionary.spriteOverlayConfigs;
+            var scriptInfo = PlayerReconstruction.create("zombie.world.DictionaryScriptInfo");
+            PlayerReconstruction.set(scriptInfo, "script", script);
+            PlayerReconstruction.set(scriptInfo, "isLoaded", true);
+            PlayerReconstruction.set(scriptInfo, "registryId", (short) 5);
+            ((Map<String,Object>) PlayerAccess.get(register, "namedMap")).put(script.getScriptObjectFullType(), scriptInfo);
+            ((Map<Short,Object>) PlayerAccess.get(register, "idMap")).put((short) 5, scriptInfo);
+            PlayerReconstruction.set(overlay, "configScript", script);
+            PlayerAccess.call(overlay, "setStyle", "Dry_3");
+
+            var resources = (Resources) attach(item, ComponentType.Resources);
+            for (String group : List.of("input", "output")) {
+                var blueprint = ResourceBlueprint.alloc(group, ResourceType.Item, group.equals("input") ? ResourceIO.Input : ResourceIO.Output,
+                    4, null, ResourceChannel.NO_CHANNEL, EnumBitStore.noneOf(ResourceFlag.class));
+                try { resources.createResource(group, blueprint); }
+                finally { ResourceBlueprint.release(blueprint); }
+                var resource = (ResourceItem) resources.getResource(group);
+                var content = InventoryItemFactory.CreateItem("Base.Fixture");
+                content.setCondition(group.equals("input") ? 4 : 6);
+                resource.getStoredItems().add(content);
+            }
+            var drying = (DryingCraftLogic) attach(item, ComponentType.DryingCraftLogic);
+            var recipe = new CraftRecipe();
+            recipe.setModule(module);
+            var loadMod = zombie.scripting.ScriptManager.class.getDeclaredField("currentLoadFileMod");
+            loadMod.setAccessible(true);
+            Object previousLoadMod = loadMod.get(null);
+            loadMod.set(null, "pz-vanilla");
+            try { recipe.InitLoadPP("FixtureDry"); }
+            finally { loadMod.set(null, previousLoadMod); }
+            module.craftRecipes.getScriptMap().put("FixtureDry", recipe);
+            var scriptManager = zombie.scripting.ScriptManager.instance;
+            PlayerAccess.call(PlayerAccess.get(scriptManager, "craftRecipes"), "registerModule", module);
+            check(scriptManager.getCraftRecipe(recipe.getScriptObjectFullType()) == recipe, "fixture recipe was not registered");
+            var progress = CraftRecipeData.Alloc(CraftMode.Automation, true, false, true, false);
+            progress.setRecipe(recipe);
+            progress.setElapsedTime(12.75);
+            ((List<CraftRecipeData>) PlayerAccess.get(drying, "craftDataInProgress")).add(progress);
+            ((Map<CraftRecipeData,Double>) PlayerAccess.get(drying, "temporaryWetnesses")).put(progress, 0.625);
+
+            var install = DictionaryCache.class.getDeclaredMethod("install", DictionaryOrigin.class, DictionarySnapshot.class);
+            install.setAccessible(true);
+            install.invoke(null, DictionaryRuntime.localEncoding(), new DictionarySnapshot(
+                List.of(new DictionarySnapshot.Registry("info", "", 100, null)),
+                List.of(new DictionarySnapshot.Entry("info", "", 99, "item", "Base.Fixture", "Base", "Fixture", true, "pz-vanilla",
+                    true, false, false, false, false, null, List.of()))));
+            var encoded = java.nio.ByteBuffer.allocate(32768);
+            item.saveWithSize(encoded, false);
+            encoded.flip();
+            int worldVersion = (int) IsoWorld.class.getMethod("getWorldVersion").invoke(null);
+            var nativeItem = InventoryItem.loadItem(encoded, worldVersion);
+            check(nativeItem != null && !encoded.hasRemaining(), "vanilla did not round-trip the item");
+            verifyComponents(nativeItem, script, recipe);
+
+            player.getInventory().AddItem(item);
+            try {
+                var graph = new PlayerCapture(liveCharacter, Map.of(), Long.MAX_VALUE).capture(PlayerSnapshot.copyLive(player), List.of());
+                PlayerCapture.requireComplete(graph, "supported-carried-components");
+                var restored = PlayerReconstruction.reconstruct(profile(graph), 0);
+                try { verifyComponents(restored.getInventory().getItems().getFirst(), script, recipe); }
+                finally { PlayerRuntime.discard(restored); }
+                int items = liveInventoryWrites.get();
+                saveAndDrain(connection, player);
+                check(quarantineRecords() == 1 && liveInventoryWrites.get() == items + 1,
+                    "supported components must reach the relational inventory writer without quarantine");
+                System.out.println("Carried component scenario B passed");
+            } finally {
+                player.getInventory().Remove(item);
+            }
+        }
+
+        static void verifyComponents(InventoryItem item, SpriteOverlayConfigScript script, CraftRecipe recipe) {
+            Object overlay = item.getComponent(ComponentType.SpriteOverlayConfig);
+            check(PlayerAccess.get(overlay, "configScript") == script && "Dry_3".equals(PlayerAccess.get(overlay, "appliedStyle")),
+                "overlay script or style was lost");
+            var resources = (Resources) item.getComponent(ComponentType.Resources);
+            for (String group : List.of("input", "output")) {
+                var resource = (ResourceItem) resources.getResourcesForGroup(group).getFirst();
+                check(resource.getItemAmount() == 1 && resource.peekItem().getCondition() == (group.equals("input") ? 4 : 6),
+                    "contents of resource group " + group + " changed");
+            }
+            Object drying = item.getComponent(ComponentType.DryingCraftLogic);
+            var data = (CraftRecipeData) ((List<?>) PlayerAccess.get(drying, "craftDataInProgress")).getFirst();
+            check(data.getRecipe() == recipe && data.getElapsedTime() == 12.75
+                && Double.valueOf(0.625).equals(((Map<?,?>) PlayerAccess.get(drying, "temporaryWetnesses")).get(data))
+                && Double.valueOf(12.75).equals(((Map<?,?>) PlayerAccess.get(drying, "previousTickElapsedTimes")).get(data)),
+                "drying recipe, elapsed time or wetness was lost");
+        }
+
+        static zombie.entity.Component attach(InventoryItem item, ComponentType type) throws Exception {
+            var add = zombie.entity.GameEntity.class.getDeclaredMethod("addComponent", zombie.entity.Component.class);
+            add.setAccessible(true);
+            var component = type.CreateComponent();
+            check(Boolean.TRUE.equals(add.invoke(item, component)), "could not attach " + type);
+            return component;
+        }
+
+        static void saveAndDrain(ConnectionFixture connection, IsoPlayer player) {
+            var database = zombie.savefile.ServerPlayerDB.getInstance();
+            connection.setPlayerAt(0, player);
+            try {
+                database.save();
+                database.saveFinishWait();
+            } finally {
+                connection.setPlayerAt(0, null);
+            }
+        }
+
+        static long quarantineRecords() throws Exception {
+            var quarantine = Path.of(System.getProperty("apocbr.postgres.playerJournal.directory"), "quarantine");
+            try (var records = Files.list(quarantine)) {
+                return records.filter(path -> path.toString().endsWith(".record")).count();
+            }
+        }
     }
 
     static void respawnScenario(ConnectionFixture connection, IsoPlayer previous) throws Exception {

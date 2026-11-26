@@ -555,7 +555,28 @@ final class PlayerReconstruction {
     @SuppressWarnings("unchecked")
     private static void restoreComponentState(Object component,String name,Object state) {
         Map<String,Object> fields=(Map<String,Object>)state;
+        if(fields.get("nativeFallbackType") instanceof String type){
+            PlayerCodecs.restoreFallbackComponent(component,type,(byte[])fields.get("nativePayload"));
+            return;
+        }
         if(name.equals("SpriteConfig")){restoreSpriteConfig(component,fields);return;}
+        if(name.equals("SpriteOverlayConfig")){
+            String scriptName=(String)fields.get("scriptFullType");
+            String style=(String)fields.get("appliedStyle");
+            Object script=scriptName==null?null:zombie.world.ScriptsDictionary.spriteOverlayConfigs.get(scriptName);
+            if(scriptName!=null&&script==null)throw new IllegalStateException("Missing sprite overlay script: "+scriptName);
+            set(component,"configScript",script);
+            set(component,"appliedStyle",null);
+            if(style!=null){
+                if(script==null||!list(call(script,"getAllStyleNames")).contains(style))throw new IllegalStateException("Missing saved sprite overlay style");
+                invokeDeclared(component,"setStyle",style);
+            }
+            return;
+        }
+        if(name.equals("Resources")||name.equals("DryingCraftLogic")){
+            PlayerCodecs.restoreNativeComponent(component,(byte[])fields.get("nativePayload"));
+            return;
+        }
         if(name.equals("AttributeContainer")){restoreAttributes(component,(List<Object>)fields.get("attributes"));return;}
         if(name.equals("FluidContainer")){restoreFluid(component,fields);return;}
         for(var e:fields.entrySet()) {
