@@ -460,7 +460,7 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     }
 
     public static String clientMenuApiBaseUrl() {
-        return systemProperty(CLIENT_MENU_API_BASE_URL_PROPERTY);
+        return systemProperty(CLIENT_MENU_API_BASE_URL_PROPERTY,"https://plataforma.apocalipse.cloud/api/v1/client-menu/auth");
     }
 
     public static long longProperty(String name, long fallback) {
