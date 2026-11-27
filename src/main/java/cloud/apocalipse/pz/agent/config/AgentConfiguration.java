@@ -74,6 +74,20 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
         return Boolean.parseBoolean(systemProperty(ASYNC_LUA_PREPARATION_PROPERTY, "false"));
     }
 
+    /** Opt-in scoped mod room commits. Enable with {@code -Dapocbr.optimization.scopedRoomCommit.enabled=true}. */
+    public static final String SCOPED_ROOM_COMMIT = "apocbr.optimization.scopedRoomCommit.enabled";
+
+    public static boolean scopedRoomCommitEnabled() {
+        return Boolean.parseBoolean(systemProperty(SCOPED_ROOM_COMMIT, "false"));
+    }
+
+    /** Opt-in indexed room validation. Enable with {@code -Dapocbr.optimization.roomIdValidation.enabled=true}. */
+    public static final String ROOM_ID_VALIDATION_OPTIMIZATION = "apocbr.optimization.roomIdValidation.enabled";
+
+    public static boolean roomIdValidationOptimizationEnabled() {
+        return Boolean.parseBoolean(systemProperty(ROOM_ID_VALIDATION_OPTIMIZATION, "false"));
+    }
+
     /** Opt-in local building reconciliation indexes. Enable with {@code -Dapocbr.optimization.clientBuildingReconciliation.enabled=true}. */
     public static final String CLIENT_BUILDING_RECONCILIATION_OPTIMIZATION =
         "apocbr.optimization.clientBuildingReconciliation.enabled";

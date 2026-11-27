@@ -2,6 +2,7 @@ package cloud.apocalipse.pz.agent.integration;
 
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulation;
+import cloud.apocalipse.pz.agent.integration.probe.RoomRegistrationProbe;
 import cloud.apocalipse.pz.agent.integration.probe.StreamingWorkload;
 import cloud.apocalipse.pz.agent.integration.probe.HookProbe;
 import cloud.apocalipse.pz.agent.integration.probe.MovingObjectLoad;
@@ -78,6 +79,14 @@ final class IntegrationLaunchSettings {
             throw new IllegalArgumentException("The moving-object scenario requires -Dpz.it.streaming=true");
         }
         boolean configured = Boolean.parseBoolean(runner.getProperty(TASK_CONFIGURATION, "false"));
+        if (Boolean.parseBoolean(runner.getProperty(RoomRegistrationProbe.PROPERTY))) {
+            if (configured || streaming) throw new IllegalArgumentException("Room registration requires its own isolated run");
+            settings.put(RoomRegistrationProbe.PROPERTY, "true");
+            settings.put(AgentConfiguration.SCOPED_ROOM_COMMIT,
+                runner.getProperty(AgentConfiguration.SCOPED_ROOM_COMMIT, "false"));
+            settings.put(AgentConfiguration.ROOM_ID_VALIDATION_OPTIMIZATION,
+                runner.getProperty(AgentConfiguration.ROOM_ID_VALIDATION_OPTIMIZATION, "false"));
+        }
         if (streaming && configured) {
             throw new IllegalArgumentException("The streaming scenario requires the isolated server fixture");
         }

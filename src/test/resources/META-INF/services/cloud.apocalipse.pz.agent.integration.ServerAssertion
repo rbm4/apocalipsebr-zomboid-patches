@@ -1,3 +1,4 @@
 cloud.apocalipse.pz.agent.integration.assertions.StreamingLifecycleAssertion
 cloud.apocalipse.pz.agent.experimental.worldsimulation.WorldSimulationAssertion
 cloud.apocalipse.pz.agent.integration.assertions.MovingObjectLoadAssertion
+cloud.apocalipse.pz.agent.integration.assertions.RoomRegistrationAssertion

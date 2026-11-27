@@ -110,7 +110,7 @@ jobs:
       fail-fast: false
       max-parallel: ${{ vars.PZ_INTEGRATION_RUNNER && 1 || 5 }}
       matrix:
-        scenario: [moving-object-attribution, parked-vehicle-cadence, chunk-lifecycle, hook-rollback, postgres-bootstrap]
+        scenario: [moving-object-attribution, parked-vehicle-cadence, chunk-lifecycle, hook-rollback, postgres-bootstrap, room-registration-ab]
     uses: ./.github/workflows/server-integration-scenario.yml
     with:
       scenario: ${{ matrix.scenario }}

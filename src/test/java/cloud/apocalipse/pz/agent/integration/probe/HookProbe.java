@@ -59,6 +59,7 @@ public final class HookProbe {
                 return null;
             }
         });
+        if (Boolean.getBoolean(RoomRegistrationProbe.PROPERTY)) RoomRegistrationProbe.install(directory.getParent(), instrumentation);
         if (Boolean.getBoolean("pz.it.streaming")) StreamingProbe.install(directory.getParent(), instrumentation);
     }
 

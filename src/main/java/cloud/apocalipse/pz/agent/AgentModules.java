@@ -10,6 +10,8 @@ import cloud.apocalipse.pz.agent.features.hotfixes.AssetLogModule;
 import cloud.apocalipse.pz.agent.features.hotfixes.XmlCaseModule;
 import cloud.apocalipse.pz.agent.features.networkdiagnostics.NetworkDiagnosticsModule;
 import cloud.apocalipse.pz.agent.features.npc.NpcModule;
+import cloud.apocalipse.pz.agent.features.optimization.building.RoomIdValidationModule;
+import cloud.apocalipse.pz.agent.features.optimization.building.ScopedRoomCommitModule;
 import cloud.apocalipse.pz.agent.features.optimization.actor.allocation.ActorUpdateAllocationModule;
 import cloud.apocalipse.pz.agent.features.optimization.animal.growth.AnimalGrowthGeneModule;
 import cloud.apocalipse.pz.agent.features.optimization.animal.perception.AnimalPerceptionModule;
@@ -58,6 +60,7 @@ public final class AgentModules {
         new EntityRemovalModule(), new EntitySimulationModule(), new ServerLosModule(), new ZombieAsyncSendModule(),
         new CellBorderModule(), new CellRelevanceModule(), new RegionCellLookupModule(), new ParkedVehicleModule(), new ChunkContainerModule(),
         new ChunkAdjacencyModule(), new ChunkAsyncSendModule(), new ClientChunkMapModule(), new BuildingReconciliationModule(),
+        new RoomIdValidationModule(), new ScopedRoomCommitModule(),
         new NetworkDiagnosticsModule(), new PostgresChunksModule(), new ChunkObjectMutationsModule(),
         new AsyncLuaPreparationModule());
 
