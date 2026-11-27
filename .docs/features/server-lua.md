@@ -92,6 +92,23 @@ before the transformer exists.
 | Generator `remove`, setters and `syncIsoObjectReceive`; `GameServer.RemoveItemFromMap` | Protects managed objects and owned backup activation, rejects client authority over protected state, consumes the original packet payload and corrects the sender. Disconnecting an owned backup releases ownership. |
 | `GameServer.receivePlayerConnect` normal exit | Observes accepted player slots, tracks same-connection respawns and queues one successful-login audit per accepted player object. Native player loading/acceptance stays with its existing owner. |
 | `LoginPacket`, `GoogleAuthPacket`, `GoogleAuthKeyPacket.processServer` | With account workers enabled, snapshots packet values, runs bounded account JDBC work and resumes connection changes on the server thread. Two-factor proof is tied to its connection, user and expiry. Disabled hooks leave the native packet implementations in place. |
+
+The `APBR` auth mode in the original `LoginPacket` uses the credential field
+for a short-lived Steam authorization. The agent redeems it on a bounded virtual
+thread with the username and Steam ID from the live connection, then checks
+Steam user and owner bans plus exact username and Steam ownership in the current
+world's whitelist. Admission and the existing second-factor flow resume on the
+server thread. This path updates the last connection date without writing a
+password or creating a whitelist account. Packet debug logging omits APBR login
+payloads. When account workers are disabled, APBR is denied at packet entry.
+
+The server uses `-Dapocbr.steamLogin.apiKey` with a backend integration
+credential assigned to a runtime server. The default HTTPS redemption endpoint
+is `https://plataforma.apocalipse.cloud/api/v1/client-menu/auth/redeem` and can
+be set via `-Dapocbr.steamLogin.redeemUrl`. The backend authorizations are held
+in process memory. Once the client menu resolves the username, it opens the
+vanilla connection panel and passes the credential and APBR mode to the native
+connection flow.
 | `RequestUserLogPacket.processServer/setData` | Executes the user-log query on the bounded admin worker, rechecks permission when applying the result and supplies detached rows to native response serialization without issuing another query on the server thread. |
 | Account class and its original `LogonResult` constructor | Uses worker-owned role copies and captured options, world, Steam mode, admin name and username validation. Date formatting/ASCII encoding receive independent worker instances. Server-thread reads retain their native behavior. |
 | `ServerMap.QueuedQuit` entry/exit and the shared `GameServer$1.run()` exit | Stops services/workers, then clears world-owned state after vanilla final saves. Backup ownership survives final serialization. The native JVM shutdown thread stops any remaining registered services before closing the pool. |

@@ -115,9 +115,20 @@ public final class LoginOriginalSmokeMain {
             },result->{if(Thread.currentThread()!=owner||!"ok".equals(result))throw new AssertionError("Wrong continuation");callbacks.incrementAndGet();});
             awaitPending(ApocBRAsyncLogin.class,"pending");ApocBRAsyncLogin.update();
             if(callbacks.get()!=1)throw new AssertionError("Login continuation not drained");
+            ApocBRAsyncLogin.submitRemote(connection,"steam-token",()->{
+                if (!Thread.currentThread().isVirtual() || Thread.currentThread()==owner || WorkerContext.active())
+                    throw new AssertionError("HTTP work did not run on an isolated virtual thread");
+                return true;
+            },result->{
+                if (Thread.currentThread()!=owner || !result)
+                    throw new AssertionError("HTTP completion did not resume on the simulation thread");
+                callbacks.incrementAndGet();
+            });
+            awaitPending(ApocBRAsyncLogin.class,"pending");ApocBRAsyncLogin.update();
+            if(callbacks.get()!=2)throw new AssertionError("HTTP continuation not drained");
             ApocBRAsyncLogin.submit(connection,"stale","fixture",()->"discard",result->callbacks.incrementAndGet());
             awaitPending(ApocBRAsyncLogin.class,"pending");active.clear();ApocBRAsyncLogin.update();
-            if(callbacks.get()!=1)throw new AssertionError("Stale connection continuation ran");active.put(71L,connection);
+            if(callbacks.get()!=2)throw new AssertionError("Stale connection continuation ran");active.put(71L,connection);
             Object packet=Class.forName("zombie.network.packets.service.RequestUserLogPacket").getConstructor().newInstance();set(packet,"username","fixture");
             Method process=packet.getClass().getMethod("processServer",Class.forName("zombie.network.PacketTypes$PacketType"),UdpConnection.class);
             process.invoke(packet,null,connection);awaitPending(ApocBRAsyncServerDatabase.class,"pending");ApocBRAsyncLogin.update();
@@ -130,6 +141,12 @@ public final class LoginOriginalSmokeMain {
             login.getClass().getMethod("processServer",Class.forName("zombie.network.PacketTypes$PacketType"),UdpConnection.class).invoke(login,null,connection);
             awaitPending(ApocBRAsyncLogin.class,"pending");ApocBRAsyncLogin.update();
             if(connection.denied!=1||queryOnOwner)throw new AssertionError("Rejected authentication did not return through the server continuation");
+            set(login,"authType",cloud.apocalipse.pz.agent.features.clientmenu.SteamLoginPacketPayload.AUTH_TYPE);
+            set(login,"password","00000000-0000-4000-8000-000000000001");
+            int previousQueries = queries.get();
+            login.getClass().getMethod("processServer",Class.forName("zombie.network.PacketTypes$PacketType"),UdpConnection.class).invoke(login,null,connection);
+            if (connection.denied != 2 || queries.get() != previousQueries)
+                throw new AssertionError("APBR without a Steam connection reached password authentication");
             CountDownLatch entered=new CountDownLatch(1);
             ApocBRAsyncLogin.submit(connection,"shutdown","fixture",()->{entered.countDown();new CountDownLatch(1).await();return null;},ignored->{throw new AssertionError("Cancelled callback ran");});
             if(!entered.await(2,TimeUnit.SECONDS))throw new AssertionError("Shutdown fixture not started");

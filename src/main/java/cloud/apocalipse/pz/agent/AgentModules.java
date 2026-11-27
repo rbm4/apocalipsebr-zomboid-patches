@@ -12,6 +12,7 @@ import cloud.apocalipse.pz.agent.features.networkdiagnostics.NetworkDiagnosticsM
 import cloud.apocalipse.pz.agent.features.npc.NpcModule;
 import cloud.apocalipse.pz.agent.features.optimization.actor.allocation.ActorUpdateAllocationModule;
 import cloud.apocalipse.pz.agent.features.optimization.animal.growth.AnimalGrowthGeneModule;
+import cloud.apocalipse.pz.agent.features.optimization.animal.perception.AnimalPerceptionModule;
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntityRemovalModule;
 import cloud.apocalipse.pz.agent.features.optimization.entity.EntitySimulationModule;
 import cloud.apocalipse.pz.agent.features.optimization.los.ServerLosModule;
@@ -53,7 +54,7 @@ public final class AgentModules {
         new ServerPhaseTelemetryModule(), new MovingObjectTelemetryModule(), new JavaPathfindingModule(),
         new ZombieCullingModule(), new LuaDispatchModule(), new PlayerNearVehicleModule(),
         new ZombiePacketPreparationModule(), new ThermalClothingModule(), new CharacterStatsModule(),
-        new ActorUpdateAllocationModule(), new AnimalGrowthGeneModule(), new BlendDirectionsModule(),
+        new ActorUpdateAllocationModule(), new AnimalGrowthGeneModule(), new AnimalPerceptionModule(), new BlendDirectionsModule(),
         new EntityRemovalModule(), new EntitySimulationModule(), new ServerLosModule(), new ZombieAsyncSendModule(),
         new CellBorderModule(), new CellRelevanceModule(), new RegionCellLookupModule(), new ParkedVehicleModule(), new ChunkContainerModule(),
         new ChunkAdjacencyModule(), new ChunkAsyncSendModule(), new ClientChunkMapModule(), new BuildingReconciliationModule(),

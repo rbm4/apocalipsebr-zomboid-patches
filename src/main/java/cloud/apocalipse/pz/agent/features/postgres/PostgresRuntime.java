@@ -88,11 +88,11 @@ public final class PostgresRuntime {
         return pool.openDictionaryListener();
     }
 
-    public static final class Scope {
+    public static final class Scope implements AutoCloseable {
         private final AccountConnections.Call call;
         private final ForegroundDatabase login;
         private Scope(AccountConnections.Call call, ForegroundDatabase login) { this.call=call; this.login=login; }
-        private void close() throws SQLException {
+        @Override public void close() throws SQLException {
             try { call.close(); } finally { if (login != null) login.close(); }
         }
     }

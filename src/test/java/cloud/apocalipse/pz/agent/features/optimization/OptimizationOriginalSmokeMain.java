@@ -106,6 +106,7 @@ public final class OptimizationOriginalSmokeMain {
         thermalClothing(enabled);
         actorUpdateAllocations(enabled);
         verifyTelemetry(enabled);
+        AnimalPerceptionOriginalSmoke.run(original, Path.of(arguments[3]), enabled);
         verifyHookEvidence(Path.of(arguments[3]), enabled);
         if (arguments.length == 5 && Boolean.parseBoolean(arguments[4])) {
             LegacyHotspotsOriginalSmoke.run(Path.of(arguments[3]), enabled);

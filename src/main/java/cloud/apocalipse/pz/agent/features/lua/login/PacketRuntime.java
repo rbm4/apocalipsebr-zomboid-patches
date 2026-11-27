@@ -1,5 +1,6 @@
 package cloud.apocalipse.pz.agent.features.lua.login;
 
+import cloud.apocalipse.pz.agent.features.clientmenu.SteamLoginPacketPayload;
 import java.util.ArrayList;
 import zombie.characters.*;
 import zombie.core.Core;
@@ -18,15 +19,44 @@ public final class PacketRuntime {
         catch(ReflectiveOperationException failure){throw new IllegalStateException("Packet input contract changed",failure);}
     }
     private static String text(Object object,String name){return (String)field(object,name);}
-    public static boolean process(Object packet,Object kind,Object object) {
-        if(!ApocBRAsyncLogin.enabled())return false;
-        UdpConnection connection=(UdpConnection)object;
-        if(!ApocBRLoginGuard.ready(connection))return true;
+    private static String takeSteamToken(Object packet) {
         try {
+            var credential = packet.getClass().getDeclaredField("password");
+            credential.setAccessible(true);
+            String token = (String) credential.get(packet);
+            credential.set(packet, null);
+            return token;
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("Login packet credential contract changed", failure);
+        }
+    }
+    public static boolean omitLoginPacketLog(Object kind, Object connection) {
+        if (!GameServer.server || kind != PacketTypes.PacketType.Login) return false;
+        Object packet = ((IConnection) connection).getPacket(PacketTypes.PacketType.Login);
+        return packet != null && (Integer) field(packet, "authType") == SteamLoginPacketPayload.AUTH_TYPE;
+    }
+
+    public static boolean process(Object packet,Object kind,Object object) {
+        if (!ApocBRAsyncLogin.enabled()) {
+            if (!"LoginPacket".equals(packet.getClass().getSimpleName())
+                    || (Integer) field(packet, "authType") != SteamLoginPacketPayload.AUTH_TYPE) return false;
+            takeSteamToken(packet);
+            ApocBRLoginGuard.deny((UdpConnection) object);
+            return true;
+        }
+        UdpConnection connection=(UdpConnection)object;
+        try {
+            if(!ApocBRLoginGuard.ready(connection)) {
+                if ("LoginPacket".equals(packet.getClass().getSimpleName())
+                        && (Integer) field(packet, "authType") == SteamLoginPacketPayload.AUTH_TYPE) takeSteamToken(packet);
+                return true;
+            }
             switch(packet.getClass().getSimpleName()) {
                 case "LoginPacket" -> {
-                    LoginFlow flow=new LoginFlow();flow.username=text(packet,"username");flow.password=text(packet,"password");
+                    LoginFlow flow=new LoginFlow();flow.username=text(packet,"username");
                     flow.clientVersion=text(packet,"clientVersion");flow.authType=(Integer)field(packet,"authType");
+                    flow.password = flow.authType == SteamLoginPacketPayload.AUTH_TYPE
+                        ? takeSteamToken(packet) : text(packet,"password");
                     flow.processServer((PacketTypes.PacketType)kind,connection);
                 }
                 case "GoogleAuthPacket" -> google(text(packet,"username"),text(packet,"code"),connection);

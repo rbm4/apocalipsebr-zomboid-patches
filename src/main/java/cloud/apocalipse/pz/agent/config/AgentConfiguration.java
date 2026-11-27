@@ -43,6 +43,10 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
 
     /** Animal growth gene key defaults on. Disable with {@code -Dapocbr.optimization.animalGrowthGene.enabled=false}. */
     public static final String ANIMAL_GROWTH_GENE_OPTIMIZATION = "apocbr.optimization.animalGrowthGene.enabled";
+    /** Dedicated animal LOS port. Disable with {@code -Dapocbr.optimization.animalPerception.enabled=false}. */
+    public static final String ANIMAL_PERCEPTION_OPTIMIZATION = "apocbr.optimization.animalPerception.enabled";
+    /** Dedicated animal LOS cadence. Set with {@code -Dapocbr.animalLos.intervalTicks=10}; minimum one. */
+    public static final String ANIMAL_LOS_INTERVAL_TICKS_PROPERTY = "apocbr.animalLos.intervalTicks";
     /** Chunk blend direction reuse defaults on. Disable with {@code -Dapocbr.optimization.blendDirections.enabled=false}. */
     public static final String BLEND_DIRECTIONS_OPTIMIZATION = "apocbr.optimization.blendDirections.enabled";
     /** Primitive LOS buckets default on. Disable with {@code -Dapocbr.optimization.perceptionBuckets.enabled=false}. */
@@ -121,6 +125,10 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String ZOMBIE_SEND_WORKERS_PROPERTY = "apocbr.zombiePacketWorkers";
     /** Async zombie transmission, JVM argument {@code -Dapocbr.zombieSendCapacity=64}. */
     public static final String ZOMBIE_SEND_CAPACITY_PROPERTY = "apocbr.zombieSendCapacity";
+
+    public static int animalLosIntervalTicks() {
+        return Math.max(1, integerProperty(System.getProperties(), ANIMAL_LOS_INTERVAL_TICKS_PROPERTY, 10));
+    }
 
     public static boolean optimizationEnabled(String property) {
         return Boolean.parseBoolean(systemProperty(property, "true"));
@@ -452,6 +460,21 @@ public record AgentConfiguration(String profile, URI telemetryEndpoint, URI rest
     public static final String BRIDGE_ENDPOINT_ENVIRONMENT = "APOCBR_BRIDGE_ENDPOINT";
     /** Radio HTTP feature: credential environment override. */
     public static final String BRIDGE_API_KEY_ENVIRONMENT = "APOCBR_BRIDGE_API_KEY";
+
+    /** Server Steam login redemption endpoint. Override with {@code -Dapocbr.steamLogin.redeemUrl=...}. */
+    public static final String STEAM_LOGIN_REDEEM_URL_PROPERTY = "apocbr.steamLogin.redeemUrl";
+
+    /** Server-scoped backend integration credential. Set with {@code -Dapocbr.steamLogin.apiKey=...}. */
+    public static final String STEAM_LOGIN_API_KEY_PROPERTY = "apocbr.steamLogin.apiKey";
+
+    public static String steamLoginRedeemUrl() {
+        return systemProperty(STEAM_LOGIN_REDEEM_URL_PROPERTY,
+            "https://plataforma.apocalipse.cloud/api/v1/client-menu/auth/redeem");
+    }
+
+    public static String steamLoginApiKey() {
+        return systemProperty(STEAM_LOGIN_API_KEY_PROPERTY, "");
+    }
     /** Server Lua subsystem master switch; JVM argument {@code -Dapocbr.lua.enabled=false}. */
     public static final String LUA_ENABLED_PROPERTY = "apocbr.lua.enabled";
 
