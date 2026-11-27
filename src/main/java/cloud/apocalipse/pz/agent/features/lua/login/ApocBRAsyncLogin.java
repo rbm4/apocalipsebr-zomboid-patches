@@ -68,15 +68,20 @@ public final class ApocBRAsyncLogin {
         if(Thread.currentThread()!=GameServer.mainThread)throw new IllegalStateException("Server thread required");
         Pending<?> previous=pending.get(c);
         if(previous!=null) {
+            SteamLoginDiagnostics.phase(c, phase, previous.phase.equals(phase) ? "DUPLICATE_PACKET" : "CONFLICTING_PHASE");
             if(!previous.phase.equals(phase)) {pending.remove(c);previous.result.cancel(false);previous.consumed.countDown();ApocBRLoginGuard.deny(c);}
             return;
         }
-        if(closed||pending.size()>=LIMIT){ApocBRLoginGuard.deny(c);return;}
+        if(closed||pending.size()>=LIMIT){
+            SteamLoginDiagnostics.phase(c, phase, closed ? "SHUTTING_DOWN" : "LOGIN_QUEUE_FULL");
+            ApocBRLoginGuard.deny(c);return;
+        }
         if(!ApocBRLoginGuard.ready(c))return;
         Pending<T> entry=new Pending<>(c,phase,resume);pending.put(c,entry);
         if (remote) {
             if (!remoteSlots.tryAcquire()) {
                 pending.remove(c);
+                SteamLoginDiagnostics.phase(c, phase, "HTTP_QUEUE_FULL");
                 ApocBRLoginGuard.deny(c);
                 return;
             }
@@ -90,9 +95,11 @@ public final class ApocBRAsyncLogin {
                         remoteSlots.release();
                     }
                 });
+                SteamLoginDiagnostics.phase(c, phase, "QUEUED");
             } catch (RejectedExecutionException stopped) {
                 remoteSlots.release();
                 pending.remove(c);
+                SteamLoginDiagnostics.phase(c, phase, "WORKER_STOPPED");
                 ApocBRLoginGuard.deny(c);
             }
             return;
@@ -112,7 +119,12 @@ public final class ApocBRAsyncLogin {
                 // JDBC leases are closed. This bounds retained graphs to two, even during a slow tick.
                 try{entry.consumed.await();}catch(InterruptedException stopped){Thread.currentThread().interrupt();}
             });
-        }catch(RejectedExecutionException full){pending.remove(c);ApocBRLoginGuard.deny(c);}
+            SteamLoginDiagnostics.phase(c, phase, "QUEUED");
+        }catch(RejectedExecutionException full){
+            pending.remove(c);
+            SteamLoginDiagnostics.phase(c, phase, "JDBC_QUEUE_UNAVAILABLE");
+            ApocBRLoginGuard.deny(c);
+        }
     }
     /** Called every server tick. No waiting, and at most two continuations / 2ms per tick. */
     public static void update() {
@@ -123,12 +135,23 @@ public final class ApocBRAsyncLogin {
         long started=System.nanoTime();int completed=0;
         for(Pending<?> entry:new ArrayList<>(pending.values())) {
             if(pending.get(entry.connection)!=entry)continue;
-            if(!entry.current()){pending.remove(entry.connection);entry.result.cancel(false);entry.consumed.countDown();continue;}
-            if(System.nanoTime()>=entry.expires){pending.remove(entry.connection);entry.result.cancel(false);entry.consumed.countDown();ApocBRLoginGuard.deny(entry.connection);continue;}
+            if(!entry.current()){
+                pending.remove(entry.connection);entry.result.cancel(false);entry.consumed.countDown();
+                SteamLoginDiagnostics.phase(entry.connection, entry.phase, "STALE_CONNECTION");
+                continue;
+            }
+            if(System.nanoTime()>=entry.expires){
+                pending.remove(entry.connection);entry.result.cancel(false);entry.consumed.countDown();
+                SteamLoginDiagnostics.phase(entry.connection, entry.phase, "PHASE_TIMEOUT");
+                ApocBRLoginGuard.deny(entry.connection);continue;
+            }
             if(!entry.result.isDone())continue;
             pending.remove(entry.connection);entry.consumed.countDown();
             try {if(ApocBRLoginGuard.ready(entry.connection))entry.finish();}
-            catch(RuntimeException|LinkageError failure){ApocBRLoginGuard.deny(entry.connection);}
+            catch(RuntimeException|LinkageError failure){
+                SteamLoginDiagnostics.phase(entry.connection, entry.phase, SteamLoginDiagnostics.failureType(failure));
+                ApocBRLoginGuard.deny(entry.connection);
+            }
             if(++completed>=2||System.nanoTime()-started>=2_000_000L)break;
         }
     }

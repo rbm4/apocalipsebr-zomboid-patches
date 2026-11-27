@@ -37,18 +37,23 @@ public final class PacketRuntime {
     }
 
     public static boolean process(Object packet,Object kind,Object object) {
+        UdpConnection connection=(UdpConnection)object;
+        boolean steamLogin = "LoginPacket".equals(packet.getClass().getSimpleName())
+            && (Integer) field(packet, "authType") == SteamLoginPacketPayload.AUTH_TYPE;
+        if (steamLogin) SteamLoginDiagnostics.log(connection, "packet", "APBR_RECEIVED");
         if (!ApocBRAsyncLogin.enabled()) {
-            if (!"LoginPacket".equals(packet.getClass().getSimpleName())
-                    || (Integer) field(packet, "authType") != SteamLoginPacketPayload.AUTH_TYPE) return false;
+            if (!steamLogin) return false;
             takeSteamToken(packet);
-            ApocBRLoginGuard.deny((UdpConnection) object);
+            SteamLoginDiagnostics.log(connection, "packet", "ASYNC_ACCOUNTS_DISABLED");
+            ApocBRLoginGuard.deny(connection);
             return true;
         }
-        UdpConnection connection=(UdpConnection)object;
         try {
             if(!ApocBRLoginGuard.ready(connection)) {
-                if ("LoginPacket".equals(packet.getClass().getSimpleName())
-                        && (Integer) field(packet, "authType") == SteamLoginPacketPayload.AUTH_TYPE) takeSteamToken(packet);
+                if (steamLogin) {
+                    takeSteamToken(packet);
+                    SteamLoginDiagnostics.log(connection, "packet", "ACCOUNT_RUNTIME_UNAVAILABLE");
+                }
                 return true;
             }
             switch(packet.getClass().getSimpleName()) {
@@ -64,7 +69,10 @@ public final class PacketRuntime {
                 case "RequestUserLogPacket" -> userlogRequest(text(packet,"username"),connection);
                 default -> throw new IllegalStateException("Unsupported account packet");
             }
-        }catch(RuntimeException|LinkageError failure){ApocBRLoginGuard.deny(connection);}
+        } catch (RuntimeException | LinkageError failure) {
+            if (steamLogin) SteamLoginDiagnostics.log(connection, "packet", SteamLoginDiagnostics.failureType(failure));
+            ApocBRLoginGuard.deny(connection);
+        }
         return true;
     }
     private static void google(String user,String code,UdpConnection connection) {

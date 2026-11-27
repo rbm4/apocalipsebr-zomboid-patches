@@ -8,6 +8,8 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 
 /** Server-only exchange. The game thread supplies immutable connection identity snapshots. */
 final class SteamLoginRedemption {
@@ -18,19 +20,33 @@ final class SteamLoginRedemption {
 
     private SteamLoginRedemption() { }
 
-    static boolean redeem(String token, long steamId, String username) throws Exception {
+    record Result(boolean accepted, String reason) { }
+
+    static Result redeem(String token, long steamId, String username) throws InterruptedException {
         String apiKey = AgentConfiguration.steamLoginApiKey();
-        if (apiKey.isBlank()) return false;
-        URI uri = URI.create(AgentConfiguration.steamLoginRedeemUrl());
-        if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
-                || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) return false;
-        String body = JSON.toJson(new Redemption(token, Long.toUnsignedString(steamId), username));
-        HttpRequest request = HttpRequest.newBuilder(uri).timeout(TIMEOUT)
-            .header("X-API-Key", apiKey).header("Content-Type", "application/json")
-            .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+        if (apiKey.isBlank()) return new Result(false, "MISSING_API_KEY");
+        HttpRequest request;
+        try {
+            URI uri = URI.create(AgentConfiguration.steamLoginRedeemUrl());
+            if (!"https".equalsIgnoreCase(uri.getScheme()) || uri.getHost() == null
+                    || uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null) {
+                return new Result(false, "INVALID_REDEEM_URL");
+            }
+            String body = JSON.toJson(new Redemption(token, Long.toUnsignedString(steamId), username));
+            request = HttpRequest.newBuilder(uri).timeout(TIMEOUT)
+                .header("X-API-Key", apiKey).header("Content-Type", "application/json")
+                .POST(HttpRequest.BodyPublishers.ofString(body)).build();
+        } catch (IllegalArgumentException invalidConfiguration) {
+            return new Result(false, "INVALID_REDEEM_CONFIGURATION");
+        }
         var response = HTTP.sendAsync(request, HttpResponse.BodyHandlers.discarding());
         try {
-            return response.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).statusCode() == 204;
+            int status = response.get(TIMEOUT.toMillis(), TimeUnit.MILLISECONDS).statusCode();
+            return new Result(status == 204, "HTTP_" + status);
+        } catch (TimeoutException timeout) {
+            return new Result(false, "HTTP_TIMEOUT");
+        } catch (ExecutionException failure) {
+            return new Result(false, "HTTP_ERROR_" + SteamLoginDiagnostics.failureType(failure));
         } finally {
             if (!response.isDone()) response.cancel(true);
         }
