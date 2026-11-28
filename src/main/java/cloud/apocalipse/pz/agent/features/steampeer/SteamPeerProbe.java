@@ -2,6 +2,7 @@ package cloud.apocalipse.pz.agent.features.steampeer;
 
 import java.util.concurrent.ThreadLocalRandom;
 import se.krka.kahlua.vm.KahluaTable;
+import zombie.Lua.LuaEventManager;
 import zombie.characters.IsoPlayer;
 import zombie.core.raknet.UdpConnection;
 import zombie.core.znet.SteamUtils;
@@ -10,6 +11,7 @@ import zombie.network.GameClient;
 public final class SteamPeerProbe {
     private static final boolean WINDOWS_X64 = System.getProperty("os.name", "").startsWith("Windows")
             && System.getProperty("os.arch", "").equals("amd64");
+    private static final String LUA_EVENT = "OnApocBRSteamPeerCommand";
     private static final long RETRY_NS = 5_000_000_000L;
     private static UdpConnection connection;
     private static long lastHello;
@@ -20,6 +22,10 @@ public final class SteamPeerProbe {
     private static SteamPeerTransport transport;
     private static SteamPeerExchange exchange;
     private static boolean nativeUnavailable;
+
+    public static void registerLuaEvent() {
+        LuaEventManager.AddEvent(LUA_EVENT);
+    }
 
     public static void tick() {
         if (!WINDOWS_X64 || !GameClient.client || !SteamUtils.isSteamModeEnabled()) return;
@@ -68,7 +74,11 @@ public final class SteamPeerProbe {
                 boolean confirmed = exchange.confirmed();
                 byte[] reply = exchange.receive(message.sender(), message.payload());
                 if (reply != null) transport.send(activePeer, reply);
-                if (!confirmed && exchange.confirmed()) log("Nearby peer round trip confirmed");
+                if (!confirmed && exchange.confirmed()) {
+                    log("Nearby peer round trip confirmed");
+                    LuaEventManager.triggerEvent(LUA_EVENT, SteamPeerRendezvous.MODULE,
+                            "probeConfirmed", Long.toUnsignedString(message.sender()));
+                }
             }
         } catch (VirtualMachineError fatal) {
             throw fatal;

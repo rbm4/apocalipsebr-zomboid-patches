@@ -22,6 +22,7 @@ public final class SteamPeerModule implements AgentModule {
         return List.of(
                 new HookCheck("steam-peer-tick", CLIENT, "update", SteamPeerProbe.class.getName(), "tick", false),
                 new HookCheck("steam-peer-disconnect", CLIENT, "disconnect", SteamPeerProbe.class.getName(), "reset", false),
+                new HookCheck("steam-peer-lua-event", EVENTS, "register", SteamPeerProbe.class.getName(), "registerLuaEvent", false),
                 new HookCheck("steam-peer-hello", EVENTS, "triggerEvent", SteamPeerRendezvous.class.getName(), "onHello", false),
                 new HookCheck("steam-peer-grant", EVENTS, "triggerEvent", SteamPeerProbe.class.getName(), "grant", false));
     }
@@ -32,6 +33,7 @@ public final class SteamPeerModule implements AgentModule {
                 .visit(Advice.to(ClientTick.class).on(named("update").and(takesArguments(0))))
                 .visit(Advice.to(Disconnect.class).on(named("disconnect").and(takesArguments(boolean.class)))))
                 .type(named(EVENTS)).transform((dynamic, type, loader, module, domain) -> dynamic
+                .visit(Advice.to(LuaEventsRegistered.class).on(named("register").and(isStatic()).and(takesArguments(2))))
                 .visit(Advice.to(Hello.class).on(named("triggerEvent").and(takesArguments(5))))
                 .visit(Advice.to(Grant.class).on(named("triggerEvent").and(takesArguments(4)))));
     }
@@ -46,12 +48,17 @@ public final class SteamPeerModule implements AgentModule {
         public static void enter() { SteamPeerProbe.reset(); }
     }
 
+    public static class LuaEventsRegistered {
+        @Advice.OnMethodExit
+        public static void exit() { SteamPeerProbe.registerLuaEvent(); }
+    }
+
     public static class Hello {
         @Advice.OnMethodExit(suppress = Exception.class)
         public static void exit(@Advice.Argument(0) String event, @Advice.Argument(1) Object module,
-                @Advice.Argument(2) Object command, @Advice.Argument(3) Object sender) {
+                @Advice.Argument(2) Object command, @Advice.Argument(3) Object sender, @Advice.Argument(4) Object args) {
             if ("OnClientCommand".equals(event) && "ApocBRSteamPeer".equals(module) && "helloV1".equals(command))
-                SteamPeerRendezvous.onHello(sender);
+                SteamPeerRendezvous.onHello(sender, args);
         }
     }
 
