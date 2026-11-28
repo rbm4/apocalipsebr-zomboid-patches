@@ -14,10 +14,22 @@ public final class SteamPeerRendezvous {
     static final long LEASE_NS = 6_000_000_000L;
     private static final WeakHashMap<IsoPlayer, Long> announced = new WeakHashMap<>();
 
-    public static void onHello(Object sender) {
+    private static final WeakHashMap<IsoPlayer, Long> diagnostics = new WeakHashMap<>();
+
+    public static void onHello(Object sender, Object args) {
         if (!GameServer.server || !(sender instanceof IsoPlayer player) || player.isDead()
                 || player.getSteamID() == 0) return;
         long now = System.nanoTime();
+        if (args instanceof KahluaTable request && request.rawget("diagnostic") instanceof String token) {
+            if (!player.isAccessLevel("admin") || !token.matches("[0-9]{1,16}")) return;
+            Long previous = diagnostics.get(player);
+            if (previous != null && now - previous < POLL_NS) return;
+            diagnostics.put(player, now);
+            KahluaTable reply = LuaManager.platform.newTable();
+            reply.rawset("diagnostic", token);
+            GameServer.sendServerCommand(player, MODULE, PEER, reply);
+            return;
+        }
         Long previous = announced.get(player);
         if (previous != null && now - previous < POLL_NS / 2) return;
         announced.put(player, now);
