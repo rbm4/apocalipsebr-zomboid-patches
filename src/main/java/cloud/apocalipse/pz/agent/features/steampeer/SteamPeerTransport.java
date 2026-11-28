@@ -11,7 +11,7 @@ import static java.lang.foreign.ValueLayout.*;
 
 final class SteamPeerTransport {
     // Dedicated probe channel in the game's existing Steam app context.
-    private static final int CHANNEL = 0x41505031;
+    private static final int PLAYER_CHANNEL = 0x41505031;
     private static final int RELIABLE = 8;
     private static final int OK = 1;
     // SteamNetworkingIdentity is two int32 fields plus a 128-byte union.
@@ -21,12 +21,25 @@ final class SteamPeerTransport {
 
     record Message(long sender, byte[] payload) {}
 
+    private final int channel;
     private final MemorySegment api;
     private final MethodHandle setId, getId, send, receive, release, closeChannel;
 
     SteamPeerTransport() throws Throwable {
+        this(false, PLAYER_CHANNEL);
+    }
+
+    static boolean supportsNativeLayout() {
+        String arch = System.getProperty("os.arch", "");
+        String os = System.getProperty("os.name", "");
+        return (arch.equals("amd64") || arch.equals("x86_64")) && (os.startsWith("Windows") || os.equals("Linux"));
+    }
+
+    SteamPeerTransport(boolean server, int channel) throws Throwable {
+        this.channel = channel;
         var symbols = SymbolLookup.loaderLookup();
-        api = (MemorySegment) bind(symbols, "SteamAPI_SteamNetworkingMessages_SteamAPI_v002",
+        api = (MemorySegment) bind(symbols, server ? "SteamAPI_SteamGameServerNetworkingMessages_SteamAPI_v002"
+                : "SteamAPI_SteamNetworkingMessages_SteamAPI_v002",
                 FunctionDescriptor.of(ADDRESS)).invokeExact();
         if (api.address() == 0) throw new IllegalStateException("SteamNetworkingMessages unavailable");
         setId = bind(symbols, "SteamAPI_SteamNetworkingIdentity_SetSteamID64",
@@ -46,7 +59,7 @@ final class SteamPeerTransport {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment data = arena.allocateFrom(JAVA_BYTE, payload);
             // An outbound send implicitly accepts the session for this configured peer.
-            int result = (int) send.invokeExact(api, identity(arena, peer), data, payload.length, RELIABLE, CHANNEL);
+            int result = (int) send.invokeExact(api, identity(arena, peer), data, payload.length, RELIABLE, channel);
             if (result != OK) throw new IllegalStateException("Steam send result " + result);
         }
     }
@@ -54,7 +67,7 @@ final class SteamPeerTransport {
     Message receive(long peer) throws Throwable {
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment slot = arena.allocate(ADDRESS);
-            int count = (int) receive.invokeExact(api, CHANNEL, slot, 1);
+            int count = (int) receive.invokeExact(api, channel, slot, 1);
             if (count == 0) return null;
             if (count != 1) throw new IllegalStateException("Steam receive count " + count);
             MemorySegment message = slot.get(ADDRESS, 0);
@@ -77,7 +90,7 @@ final class SteamPeerTransport {
 
     void close(long peer) throws Throwable {
         try (Arena arena = Arena.ofConfined()) {
-            boolean closed = (boolean) closeChannel.invokeExact(api, identity(arena, peer), CHANNEL);
+            boolean closed = (boolean) closeChannel.invokeExact(api, identity(arena, peer), channel);
         }
     }
 
