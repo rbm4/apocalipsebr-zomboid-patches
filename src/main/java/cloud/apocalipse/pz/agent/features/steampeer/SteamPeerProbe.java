@@ -9,8 +9,6 @@ import zombie.core.znet.SteamUtils;
 import zombie.network.GameClient;
 
 public final class SteamPeerProbe {
-    private static final boolean WINDOWS_X64 = System.getProperty("os.name", "").startsWith("Windows")
-            && System.getProperty("os.arch", "").equals("amd64");
     private static final String LUA_EVENT = "OnApocBRSteamPeerCommand";
     private static final long RETRY_NS = 5_000_000_000L;
     private static UdpConnection connection;
@@ -25,10 +23,15 @@ public final class SteamPeerProbe {
 
     public static void registerLuaEvent() {
         LuaEventManager.AddEvent(LUA_EVENT);
+        LuaEventManager.AddEvent(SteamServerPeerProbe.REQUEST_EVENT);
+    }
+
+    static void emitLua(String command, long sender) {
+        LuaEventManager.triggerEvent(LUA_EVENT, SteamPeerRendezvous.MODULE, command, Long.toUnsignedString(sender));
     }
 
     public static void tick() {
-        if (!WINDOWS_X64 || !GameClient.client || !SteamUtils.isSteamModeEnabled()) return;
+        if (!SteamPeerTransport.supportsNativeLayout() || !GameClient.client || !SteamUtils.isSteamModeEnabled()) return;
         UdpConnection current = GameClient.connection;
         if (current != connection) {
             reset();
@@ -76,8 +79,7 @@ public final class SteamPeerProbe {
                 if (reply != null) transport.send(activePeer, reply);
                 if (!confirmed && exchange.confirmed()) {
                     log("Nearby peer round trip confirmed");
-                    LuaEventManager.triggerEvent(LUA_EVENT, SteamPeerRendezvous.MODULE,
-                            "probeConfirmed", Long.toUnsignedString(message.sender()));
+                    emitLua("probeConfirmed", message.sender());
                 }
             }
         } catch (VirtualMachineError fatal) {
