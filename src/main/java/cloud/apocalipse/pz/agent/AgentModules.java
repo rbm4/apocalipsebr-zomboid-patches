@@ -43,6 +43,7 @@ import cloud.apocalipse.pz.agent.features.telemetry.MovingObjectTelemetryModule;
 import cloud.apocalipse.pz.agent.features.workshop.WorkshopModule;
 import cloud.apocalipse.pz.agent.features.workshop.AsyncWorkshopModule;
 import cloud.apocalipse.pz.agent.features.clientmenu.ClientMenuModule;
+import cloud.apocalipse.pz.agent.features.steampeer.SteamPeerModule;
 import java.util.List;
 
 /** Single module registry shared by runtime installation and read-only hook diagnostics. */
@@ -51,7 +52,7 @@ public final class AgentModules {
         new OptionalAnimationFoldersModule(),
         new AssetLogModule(),
         new XmlCaseModule(), new WorkshopModule(), new TelemetryModule(), new PostgresModule(), new cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryModule(), new cloud.apocalipse.pz.agent.features.postgres.dictionary.DictionaryDecodeModule(), new NpcModule(), new cloud.apocalipse.pz.agent.features.lua.LuaModule(), new cloud.apocalipse.pz.agent.features.postgres.player.PlayerModule(), new cloud.apocalipse.pz.agent.features.lua.login.AsyncAccountsModule(),
-        new ServerShutdownModule(), new AsyncWorkshopModule(), new ClientMenuModule(), new LuaCallbackTelemetryModule(),
+        new ServerShutdownModule(), new AsyncWorkshopModule(), new ClientMenuModule(), new SteamPeerModule(), new LuaCallbackTelemetryModule(),
         new ServerPhaseTelemetryModule(), new MovingObjectTelemetryModule(), new JavaPathfindingModule(),
         new ZombieCullingModule(), new LuaDispatchModule(), new PlayerNearVehicleModule(),
         new ZombiePacketPreparationModule(), new ThermalClothingModule(), new CharacterStatsModule(),
