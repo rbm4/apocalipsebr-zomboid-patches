@@ -1,4 +1,8 @@
 package cloud.apocalipse.pz.agent.features.lua.login;
+import cloud.apocalipse.pz.agent.features.clientmenu.SteamLoginPacketPayload;
+import cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime;
+import java.nio.charset.StandardCharsets;
+import java.sql.SQLException;
 import zombie.characters.Capability;
 import zombie.characters.Role;
 import zombie.core.Core;
@@ -30,6 +34,8 @@ final class LoginFlow {
     private record DatabaseLogin(ServerWorldDatabase.LogonResult auth,Role coopRole,boolean exists,boolean caseExists,boolean steamAllowed) {}
     private DatabaseLogin databaseLogin;
 
+    private boolean steamTokenLogin() { return this.authType == SteamLoginPacketPayload.AUTH_TYPE; }
+
     public void processServer(PacketTypes.PacketType packetType, UdpConnection connection) {
         if(!ApocBRLoginGuard.ready(connection))return;
         if(ApocBRAsyncLogin.enabled()) {
@@ -49,6 +55,7 @@ final class LoginFlow {
         ConnectionManager.log("receive-packet", "login", connection);
         String serverVersion = Core.getInstance().getGameAndBuildVersion();
         if (!this.clientVersion.equals(serverVersion)) {
+            if (steamTokenLogin()) SteamLoginDiagnostics.log(connection, "preflight", "CLIENT_VERSION_MISMATCH");
             LoggerManager.getLogger("user")
                 .write(
                     "access denied: user \""
@@ -75,7 +82,9 @@ final class LoginFlow {
                 }
             }
 
-            if(ApocBRAsyncLogin.enabled()) {
+            if (steamTokenLogin()) {
+                authenticateSteamToken(connection);
+            } else if(ApocBRAsyncLogin.enabled()) {
                 final String ip=connection.getIP();final long steam=connection.getSteamId(),owner=connection.getOwnerId();
                 final boolean steamMode=SteamUtils.isSteamModeEnabled(),steamCoop=CoopSlave.instance!=null&&steamMode;
                 ApocBRAsyncLogin.submit(connection,"login-auth",this.username,()->{
@@ -106,8 +115,101 @@ final class LoginFlow {
         }
     }
 
+    private void authenticateSteamToken(UdpConnection connection) {
+        String token = this.password;
+        this.password = null;
+        long steam = connection.getSteamId();
+        long owner = connection.getOwnerId();
+        String rejection = null;
+        if (!SteamUtils.isSteamModeEnabled()) rejection = "STEAM_MODE_DISABLED";
+        else if (CoopSlave.instance != null) rejection = "COOP_NOT_SUPPORTED";
+        else if (steam <= 0) rejection = "NO_VALIDATED_STEAM_SESSION";
+        else if (!ServerWorldDatabase.isValidUserName(this.username)
+                || (!ServerOptions.instance.allowNonAsciiUsername.getValue()
+                    && !StandardCharsets.US_ASCII.newEncoder().canEncode(this.username))) rejection = "INVALID_USERNAME";
+        else if (token == null
+                || !token.matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")) {
+            rejection = "INVALID_TOKEN_FORMAT";
+        }
+        if (rejection != null) {
+            SteamLoginDiagnostics.log(connection, "preflight", rejection);
+            ApocBRLoginGuard.deny(connection);
+            return;
+        }
+
+        String user = this.username;
+        ApocBRAsyncLogin.submitRemote(connection, "steam-token", () -> SteamLoginRedemption.redeem(token, steam, user),
+            redeemed -> {
+                SteamLoginDiagnostics.log(connection, "redeem", redeemed.reason());
+                if (!redeemed.accepted()) {
+                    ApocBRLoginGuard.deny(connection);
+                    return;
+                }
+                ApocBRAsyncLogin.submit(connection, "steam-account", user, () -> loadSteamAccount(user, steam, owner),
+                    auth -> {
+                        Role current = auth.role == null ? null : zombie.characters.Roles.getRoleById(auth.role.getId());
+                        if (!auth.authorized || current == null || !current.hasCapability(Capability.LoginOnServer)) {
+                            SteamLoginDiagnostics.log(connection, "account", auth.authorized ? "ROLE_CHANGED" : auth.dcReason);
+                            ApocBRLoginGuard.deny(connection);
+                            return;
+                        }
+                        auth.role = current;
+                        SteamLoginDiagnostics.log(connection, "account", "ACCEPTED");
+                        this.databaseLogin = new DatabaseLogin(auth, null, true, true, false);
+                        finishLogin(connection);
+                    });
+            });
+    }
+
+    private static ServerWorldDatabase.LogonResult loadSteamAccount(String user, long steam, long owner)
+            throws SQLException {
+        var db = ServerWorldDatabase.instance;
+        var result = db.new LogonResult();
+        if (!db.authClient(steam).authorized) {
+            result.dcReason = "STEAM_ACCOUNT_DENIED";
+            return result;
+        }
+        if (!db.authOwner(steam, owner).authorized) {
+            result.dcReason = "STEAM_OWNER_DENIED";
+            return result;
+        }
+        try (var scope = PostgresRuntime.enter();
+             var query = PostgresRuntime.connection(db).prepareStatement(
+                 "SELECT role, authtype, googlekey FROM public.whitelist WHERE username=? AND world=? AND steamid=?")) {
+            query.setString(1, user);
+            query.setString(2, WorkerContext.world());
+            query.setString(3, Long.toUnsignedString(steam));
+            try (var row = query.executeQuery()) {
+                if (!row.next()) {
+                    result.dcReason = "WHITELIST_USERNAME_WORLD_STEAM_MISMATCH";
+                    return result;
+                }
+                result.role = WorkerContext.getRoleById(row.getInt("role"));
+                result.authorized = result.role != null && result.role.hasCapability(Capability.LoginOnServer);
+                if (!result.authorized) result.dcReason = "ROLE_CANNOT_LOGIN";
+                int type = row.getInt("authtype");
+                String googleKey = row.getString("googlekey");
+                result.needSecondFactor = (type == 2 || type == 3) && googleKey != null && !googleKey.isEmpty();
+                return result;
+            }
+        }
+    }
+
+    private void saveSteamLoginDate(long steam) throws SQLException {
+        try (var scope = PostgresRuntime.enter();
+             var query = PostgresRuntime.connection(null).prepareStatement(
+                 "UPDATE public.whitelist SET lastconnection=? WHERE username=? AND world=? AND steamid=?")) {
+            query.setString(1, java.time.LocalDateTime.now().format(
+                java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")));
+            query.setString(2, this.username);
+            query.setString(3, WorkerContext.world());
+            query.setString(4, Long.toUnsignedString(steam));
+            if (query.executeUpdate() != 1) throw new SQLException("Steam login account changed");
+        }
+    }
+
     private void finishLogin(UdpConnection connection) {
-            connection.password = this.password;
+            if (!steamTokenLogin()) connection.password = this.password;
             LoggerManager.getLogger("user").write(connection.getIDStr() + " \"" + this.username + "\" attempting to join");
             if (CoopSlave.instance != null && SteamUtils.isSteamModeEnabled()) {
                 for (int n = 0; n < GameServer.udpEngine.connections.size(); n++) {
@@ -183,6 +285,7 @@ final class LoginFlow {
 
                         for (int playerIndex = 0; playerIndex < 4; playerIndex++) {
                             if (this.username.equals(c.usernames[playerIndex])) {
+                                if (steamTokenLogin()) SteamLoginDiagnostics.log(connection, "admission", "ALREADY_CONNECTED");
                                 LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" already connected");
                                 INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "AlreadyConnected");
                                 connection.forceDisconnect("access-denied-already-connected-username");
@@ -210,6 +313,7 @@ final class LoginFlow {
 
                     if (!connection.getRole().hasCapability(Capability.CanAlwaysJoinServer)
                         && GameServer.getPlayerCount() >= ServerOptions.getInstance().getMaxPlayers()) {
+                        if (steamTokenLogin()) SteamLoginDiagnostics.log(connection, "admission", "SERVER_FULL");
                         INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "ServerFull");
                         connection.forceDisconnect("access-denied-server-full");
                         return;
@@ -226,6 +330,7 @@ final class LoginFlow {
                     int ping = connection.getAveragePing();
                     DebugType.DetailedInfo.println("User %s ip=%s ping %d ms", connection.getUserName(), connection.getIP(), ping);
                     if (PingManager.doKickWhileLoading(connection, ping)) {
+                        if (steamTokenLogin()) SteamLoginDiagnostics.log(connection, "admission", "PING_LIMIT");
                         LoggerManager.getLogger("user").write("access denied: user \"" + this.username + "\" ping is too high");
                         AntiCheat.log(connection, "ping: user \"" + this.username + "\" is not connected because ping is too high");
                         INetworkPacket.send(connection, PacketTypes.PacketType.AccessDenied, "Ping");
@@ -237,7 +342,11 @@ final class LoginFlow {
 
                     if(databaseLogin!=null) {
                         final long steam=connection.getSteamId();final boolean steamMode=SteamUtils.isSteamModeEnabled();
-                        ApocBRAsyncLogin.submit(connection,"login-account",this.username,()->{
+                        ApocBRAsyncLogin.submit(connection,steamTokenLogin() ? "steam-record" : "login-account",this.username,()->{
+                            if (steamTokenLogin()) {
+                                saveSteamLoginDate(steam);
+                                return true;
+                            }
                             ServerWorldDatabase db=ServerWorldDatabase.instance;
                             if(!databaseLogin.exists())db.addUser(this.username,this.password,this.authType);
                             else db.setPassword(this.username,this.password);
@@ -245,6 +354,8 @@ final class LoginFlow {
                             if(steamMode)db.setUserSteamID(this.username,SteamUtils.convertSteamIDToString(steam));
                             return true;
                         },ok->{
+                            if (steamTokenLogin()) SteamLoginDiagnostics.log(connection, "admission",
+                                r.needSecondFactor ? "SECOND_FACTOR_REQUIRED" : "CLIENT_CONNECT_HANDOFF");
                             if(r.needSecondFactor){
                                 ApocBRAsyncLogin.expectSecondFactor(connection,this.username);
                                 INetworkPacket.send(connection,PacketTypes.PacketType.GoogleAuthRequest);

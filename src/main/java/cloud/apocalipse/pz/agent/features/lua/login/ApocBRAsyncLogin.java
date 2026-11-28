@@ -15,6 +15,9 @@ public final class ApocBRAsyncLogin {
     private static final ThreadLocal<Boolean> worker=ThreadLocal.withInitial(()->false);
     private static final ThreadPoolExecutor io=new ThreadPoolExecutor(2,2,0L,TimeUnit.MILLISECONDS,
         new ArrayBlockingQueue<>(LIMIT),r->{Thread t=new Thread(r,"ApocBR-Login-JDBC");t.setDaemon(true);return t;},new ThreadPoolExecutor.AbortPolicy());
+    private static final ExecutorService remoteIo = Executors.newThreadPerTaskExecutor(
+        Thread.ofVirtual().name("ApocBR-Login-HTTP-", 0).inheritInheritableThreadLocals(false).factory());
+    private static final Semaphore remoteSlots = new Semaphore(8);
     private static final Map<UdpConnection,Pending<?>> pending=new IdentityHashMap<>();
     private static boolean closed;
     private static volatile boolean simulationStarted;
@@ -53,15 +56,54 @@ public final class ApocBRAsyncLogin {
     public static boolean enabled(){return AsyncRuntime.enabled();}
     /** One in-flight phase per connection. Same-phase retransmissions are coalesced. */
     public static <T> void submit(UdpConnection c,String phase,String username,Callable<T> work,Consumer<T> resume) {
+        submit(c, phase, username, work, resume, false);
+    }
+
+    static <T> void submitRemote(UdpConnection c, String phase, Callable<T> work, Consumer<T> resume) {
+        submit(c, phase, null, work, resume, true);
+    }
+
+    private static <T> void submit(UdpConnection c,String phase,String username,Callable<T> work,Consumer<T> resume,
+            boolean remote) {
         if(Thread.currentThread()!=GameServer.mainThread)throw new IllegalStateException("Server thread required");
         Pending<?> previous=pending.get(c);
         if(previous!=null) {
+            SteamLoginDiagnostics.phase(c, phase, previous.phase.equals(phase) ? "DUPLICATE_PACKET" : "CONFLICTING_PHASE");
             if(!previous.phase.equals(phase)) {pending.remove(c);previous.result.cancel(false);previous.consumed.countDown();ApocBRLoginGuard.deny(c);}
             return;
         }
-        if(closed||pending.size()>=LIMIT){ApocBRLoginGuard.deny(c);return;}
+        if(closed||pending.size()>=LIMIT){
+            SteamLoginDiagnostics.phase(c, phase, closed ? "SHUTTING_DOWN" : "LOGIN_QUEUE_FULL");
+            ApocBRLoginGuard.deny(c);return;
+        }
         if(!ApocBRLoginGuard.ready(c))return;
         Pending<T> entry=new Pending<>(c,phase,resume);pending.put(c,entry);
+        if (remote) {
+            if (!remoteSlots.tryAcquire()) {
+                pending.remove(c);
+                SteamLoginDiagnostics.phase(c, phase, "HTTP_QUEUE_FULL");
+                ApocBRLoginGuard.deny(c);
+                return;
+            }
+            try {
+                remoteIo.execute(() -> {
+                    try {
+                        if (!entry.result.isDone()) entry.result.complete(work.call());
+                    } catch (Exception failure) {
+                        entry.result.completeExceptionally(failure);
+                    } finally {
+                        remoteSlots.release();
+                    }
+                });
+                SteamLoginDiagnostics.phase(c, phase, "QUEUED");
+            } catch (RejectedExecutionException stopped) {
+                remoteSlots.release();
+                pending.remove(c);
+                SteamLoginDiagnostics.phase(c, phase, "WORKER_STOPPED");
+                ApocBRLoginGuard.deny(c);
+            }
+            return;
+        }
         WorkerContext.Snapshot roles=WorkerContext.capture(username);
         try {
             io.execute(()->{
@@ -77,7 +119,12 @@ public final class ApocBRAsyncLogin {
                 // JDBC leases are closed. This bounds retained graphs to two, even during a slow tick.
                 try{entry.consumed.await();}catch(InterruptedException stopped){Thread.currentThread().interrupt();}
             });
-        }catch(RejectedExecutionException full){pending.remove(c);ApocBRLoginGuard.deny(c);}
+            SteamLoginDiagnostics.phase(c, phase, "QUEUED");
+        }catch(RejectedExecutionException full){
+            pending.remove(c);
+            SteamLoginDiagnostics.phase(c, phase, "JDBC_QUEUE_UNAVAILABLE");
+            ApocBRLoginGuard.deny(c);
+        }
     }
     /** Called every server tick. No waiting, and at most two continuations / 2ms per tick. */
     public static void update() {
@@ -88,12 +135,23 @@ public final class ApocBRAsyncLogin {
         long started=System.nanoTime();int completed=0;
         for(Pending<?> entry:new ArrayList<>(pending.values())) {
             if(pending.get(entry.connection)!=entry)continue;
-            if(!entry.current()){pending.remove(entry.connection);entry.result.cancel(false);entry.consumed.countDown();continue;}
-            if(System.nanoTime()>=entry.expires){pending.remove(entry.connection);entry.result.cancel(false);entry.consumed.countDown();ApocBRLoginGuard.deny(entry.connection);continue;}
+            if(!entry.current()){
+                pending.remove(entry.connection);entry.result.cancel(false);entry.consumed.countDown();
+                SteamLoginDiagnostics.phase(entry.connection, entry.phase, "STALE_CONNECTION");
+                continue;
+            }
+            if(System.nanoTime()>=entry.expires){
+                pending.remove(entry.connection);entry.result.cancel(false);entry.consumed.countDown();
+                SteamLoginDiagnostics.phase(entry.connection, entry.phase, "PHASE_TIMEOUT");
+                ApocBRLoginGuard.deny(entry.connection);continue;
+            }
             if(!entry.result.isDone())continue;
             pending.remove(entry.connection);entry.consumed.countDown();
             try {if(ApocBRLoginGuard.ready(entry.connection))entry.finish();}
-            catch(RuntimeException|LinkageError failure){ApocBRLoginGuard.deny(entry.connection);}
+            catch(RuntimeException|LinkageError failure){
+                SteamLoginDiagnostics.phase(entry.connection, entry.phase, SteamLoginDiagnostics.failureType(failure));
+                ApocBRLoginGuard.deny(entry.connection);
+            }
             if(++completed>=2||System.nanoTime()-started>=2_000_000L)break;
         }
     }
@@ -102,7 +160,7 @@ public final class ApocBRAsyncLogin {
         try{ApocBRAsyncServerDatabase.shutdown();}catch(RuntimeException error){failure=error;}
         closed=true;simulationStarted=false;
         for(var p:pending.values()){p.result.cancel(false);p.consumed.countDown();}
-        pending.clear();secondFactors.clear();io.shutdownNow();
+        pending.clear();secondFactors.clear();remoteIo.shutdownNow();io.shutdownNow();
         try {
             if(!io.awaitTermination(12,TimeUnit.SECONDS))throw new IllegalStateException("JDBC workers failed to stop");
         }catch(InterruptedException error){Thread.currentThread().interrupt();if(failure==null)failure=new IllegalStateException("Interrupted JDBC shutdown");}

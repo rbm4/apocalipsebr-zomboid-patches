@@ -7,6 +7,7 @@ Pass `-D<property>=false` at JVM startup to disable an individual module.
 | Port | JVM property | Configuration |
 | --- | --- | --- |
 | Server LOS workers and zombie perception | `apocbr.optimization.serverLos.enabled` | `apocbr.los.workerThreads` defaults to vanilla's four cache slots. `apocbr.los.queueCapacity` defaults to 256. `apocbr.los.intervalMs` defaults to 2000 with a 250 ms minimum. |
+| Dedicated animal perception | `apocbr.optimization.animalPerception.enabled` | `apocbr.animalLos.intervalTicks` defaults to 10. Set it to 1 for spatial filtering on every scheduled update. |
 | Entity catch-up and scheduling indexes | `apocbr.optimization.entitySimulation.enabled` | `apocbr.metaSimulationInterval` defaults to 10 simulation ticks, with a minimum of one. |
 | Global engine entity removal index | `apocbr.optimization.entityRemoval.enabled` | Index state follows the original `EngineEntityManager` instance. |
 | Async zombie transmission | `apocbr.optimization.zombieAsyncSend.enabled` | `apocbr.zombiePacketWorkers` defaults to six, bounded to 1–32. `apocbr.zombieSendCapacity` defaults to 64 outstanding batches, bounded to 1–256. |
@@ -34,6 +35,34 @@ tile index across completions with a tracked vanilla list, invalidating it when
 membership, ordering, or a zombie's tile changes. Plain lists and unusual
 coordinates use an ordered list snapshot. Client and single-player LOS use
 their original entry points.
+
+## Animal perception
+
+The original dedicated server targets 10 simulation ticks per second. The agent
+uses the native moving-object scheduler frame and the animal's ID to stagger
+periodic LOS scans over ten ticks, about one second at target rate. Reaction to
+a newly visible target can wait until the animal's next scan. LOS-driven
+stress, acceptance and tracking XP checks also run at that cadence. The
+alert cooldown still ages on each scheduled perception opportunity. Direct
+LOS calls and direct spotting or flee calls keep their native cadence.
+
+A cell-owned index adapts the legacy animal perception grid to the original
+JAR. It keeps every human candidate and checks zombies within ten tiles only
+for animals that flee zombies. Nearby candidates reach the vanilla LOS loop in
+cell iteration order. The hook retains the native floor, square, visibility,
+alert and flee checks. Each scan resets the spotted target once before
+processing candidates.
+
+The native cell set remains authoritative. Structural changes discard its
+cached index, including removals through iterators and cell clear. The first
+zombie query in each scheduler pass refreshes bucket membership. Owner-thread
+zombie bucket changes invalidate that refresh for any later query in the same
+pass. Scheduler exit releases its temporary scope, including when a callback
+throws. The native cell owns the index.
+
+Run the packaged original-JAR fixture with
+`./tools/Test-OptimizationAgent.ps1`. Live herd behavior and production
+slow-tick costs still need validation.
 
 ## Entity catch-up and indexing
 

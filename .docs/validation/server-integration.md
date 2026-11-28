@@ -83,20 +83,21 @@ records the agent hash, and the job verifies it against the build checksum.
 The `players30-baseline` job runs the generic startup hook checks once and
 uploads the baseline manifest, completion marker and measurements. Cell border,
 entity removal off and LOS off wait for those inputs before running in parallel.
-Moving-object attribution, parked vehicle cadence, chunk lifecycle, hook rollback
-and PostgreSQL bootstrap can start after the build. Each job runs its registered
+Moving-object attribution, parked vehicle cadence, chunk lifecycle, hook rollback,
+PostgreSQL bootstrap and room registration can start after the build. Each job runs its registered
 scenario assertions and retains the bytecode evidence they require. Experimental
 world simulation and chunk storage replay remain outside the workflow.
 
-GitHub-hosted runners can run all five independent scenarios as soon as the
+GitHub-hosted runners can start up to five independent scenarios when the
 build finishes and all three comparison scenarios once the baseline is ready.
 The matrices can overlap on separate VMs. With a custom
 `PZ_INTEGRATION_RUNNER` label, each matrix allows one active job. The setup
 restores Maven dependencies as before and tries the runner's existing APT
 indexes before refreshing them.
-Each job runs a single server, with a 6 GiB heap limit by default for streaming
-workloads. Choose a heap that leaves room for the operating system, JVM native
-memory and Maven. Cross-runner timing deltas can include hardware variance.
+Each job runs at most one server at a time, with a 6 GiB heap limit by default
+for streaming and room-registration workloads. Choose a heap that leaves room
+for the operating system, JVM native memory and Maven. Cross-runner timing
+deltas can include hardware variance.
 
 The PostgreSQL check uses a fresh service container with a separate schema
 owner and engine login. It applies the test copy of the manager's account
@@ -1062,6 +1063,42 @@ precision. Median release-to-save-drained time was 0.80 s for disk and 1.70 s
 for PostgreSQL. The storage-write phase measured 0.51 s and 1.44 s,
 respectively. The PostgreSQL cache preparation logged 534–1,404 warmed
 blocks per reload outside the timed cycles.
+
+## Room registration
+
+Open the [Project Zomboid server integration](https://github.com/rbm4/apocalipsebr-zomboid-patches/actions/workflows/server-integration.yml)
+workflow and look for `room-registration-ab` under the independent scenarios.
+The job runs three disposable dedicated servers sequentially on the same runner
+using the same original game JAR and packaged agent.
+
+| Arm | Indexed room lookup | Scoped Lua commit |
+| --- | --- | --- |
+| `room-registration-vanilla` | Off | Off |
+| `room-registration-indexed` | On | Off |
+| `room-registration-scoped` | On | On |
+
+Compare vanilla with indexed to isolate lookup cost. Compare indexed with
+scoped to isolate the removal of world-wide passes from explicit Lua commits.
+The job summary displays both comparisons in a single timing table. Download
+`pz-integration-room-registration-ab-<attempt>` for per-arm CSVs, runtime
+hashes, test reports and server logs.
+
+The test-only probe runs after readiness on the native server thread from
+`ServerMap.preupdate`. It creates rooms through the direct editor, then grows
+them through the real Lua VM. Seven cycles each cover interior and
+cross-border growth. The border case verifies that both sides resolve to the
+same room and that the neighboring cell's unrelated room keeps its ID and live
+object. A separate prepared edit removes buildings from one owner and inserts a
+building in another. The probe cleans up the fixture buildings. The scenario
+uses an isolated world without connected clients, BasementDig, or loaded-square
+repair.
+
+`room-registration.csv` records full editor elapsed nanoseconds and pass
+counts, including local checks and rebuilds outside the global passes. The
+assertion requires the original three global validations and final global
+rebuild on direct calls in all arms. Scoped Lua growth must run zero global
+passes. The assertion also verifies the transformed original-JAR call sites.
+There is no wall-clock pass threshold.
 
 ## Automatically discovered hook checks
 

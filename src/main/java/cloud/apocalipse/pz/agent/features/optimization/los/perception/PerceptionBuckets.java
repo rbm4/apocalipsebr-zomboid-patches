@@ -39,6 +39,13 @@ public final class PerceptionBuckets<E> {
         }
     }
 
+    public void remove(long key, E candidate) {
+        ArrayList<E> bucket = ENABLED ? primitive.get(key) : boxed.get(key);
+        if (bucket == null || !bucket.remove(candidate) || !bucket.isEmpty()) return;
+        if (ENABLED) primitive.remove(key);
+        else boxed.remove(key);
+    }
+
     public void clear() {
         if (ENABLED) primitive.clear();
         else boxed.clear();

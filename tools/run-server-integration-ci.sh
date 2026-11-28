@@ -9,6 +9,14 @@ baseline=target/players30-baseline
 startup_hooks=false
 scenario=()
 
+if [[ "$stage" == room-registration-ab ]]; then
+    status=0
+    for arm in room-registration-vanilla room-registration-indexed room-registration-scoped; do
+        bash "$0" "$arm" || status=1
+    done
+    exit "$status"
+fi
+
 case "$stage" in
     players30-baseline)
         startup_hooks=true
@@ -36,6 +44,15 @@ case "$stage" in
             -Dapocbr.optimization.parkedVehicle.enabled=false -Dapocbr.optimization.chunkContainers.enabled=false
             -Dapocbr.optimization.chunkAdjacency.enabled=false)
         ;;
+    room-registration-vanilla|room-registration-indexed|room-registration-scoped)
+        indexed=false
+        scoped=false
+        if [[ "$stage" != room-registration-vanilla ]]; then indexed=true; fi
+        if [[ "$stage" == room-registration-scoped ]]; then scoped=true; fi
+        scenario=(-Dpz.it.roomRegistration=true "-Dpz.it.heap=$PZ_SERVER_HEAP"
+            "-Dapocbr.optimization.roomIdValidation.enabled=$indexed"
+            "-Dapocbr.optimization.scopedRoomCommit.enabled=$scoped")
+        ;;
     postgres-bootstrap)
         : "${APOCBR_POSTGRES_URL:?PostgreSQL bootstrap requires the isolated test database URL}"
         scenario=(-Dpz.it.useTaskConfiguration=true -Dapocbr.postgres.enabled=true
@@ -59,7 +76,7 @@ case "$stage" in
         ;;
 esac
 
-if [[ "$stage" != postgres-bootstrap ]]; then
+if [[ "$stage" != postgres-bootstrap && "$stage" != room-registration-* ]]; then
     scenario+=(-Dpz.it.streaming=true "-Dpz.it.heap=$PZ_SERVER_HEAP")
 fi
 
@@ -82,4 +99,8 @@ fi
 if [[ "$stage" == players30-baseline ]]; then
     mkdir -p "$baseline"
     cp "$artifact/runtime.properties" "$artifact/streaming-complete" "$artifact/streaming.csv" "$baseline/"
+elif [[ "$stage" == room-registration-* ]]; then
+    test -f "$artifact/room-registration-complete"
+    test -s "$artifact/room-registration.csv"
+    cp "$artifact/runtime.properties" "$artifact/room-registration.csv" "$output/"
 fi

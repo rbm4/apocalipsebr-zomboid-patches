@@ -4,6 +4,10 @@ New feature audits, validation records and measurements belong in this directory
 and should be linked here and from the owning feature guide. Use dated filenames
 such as `YYYY-MM-DD-<feature>-validation.md`.
 
+[Room registration on the original dedicated server](2026-11-27-room-registration-validation.md) explains the native path and how to compare validation timings in CI.
+
+[Scoped room commit A/B](2026-11-27-scoped-room-commit-validation.md) points to the workflow results for the dedicated-server Lua path with global and affected-cell ID passes.
+
 ## Historical references
 
 Pre-port audit: [2026-11-21 bot engine vanilla dependency map](2026-11-21-npc-dependency-map.md), with a hashed source/API inventory, original-JAR compile probe and required native hook contracts. Report only; no NPC port implemented.

@@ -87,6 +87,16 @@ diagnostic server-loop thread is active. Inline postupdate is covered.
 Postupdate on an optional animation thread is outside this timing.
 See the [original-JAR integration scenario](../validation/server-integration.md#moving-object-scheduler-scenario).
 
+With the animal perception port enabled, `simulation.animals.perception`
+measures executed periodic LOS calls inside the animal callback.
+`simulation.animals.perceptionGrid` overlaps it and measures candidate index
+construction and position refresh. The `animals.perceptionCadenceSkipped`,
+`animals.perceptionMembershipChecked`, `animals.perceptionGridChecked` and
+`animals.perceptionCandidatesVisited` counters report skipped calls, scanned
+cell memberships, refreshed zombie positions and candidates passed to LOS.
+See [animal perception](server-simulation-hotspots.md#animal-perception) for
+the cadence and startup switches.
+
 ## Validation
 
 The Maven tests verify the registered hook calls against the original 42.22.2

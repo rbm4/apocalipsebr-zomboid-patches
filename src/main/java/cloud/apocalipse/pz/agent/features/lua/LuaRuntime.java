@@ -30,7 +30,7 @@ public final class LuaRuntime {
         LuaManager.Exposer exposer=(LuaManager.Exposer)object;
         for(Class<?> type:new Class<?>[]{ApocBRLobbyStreaming.class,ApocBRManagedGenerators.class,ApocBREventControl.class,
                 ApocBRRadioBridge.class,ApocBrApiBridge.class,ApocBrApiBridge.Endpoint.class,ApocBRPlayerLogin.class,
-                IsoPowerBank.class,PowerBankBackup.class}) exposer.setExposed(type);
+                IsoPowerBank.class,PowerBankBackup.class,ApocBRRoomEdits.class}) exposer.setExposed(type);
     }
     public static void luaInitialized() {
         if (!GameServer.server) return;

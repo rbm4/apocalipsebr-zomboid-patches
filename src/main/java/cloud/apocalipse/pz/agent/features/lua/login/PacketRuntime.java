@@ -1,5 +1,6 @@
 package cloud.apocalipse.pz.agent.features.lua.login;
 
+import cloud.apocalipse.pz.agent.features.clientmenu.SteamLoginPacketPayload;
 import java.util.ArrayList;
 import zombie.characters.*;
 import zombie.core.Core;
@@ -18,15 +19,49 @@ public final class PacketRuntime {
         catch(ReflectiveOperationException failure){throw new IllegalStateException("Packet input contract changed",failure);}
     }
     private static String text(Object object,String name){return (String)field(object,name);}
-    public static boolean process(Object packet,Object kind,Object object) {
-        if(!ApocBRAsyncLogin.enabled())return false;
-        UdpConnection connection=(UdpConnection)object;
-        if(!ApocBRLoginGuard.ready(connection))return true;
+    private static String takeSteamToken(Object packet) {
         try {
+            var credential = packet.getClass().getDeclaredField("password");
+            credential.setAccessible(true);
+            String token = (String) credential.get(packet);
+            credential.set(packet, null);
+            return token;
+        } catch (ReflectiveOperationException failure) {
+            throw new IllegalStateException("Login packet credential contract changed", failure);
+        }
+    }
+    public static boolean omitLoginPacketLog(Object kind, Object connection) {
+        if (!GameServer.server || kind != PacketTypes.PacketType.Login) return false;
+        Object packet = ((IConnection) connection).getPacket(PacketTypes.PacketType.Login);
+        return packet != null && (Integer) field(packet, "authType") == SteamLoginPacketPayload.AUTH_TYPE;
+    }
+
+    public static boolean process(Object packet,Object kind,Object object) {
+        UdpConnection connection=(UdpConnection)object;
+        boolean steamLogin = "LoginPacket".equals(packet.getClass().getSimpleName())
+            && (Integer) field(packet, "authType") == SteamLoginPacketPayload.AUTH_TYPE;
+        if (steamLogin) SteamLoginDiagnostics.log(connection, "packet", "APBR_RECEIVED");
+        if (!ApocBRAsyncLogin.enabled()) {
+            if (!steamLogin) return false;
+            takeSteamToken(packet);
+            SteamLoginDiagnostics.log(connection, "packet", "ASYNC_ACCOUNTS_DISABLED");
+            ApocBRLoginGuard.deny(connection);
+            return true;
+        }
+        try {
+            if(!ApocBRLoginGuard.ready(connection)) {
+                if (steamLogin) {
+                    takeSteamToken(packet);
+                    SteamLoginDiagnostics.log(connection, "packet", "ACCOUNT_RUNTIME_UNAVAILABLE");
+                }
+                return true;
+            }
             switch(packet.getClass().getSimpleName()) {
                 case "LoginPacket" -> {
-                    LoginFlow flow=new LoginFlow();flow.username=text(packet,"username");flow.password=text(packet,"password");
+                    LoginFlow flow=new LoginFlow();flow.username=text(packet,"username");
                     flow.clientVersion=text(packet,"clientVersion");flow.authType=(Integer)field(packet,"authType");
+                    flow.password = flow.authType == SteamLoginPacketPayload.AUTH_TYPE
+                        ? takeSteamToken(packet) : text(packet,"password");
                     flow.processServer((PacketTypes.PacketType)kind,connection);
                 }
                 case "GoogleAuthPacket" -> google(text(packet,"username"),text(packet,"code"),connection);
@@ -34,7 +69,10 @@ public final class PacketRuntime {
                 case "RequestUserLogPacket" -> userlogRequest(text(packet,"username"),connection);
                 default -> throw new IllegalStateException("Unsupported account packet");
             }
-        }catch(RuntimeException|LinkageError failure){ApocBRLoginGuard.deny(connection);}
+        } catch (RuntimeException | LinkageError failure) {
+            if (steamLogin) SteamLoginDiagnostics.log(connection, "packet", SteamLoginDiagnostics.failureType(failure));
+            ApocBRLoginGuard.deny(connection);
+        }
         return true;
     }
     private static void google(String user,String code,UdpConnection connection) {

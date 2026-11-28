@@ -10,13 +10,15 @@ import static net.bytebuddy.matcher.ElementMatchers.*;
 
 public final class AsyncAccountsModule implements AgentModule {
     private boolean enabled;
+    private boolean initialized;
+    private static final String PACKET_TYPE = "zombie.network.PacketTypes$PacketType";
     public static final List<String> PACKETS=List.of("zombie.network.packets.connection.LoginPacket",
         "zombie.network.packets.connection.GoogleAuthPacket","zombie.network.packets.connection.GoogleAuthKeyPacket",
         "zombie.network.packets.service.RequestUserLogPacket");
     public static final List<String> TARGETS;
     static {
         var list=new ArrayList<>(PACKETS);list.addAll(List.of("zombie.network.ServerWorldDatabase",
-            "zombie.network.ServerWorldDatabase$LogonResult","zombie.network.GameServer","zombie.network.ServerMap"));TARGETS=List.copyOf(list);
+            "zombie.network.ServerWorldDatabase$LogonResult","zombie.network.GameServer","zombie.network.ServerMap",PACKET_TYPE));TARGETS=List.copyOf(list);
     }
     @Override public String name(){return "async-accounts";}
     @Override public void initialize() {
@@ -24,11 +26,15 @@ public final class AsyncAccountsModule implements AgentModule {
         if(enabled) cloud.apocalipse.pz.agent.features.lua.HookPreflight.validate(TARGETS,hookChecks(),AsyncAccountsModule::transform);
         AsyncRuntime.initialize(enabled);
         if(enabled) cloud.apocalipse.pz.agent.features.postgres.PostgresRuntime.beforeShutdown(AsyncRuntime::shutdown);
+        initialized = true;
     }
-    @Override public String disabledReason(){return enabled?null:"Requires enabled PostgreSQL account hooks and apocbr.postgres.async.enabled";}
     @Override public List<HookCheck> hookChecks(){
         var checks=new ArrayList<HookCheck>();
-        for(String packet:PACKETS)checks.add(new HookCheck(packet.substring(packet.lastIndexOf('.')+1),packet,"processServer","cloud.apocalipse.pz.agent.features.lua.login.PacketRuntime","process",false));
+        List<String> packets = initialized && !enabled ? PACKETS.subList(0, 1) : PACKETS;
+        for(String packet:packets)checks.add(new HookCheck(packet.substring(packet.lastIndexOf('.')+1),packet,"processServer","cloud.apocalipse.pz.agent.features.lua.login.PacketRuntime","process",false));
+        checks.add(new HookCheck("apbr-login-redaction", PACKET_TYPE, "logPacket",
+            PacketRuntime.class.getName(), "omitLoginPacketLog", false));
+        if (initialized && !enabled) return List.copyOf(checks);
         checks.add(new HookCheck("admin-response",PACKETS.get(3),"setData","cloud.apocalipse.pz.agent.features.lua.login.PacketRuntime","userlog",false));
         checks.add(new HookCheck("worker-role-view","zombie.network.ServerWorldDatabase","authClient","cloud.apocalipse.pz.agent.features.lua.login.WorkerContext","getRoleById",false));
         checks.add(new HookCheck("worker-result-role","zombie.network.ServerWorldDatabase$LogonResult","<init>","cloud.apocalipse.pz.agent.features.lua.login.WorkerContext","getDefaultForNewUser",true));
@@ -38,11 +44,14 @@ public final class AsyncAccountsModule implements AgentModule {
         return List.copyOf(checks);
     }
     @Override public AgentBuilder configure(AgentBuilder builder){
-        if(!enabled)return builder;
+        if (!enabled) return builder.type(namedOneOf(PACKETS.getFirst(), PACKET_TYPE))
+            .transform((dynamic,type,loader,module,domain) -> transform(type.getName(),dynamic));
         return builder.type(namedOneOf(TARGETS.toArray(String[]::new)))
             .transform((dynamic,type,loader,module,domain)->transform(type.getName(),dynamic));
     }
     public static DynamicType.Builder<?> transform(String type,DynamicType.Builder<?> dynamic){
+        if (type.equals(PACKET_TYPE)) return dynamic.visit(Advice.to(AsyncAdvice.PacketLog.class)
+            .on(named("logPacket").and(takesArguments(1))));
         if(PACKETS.contains(type)) {
             var result=dynamic.visit(Advice.to(AsyncAdvice.Packet.class).on(named("processServer").and(takesArguments(2))));
             return type.equals(PACKETS.get(3))?result.visit(new WorkerBoundaryVisitor()):result;

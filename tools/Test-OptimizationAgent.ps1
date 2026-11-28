@@ -71,7 +71,7 @@ function Invoke-OptimizationFixture([string]$State, [bool]$CheckHotspots = $fals
         $original, $State, $cache, $evidence, $CheckHotspots.ToString().ToLowerInvariant()
     )
     if ($State -eq 'false') {
-        $switches = @('zombieCulling', 'luaDispatch', 'playerNearVehicle', 'zombiePacket', 'thermalClothing', 'characterStats', 'actorUpdateAllocation', 'regionCellLookup', 'animalGrowthGene', 'blendDirections', 'perceptionBuckets',
+        $switches = @('zombieCulling', 'luaDispatch', 'playerNearVehicle', 'zombiePacket', 'thermalClothing', 'characterStats', 'actorUpdateAllocation', 'animalPerception', 'regionCellLookup', 'animalGrowthGene', 'blendDirections', 'perceptionBuckets',
             'serverLos', 'entityRemoval', 'entitySimulation', 'zombieAsyncSend', 'parkedVehicle', 'chunkContainers', 'chunkAdjacency') |
             ForEach-Object { "-Dapocbr.optimization.$_.enabled=false" }
         $arguments = $switches + $arguments

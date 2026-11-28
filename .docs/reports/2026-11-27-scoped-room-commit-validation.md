@@ -1,0 +1,15 @@
+# Scoped room commits on the original dedicated server
+
+The earlier [room validation optimization](2026-11-27-room-registration-validation.md) made each room-list lookup cheaper. The editor still traversed world metadata. The indexed and scoped workflow arms both enable that lookup optimization. The scoped arm also limits ID checks and rebuilds to affected owner cells for explicit server Lua edits.
+
+The [BasementDig companion investigation](https://github.com/ApocalipseBr/ApocalipseBR-LoadGridSquare-Optimizations/blob/master/.docs/reports/2026-11-27-basementdig-room-registration-stutter.md) recorded 228 ms of room registration in one frame after adoption had moved into the ApocalipseBR Best Practices Library queue. The live timer included the editor and Lua footprint work. The fixture below isolates the Java side of that finding. The companion requests this hook for growth of an existing main basement and retains the vanilla fallback. [Companion integration](https://github.com/ApocalipseBr/ApocalipseBR-LoadGridSquare-Optimizations/blob/master/.docs/features/map-load-compatibility-patches.md#basementdig)
+
+The scope follows the owning meta cell of each native edit. Native adjacent-cell spatial entries remain separate. Crossing east from a building's original owner still gives both tiles the same registered room and retains the neighboring cell's unrelated room, ID and live object. The owner-move case starts with two removals in one owner, then inserts the replacement in the neighboring cell. Its final rebuild covers both owners. Direct editor creates remain controls and use three global checks and one global rebuild in all three arms.
+
+## Where to compare results
+
+Open [Project Zomboid server integration](https://github.com/rbm4/apocalipsebr-zomboid-patches/actions/workflows/server-integration.yml) and find `room-registration-ab` under the independent scenarios. The job runs **Vanilla**, **Indexed lookup**, and **Indexed + scoped** sequentially on the same runner with the same original JAR and packaged agent. Compare **Indexed lookup** with **Indexed + scoped** to isolate the effect of removing world-wide ID passes from explicit Lua commits.
+
+The run summary shows median editor time for interior and cross-boundary growth after warm-up. It shows the owner move as a single correctness sample. Download `pz-integration-room-registration-ab-<attempt>` for per-arm `room-registration.csv` files, test reports, runtime hashes, hook evidence and console logs. The CSVs record global and cell-level pass counts. The tests require scoped Lua growth to run zero global passes and direct editor calls to retain the original passes. Timing is diagnostic and has no pass threshold. [Workflow and artifact guide](../validation/server-integration.md#room-registration)
+
+The fixture verifies native room and building identity, cross-cell room lookup, unrelated room state and cleanup. It runs without BasementDig, connected clients or the mod's loaded-square refresh. A production adoption capture is still needed to measure registration, footprint refresh and publication together. [Feature contract](../features/room-id-validation.md)
