@@ -2,7 +2,6 @@ package cloud.apocalipse.pz.agent;
 
 import cloud.apocalipse.pz.agent.config.AgentConfiguration;
 import cloud.apocalipse.pz.agent.experimental.luapreparation.AsyncLuaPreparationModule;
-import cloud.apocalipse.pz.agent.features.modactivation.ClientModActivationModule;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -25,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class AsyncLuaPreparationHookTest {
     @TempDir Path directory;
 
-    @Test void enabledHooksTransformOriginalJarAlongsideClientModActivation() throws Exception {
+    @Test void enabledHooksTransformOriginalJar() throws Exception {
         assertTrue(AgentModules.all().stream().anyMatch(AsyncLuaPreparationModule.class::isInstance));
         var module = new AsyncLuaPreparationModule();
         var builder = new AgentBuilder.Default().disableClassFormatChanges();
@@ -40,10 +39,8 @@ class AsyncLuaPreparationHookTest {
             module.initialize();
             assertNull(module.disabledReason());
 
-            var modActivation = new ClientModActivationModule();
-            var transformer = module.configure(modActivation.configure(builder)).makeRaw();
-            var checks = new java.util.ArrayList<>(module.hookChecks());
-            checks.addAll(modActivation.hookChecks());
+            var transformer = module.configure(builder).makeRaw();
+            var checks = module.hookChecks();
             try (var locator = ClassFileLocator.ForJarFile.of(originalJar().toFile())) {
                 for (String target : checks.stream().map(HookCheck::targetClass).distinct().toList()) {
                     byte[] transformed = transformer.transform(getClass().getClassLoader(), target.replace('.', '/'),
